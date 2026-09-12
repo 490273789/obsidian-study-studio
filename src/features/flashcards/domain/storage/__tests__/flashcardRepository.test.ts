@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("obsidian", () => ({ normalizePath: (value: string) => value }));
 
 import { FlashcardRepository, type SerializedDeck } from "../flashcardRepository";
+import { WorkbenchFlashcardAuthority } from "../../../obsidian/workbenchFlashcardAuthority";
+import { MemoryFlashcardAuthority } from "./memoryFlashcardAuthority";
 import { WorkbenchStore, type StorageBackend } from "../../../../../core/storage/workbenchStore";
 import type { Deck, FlashCard } from "../../../../../core/shared/types";
 import { DEFAULT_SETTINGS } from "../../../../../core/host/settingsSlices";
@@ -82,7 +84,10 @@ describe("FlashcardRepository", () => {
 			settings: { ...DEFAULT_SETTINGS, dailyNewCards: 30 },
 		});
 		const store = new WorkbenchStore(backend);
-		const repo = new FlashcardRepository({ store, deckIndexCache: null });
+		const repo = new FlashcardRepository({
+			authority: new WorkbenchFlashcardAuthority({ store }),
+			deckIndexCache: null,
+		});
 
 		await repo.load();
 
@@ -138,7 +143,10 @@ describe("FlashcardRepository", () => {
 		};
 
 		const store = new WorkbenchStore(backend);
-		const repo = new FlashcardRepository({ store, deckIndexCache: mockCacheStore });
+		const repo = new FlashcardRepository({
+			authority: new WorkbenchFlashcardAuthority({ store }),
+			deckIndexCache: mockCacheStore,
+		});
 
 		await repo.load();
 
@@ -170,7 +178,10 @@ describe("FlashcardRepository", () => {
 		});
 
 		const store = new WorkbenchStore(backend);
-		const repo = new FlashcardRepository({ store, deckIndexCache: null });
+		const repo = new FlashcardRepository({
+			authority: new WorkbenchFlashcardAuthority({ store }),
+			deckIndexCache: null,
+		});
 
 		await repo.load();
 
@@ -182,6 +193,9 @@ describe("FlashcardRepository", () => {
 		expect(savedLearning).toBeDefined();
 		expect(savedLearning.decks["legacy-deck"].studyCount).toBe(3);
 		expect(savedLearning.cards["c1"]).toBeDefined();
+		expect(store.getRawDocument()).not.toHaveProperty("decks");
+		expect(store.getRawDocument()).not.toHaveProperty("studyHistory");
+		expect(store.getRawDocument()).not.toHaveProperty("availableTags");
 	});
 
 	it("commits session transitions atomically and updates learning partition", async () => {
@@ -215,7 +229,10 @@ describe("FlashcardRepository", () => {
 		};
 
 		const store = new WorkbenchStore(backend);
-		const repo = new FlashcardRepository({ store, deckIndexCache: mockCacheStore });
+		const repo = new FlashcardRepository({
+			authority: new WorkbenchFlashcardAuthority({ store }),
+			deckIndexCache: mockCacheStore,
+		});
 		await repo.load();
 
 		const listener = vi.fn();
@@ -257,7 +274,7 @@ describe("FlashcardRepository", () => {
 		expect(updatedDeck.cards[0]?.fsrsCard.state).toBe(State.Review);
 		expect(repo.getSpellingProgress()["c1"]?.correctAttempts).toBe(1);
 		expect(repo.getStudyHistory()).toHaveLength(1);
-		expect(listener).toHaveBeenCalled();
+		expect(listener).toHaveBeenCalledTimes(1);
 
 		// WorkbenchStore partition was updated
 		const learning = store.getPartition<any>("learning");
@@ -276,7 +293,10 @@ describe("FlashcardRepository", () => {
 
 		const backend = createMockBackend();
 		const store = new WorkbenchStore(backend);
-		const repo = new FlashcardRepository({ store, deckIndexCache: null });
+		const repo = new FlashcardRepository({
+			authority: new WorkbenchFlashcardAuthority({ store }),
+			deckIndexCache: null,
+		});
 
 		const stats = repo.getDeckStats(deck, now);
 		expect(stats.totalCards).toBe(4);
@@ -300,7 +320,10 @@ describe("FlashcardRepository", () => {
 			},
 		});
 		const store = new WorkbenchStore(backend);
-		const repo = new FlashcardRepository({ store, deckIndexCache: null });
+		const repo = new FlashcardRepository({
+			authority: new WorkbenchFlashcardAuthority({ store }),
+			deckIndexCache: null,
+		});
 		await repo.load();
 
 		const continuityStore = repo.createContinuityStateStore();
@@ -340,7 +363,10 @@ describe("FlashcardRepository", () => {
 			},
 		});
 		const store = new WorkbenchStore(backend);
-		const repo = new FlashcardRepository({ store, deckIndexCache: null });
+		const repo = new FlashcardRepository({
+			authority: new WorkbenchFlashcardAuthority({ store }),
+			deckIndexCache: null,
+		});
 		await repo.load();
 
 		await repo.recordWordListVisit("deck-1", "My Deck", 1000, 7000);
@@ -348,5 +374,118 @@ describe("FlashcardRepository", () => {
 		expect(repo.getStudyHistory()).toHaveLength(1);
 		expect(repo.getStudyHistory()[0]?.deckName).toBe("My Deck");
 		expect(repo.getStudyHistory()[0]?.duration).toBe(6);
+	});
+
+	it("rehydrates the complete learning snapshot after external Sync", async () => {
+		const backend = createMockBackend({
+			schemaVersion: 2,
+			settings: DEFAULT_SETTINGS,
+			learning: {
+				cards: {},
+				decks: {},
+				studyHistory: [],
+				spellingProgress: {},
+				continuity: { sources: {}, issues: [], journal: null },
+			},
+		});
+		const store = new WorkbenchStore(backend);
+		const repo = new FlashcardRepository({
+			authority: new WorkbenchFlashcardAuthority({ store }),
+			deckIndexCache: null,
+		});
+		await repo.load();
+
+		backend.data = {
+			schemaVersion: 2,
+			settings: { ...DEFAULT_SETTINGS, dailyNewCards: 31 },
+			learning: {
+				cards: {
+					synced: {
+						sourceFile: "notes/external.md",
+						fsrsCard: {
+							due: "2026-04-01T00:00:00.000Z",
+							stability: 3,
+							difficulty: 4,
+							elapsed_days: 1,
+							scheduled_days: 3,
+							reps: 2,
+							lapses: 0,
+							state: State.Review,
+							last_review: null,
+							learning_steps: 0,
+						},
+					},
+				},
+				decks: { "notes/external.md": { studyCount: 9, lastStudied: null } },
+				studyHistory: [
+					{
+						deckId: "notes/external.md",
+						deckName: "External",
+						reviewCount: 1,
+						correctCount: 1,
+						totalDurationMs: 1000,
+						date: "2026-04-01",
+						timestamp: 1,
+					},
+				],
+				spellingProgress: {
+					synced: {
+						attempts: 2,
+						correctAttempts: 2,
+						correctStreak: 2,
+						lastAttemptAt: 1,
+					},
+				},
+				continuity: {
+					sources: { "notes/external.md": { type: "current" } },
+					issues: [],
+					journal: null,
+				},
+			},
+		};
+		await store.reloadExternalSettings();
+
+		await vi.waitFor(() => {
+			expect(repo.getSettings().dailyNewCards).toBe(31);
+			expect(repo.getDeck("notes/external.md")?.studyCount).toBe(9);
+			expect(repo.getStudyHistory()).toHaveLength(1);
+			expect(repo.getSpellingProgress().synced?.correctStreak).toBe(2);
+		});
+	});
+
+	it("keeps the observable snapshot and revision unchanged when authority persistence fails", async () => {
+		const authority = new MemoryFlashcardAuthority(DEFAULT_SETTINGS);
+		const repo = new FlashcardRepository({ authority, deckIndexCache: null });
+		await repo.load();
+		const revision = repo.getRevision();
+		authority.failNextCommit = true;
+
+		await expect(repo.recordWordListVisit("deck", "Deck", 0, 6_000)).rejects.toMatchObject({
+			code: "authority-write-failed",
+		});
+
+		expect(repo.getRevision()).toBe(revision);
+		expect(repo.getStudyHistory()).toEqual([]);
+	});
+
+	it("does not roll back a durable continuity commit when the rebuildable cache fails", async () => {
+		const cache = {
+			load: vi.fn().mockResolvedValue(null),
+			loadOrRebuild: vi.fn(),
+			save: vi.fn().mockRejectedValue(new Error("cache unavailable")),
+			invalidateSource: vi.fn(),
+			clear: vi.fn(),
+		};
+		const authority = new MemoryFlashcardAuthority(DEFAULT_SETTINGS);
+		const repo = new FlashcardRepository({ authority, deckIndexCache: cache });
+		await repo.load();
+		const state = await repo.createContinuityStateStore().load();
+		const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+		await repo.commit(state);
+
+		await vi.waitFor(() => expect(cache.save).toHaveBeenCalledOnce());
+		expect(repo.getRevision()).toBe(2);
+		warning.mockRestore();
 	});
 });

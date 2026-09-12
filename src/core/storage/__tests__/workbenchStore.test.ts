@@ -6,17 +6,23 @@ function createMockBackend(initialData: unknown = null): StorageBackend & {
 	data: unknown;
 	loadCalls: number;
 	saveCalls: number;
+	failNextSave: boolean;
 } {
 	return {
 		data: initialData,
 		loadCalls: 0,
 		saveCalls: 0,
+		failNextSave: false,
 		async loadData() {
 			this.loadCalls++;
 			return this.data;
 		},
 		async saveData(nextData: unknown) {
 			this.saveCalls++;
+			if (this.failNextSave) {
+				this.failNextSave = false;
+				throw new Error("disk unavailable");
+			}
 			this.data = JSON.parse(JSON.stringify(nextData));
 		},
 	};
@@ -136,5 +142,51 @@ describe("WorkbenchStore", () => {
 		expect(store.getPartition("cache")).toEqual({ deckIndexVersion: 1 });
 		expect(store.getPartition("customField")).toBe(42);
 		expect((backend.data as any).customField).toBe(42);
+	});
+
+	it("rejects stale versioned writes without changing the document", async () => {
+		const backend = createMockBackend();
+		const store = new WorkbenchStore(backend);
+		await store.savePartition("learning", { cards: {} });
+
+		await expect(
+			store.savePartition("learning", { cards: { newer: true } }, { expectedRevision: 0 }),
+		).rejects.toMatchObject({ name: "WorkbenchStoreConflictError" });
+
+		expect(store.getPartition("learning")).toEqual({ cards: {} });
+		expect(store.getRevision()).toBe(1);
+	});
+
+	it("publishes the write source with its committed revision", async () => {
+		const backend = createMockBackend();
+		const store = new WorkbenchStore(backend);
+		const source = {};
+		const listener = vi.fn();
+		store.subscribe(listener);
+
+		await store.savePartition("learning", { cards: {} }, { source });
+
+		expect(listener).toHaveBeenCalledWith({
+			kind: "partition",
+			partitionKey: "learning",
+			revision: 1,
+			source,
+		});
+	});
+
+	it("keeps memory and revisions unchanged when the durable write fails", async () => {
+		const backend = createMockBackend();
+		const store = new WorkbenchStore(backend);
+		const listener = vi.fn();
+		store.subscribe(listener);
+		backend.failNextSave = true;
+
+		await expect(store.savePartition("learning", { cards: { failed: true } })).rejects.toThrow(
+			"disk unavailable",
+		);
+
+		expect(store.getPartition("learning")).toBeUndefined();
+		expect(store.getRevision()).toBe(0);
+		expect(listener).not.toHaveBeenCalled();
 	});
 });

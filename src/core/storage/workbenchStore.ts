@@ -23,6 +23,37 @@ export interface WorkbenchStoreOptions {
 	initialSettings?: FlashcardSettings;
 }
 
+type WorkbenchStoreChangeInput =
+	| { readonly kind: "settings"; readonly source?: object }
+	| {
+			readonly kind: "partition";
+			readonly partitionKey: string;
+			readonly source?: object;
+	  }
+	| { readonly kind: "document"; readonly source?: object }
+	| { readonly kind: "external" };
+
+export type WorkbenchStoreChange = WorkbenchStoreChangeInput & {
+	readonly revision: number;
+};
+
+export interface WorkbenchStoreMutationOptions {
+	/** Reject inside the write queue if another durable transition committed first. */
+	readonly expectedRevision?: number;
+	/** Opaque in-process identity used by adapters to absorb their own revision echo. */
+	readonly source?: object;
+}
+
+export class WorkbenchStoreConflictError extends Error {
+	constructor(
+		readonly expectedRevision: number,
+		readonly actualRevision: number,
+	) {
+		super(`WorkbenchStore revision changed from ${expectedRevision} to ${actualRevision}`);
+		this.name = "WorkbenchStoreConflictError";
+	}
+}
+
 /**
  * WorkbenchStore - the single atomic persistence authority for the entire plugin.
  *
@@ -37,7 +68,7 @@ export class WorkbenchStore {
 	/** One writer for data.json. Every write is sequenced after prior writes settle. */
 	private writeTail: Promise<void> = Promise.resolve();
 	private revision = 0;
-	private readonly revisionListeners = new Set<() => void>();
+	private readonly revisionListeners = new Set<(change: WorkbenchStoreChange) => void>();
 	private loaded = false;
 
 	constructor(backendOrPlugin: StorageBackend | Plugin, initialSettings?: FlashcardSettings) {
@@ -72,13 +103,18 @@ export class WorkbenchStore {
 	/**
 	 * Saves settings to disk and publishes a revision update.
 	 */
-	async saveSettings(newSettings?: FlashcardSettings): Promise<void> {
+	async saveSettings(
+		newSettings?: FlashcardSettings,
+		options: WorkbenchStoreMutationOptions = {},
+	): Promise<void> {
 		await this.enqueueWrite(async () => {
+			this.assertExpectedRevision(options.expectedRevision);
 			const next = cloneSettingsDocument(newSettings ?? this.settings);
+			const nextDocument = { ...this.document, settings: next };
+			await this.backend.saveData(nextDocument);
 			this.settings = next;
-			this.document.settings = next;
-			await this.backend.saveData(this.document);
-			this.publishRevision();
+			this.document = nextDocument;
+			this.publishRevision({ kind: "settings", source: options.source });
 		});
 	}
 
@@ -97,25 +133,45 @@ export class WorkbenchStore {
 	/**
 	 * Atomically persists a data partition to disk and publishes a revision update.
 	 */
-	async savePartition<T>(partitionKey: string, partitionData: T): Promise<void> {
+	async savePartition<T>(
+		partitionKey: string,
+		partitionData: T,
+		options: WorkbenchStoreMutationOptions = {},
+	): Promise<void> {
 		await this.enqueueWrite(async () => {
-			this.document[partitionKey] = partitionData;
-			await this.backend.saveData(this.document);
-			this.publishRevision();
+			this.assertExpectedRevision(options.expectedRevision);
+			const nextDocument = { ...this.document, [partitionKey]: partitionData };
+			await this.backend.saveData(nextDocument);
+			this.document = nextDocument;
+			this.publishRevision({
+				kind: "partition",
+				partitionKey,
+				source: options.source,
+			});
 		});
 	}
 
 	/**
 	 * Atomically executes a document mutation against the authoritative in-memory document.
 	 */
-	async mutateDocument(mutator: (doc: StoredWorkbenchDocument) => void): Promise<void> {
+	async mutateDocument(
+		mutator: (doc: StoredWorkbenchDocument) => void,
+		options: WorkbenchStoreMutationOptions = {},
+	): Promise<void> {
 		await this.enqueueWrite(async () => {
-			mutator(this.document);
-			if (this.document.settings) {
-				this.settings = cloneSettingsDocument(this.document.settings);
+			this.assertExpectedRevision(options.expectedRevision);
+			const nextDocument = structuredClone(this.document);
+			mutator(nextDocument);
+			const nextSettings = nextDocument.settings
+				? cloneSettingsDocument(nextDocument.settings)
+				: this.settings;
+			nextDocument.settings = nextSettings;
+			await this.backend.saveData(nextDocument);
+			this.document = nextDocument;
+			if (nextDocument.settings) {
+				this.settings = nextSettings;
 			}
-			await this.backend.saveData(this.document);
-			this.publishRevision();
+			this.publishRevision({ kind: "document", source: options.source });
 		});
 	}
 
@@ -126,7 +182,7 @@ export class WorkbenchStore {
 		await this.enqueueWrite(async () => {
 			const data = (await this.backend.loadData()) as StoredWorkbenchDocument | null;
 			this.restoreDocument(data);
-			this.publishRevision();
+			this.publishRevision({ kind: "external" });
 		});
 	}
 
@@ -141,7 +197,7 @@ export class WorkbenchStore {
 		return this.revision;
 	}
 
-	subscribe(listener: () => void): () => void {
+	subscribe(listener: (change: WorkbenchStoreChange) => void): () => void {
 		this.revisionListeners.add(listener);
 		return () => this.revisionListeners.delete(listener);
 	}
@@ -178,11 +234,16 @@ export class WorkbenchStore {
 		return pending;
 	}
 
-	private publishRevision(): void {
+	private assertExpectedRevision(expectedRevision: number | undefined): void {
+		if (expectedRevision === undefined || expectedRevision === this.revision) return;
+		throw new WorkbenchStoreConflictError(expectedRevision, this.revision);
+	}
+
+	private publishRevision(change: WorkbenchStoreChangeInput): void {
 		this.revision++;
 		for (const listener of this.revisionListeners) {
 			try {
-				listener();
+				listener({ ...change, revision: this.revision } as WorkbenchStoreChange);
 			} catch (error) {
 				console.error("Error in WorkbenchStore revision listener:", error);
 			}

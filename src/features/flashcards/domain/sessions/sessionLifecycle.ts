@@ -13,7 +13,6 @@ import type {
 	CardDirection,
 	Deck,
 	FlashCard,
-	FlashcardSettings,
 	PracticeSelection,
 	PracticeResult,
 	PracticeSession,
@@ -27,6 +26,7 @@ import type {
 	StudySettings,
 	ViewState,
 } from "../../../../core/shared/types";
+import type { FlashcardStudySettings } from "../../settings/slice";
 import { shuffleArray } from "../../../../core/shared/utils";
 import type { StudyCardScheduler } from "./studySessionEngine";
 import {
@@ -366,7 +366,7 @@ export interface SessionLifecycleRepository extends StudyCardScheduler {
 	getDeck(id: string): Deck | undefined;
 	getCard(deckId: string, cardId: string): FlashCard | undefined;
 	getEffectiveStudySettings(deckId: string): StudySettings;
-	getSettings(): Pick<FlashcardSettings, "wordLearningDecks">;
+	getSettings(): Pick<FlashcardStudySettings, "wordLearningDecks">;
 	getSpellingProgress(): Record<string, SpellingCardProgress>;
 	commitSessionTransition(transition: SessionPersistenceTransition): Promise<void>;
 }

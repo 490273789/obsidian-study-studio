@@ -7,7 +7,7 @@ Read this guide before changing Markdown card syntax, parsing, indexing, card so
 - The user's Markdown notes are authoritative for card content.
 - `WorkbenchStore` owns atomic disk serialization for `data.json` and settings slices, while `FlashcardRepository` owns persisted learning state and the local deck-index cache. `data.json` contains settings, FSRS state keyed by stable card identity, study history, spelling progress, deck statistics, and card-identity continuity state. It must not contain card front/back/explanation text, parsed tags, or a full derived deck index.
 - `cache/deck-index.json` is local-only and may contain parsed card text, tags, source locations, and source snapshots. It is not Sync-tracked and must always be recoverable by scanning Markdown sources.
-- Persist settings through `WorkbenchStore.saveSettings()`, and learning state through `FlashcardRepository` session/continuity adapters. Do not add independent plugin-data writes; `WorkbenchStore`'s write queue owns ordering and external Sync reloads.
+- Persist settings through `WorkbenchStore.saveSettings()`, and learning state through `FlashcardRepository` session/continuity adapters. `FlashcardRepository` owns the semantic persistence choreography through its `FlashcardAuthority` seam: callers never name the `learning` partition, raw document variants, or cache ordering. Do not add independent plugin-data writes; WorkbenchStore's write queue still owns disk serialization and external Sync reloads.
 - Preserve backward-compatible normalization in `loadSettings()`, including legacy `flashcardTag` to `flashcardTags` migration.
 - Preserve FSRS card state when reparsing or rebuilding a deck index.
 

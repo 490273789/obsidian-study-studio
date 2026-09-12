@@ -11,11 +11,11 @@ import {
 import type {
 	Deck,
 	DeckStats,
-	FlashcardSettings,
 	SpellingCardProgress,
 	StudyHistoryEntry,
 	StudySettings,
 } from "../../../../core/shared/types";
+import type { FlashcardStudySettings } from "../../settings/slice";
 import {
 	calculateEstimatedDays,
 	calculateDailyNewCardsFromDays,
@@ -225,7 +225,7 @@ export interface DeckHomeRepository {
 	getAllDecks(): Deck[];
 	getDeck?(deckId: string): Deck | undefined;
 	getDeckStats(deck: Deck, now?: Date): DeckStats;
-	getSettings(): FlashcardSettings;
+	getSettings(): FlashcardStudySettings;
 	getEffectiveStudySettings?(deckId: string): StudySettings;
 	getSpellingProgress?(): Readonly<Record<string, SpellingCardProgress>>;
 	getStudyHistory?(): StudyHistoryEntry[];
@@ -896,7 +896,7 @@ class DefaultDeckHome implements DeckHome {
 
 	private buildSettingsDraftSnapshot(
 		decks: Deck[],
-		settings: FlashcardSettings,
+		settings: FlashcardStudySettings,
 	): DeckHomeSettingsDraft | null {
 		const draft = this.settingsDraft;
 		if (!draft) return null;

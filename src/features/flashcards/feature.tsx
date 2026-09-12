@@ -5,7 +5,8 @@ import type { OwnedSettings } from "../../core/host/settingsSlices";
 import { buildSettingsViewModel, type SettingsViewModelActions } from "./settings/viewModel";
 import type { OutboundPort } from "../../core/net";
 import type { WorkbenchStore } from "../../core/storage/workbenchStore";
-import { FlashcardRepository } from "./domain/storage/flashcardRepository";
+import { createDeckIndexCacheStore } from "../../core/storage/deckIndexCache";
+import { FlashcardRepository, type SerializedDeck } from "./domain/storage/flashcardRepository";
 import {
 	createDeckHome,
 	type DeckHome,
@@ -24,6 +25,7 @@ import { createPronunciationRuntime, type PronunciationRuntime } from "./domain/
 import { createSessionLifecycle, type SessionLifecycle } from "./domain/sessions/sessionLifecycle";
 import { CardIdentityMigrationModal, CardIdentityRepairModal } from "./obsidian/continuityModals";
 import { createObsidianContinuitySourceStore } from "./obsidian/continuityAdapters";
+import { WorkbenchFlashcardAuthority } from "./obsidian/workbenchFlashcardAuthority";
 import { FlashcardApp } from "./ui/FlashcardApp";
 import { createReactItemView } from "../../core/host/reactItemView";
 import type {
@@ -62,7 +64,8 @@ type FlashcardWorkbenchHost = WorkbenchHost<"flashcards">;
 /**
  * The 闪卡 workbench feature: 题库首页, 学习会话, 刷题会话, 拼写会话, 单词表, PDF 导出,
  * 卡片身份维护, and the flashcards settings section. Owns every deep module that no
- * other feature uses yet; the shared WorkbenchStore and settings document stay in the host.
+ * other feature uses yet; the repository receives a feature-owned authority adapter
+ * instead of the shared store's generic document interface.
  */
 export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchModule<"flashcards"> {
 	let repository: FlashcardRepository | null = deps.repository ?? null;
@@ -80,9 +83,15 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 	const ensureRepository = (host: FlashcardWorkbenchHost): FlashcardRepository => {
 		if (!repository) {
 			repository = new FlashcardRepository({
-				store: deps.store,
-				adapter: host.app?.vault?.adapter,
-				pluginDirectory: deps.plugin?.manifest?.dir,
+				authority: new WorkbenchFlashcardAuthority({
+					store: deps.store,
+					adapter: host.app?.vault?.adapter,
+					pluginDirectory: deps.plugin?.manifest?.dir,
+				}),
+				deckIndexCache: createDeckIndexCacheStore<SerializedDeck>(
+					host.app?.vault?.adapter,
+					deps.plugin?.manifest?.dir,
+				),
 			});
 		}
 		return repository;

@@ -1,22 +1,19 @@
-import { normalizePath, type DataAdapter } from "obsidian";
 import { Card, State } from "ts-fsrs";
 import type {
 	Deck,
 	DeckStats,
 	FlashCard,
-	FlashcardSettings,
 	SpellingCardProgress,
 	StudyHistoryEntry,
 	StudyRating,
 	StudySettings,
 } from "../../../../core/shared/types";
-import type { WorkbenchStore } from "../../../../core/storage/workbenchStore";
 import {
 	DECK_INDEX_CACHE_VERSION,
-	createDeckIndexCacheStore,
 	type DeckIndexCache,
 	type DeckIndexCacheStore,
 } from "../../../../core/storage/deckIndexCache";
+import type { FlashcardStudySettings } from "../../settings/slice";
 import { FSRSScheduler, toFSRSRating } from "../sessions/scheduler";
 import type { StudyCardSchedule } from "../sessions/sessionEngine";
 import type {
@@ -27,102 +24,58 @@ import type {
 import type { SessionPersistenceTransition } from "../sessions/sessionLifecycle";
 import { appendStudyHistory, createWordListHistoryEntry } from "../history/studyHistory";
 import type { DeckHomeRepository } from "../decks/deckHome";
+import {
+	FlashcardAuthorityConflictError,
+	FlashcardPersistenceError,
+	type FlashcardAuthority,
+	type FlashcardAuthoritySnapshot,
+	type LearningStateDocument,
+	type LegacyFlashcardDocument,
+	type PersistedCardLearningState,
+	type PersistedDeckLearningState,
+	type SerializedCard,
+	type SerializedDeck,
+	type SerializedFSRSCard,
+} from "./persistenceTypes";
 
-/**
- * Serialized card for storage
- */
-export interface SerializedCard {
-	id: string;
-	front: string;
-	back: string;
-	explanation?: string;
-	fsrsCard: SerializedFSRSCard;
-	sourceFile: string;
-	indexInFile: number;
-}
-
-/**
- * Serialized FSRS card
- */
-export interface SerializedFSRSCard {
-	due: string;
-	stability: number;
-	difficulty: number;
-	elapsed_days: number;
-	scheduled_days: number;
-	reps: number;
-	lapses: number;
-	state: State;
-	last_review: string | null | undefined;
-	learning_steps: number;
-}
-
-export interface SerializedDeck {
-	id: string;
-	name: string;
-	filePath: string;
-	tag: string;
-	cards: SerializedCard[];
-	studyCount: number;
-	lastStudied: string | null;
-}
-
-export interface LearningStateDocument {
-	cards: Record<string, PersistedCardLearningState>;
-	decks: Record<string, PersistedDeckLearningState>;
-	studyHistory: StudyHistoryEntry[];
-	spellingProgress: Record<string, SpellingCardProgress>;
-	continuity: PersistedCardIdentityContinuityState;
-}
-
-export interface PersistedCardLearningState {
-	fsrsCard: SerializedFSRSCard;
-	sourceFile?: string;
-}
-
-export interface PersistedDeckLearningState {
-	studyCount: number;
-	lastStudied: string | null;
-}
-
-export interface LegacyStoredData {
-	schemaVersion?: number;
-	decks?: Record<string, SerializedDeck>;
-	studyHistory?: StudyHistoryEntry[];
-	spellingProgress?: Record<string, SpellingCardProgress>;
-	continuity?: PersistedCardIdentityContinuityState;
-	learning?: LearningStateDocument;
-	availableTags?: string[];
-}
+export type {
+	LearningStateDocument,
+	PersistedCardLearningState,
+	PersistedDeckLearningState,
+	SerializedCard,
+	SerializedDeck,
+	SerializedFSRSCard,
+} from "./persistenceTypes";
 
 interface CardIndexLocation {
 	deckId: string;
 	cardIndex: number;
 }
 
+interface AuthorityCandidate {
+	learning: LearningStateDocument;
+	install(): void;
+}
+
 export interface FlashcardRepositoryOptions {
-	store: WorkbenchStore;
+	authority: FlashcardAuthority;
 	deckIndexCache?: DeckIndexCacheStore<SerializedDeck> | null;
-	adapter?: DataAdapter;
-	pluginDirectory?: string;
 }
 
 /**
  * FlashcardRepository - the deep persistence authority for the 闪卡 feature slice.
  *
  * Implements DeckHomeRepository, ContinuityStateStore, and session persistence
- * against the WorkbenchStore partition seam, encapsulating FSRS scheduling,
- * deck indexing, and local cache management.
+ * through the feature-owned authority seam. It owns the semantic transition,
+ * migration, revision, cache, and external-reload choreography.
  */
 export class FlashcardRepository implements DeckHomeRepository {
-	private readonly store: WorkbenchStore;
+	private readonly authority: FlashcardAuthority;
 	private readonly deckIndexCache: DeckIndexCacheStore<SerializedDeck> | null;
-	private readonly adapter?: DataAdapter;
-	private readonly pluginDirectory?: string;
 
 	private decks: Map<string, Deck> = new Map();
 	private scheduler: FSRSScheduler;
-	private settings: FlashcardSettings;
+	private settings: FlashcardStudySettings;
 	private studyHistory: StudyHistoryEntry[] = [];
 	private spellingProgress: Record<string, SpellingCardProgress> = {};
 	private availableTags: string[] = [];
@@ -139,79 +92,44 @@ export class FlashcardRepository implements DeckHomeRepository {
 	private deckDueTimes = new Map<string, number[]>();
 	private deckDueTimesValid = false;
 	private dataLoaded = false;
-	private storeUnsubscribe: () => void;
+	private authorityVersion = 0;
+	private authorityUnsubscribe: () => void;
+	private operationTail: Promise<void> = Promise.resolve();
+	private cacheWriteTail: Promise<void> = Promise.resolve();
+	private disposed = false;
 
 	constructor(options: FlashcardRepositoryOptions) {
-		this.store = options.store;
-		this.adapter = options.adapter;
-		this.pluginDirectory = options.pluginDirectory;
-		this.deckIndexCache =
-			options.deckIndexCache !== undefined
-				? options.deckIndexCache
-				: createDeckIndexCacheStore<SerializedDeck>(
-						options.adapter,
-						options.pluginDirectory,
-					);
+		this.authority = options.authority;
+		this.deckIndexCache = options.deckIndexCache ?? null;
 
-		this.settings = this.store.getSettings();
+		this.settings = {
+			flashcardTags: [],
+			wordLearningDecks: {},
+			deckOrder: [],
+			dailyNewCards: 20,
+			dailyReviewCards: 100,
+			studyOrder: "random",
+			fsrsParameters: { requestRetention: 0.9, maximumInterval: 365 },
+			deckStudySettings: {},
+			practicePerfectMessages: [],
+			practiceErrorMessages: [],
+		};
 		this.scheduler = new FSRSScheduler(this.settings);
 
-		this.storeUnsubscribe = this.store.subscribe(() => {
-			this.handleStoreRevision();
-		});
+		this.authorityUnsubscribe = this.authority.subscribe(() => this.handleAuthorityChange());
 	}
 
 	async load(): Promise<void> {
 		if (this.dataLoaded) return;
-		await this.store.load();
-		this.settings = this.store.getSettings();
-		this.scheduler = new FSRSScheduler(this.settings);
-
-		const rawDoc = this.store.getRawDocument() as LegacyStoredData;
-		const learning = this.store.getPartition<LearningStateDocument>("learning");
-
-		if (isPluginDataV2(rawDoc) && learning) {
-			const cache = await this.deckIndexCache?.load();
-			if (cache) {
-				this.restoreDeckIndexCache(cache, learning);
-			} else {
-				this.restoreLearningPlaceholders(learning);
-			}
-			this.studyHistory = [...(learning.studyHistory ?? [])];
-			this.spellingProgress = normalizeSpellingProgress(learning.spellingProgress);
-			this.continuity = cloneContinuityState(learning.continuity);
-		} else if (rawDoc?.decks) {
-			// Legacy V1 data migration
-			for (const [id, serializedDeck] of Object.entries(rawDoc.decks)) {
-				this.decks.set(id, this.deserializeDeck(serializedDeck));
-			}
-			this.studyHistory = [...(rawDoc.studyHistory ?? [])];
-			this.spellingProgress = normalizeSpellingProgress(rawDoc.spellingProgress);
-			this.continuity = cloneContinuityState(
-				rawDoc.continuity ?? createEmptyContinuityState(),
-			);
-			this.restoreAvailableTags(rawDoc.availableTags);
-
-			await this.migrateLegacyData(rawDoc);
-		} else {
-			this.restoreLearningPlaceholders(
-				learning ?? {
-					cards: {},
-					decks: {},
-					studyHistory: [],
-					spellingProgress: {},
-					continuity: createEmptyContinuityState(),
-				},
-			);
-		}
-
-		this.refreshDerivedState();
-		this.dataLoaded = true;
-		this.publishRevision();
+		await this.enqueueOperation(async () => {
+			await this.restoreAuthority(true);
+			this.dataLoaded = true;
+			this.publishRevision();
+		});
 	}
 
-	getSettings(): FlashcardSettings {
-		return this.store.getSettings();
+	getSettings(): FlashcardStudySettings {
+		return structuredClone(this.settings);
 	}
 
 	getRevision(): number {
@@ -363,18 +281,23 @@ export class FlashcardRepository implements DeckHomeRepository {
 		const entry = createWordListHistoryEntry(deckId, deckName, startTimeMs, endTimeMs);
 		if (!entry) return;
 
-		const nextHistory = appendStudyHistory(this.studyHistory, [entry]);
-		await this.store.savePartition(
-			"learning",
-			this.buildLearningState(
-				this.decks,
-				nextHistory,
-				this.spellingProgress,
-				this.continuity,
-			),
-		);
-		this.studyHistory = nextHistory;
-		this.publishRevision();
+		await this.enqueueOperation(async () => {
+			await this.commitAuthority(() => {
+				const nextHistory = appendStudyHistory(this.studyHistory, [entry]);
+				return {
+					learning: this.buildLearningState(
+						this.decks,
+						nextHistory,
+						this.spellingProgress,
+						this.continuity,
+					),
+					install: () => {
+						this.studyHistory = nextHistory;
+					},
+				};
+			});
+			this.publishRevision();
+		});
 	}
 
 	async recordWordListSession(deckId: string, deckName: string, duration: number): Promise<void> {
@@ -383,56 +306,65 @@ export class FlashcardRepository implements DeckHomeRepository {
 	}
 
 	async commitSessionTransition(transition: SessionPersistenceTransition): Promise<void> {
-		const nextDecks = cloneDecksForTransition(this.decks, transition, this.cardIndex);
-		const nextSpellingProgress = cloneSpellingProgress(this.spellingProgress);
-		const updatedDeckIds = new Set<string>();
-		const now = new Date();
-
-		for (const update of transition.cardUpdates) {
-			const location = findCardLocation(
-				nextDecks,
-				update.deckId,
-				update.cardId,
-				this.cardIndex,
-			);
-			if (!location) continue;
-			updatedDeckIds.add(location.deckId);
-			location.deck.cards[location.cardIndex] = {
-				...location.deck.cards[location.cardIndex]!,
-				fsrsCard: update.fsrsCard,
-			};
-		}
-
-		for (const deckId of transition.incrementStudyCountFor) {
-			const deck = nextDecks.get(deckId);
-			if (!deck) continue;
-			deck.studyCount++;
-			deck.lastStudied = now.toISOString();
-		}
-
-		for (const attempt of transition.spellingAttempts) {
-			applySpellingAttempt(
-				nextSpellingProgress,
-				attempt.cardId,
-				attempt.correct,
-				attempt.attemptedAt,
-			);
-		}
-
-		const nextHistory = appendStudyHistory(this.studyHistory, transition.historyEntries, now);
-
-		await this.store.savePartition(
-			"learning",
-			this.buildLearningState(nextDecks, nextHistory, nextSpellingProgress, this.continuity),
-		);
-		this.decks = nextDecks;
-		this.studyHistory = nextHistory;
-		this.spellingProgress = nextSpellingProgress;
-
-		for (const deckId of updatedDeckIds) {
-			this.refreshDeckDueTimes(deckId, nextDecks);
-		}
-		this.publishRevision();
+		await this.enqueueOperation(async () => {
+			let updatedDeckIds = new Set<string>();
+			await this.commitAuthority(() => {
+				const nextDecks = cloneDecksForTransition(this.decks, transition, this.cardIndex);
+				const nextSpellingProgress = cloneSpellingProgress(this.spellingProgress);
+				updatedDeckIds = new Set<string>();
+				const now = new Date();
+				for (const update of transition.cardUpdates) {
+					const location = findCardLocation(
+						nextDecks,
+						update.deckId,
+						update.cardId,
+						this.cardIndex,
+					);
+					if (!location) continue;
+					updatedDeckIds.add(location.deckId);
+					location.deck.cards[location.cardIndex] = {
+						...location.deck.cards[location.cardIndex]!,
+						fsrsCard: update.fsrsCard,
+					};
+				}
+				for (const deckId of transition.incrementStudyCountFor) {
+					const deck = nextDecks.get(deckId);
+					if (!deck) continue;
+					deck.studyCount++;
+					deck.lastStudied = now.toISOString();
+				}
+				for (const attempt of transition.spellingAttempts) {
+					applySpellingAttempt(
+						nextSpellingProgress,
+						attempt.cardId,
+						attempt.correct,
+						attempt.attemptedAt,
+					);
+				}
+				const nextHistory = appendStudyHistory(
+					this.studyHistory,
+					transition.historyEntries,
+					now,
+				);
+				return {
+					learning: this.buildLearningState(
+						nextDecks,
+						nextHistory,
+						nextSpellingProgress,
+						this.continuity,
+					),
+					install: () => {
+						this.decks = nextDecks;
+						this.studyHistory = nextHistory;
+						this.spellingProgress = nextSpellingProgress;
+						for (const deckId of updatedDeckIds) {
+							this.refreshDeckDueTimes(deckId, nextDecks);
+						}
+					},
+				};
+			});
+			this.publishRevision();
+		});
 	}
 
 	createContinuityStateStore(): ContinuityStateStore {
@@ -448,29 +380,37 @@ export class FlashcardRepository implements DeckHomeRepository {
 				};
 			},
 			commit: async (state: CardIdentityContinuityState): Promise<void> => {
-				const nextAvailableTags = [...(state.availableTags ?? this.availableTags)];
-				const nextDecks = new Map(state.decks);
-				const nextSpellingProgress = cloneSpellingProgress(this.spellingProgress);
-				this.pruneSpellingProgress(this.decks, nextDecks, nextSpellingProgress);
-				const nextContinuity = cloneContinuityState(state.continuity);
-
-				await this.store.savePartition(
-					"learning",
-					this.buildLearningState(
-						nextDecks,
-						this.studyHistory,
-						nextSpellingProgress,
-						nextContinuity,
-					),
-				);
-				this.decks = nextDecks;
-				this.spellingProgress = nextSpellingProgress;
-				this.availableTags = nextAvailableTags;
-				this.hasAvailableTagsSnapshotValue = true;
-				this.continuity = nextContinuity;
-				this.refreshDerivedState();
-				await this.writeDeckIndexCache(nextDecks, nextAvailableTags);
-				this.publishRevision();
+				await this.enqueueOperation(async () => {
+					let cacheDecks: ReadonlyMap<string, Deck> | null = null;
+					let cacheTags: readonly string[] = [];
+					await this.commitAuthority(() => {
+						const nextAvailableTags = [...(state.availableTags ?? this.availableTags)];
+						const nextDecks = new Map(state.decks);
+						const nextSpellingProgress = cloneSpellingProgress(this.spellingProgress);
+						this.pruneSpellingProgress(this.decks, nextDecks, nextSpellingProgress);
+						const nextContinuity = cloneContinuityState(state.continuity);
+						return {
+							learning: this.buildLearningState(
+								nextDecks,
+								this.studyHistory,
+								nextSpellingProgress,
+								nextContinuity,
+							),
+							install: () => {
+								this.decks = nextDecks;
+								this.spellingProgress = nextSpellingProgress;
+								this.availableTags = nextAvailableTags;
+								this.hasAvailableTagsSnapshotValue = true;
+								this.continuity = nextContinuity;
+								this.refreshDerivedState();
+								cacheDecks = nextDecks;
+								cacheTags = nextAvailableTags;
+							},
+						};
+					});
+					this.publishRevision();
+					if (cacheDecks) this.scheduleDeckIndexCacheWrite(cacheDecks, cacheTags);
+				});
 			},
 		};
 	}
@@ -480,22 +420,140 @@ export class FlashcardRepository implements DeckHomeRepository {
 	}
 
 	dispose(): void {
-		this.storeUnsubscribe();
+		this.disposed = true;
+		this.authorityUnsubscribe();
+		this.authority.dispose?.();
 		this.revisionListeners.clear();
 	}
 
-	private handleStoreRevision(): void {
-		const nextSettings = this.store.getSettings();
-		this.settings = nextSettings;
-		this.scheduler = new FSRSScheduler(nextSettings);
+	private handleAuthorityChange(): Promise<void> {
+		if (this.disposed) return Promise.resolve();
+		return this.enqueueOperation(async () => {
+			await this.restoreAuthority(false);
+			this.publishRevision();
+		});
+	}
 
-		const learning = this.store.getPartition<LearningStateDocument>("learning");
-		if (learning) {
-			this.studyHistory = [...(learning.studyHistory ?? [])];
-			this.spellingProgress = normalizeSpellingProgress(learning.spellingProgress);
-			this.continuity = cloneContinuityState(learning.continuity);
+	private async restoreAuthority(initial: boolean): Promise<void> {
+		let snapshot: FlashcardAuthoritySnapshot;
+		try {
+			snapshot = await this.authority.read();
+		} catch (error) {
+			throw new FlashcardPersistenceError(
+				"authority-read-failed",
+				"Failed to read flashcard learning state",
+				true,
+				{ cause: error },
+			);
 		}
-		this.publishRevision();
+
+		this.settings = structuredClone(snapshot.settings);
+		this.scheduler = new FSRSScheduler(this.settings);
+		this.authorityVersion = snapshot.version;
+
+		if (snapshot.content.kind === "legacy") {
+			this.restoreLegacyDocument(snapshot.content.document);
+			const learning = this.buildLearningState(
+				this.decks,
+				this.studyHistory,
+				this.spellingProgress,
+				this.continuity,
+			);
+			try {
+				const receipt = await this.authority.commit(snapshot.version, {
+					learning,
+					discardLegacy: true,
+				});
+				this.authorityVersion = receipt.version;
+			} catch (error) {
+				throw new FlashcardPersistenceError(
+					"migration-failed",
+					"Failed to migrate legacy flashcard learning state",
+					true,
+					{ cause: error },
+				);
+			}
+			this.scheduleDeckIndexCacheWrite(this.decks, this.availableTags);
+			return;
+		}
+
+		const learning = snapshot.content.learning ?? emptyLearningState();
+		await this.restoreLearningState(learning);
+		if (!initial && !this.dataLoaded) return;
+	}
+
+	private async restoreLearningState(learning: LearningStateDocument): Promise<void> {
+		this.decks = new Map();
+		this.availableTags = [];
+		this.hasAvailableTagsSnapshotValue = false;
+		this.serializedDeckCache = new WeakMap();
+		this.serializedCardCache = new WeakMap();
+		this.serializedFSRSCardCache = new WeakMap();
+		this.persistedCardStateCache = new WeakMap();
+		this.deckDueTimes = new Map();
+		const cache = await this.deckIndexCache?.load();
+		if (cache) this.restoreDeckIndexCache(cache, learning);
+		else this.restoreLearningPlaceholders(learning);
+		this.studyHistory = [...(learning.studyHistory ?? [])];
+		this.spellingProgress = normalizeSpellingProgress(learning.spellingProgress);
+		this.continuity = cloneContinuityState(learning.continuity);
+		this.refreshDerivedState();
+	}
+
+	private restoreLegacyDocument(legacy: LegacyFlashcardDocument): void {
+		this.decks = new Map(
+			Object.entries(legacy.decks).map(([id, deck]) => [id, this.deserializeDeck(deck)]),
+		);
+		this.studyHistory = [...(legacy.studyHistory ?? [])];
+		this.spellingProgress = normalizeSpellingProgress(legacy.spellingProgress);
+		this.continuity = cloneContinuityState(legacy.continuity);
+		this.restoreAvailableTags(legacy.availableTags);
+		this.refreshDerivedState();
+	}
+
+	private async commitAuthority(build: () => AuthorityCandidate): Promise<void> {
+		for (let attempt = 0; attempt < 3; attempt++) {
+			const candidate = build();
+			try {
+				const receipt = await this.authority.commit(this.authorityVersion, {
+					learning: candidate.learning,
+				});
+				this.authorityVersion = receipt.version;
+				candidate.install();
+				return;
+			} catch (error) {
+				if (error instanceof FlashcardAuthorityConflictError && attempt < 2) {
+					await this.restoreAuthority(false);
+					continue;
+				}
+				throw new FlashcardPersistenceError(
+					error instanceof FlashcardAuthorityConflictError
+						? "conflict-exhausted"
+						: "authority-write-failed",
+					"Failed to persist flashcard learning state",
+					error instanceof FlashcardAuthorityConflictError,
+					{ cause: error },
+				);
+			}
+		}
+	}
+
+	private enqueueOperation(operation: () => Promise<void>): Promise<void> {
+		const pending = this.operationTail.then(async () => {
+			if (this.disposed) {
+				throw new FlashcardPersistenceError(
+					"disposed",
+					"Flashcard persistence is disposed",
+					false,
+				);
+			}
+			await operation();
+		});
+		this.operationTail = pending.then(
+			() => undefined,
+			() => undefined,
+		);
+		return pending;
 	}
 
 	private buildLearningState(
@@ -536,25 +594,17 @@ export class FlashcardRepository implements DeckHomeRepository {
 		return state;
 	}
 
-	private async migrateLegacyData(legacy: LegacyStoredData): Promise<void> {
-		await this.backupLegacyDocument(legacy);
-		await this.writeDeckIndexCache(this.decks, this.availableTags);
-		await this.store.savePartition(
-			"learning",
-			this.buildLearningState(this.decks, this.studyHistory, this.spellingProgress),
-		);
-	}
-
-	private async backupLegacyDocument(legacy: LegacyStoredData): Promise<void> {
-		if (!this.adapter || !this.pluginDirectory) return;
-		const path = normalizePath(`${this.pluginDirectory}/data.backup-v1.json`);
-		try {
-			if (!(await this.adapter.exists(path))) {
-				await this.adapter.write(path, JSON.stringify(legacy));
-			}
-		} catch (error) {
-			console.warn("Failed to preserve the local legacy data backup:", error);
-		}
+	private scheduleDeckIndexCacheWrite(
+		decks: ReadonlyMap<string, Deck>,
+		availableTags: readonly string[],
+	): void {
+		this.cacheWriteTail = this.cacheWriteTail
+			.then(() =>
+				this.disposed ? undefined : this.writeDeckIndexCache(decks, availableTags),
+			)
+			.catch((error) => {
+				console.warn("Failed to update the rebuildable deck-index cache:", error);
+			});
 	}
 
 	private async writeDeckIndexCache(
@@ -564,16 +614,12 @@ export class FlashcardRepository implements DeckHomeRepository {
 		if (!this.deckIndexCache) return;
 		const serializedDecks: Record<string, SerializedDeck> = {};
 		for (const [id, deck] of decks) serializedDecks[id] = this.getSerializedDeck(deck);
-		try {
-			await this.deckIndexCache.save({
-				version: DECK_INDEX_CACHE_VERSION,
-				updatedAt: new Date().toISOString(),
-				availableTags: [...availableTags],
-				decks: serializedDecks,
-			});
-		} catch (error) {
-			console.warn("Failed to update the rebuildable deck-index cache:", error);
-		}
+		await this.deckIndexCache.save({
+			version: DECK_INDEX_CACHE_VERSION,
+			updatedAt: new Date().toISOString(),
+			availableTags: [...availableTags],
+			decks: serializedDecks,
+		});
 	}
 
 	private restoreDeckIndexCache(
@@ -777,6 +823,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 	}
 
 	private publishRevision(): void {
+		if (this.disposed) return;
 		this.revision++;
 		for (const listener of this.revisionListeners) {
 			try {
@@ -799,8 +846,14 @@ function createEmptyContinuityState(): PersistedCardIdentityContinuityState {
 	};
 }
 
-function isPluginDataV2(value: LegacyStoredData | null): boolean {
-	return value?.schemaVersion === 2 && value.learning !== undefined;
+function emptyLearningState(): LearningStateDocument {
+	return {
+		cards: {},
+		decks: {},
+		studyHistory: [],
+		spellingProgress: {},
+		continuity: createEmptyContinuityState(),
+	};
 }
 
 function cloneContinuityState(

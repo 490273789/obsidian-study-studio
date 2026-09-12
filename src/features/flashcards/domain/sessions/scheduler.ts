@@ -8,7 +8,7 @@ import {
 	RecordLogItem,
 	IPreview,
 } from "ts-fsrs";
-import { FlashcardSettings, Language, RatingButton } from "../../../../core/shared/types";
+import { Language, RatingButton, StudySettings } from "../../../../core/shared/types";
 import { formatReviewInterval, getLocalizedRatingButtons } from "../../strings/index";
 
 /**
@@ -17,7 +17,7 @@ import { formatReviewInterval, getLocalizedRatingButtons } from "../../strings/i
 export class FSRSScheduler {
 	private f: ReturnType<typeof fsrs>;
 
-	constructor(settings: FlashcardSettings) {
+	constructor(settings: Pick<StudySettings, "fsrsParameters">) {
 		const params = generatorParameters({
 			request_retention: settings.fsrsParameters.requestRetention,
 			maximum_interval: settings.fsrsParameters.maximumInterval,
