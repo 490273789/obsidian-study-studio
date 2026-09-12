@@ -1,33 +1,33 @@
 import React from "react";
 import { ItemView, WorkspaceLeaf, type App } from "obsidian";
 import { createRoot, type Root } from "react-dom/client";
-import type { FlashcardSettings, Language } from "../shared/types";
+import type { Language } from "../shared/types";
 import { createSharedTranslator, type Translator } from "../i18n";
 import { I18nProvider } from "../ui/context/I18nContext";
 import type { WorkbenchItemView } from "./workbench";
 
 /**
  * Everything a workbench view's React tree may read. The seam owns the container,
- * the React root, the committed settings, and the theme, so a view definition only
- * describes what it renders.
+ * the React root, the owner-scoped committed settings, and the theme, so a view
+ * definition only describes what it renders.
  */
-export interface ReactViewContext {
+export interface ReactViewContext<TSettings extends { readonly language: Language }> {
 	readonly app: App;
-	/** The committed settings document, read at render time. */
-	readonly settings: FlashcardSettings;
+	/** The owner-scoped committed settings snapshot, read at render time. */
+	readonly settings: Readonly<TSettings>;
 	readonly language: Language;
 	readonly theme: "dark" | "light";
 	/** Host for imperative Obsidian modals that belong to this view. */
 	readonly rootEl: HTMLElement;
 }
 
-export interface ReactViewOptions {
+export interface ReactViewOptions<TSettings extends { readonly language: Language }> {
 	/** Obsidian view type; must equal the type passed to `WorkbenchHost.registerView`. */
 	type: string;
 	icon: string;
 	title(language: Language): string;
-	/** The committed settings document. The seam renders from this, never from a snapshot. */
-	readSettings(): FlashcardSettings;
+	/** Reads a fresh owner-scoped snapshot whenever the seam renders. */
+	readSettings(): Readonly<TSettings>;
 	/** Localized message shown in place of the view when its render throws. */
 	renderErrorMessage(language: Language): string;
 	/**
@@ -36,14 +36,14 @@ export interface ReactViewOptions {
 	 * resolve inside the same i18n context.
 	 */
 	translator?(language: Language): Translator;
-	render(context: ReactViewContext): React.ReactNode;
+	render(context: ReactViewContext<TSettings>): React.ReactNode;
 	/**
 	 * Re-render on Obsidian theme changes. Only views that render their own theme
 	 * state (such as the dictionary's sandbox document) need this.
 	 */
 	trackTheme?: boolean;
 	/** Runs after the first render of every open, with the view already mounted. */
-	onOpen?(context: ReactViewContext): void;
+	onOpen?(context: ReactViewContext<TSettings>): void;
 	onClose?(): void;
 }
 
@@ -80,8 +80,8 @@ export class ReactViewErrorBoundary extends React.Component<
  * tracking, and teardown. Features pass a definition instead of writing an
  * `ItemView` subclass, and `WorkbenchHost.registerView` accepts the result directly.
  */
-export function createReactItemView(
-	options: ReactViewOptions,
+export function createReactItemView<TSettings extends { readonly language: Language }>(
+	options: ReactViewOptions<TSettings>,
 ): (leaf: WorkspaceLeaf) => WorkbenchItemView {
 	class ReactWorkbenchView extends ItemView implements WorkbenchItemView {
 		private root: Root | null = null;
@@ -143,7 +143,7 @@ export function createReactItemView(
 			return this.app.isDarkMode() ? "dark" : "light";
 		}
 
-		private context(): ReactViewContext {
+		private context(): ReactViewContext<TSettings> {
 			const settings = options.readSettings();
 			return {
 				app: this.app,

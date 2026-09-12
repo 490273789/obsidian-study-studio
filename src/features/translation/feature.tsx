@@ -32,9 +32,11 @@ export interface TranslationFeatureDeps {
 	net: OutboundPort;
 }
 
-export interface TranslationFeature extends WorkbenchModule {
+export interface TranslationFeature extends WorkbenchModule<"translation"> {
 	readonly selectionAdapter: SelectionTranslationAdapter;
 }
+
+type TranslationWorkbenchHost = WorkbenchHost<"translation">;
 
 /**
  * The AI 翻译 workbench feature: the translator view and its settings section.
@@ -45,13 +47,13 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 	let editor: TranslationSettingsEditor | null = null;
 	/** Open-view lease handed to the runtime; the last view closing clears the session. */
 	let detachOpenView: (() => void) | null = null;
-	let activeHost: WorkbenchHost | null = null;
+	let activeHost: TranslationWorkbenchHost | null = null;
 
-	const ensureRuntime = (host: WorkbenchHost): TranslationRuntime => {
+	const ensureRuntime = (host: TranslationWorkbenchHost): TranslationRuntime => {
 		if (runtime) return runtime;
-		runtime = new TranslationRuntime(host.settings().translation, deps.ai, {
+		runtime = new TranslationRuntime(host.settings.read().translation, deps.ai, {
 			persist: async (translation) => {
-				await host.updateSettings({
+				await host.settings.update({
 					translation: normalizeTranslationSettings(translation),
 				});
 			},
@@ -61,16 +63,16 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 		return runtime;
 	};
 
-	const activateView = async (host: WorkbenchHost): Promise<void> => {
+	const activateView = async (host: TranslationWorkbenchHost): Promise<void> => {
 		try {
 			await host.activateView(VIEW_TYPE_TRANSLATOR);
 		} catch {
-			new Notice(translationStrings(host.settings().language).openFailed);
+			new Notice(translationStrings(host.settings.read().language).openFailed);
 		}
 	};
 
 	const selectionAdapter: SelectionTranslationAdapter = {
-		available: () => Boolean(activeHost?.settings().translation.enabled),
+		available: () => Boolean(activeHost?.settings.read().translation.enabled),
 		openPrefilled: async (text) => {
 			if (!activeHost) return;
 			const translation = ensureRuntime(activeHost);
@@ -83,19 +85,19 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 			try {
 				await activeHost.activateView(VIEW_TYPE_TRANSLATOR, { mainTab: true });
 			} catch {
-				new Notice(translationStrings(activeHost.settings().language).openFailed);
+				new Notice(translationStrings(activeHost.settings.read().language).openFailed);
 			}
 		},
 	};
 
 	const section = (
-		host: WorkbenchHost,
+		host: TranslationWorkbenchHost,
 		translation: TranslationRuntime,
 	): WorkbenchSettingsSection => {
 		editor ??= new TranslationSettingsEditor(
 			translation,
 			deps.ai,
-			() => host.settings().language,
+			() => host.settings.read().language,
 			() => host.settingsTab.refresh(),
 		);
 		const settingsEditor = editor;
@@ -122,7 +124,7 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 					type: VIEW_TYPE_TRANSLATOR,
 					icon: "languages",
 					title: (language) => translationStrings(language).title,
-					readSettings: () => host.settings(),
+					readSettings: () => host.settings.read(),
 					renderErrorMessage: (language) =>
 						createSharedTranslator(language)("notice.viewRenderFailed"),
 					onOpen: () => {
@@ -149,15 +151,15 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 				openCommandId: OPEN_COMMAND_ID,
 				openHotkeys: [{ modifiers: ["Alt"], key: "3" }],
 				settingsSectionId: TRANSLATION_SECTION_ID,
-				available: () => host.settings().translation.enabled,
+				available: () => host.settings.read().translation.enabled,
 				open: () => {
 					void activateView(host);
 				},
 			});
 
-			const strings = translationStrings(host.settings().language);
+			const strings = translationStrings(host.settings.read().language);
 			host.chrome((chrome) => {
-				if (!host.settings().translation.enabled) return;
+				if (!host.settings.read().translation.enabled) return;
 				chrome.command({
 					id: SELECTION_COMMAND_ID,
 					name: strings.selectionCommand,

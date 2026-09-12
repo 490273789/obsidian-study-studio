@@ -82,7 +82,7 @@ function settings(overrides: Partial<FlashcardSettings> = {}): FlashcardSettings
 interface TestView {
 	onOpen(): Promise<void>;
 	onClose(): Promise<void>;
-	updateSettings(settings: FlashcardSettings): void;
+	updateSettings(): void;
 	getViewType(): string;
 	getIcon(): string;
 	getDisplayText(): string;
@@ -186,7 +186,7 @@ describe("react item view seam", () => {
 		expect(renderedBody().props.children).toBe("zh:light");
 
 		current = settings({ language: "en" });
-		view.updateSettings(current);
+		view.updateSettings();
 
 		const root = env.roots[0]!;
 		expect(root.render).toHaveBeenCalledTimes(2);
@@ -204,7 +204,7 @@ describe("react item view seam", () => {
 		expect(onClose).toHaveBeenCalledTimes(1);
 
 		// A late settings push after close must not render again.
-		view.updateSettings(settings());
+		view.updateSettings();
 		expect(env.roots[0]!.render).toHaveBeenCalledTimes(1);
 	});
 
@@ -213,7 +213,7 @@ describe("react item view seam", () => {
 		await view.onOpen();
 
 		expect(env.listeners["css-change"]).toBeUndefined();
-		view.updateSettings(settings());
+		view.updateSettings();
 		expect(env.roots[0]!.render).toHaveBeenCalledTimes(2);
 	});
 

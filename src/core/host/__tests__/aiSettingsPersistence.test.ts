@@ -52,7 +52,7 @@ async function createPlugin() {
 		plugin,
 		"commitSettings",
 	);
-	return { plugin, commit };
+	return { plugin, commit, host };
 }
 
 it("applies concurrent feature patches to the settings committed at write time", async () => {
@@ -118,4 +118,48 @@ it("publishes settings that still contain every slice the host owns", async () =
 	expect(plugin.settings.flashcardTags).toEqual(DEFAULT_SETTINGS.flashcardTags);
 	expect(plugin.settings.pronunciation).toEqual(DEFAULT_SETTINGS.pronunciation);
 	expect(plugin.settings.dictionary).toEqual(DEFAULT_SETTINGS.dictionary);
+});
+
+it("does not persist or publish a no-op patch", async () => {
+	const { plugin, commit, host } = await createPlugin();
+	const settingsChanged = vi.fn();
+	plugin.workbench = { settingsChanged } as never;
+
+	await commit({ language: plugin.settings.language });
+
+	expect(host.saveData).not.toHaveBeenCalled();
+	expect(settingsChanged).not.toHaveBeenCalled();
+});
+
+it("routes a committed transition through the workbench with both snapshots", async () => {
+	const { plugin, commit } = await createPlugin();
+	const previous = plugin.settings;
+	const settingsChanged = vi.fn();
+	plugin.workbench = { settingsChanged } as never;
+
+	await commit({ dictionary: { ...previous.dictionary, enabled: true } });
+
+	expect(settingsChanged).toHaveBeenCalledOnce();
+	expect(settingsChanged).toHaveBeenCalledWith(previous, plugin.settings);
+});
+
+it("keeps a durable commit when workbench notification fails", async () => {
+	const { plugin, commit, host } = await createPlugin();
+	const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+	plugin.workbench = {
+		settingsChanged: () => {
+			throw new Error("render failed");
+		},
+	} as never;
+
+	await commit({ dailyNewCards: 19 });
+
+	expect(plugin.settings.dailyNewCards).toBe(19);
+	expect(plugin.store.getSettings().dailyNewCards).toBe(19);
+	expect(host.saveData).toHaveBeenCalledOnce();
+	expect(consoleError).toHaveBeenCalledWith(
+		"Failed to route committed settings through the workbench:",
+		expect.any(Error),
+	);
+	consoleError.mockRestore();
 });

@@ -8,7 +8,8 @@ import React, {
 	useSyncExternalStore,
 } from "react";
 import { App, Component, MarkdownRenderer, Notice, TFile } from "obsidian";
-import { ViewState, FlashcardSettings } from "../../../core/shared/types";
+import { ViewState } from "../../../core/shared/types";
+import type { ScopedWorkbenchSettings } from "../../../core/host/settingsSlices";
 import type { DeckHome, DeckHomeDestination, DeckHomeOutcome } from "../domain/decks/deckHome";
 import {
 	getRestartViewState,
@@ -46,7 +47,7 @@ interface FlashcardAppProps {
 	cardIdentityContinuity: CardIdentityContinuity;
 	pronunciationRuntime: PronunciationRuntime;
 	deckHome: DeckHome;
-	settings: FlashcardSettings;
+	settings: ScopedWorkbenchSettings<"flashcards">;
 	onOpenSettings: () => void;
 	onOpenTranslation?: () => void;
 	onOpenDictionary?: () => void;

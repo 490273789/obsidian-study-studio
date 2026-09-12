@@ -111,6 +111,9 @@ export default class StudyStudioPlugin extends Plugin {
 	): Promise<FlashcardSettings> {
 		const write = this.settingsWriteQueue.then(async () => {
 			const nextSettings = createNextSettings();
+			if (JSON.stringify(nextSettings) === JSON.stringify(this.settings)) {
+				return this.settings;
+			}
 			await this.store.saveSettings(nextSettings);
 			this.publishSettings(nextSettings);
 			return nextSettings;
@@ -123,11 +126,12 @@ export default class StudyStudioPlugin extends Plugin {
 	}
 
 	private publishSettings(settings: FlashcardSettings): void {
+		const previous = this.settings;
 		this.settings = settings;
 		try {
-			this.workbench?.refresh();
+			this.workbench?.settingsChanged(previous, settings);
 		} catch (error) {
-			console.error("Failed to refresh the workbench after saving settings:", error);
+			console.error("Failed to route committed settings through the workbench:", error);
 		}
 	}
 }

@@ -1,7 +1,7 @@
 import type { Plugin } from "obsidian";
 import type { AiService } from "../core/ai";
 import type { WorkbenchStore } from "../core/storage/workbenchStore";
-import type { WorkbenchModule } from "../core/host/workbench";
+import type { AnyWorkbenchModule } from "../core/host/workbench";
 import type { OutboundPort } from "../core/net";
 import { createDictionaryFeature } from "./dictionary/feature";
 import { createFlashcardFeature } from "./flashcards/feature";
@@ -20,7 +20,7 @@ export interface WorkbenchModuleDeps {
  * explicitly hands each one the shared services it needs. The composition root
  * imports only this module, so it never has to know a feature's name.
  */
-export function createWorkbenchModules(deps: WorkbenchModuleDeps): WorkbenchModule[] {
+export function createWorkbenchModules(deps: WorkbenchModuleDeps): AnyWorkbenchModule[] {
 	const flashcards = createFlashcardFeature({
 		store: deps.store,
 		net: deps.net,

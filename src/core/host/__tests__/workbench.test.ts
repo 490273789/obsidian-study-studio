@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { DEFAULT_SETTINGS } from "../settingsSlices";
-import { createWorkbench, type WorkbenchModule, type WorkbenchHost } from "../workbench";
+import { DEFAULT_SETTINGS, type FeatureSettingsOwner } from "../settingsSlices";
+import {
+	createWorkbench,
+	SettingsScopeViolation,
+	WorkbenchDisposedError,
+	type AnyWorkbenchModule,
+	type WorkbenchModule,
+	type WorkbenchHost,
+} from "../workbench";
 
 interface FakeRibbon {
 	icon: string;
@@ -59,11 +66,11 @@ function createFakeApp() {
 	return { app, setViewState, revealLeaf };
 }
 
-function setup(modules: WorkbenchModule[]) {
+function setup(modules: AnyWorkbenchModule[]) {
 	const fakePlugin = createFakePlugin();
 	const fakeApp = createFakeApp();
 	const commitSettings = vi.fn().mockResolvedValue(undefined);
-	const hosts = new Map<string, WorkbenchHost>();
+	const hosts = new Map<FeatureSettingsOwner, unknown>();
 	const workbench = createWorkbench({
 		app: fakeApp.app as never,
 		plugin: fakePlugin.plugin as never,
@@ -73,30 +80,35 @@ function setup(modules: WorkbenchModule[]) {
 		createModules: () =>
 			modules.map((entry) => ({
 				id: entry.id,
-				render: (host: WorkbenchHost) => {
+				render: (host: never) => {
 					hosts.set(entry.id, host);
 					entry.render(host);
 				},
 				stop: () => entry.stop(),
-			})),
+			})) as AnyWorkbenchModule[],
 	});
 	return {
 		...fakePlugin,
 		...fakeApp,
 		workbench,
 		commitSettings,
-		host: (id = "f"): WorkbenchHost => hosts.get(id)!,
+		host: <TOwner extends FeatureSettingsOwner>(
+			id: TOwner = "translation" as TOwner,
+		): WorkbenchHost<TOwner> => hosts.get(id) as WorkbenchHost<TOwner>,
 	};
 }
 
-function feature(id: string, render: WorkbenchModule["render"]): WorkbenchModule {
+function feature<TOwner extends FeatureSettingsOwner>(
+	id: TOwner,
+	render: WorkbenchModule<TOwner>["render"],
+): WorkbenchModule<TOwner> {
 	return { id, render, stop: vi.fn() };
 }
 
 describe("workbench", () => {
 	it("registers a view once however often the feature re-renders", () => {
 		const { plugin, workbench } = setup([
-			feature("f", (host) =>
+			feature("translation", (host) =>
 				host.registerView("view-a", () => ({ updateSettings() {} }) as never),
 			),
 		]);
@@ -111,7 +123,7 @@ describe("workbench", () => {
 
 	it("rebuilds a feature's chrome and removes the previous ribbon and commands", () => {
 		const { plugin, commands, ribbonEls, workbench } = setup([
-			feature("f", (host) => {
+			feature("translation", (host) => {
 				host.chrome((chrome) => {
 					chrome.ribbon("book-open", "词典", () => {});
 					chrome.command({ id: "open-dictionary", name: "词典", run: () => {} });
@@ -134,7 +146,7 @@ describe("workbench", () => {
 	it("clears chrome when a feature stops contributing it", () => {
 		let enabled = true;
 		const { commands, ribbonEls, workbench } = setup([
-			feature("f", (host) => {
+			feature("translation", (host) => {
 				host.chrome((chrome) => {
 					if (!enabled) return;
 					chrome.ribbon("book-open", "词典", () => {});
@@ -154,7 +166,7 @@ describe("workbench", () => {
 	it("runs a selection command only outside the checking pass and only with a selection", () => {
 		const run = vi.fn();
 		const { commands, workbench } = setup([
-			feature("f", (host) => {
+			feature("translation", (host) => {
 				host.chrome((chrome) => {
 					chrome.command({
 						id: "translate-selection",
@@ -182,7 +194,7 @@ describe("workbench", () => {
 			definitions: () => [],
 		});
 		const { workbench } = setup([
-			feature("f", (host) => {
+			feature("translation", (host) => {
 				host.settingsSection(section("flashcards", 0));
 				host.settingsSection(section("dictionary", 3));
 			}),
@@ -206,14 +218,14 @@ describe("workbench", () => {
 		const stopOrder: string[] = [];
 		const firstStop = vi.fn(() => stopOrder.push("first"));
 		const secondStop = vi.fn(() => stopOrder.push("second"));
-		const features: WorkbenchModule[] = [
+		const features: AnyWorkbenchModule[] = [
 			{
-				id: "f",
+				id: "translation",
 				render: (host) => host.registerView("view-a", () => ({ updateSettings }) as never),
 				stop: firstStop,
 			},
 			{
-				id: "g",
+				id: "dictionary",
 				render: (host) => host.registerView("view-b", () => ({}) as never),
 				stop: secondStop,
 			},
@@ -225,7 +237,7 @@ describe("workbench", () => {
 		workbench.refresh();
 
 		expect(updateSettings).toHaveBeenCalledTimes(1);
-		expect(updateSettings).toHaveBeenCalledWith(DEFAULT_SETTINGS);
+		expect(updateSettings).toHaveBeenCalledWith();
 
 		workbench.dispose();
 		expect(firstStop).toHaveBeenCalledTimes(1);
@@ -235,7 +247,7 @@ describe("workbench", () => {
 
 	it("reuses an existing leaf instead of opening a second one", async () => {
 		const { app, workbench, setViewState, revealLeaf, host } = setup([
-			feature("f", (host) => host.registerView("view-a", () => ({}) as never)),
+			feature("translation", (host) => host.registerView("view-a", () => ({}) as never)),
 		]);
 		workbench.refresh();
 
@@ -251,7 +263,7 @@ describe("workbench", () => {
 
 	it("opens a right-sidebar leaf when asked", async () => {
 		const { app, workbench, host } = setup([
-			feature("f", (host) => host.registerView("view-a", () => ({}) as never)),
+			feature("translation", (host) => host.registerView("view-a", () => ({}) as never)),
 		]);
 		workbench.refresh();
 
@@ -260,19 +272,175 @@ describe("workbench", () => {
 	});
 
 	it("commits a settings patch through the host-owned writer", async () => {
-		const { workbench, commitSettings, host } = setup([feature("f", () => {})]);
+		const { workbench, commitSettings, host } = setup([feature("translation", () => {})]);
 		workbench.refresh();
 
-		const patch = { dictionary: DEFAULT_SETTINGS.dictionary };
-		await host().updateSettings(patch);
+		const patch = { translation: DEFAULT_SETTINGS.translation };
+		await host().settings.update(patch);
 		expect(commitSettings).toHaveBeenCalledWith(patch);
+	});
+
+	it("projects only shared and owner settings into a detached snapshot", () => {
+		const { workbench, host } = setup([
+			feature("translation", () => {}),
+			feature("flashcards", () => {}),
+		]);
+		workbench.refresh();
+
+		const snapshot = host("translation").settings.read();
+		expect(Object.keys(snapshot).sort()).toEqual(["language", "translation"]);
+		(snapshot.translation as { enabled: boolean }).enabled = !snapshot.translation.enabled;
+		expect(host("translation").settings.read().translation.enabled).toBe(
+			DEFAULT_SETTINGS.translation.enabled,
+		);
+
+		// @ts-expect-error Translation cannot read another owner's settings.
+		void host("translation").settings.read().dictionary;
+		// @ts-expect-error Only the flashcards owner can write the shared language.
+		void host("translation").settings.setLanguage;
+	});
+
+	it("rejects a mixed authorized and unauthorized patch before persistence", async () => {
+		const { workbench, host, commitSettings } = setup([feature("translation", () => {})]);
+		workbench.refresh();
+
+		await expect(
+			host("translation").settings.update({
+				translation: DEFAULT_SETTINGS.translation,
+				dictionary: DEFAULT_SETTINGS.dictionary,
+			} as never),
+		).rejects.toEqual(
+			expect.objectContaining<Partial<SettingsScopeViolation>>({
+				name: "SettingsScopeViolation",
+				moduleId: "translation",
+				unauthorizedKeys: ["dictionary"],
+			}),
+		);
+		expect(commitSettings).not.toHaveBeenCalled();
+	});
+
+	it("lets flashcards atomically update both owned slices and change shared language explicitly", async () => {
+		const { workbench, host, commitSettings } = setup([feature("flashcards", () => {})]);
+		workbench.refresh();
+		const patch = {
+			dailyNewCards: 11,
+			pronunciation: {
+				...DEFAULT_SETTINGS.pronunciation,
+				spellingAutoPlay: !DEFAULT_SETTINGS.pronunciation.spellingAutoPlay,
+			},
+		};
+
+		await host("flashcards").settings.update(patch);
+		await host("flashcards").settings.setLanguage("en");
+
+		expect(commitSettings).toHaveBeenNthCalledWith(1, patch);
+		expect(commitSettings).toHaveBeenNthCalledWith(2, { language: "en" });
+	});
+
+	it("rejects shared language when smuggled through an owner patch", async () => {
+		const { workbench, host, commitSettings } = setup([feature("flashcards", () => {})]);
+		workbench.refresh();
+
+		await expect(
+			host("flashcards").settings.update({ language: "en" } as never),
+		).rejects.toEqual(
+			expect.objectContaining<Partial<SettingsScopeViolation>>({
+				name: "SettingsScopeViolation",
+				moduleId: "flashcards",
+				unauthorizedKeys: ["language"],
+			}),
+		);
+		expect(commitSettings).not.toHaveBeenCalled();
+	});
+
+	it("renders and updates only the owner whose committed settings changed", () => {
+		const translationRender = vi.fn();
+		const dictionaryRender = vi.fn();
+		const translationViewUpdate = vi.fn();
+		const dictionaryViewUpdate = vi.fn();
+		const { app, workbench } = setup([
+			feature("translation", (host) => {
+				translationRender();
+				host.registerView("translation-view", () => ({ updateSettings() {} }) as never);
+			}),
+			feature("dictionary", (host) => {
+				dictionaryRender();
+				host.registerView("dictionary-view", () => ({ updateSettings() {} }) as never);
+			}),
+		]);
+		workbench.refresh();
+		app.workspace.leaves["translation-view"] = [
+			{ view: { updateSettings: translationViewUpdate } },
+		];
+		app.workspace.leaves["dictionary-view"] = [
+			{ view: { updateSettings: dictionaryViewUpdate } },
+		];
+
+		workbench.settingsChanged(DEFAULT_SETTINGS, {
+			...DEFAULT_SETTINGS,
+			dictionary: {
+				...DEFAULT_SETTINGS.dictionary,
+				enabled: !DEFAULT_SETTINGS.dictionary.enabled,
+			},
+		});
+
+		expect(translationRender).toHaveBeenCalledTimes(1);
+		expect(dictionaryRender).toHaveBeenCalledTimes(2);
+		expect(translationViewUpdate).not.toHaveBeenCalled();
+		expect(dictionaryViewUpdate).toHaveBeenCalledTimes(1);
+	});
+
+	it("fans a shared language change out to every module and view", () => {
+		const translationRender = vi.fn();
+		const dictionaryRender = vi.fn();
+		const translationViewUpdate = vi.fn();
+		const dictionaryViewUpdate = vi.fn();
+		const { app, workbench } = setup([
+			feature("translation", (host) => {
+				translationRender();
+				host.registerView("translation-view", () => ({ updateSettings() {} }) as never);
+			}),
+			feature("dictionary", (host) => {
+				dictionaryRender();
+				host.registerView("dictionary-view", () => ({ updateSettings() {} }) as never);
+			}),
+		]);
+		workbench.refresh();
+		app.workspace.leaves["translation-view"] = [
+			{ view: { updateSettings: translationViewUpdate } },
+		];
+		app.workspace.leaves["dictionary-view"] = [
+			{ view: { updateSettings: dictionaryViewUpdate } },
+		];
+
+		workbench.settingsChanged(DEFAULT_SETTINGS, {
+			...DEFAULT_SETTINGS,
+			language: DEFAULT_SETTINGS.language === "zh" ? "en" : "zh",
+		});
+
+		expect(translationRender).toHaveBeenCalledTimes(2);
+		expect(dictionaryRender).toHaveBeenCalledTimes(2);
+		expect(translationViewUpdate).toHaveBeenCalledTimes(1);
+		expect(dictionaryViewUpdate).toHaveBeenCalledTimes(1);
+	});
+
+	it("rejects owner updates after disposal", async () => {
+		const { workbench, host, commitSettings } = setup([feature("translation", () => {})]);
+		workbench.refresh();
+		const settings = host("translation").settings;
+		workbench.dispose();
+
+		await expect(
+			settings.update({ translation: DEFAULT_SETTINGS.translation }),
+		).rejects.toBeInstanceOf(WorkbenchDisposedError);
+		expect(commitSettings).not.toHaveBeenCalled();
 	});
 
 	it("generates one open command per available catalog entry and keeps its id", () => {
 		const openFirst = vi.fn();
 		const openSecond = vi.fn();
 		const { commands, plugin, workbench } = setup([
-			feature("first", (host) =>
+			feature("flashcards", (host) =>
 				host.catalog({
 					id: "first",
 					icon: "layers",
@@ -284,7 +452,7 @@ describe("workbench", () => {
 					open: openFirst,
 				}),
 			),
-			feature("second", (host) =>
+			feature("translation", (host) =>
 				host.catalog({
 					id: "second",
 					icon: "book-open",
@@ -311,7 +479,7 @@ describe("workbench", () => {
 	it("drops the generated command once a feature reports itself unavailable", () => {
 		let available = true;
 		const { commands, workbench } = setup([
-			feature("only", (host) =>
+			feature("translation", (host) =>
 				host.catalog({
 					id: "only",
 					icon: "languages",
@@ -334,7 +502,7 @@ describe("workbench", () => {
 
 	it("exposes catalog entries in feature order and replaces them by id", () => {
 		const { workbench, host } = setup([
-			feature("a", (h) =>
+			feature("flashcards", (h) =>
 				h.catalog({
 					id: "a",
 					icon: "a",
@@ -345,7 +513,7 @@ describe("workbench", () => {
 					open: vi.fn(),
 				}),
 			),
-			feature("b", (h) =>
+			feature("dictionary", (h) =>
 				h.catalog({
 					id: "b",
 					icon: "b",
@@ -368,7 +536,9 @@ describe("workbench", () => {
 	});
 
 	it("rebuilds the workbench ring chrome and clears it on dispose", () => {
-		const { plugin, ribbonEls, commands, workbench } = setup([feature("f", () => {})]);
+		const { plugin, ribbonEls, commands, workbench } = setup([
+			feature("translation", () => {}),
+		]);
 		workbench.ring((chrome) => {
 			chrome.ribbon("layout-grid", "Home", () => {});
 			chrome.command({ id: "open-home", name: "Home", run: () => {} });
@@ -399,7 +569,7 @@ describe("workbench", () => {
 		};
 
 		const { workbench, host } = setup([
-			feature("avail", (h) =>
+			feature("translation", (h) =>
 				h.catalog({
 					id: "avail",
 					icon: "a",
@@ -410,7 +580,7 @@ describe("workbench", () => {
 					open: openAvailable,
 				}),
 			),
-			feature("unavail", (h) =>
+			feature("dictionary", (h) =>
 				h.catalog({
 					id: "unavail",
 					icon: "u",
@@ -426,7 +596,7 @@ describe("workbench", () => {
 		workbench.setSettingsTab(mockSettingsTab);
 		workbench.refresh();
 
-		const h = host("avail");
+		const h = host("translation");
 		h.openFeature("avail");
 		expect(openAvailable).toHaveBeenCalledTimes(1);
 		expect(mockSettingsTab.open).not.toHaveBeenCalled();

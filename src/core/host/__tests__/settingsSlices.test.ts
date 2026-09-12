@@ -3,7 +3,12 @@ import {
 	cloneSettingsDocument,
 	DEFAULT_SETTINGS,
 	normalizeSettingsDocument,
+	projectSettings,
+	settingsOwnerKeys,
+	settingsOwners,
+	SHARED_SETTINGS_SLICES,
 	SETTINGS_SLICES,
+	validateSettingsOwnership,
 } from "../settingsSlices";
 
 /**
@@ -50,6 +55,30 @@ describe("settings slices registry", () => {
 		// practice-message defaults from the same raw value independently, so
 		// position is documentation rather than a runtime dependency.
 		expect(ids[0]).toBe("host");
+	});
+
+	it("assigns every non-shared slice to one settings owner", () => {
+		expect(() => validateSettingsOwnership()).not.toThrow();
+		expect(SHARED_SETTINGS_SLICES.flatMap((slice) => slice.keys)).toEqual(["language"]);
+		expect(settingsOwners()).toEqual([
+			"workbench",
+			"flashcards",
+			"translation",
+			"dictionary",
+			"selectionHelper",
+		]);
+		expect(settingsOwnerKeys("flashcards")).toContain("pronunciation");
+		expect(settingsOwnerKeys("translation")).toEqual(["translation"]);
+	});
+
+	it("projects detached runtime snapshots instead of hiding a full document with types", () => {
+		const translation = projectSettings("translation", DEFAULT_SETTINGS);
+		expect(Object.keys(translation).sort()).toEqual(["language", "translation"]);
+
+		translation.translation.profiles[0]!.name = "changed";
+		expect(projectSettings("translation", DEFAULT_SETTINGS).translation).toEqual(
+			DEFAULT_SETTINGS.translation,
+		);
 	});
 
 	it("treats each slice's own defaults as already normalized", () => {

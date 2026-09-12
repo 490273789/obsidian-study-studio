@@ -10,7 +10,7 @@ describe("selection helper workbench module", () => {
 			dictionary: dictionaryAdapter(),
 			translation: translationAdapter(),
 		});
-		const fakeHost = createFakeWorkbenchHost(DEFAULT_SETTINGS);
+		const fakeHost = createFakeWorkbenchHost("selectionHelper", DEFAULT_SETTINGS);
 
 		module.render(fakeHost.host);
 

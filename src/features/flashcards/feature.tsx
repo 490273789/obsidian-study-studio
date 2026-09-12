@@ -1,11 +1,7 @@
 import { Notice, Platform, type Plugin } from "obsidian";
 import { createTranslator, flashcardTranslator } from "./strings/index";
-import type {
-	FlashcardSettings,
-	Language,
-	PronunciationSettings,
-	StudySettings,
-} from "../../core/shared/types";
+import type { Language, PronunciationSettings, StudySettings } from "../../core/shared/types";
+import type { OwnedSettings } from "../../core/host/settingsSlices";
 import { buildSettingsViewModel, type SettingsViewModelActions } from "./settings/viewModel";
 import type { OutboundPort } from "../../core/net";
 import type { WorkbenchStore } from "../../core/storage/workbenchStore";
@@ -61,12 +57,14 @@ interface FlashcardServices {
 	pronunciationRuntime: PronunciationRuntime;
 }
 
+type FlashcardWorkbenchHost = WorkbenchHost<"flashcards">;
+
 /**
  * The 闪卡 workbench feature: 题库首页, 学习会话, 刷题会话, 拼写会话, 单词表, PDF 导出,
  * 卡片身份维护, and the flashcards settings section. Owns every deep module that no
  * other feature uses yet; the shared WorkbenchStore and settings document stay in the host.
  */
-export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchModule {
+export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchModule<"flashcards"> {
 	let repository: FlashcardRepository | null = deps.repository ?? null;
 	let services: FlashcardServices | null = null;
 	let exportNotice: Notice | null = null;
@@ -77,9 +75,9 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 	let isLoadingTags = false;
 	let hasLoadedTags = false;
 
-	const t = (host: WorkbenchHost) => createTranslator(host.settings().language);
+	const t = (host: FlashcardWorkbenchHost) => createTranslator(host.settings.read().language);
 
-	const ensureRepository = (host: WorkbenchHost): FlashcardRepository => {
+	const ensureRepository = (host: FlashcardWorkbenchHost): FlashcardRepository => {
 		if (!repository) {
 			repository = new FlashcardRepository({
 				store: deps.store,
@@ -90,7 +88,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 		return repository;
 	};
 
-	const ensureServices = (host: WorkbenchHost): FlashcardServices => {
+	const ensureServices = (host: FlashcardWorkbenchHost): FlashcardServices => {
 		if (services) return services;
 		const repo = ensureRepository(host);
 		const sessionLifecycleWiring = createSessionLifecycle(repo);
@@ -102,10 +100,10 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 		});
 		const pronunciationRuntime = createPronunciationRuntime(
 			deps.net,
-			host.settings().pronunciation,
+			host.settings.read().pronunciation,
 			{
 				persistSettings: async (pronunciation) => {
-					await host.updateSettings({ pronunciation: { ...pronunciation } });
+					await host.settings.update({ pronunciation: { ...pronunciation } });
 				},
 			},
 		);
@@ -114,7 +112,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 			identity: cardIdentityContinuity,
 			saveSettingsPatch: async (patch) => saveDeckSettingsPatch(host, patch),
 			saveDeckOrder: async (deckOrder) => {
-				await host.updateSettings({ deckOrder: [...deckOrder] });
+				await host.settings.update({ deckOrder: [...deckOrder] });
 			},
 			exportDeck: async (deck, onProgress) => {
 				if (!Platform.isDesktopApp) {
@@ -145,35 +143,35 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 
 	/** A deck settings patch writes both per-deck maps in one durable commit. */
 	const saveDeckSettingsPatch = async (
-		host: WorkbenchHost,
+		host: FlashcardWorkbenchHost,
 		patch: DeckHomeSettingsPatch,
 	): Promise<void> => {
-		const deckStudySettings = { ...host.settings().deckStudySettings };
+		const deckStudySettings = { ...host.settings.read().deckStudySettings };
 		if (patch.overrides === null) {
 			delete deckStudySettings[patch.deckId];
 		} else {
 			deckStudySettings[patch.deckId] = patch.overrides;
 		}
-		const wordLearningDecks = { ...host.settings().wordLearningDecks };
+		const wordLearningDecks = { ...host.settings.read().wordLearningDecks };
 		if (patch.wordLearningEnabled) {
 			wordLearningDecks[patch.deckId] = true;
 		} else {
 			delete wordLearningDecks[patch.deckId];
 		}
-		await host.updateSettings({ deckStudySettings, wordLearningDecks });
+		await host.settings.update({ deckStudySettings, wordLearningDecks });
 	};
 
 	// ------------------------------------------------------------------
 	// Deck-home reporting and card identity maintenance
 	// ------------------------------------------------------------------
 
-	const reportDeckHomeEvent = (host: WorkbenchHost, event: DeckHomeEvent): void => {
+	const reportDeckHomeEvent = (host: FlashcardWorkbenchHost, event: DeckHomeEvent): void => {
 		const strings = t(host);
 		if (event.kind === "refresh-completed") {
 			const message = describeSynchronizationOutcome(
 				event.outcome,
 				services!.cardIdentityContinuity.inspect(),
-				host.settings().language,
+				host.settings.read().language,
 			);
 			if (message) new Notice(message, 12000);
 			return;
@@ -216,7 +214,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 	};
 
 	const showIdentityResolutionOutcome = (
-		host: WorkbenchHost,
+		host: FlashcardWorkbenchHost,
 		outcome: ResolutionOutcome,
 	): void => {
 		const strings = t(host);
@@ -244,7 +242,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 	};
 
 	const applyIdentityResolution = async (
-		host: WorkbenchHost,
+		host: FlashcardWorkbenchHost,
 		resolution: Promise<ResolutionOutcome>,
 		type: "migration" | "repair",
 	): Promise<void> => {
@@ -277,7 +275,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 		);
 	};
 
-	const openIdentityMigration = async (host: WorkbenchHost): Promise<void> => {
+	const openIdentityMigration = async (host: FlashcardWorkbenchHost): Promise<void> => {
 		const { cardIdentityContinuity, deckHome } = ensureServices(host);
 		const ownerId = "command:migrate-card-identities";
 		const request = await deckHome.act({ kind: "request-migration", ownerId });
@@ -319,7 +317,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 		).open();
 	};
 
-	const openIdentityRepair = async (host: WorkbenchHost): Promise<void> => {
+	const openIdentityRepair = async (host: FlashcardWorkbenchHost): Promise<void> => {
 		const { cardIdentityContinuity } = ensureServices(host);
 		const outcome = await cardIdentityContinuity.synchronize();
 		if (outcome.kind === "failed") {
@@ -351,7 +349,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 		).open();
 	};
 
-	const runIdentitySynchronization = async (host: WorkbenchHost): Promise<void> => {
+	const runIdentitySynchronization = async (host: FlashcardWorkbenchHost): Promise<void> => {
 		const { cardIdentityContinuity, deckHome } = ensureServices(host);
 		const outcome = await deckHome.act({ kind: "refresh" });
 		if (outcome.kind === "applied" && cardIdentityContinuity.inspect().issues.length === 0) {
@@ -364,15 +362,15 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 	// ------------------------------------------------------------------
 
 	const writeSettings = async (
-		host: WorkbenchHost,
-		patch: Partial<FlashcardSettings>,
+		host: FlashcardWorkbenchHost,
+		patch: Partial<OwnedSettings<"flashcards">>,
 		refreshSection: boolean,
 	): Promise<void> => {
-		await host.updateSettings(patch);
+		await host.settings.update(patch);
 		if (refreshSection) host.settingsTab.refresh();
 	};
 
-	const ensureAvailableTagsLoaded = (host: WorkbenchHost): void => {
+	const ensureAvailableTagsLoaded = (host: FlashcardWorkbenchHost): void => {
 		if (hasLoadedTags || isLoadingTags) return;
 		// Opening settings must stay cheap. A full vault scan is reserved for the
 		// explicit refresh action; otherwise large vaults make the first render wait.
@@ -383,11 +381,11 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 	};
 
 	const cleanMissingConfiguredTags = (
-		host: WorkbenchHost,
+		host: FlashcardWorkbenchHost,
 		nextAvailableTags: string[],
 	): { flashcardTags: string[]; removedCount: number } => {
 		const availableTagSet = new Set(nextAvailableTags.map((tag) => tag.trim().toLowerCase()));
-		const originalTags = host.settings().flashcardTags;
+		const originalTags = host.settings.read().flashcardTags;
 		const flashcardTags = originalTags.filter((tag) => {
 			const normalizedTag = tag.trim();
 			return normalizedTag.length === 0 || availableTagSet.has(normalizedTag.toLowerCase());
@@ -396,7 +394,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 	};
 
 	const refreshAvailableTags = async (
-		host: WorkbenchHost,
+		host: FlashcardWorkbenchHost,
 		options: { cleanConfiguredTags: boolean },
 	): Promise<void> => {
 		if (isLoadingTags) return;
@@ -413,7 +411,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 			if (options.cleanConfiguredTags) {
 				const cleaned = cleanMissingConfiguredTags(host, availableTags);
 				removedCount = cleaned.removedCount;
-				await host.updateSettings({ flashcardTags: cleaned.flashcardTags });
+				await host.settings.update({ flashcardTags: cleaned.flashcardTags });
 			}
 
 			new Notice(
@@ -433,7 +431,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 	};
 
 	const configurePronunciation = async (
-		host: WorkbenchHost,
+		host: FlashcardWorkbenchHost,
 		patch: Partial<PronunciationSettings>,
 	): Promise<void> => {
 		const outcome = await ensureServices(host).pronunciationRuntime.configure(patch);
@@ -446,7 +444,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 		);
 	};
 
-	const testOnlinePronunciation = async (host: WorkbenchHost): Promise<void> => {
+	const testOnlinePronunciation = async (host: FlashcardWorkbenchHost): Promise<void> => {
 		const strings = t(host);
 		try {
 			const outcome =
@@ -476,7 +474,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 		}
 	};
 
-	const clearPronunciationCache = async (host: WorkbenchHost): Promise<void> => {
+	const clearPronunciationCache = async (host: FlashcardWorkbenchHost): Promise<void> => {
 		const strings = t(host);
 		try {
 			const outcome = await ensureServices(host).pronunciationRuntime.clearCache();
@@ -492,9 +490,9 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 		}
 	};
 
-	const createSettingsActions = (host: WorkbenchHost): SettingsViewModelActions => {
+	const createSettingsActions = (host: FlashcardWorkbenchHost): SettingsViewModelActions => {
 		const patchTags = (mutate: (tags: string[]) => void) => {
-			const flashcardTags = [...host.settings().flashcardTags];
+			const flashcardTags = [...host.settings.read().flashcardTags];
 			mutate(flashcardTags);
 			return writeSettings(host, { flashcardTags }, true);
 		};
@@ -512,7 +510,10 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 					tags.splice(index, 1);
 				}),
 			addDiscoveredTag: (tag) => patchTags((tags) => tags.push(tag)),
-			setLanguage: (language) => writeSettings(host, { language }, true),
+			setLanguage: async (language) => {
+				await host.settings.setLanguage(language);
+				host.settingsTab.refresh();
+			},
 			setDailyNewCards: (value) => patchStudy({ dailyNewCards: value }),
 			setDailyReviewCards: (value) => patchStudy({ dailyReviewCards: value }),
 			setStudyOrder: (value) => patchStudy({ studyOrder: value }),
@@ -521,7 +522,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 					host,
 					{
 						fsrsParameters: {
-							...host.settings().fsrsParameters,
+							...host.settings.read().fsrsParameters,
 							requestRetention: value,
 						},
 					},
@@ -532,7 +533,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 					host,
 					{
 						fsrsParameters: {
-							...host.settings().fsrsParameters,
+							...host.settings.read().fsrsParameters,
 							maximumInterval: value,
 						},
 					},
@@ -553,7 +554,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 		};
 	};
 
-	const section = (host: WorkbenchHost): WorkbenchSettingsSection => ({
+	const section = (host: FlashcardWorkbenchHost): WorkbenchSettingsSection => ({
 		id: FLASHCARD_SECTION_ID,
 		order: 0,
 		label: (language: Language) => createTranslator(language)("settings.tabFlashcards"),
@@ -561,7 +562,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 			ensureAvailableTagsLoaded(host);
 			return buildSettingsViewModel(
 				{
-					settings: host.settings(),
+					settings: host.settings.read(),
 					availableTags,
 					isLoadingTags,
 					hasLoadedTags,
@@ -604,7 +605,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 					type: VIEW_TYPE_FLASHCARD,
 					icon: "layers",
 					title: (language) => createTranslator(language)("main.viewTitle"),
-					readSettings: () => host.settings(),
+					readSettings: () => host.settings.read(),
 					renderErrorMessage: (language) =>
 						createTranslator(language)("notice.viewRenderFailed"),
 					translator: flashcardTranslator,

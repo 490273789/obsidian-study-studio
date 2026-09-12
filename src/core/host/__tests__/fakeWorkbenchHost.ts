@@ -1,5 +1,12 @@
 import { vi } from "vitest";
 import type { FlashcardSettings } from "../../shared/types";
+import {
+	DEFAULT_SETTINGS,
+	authorizeSettingsPatch,
+	projectSettings,
+	type FeatureSettingsOwner,
+	type ScopedWorkbenchSettings,
+} from "../settingsSlices";
 import type {
 	WorkbenchCatalogEntry,
 	WorkbenchChromeScope,
@@ -8,8 +15,8 @@ import type {
 	WorkbenchSettingsSection,
 } from "../workbench";
 
-export interface FakeWorkbenchHost {
-	host: WorkbenchHost;
+export interface FakeWorkbenchHost<TOwner extends FeatureSettingsOwner> {
+	host: WorkbenchHost<TOwner>;
 	views: Map<string, unknown>;
 	sections: Map<string, WorkbenchSettingsSection>;
 	catalog: Map<string, WorkbenchCatalogEntry>;
@@ -29,17 +36,22 @@ export interface FakeWorkbenchHost {
  * Records everything a feature contributes through the workbench seam, so a
  * feature's interface can be asserted without Obsidian or a real workbench.
  */
-export function createFakeWorkbenchHost(
-	settings: FlashcardSettings,
+export function createFakeWorkbenchHost<TOwner extends FeatureSettingsOwner>(
+	owner: TOwner,
+	overrides: Partial<ScopedWorkbenchSettings<TOwner>> = {},
 	app: unknown = { workspace: { getLeavesOfType: () => [] } },
-): FakeWorkbenchHost {
+): FakeWorkbenchHost<TOwner> {
+	let document = { ...DEFAULT_SETTINGS, ...overrides } as FlashcardSettings;
 	const views = new Map<string, unknown>();
 	const sections = new Map<string, WorkbenchSettingsSection>();
 	const catalog = new Map<string, WorkbenchCatalogEntry>();
-	const ribbons: FakeWorkbenchHost["ribbons"] = [];
+	const ribbons: FakeWorkbenchHost<TOwner>["ribbons"] = [];
 	const commands: WorkbenchCommand[] = [];
 	const activateView = vi.fn().mockResolvedValue(undefined);
 	const updateSettings = vi.fn().mockResolvedValue(undefined);
+	const setLanguage = vi.fn(async (language: string) => {
+		document = { ...document, language } as FlashcardSettings;
+	});
 	const settingsTab = { refresh: vi.fn(), select: vi.fn(), open: vi.fn() };
 	const openFeature = vi.fn((featureId: string) => {
 		const entry = catalog.get(featureId);
@@ -50,9 +62,21 @@ export function createFakeWorkbenchHost(
 		}
 	});
 
+	const scopedSettings = {
+		read: () => projectSettings(owner, document),
+		update: updateSettings.mockImplementation(async (patch) => {
+			document = { ...document, ...authorizeSettingsPatch(owner, patch) };
+		}),
+		...(owner === "flashcards"
+			? {
+					setLanguage,
+				}
+			: {}),
+	};
+
 	const host = {
 		app,
-		settings: () => settings,
+		settings: scopedSettings,
 		settingsTab,
 		registerView: (type: string, factory: unknown) => views.set(type, factory),
 		chrome: (build: (scope: WorkbenchChromeScope) => void) => {
@@ -66,11 +90,10 @@ export function createFakeWorkbenchHost(
 			build(scoped);
 		},
 		activateView,
-		updateSettings,
 		settingsSection: (section: WorkbenchSettingsSection) => sections.set(section.id, section),
 		catalog: (entry: WorkbenchCatalogEntry) => catalog.set(entry.id, entry),
 		openFeature,
-	} as unknown as WorkbenchHost;
+	} as unknown as WorkbenchHost<TOwner>;
 
 	return {
 		host,

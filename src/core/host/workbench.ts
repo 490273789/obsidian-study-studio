@@ -1,17 +1,28 @@
 import type { App, Command, Editor, Hotkey, ItemView, Plugin, WorkspaceLeaf } from "obsidian";
 import type { SettingsViewModelDefinition } from "../settings/viewModel";
 import type { FlashcardSettings, Language } from "../shared/types";
+import {
+	authorizeSettingsPatch,
+	changedSettingsOwners,
+	projectSettings,
+	SettingsScopeViolation,
+	validateSettingsOwnership,
+	type FeatureSettingsOwner,
+	type OwnedSettings,
+	type ScopedWorkbenchSettings,
+} from "./settingsSlices";
+export { SettingsScopeViolation } from "./settingsSlices";
 
 /**
  * One runtime module hosted by the workbench.
  *
  * `render` is the single entry point and must be idempotent: the workbench calls
- * it once at startup and again after every committed settings change. Views are
- * registered once by the host; chrome is rebuilt on every call.
+ * it once at startup and again when this owner or shared context changes. Views
+ * are registered once by the host; chrome is rebuilt on every call.
  */
-export interface WorkbenchModule {
-	readonly id: string;
-	render(host: WorkbenchHost): void;
+export interface WorkbenchModule<TOwner extends FeatureSettingsOwner> {
+	readonly id: TOwner;
+	render(host: WorkbenchHost<TOwner>): void;
 	/** Releases module-owned resources: runtimes, subscriptions, timers, modals. */
 	stop(): void;
 }
@@ -73,11 +84,11 @@ export interface WorkbenchSettingsSection {
 }
 
 /**
- * An Obsidian view owned by a feature. Committed settings are pushed in through
- * this method after every settings change, so features do not walk leaves.
+ * An Obsidian view owned by a feature. The host signals it after this owner or
+ * shared context changes, so features do not walk leaves.
  */
 export interface WorkbenchItemView extends ItemView {
-	updateSettings(settings: FlashcardSettings): void;
+	updateSettings(): void;
 }
 
 /**
@@ -98,11 +109,23 @@ export interface WorkbenchSettingsTab {
  * registration, activation, chrome lifetime, the settings document, and the
  * settings tab. Shared services reach features through their factory, not here.
  */
-export interface WorkbenchHost {
+interface BaseWorkbenchSettings<TOwner extends FeatureSettingsOwner> {
+	/** A detached snapshot containing only shared settings and this owner's settings. */
+	read(): ScopedWorkbenchSettings<TOwner>;
+	/** Atomically commits one or more settings keys owned by this module. */
+	update(patch: Readonly<Partial<OwnedSettings<TOwner>>>): Promise<void>;
+}
+
+export type WorkbenchSettings<TOwner extends FeatureSettingsOwner> = BaseWorkbenchSettings<TOwner> &
+	(TOwner extends "flashcards"
+		? { setLanguage(language: Language): Promise<void> }
+		: Record<never, never>);
+
+export interface WorkbenchHost<TOwner extends FeatureSettingsOwner> {
 	/** The Obsidian application, for vault, workspace, and secret access. */
 	readonly app: App;
-	/** The committed settings document. */
-	settings(): FlashcardSettings;
+	/** Owner-scoped committed settings; unrelated slices do not cross this seam. */
+	readonly settings: WorkbenchSettings<TOwner>;
 	/** The plugin settings tab. */
 	readonly settingsTab: WorkbenchSettingsTab;
 	/** Registers one Obsidian view. Repeated calls for the same type are ignored. */
@@ -114,8 +137,6 @@ export interface WorkbenchHost {
 		type: string,
 		options?: { rightSidebar?: boolean; mainTab?: boolean },
 	): Promise<void>;
-	/** Commits a patch of this feature's own settings slices in one durable write. */
-	updateSettings(patch: Partial<FlashcardSettings>): Promise<void>;
 	/** Contributes a settings section for this feature. Same id replaces the previous one. */
 	settingsSection(section: WorkbenchSettingsSection): void;
 	/** Contributes this feature's catalog entry. Same id replaces the previous one. */
@@ -127,6 +148,8 @@ export interface WorkbenchHost {
 export interface Workbench {
 	/** Re-renders every registered module against committed settings. */
 	refresh(): void;
+	/** Routes one committed local or external settings transition to affected modules and views. */
+	settingsChanged(previous: FlashcardSettings, next: FlashcardSettings): void;
 	/** Contributes a host-owned shared settings section, such as AI engines. */
 	addSettingsSection(section: WorkbenchSettingsSection): void;
 	/** Settings sections from the host and every feature, ordered. */
@@ -152,7 +175,18 @@ export interface WorkbenchOptions {
 	readSettings(): FlashcardSettings;
 	/** Commits a settings patch; must publish the committed settings on success. */
 	commitSettings(patch: Partial<FlashcardSettings>): Promise<void>;
-	createModules(): WorkbenchModule[];
+	createModules(): AnyWorkbenchModule[];
+}
+
+export type AnyWorkbenchModule = {
+	[TOwner in FeatureSettingsOwner]: WorkbenchModule<TOwner>;
+}[FeatureSettingsOwner];
+
+export class WorkbenchDisposedError extends Error {
+	constructor() {
+		super("The workbench has been disposed");
+		this.name = "WorkbenchDisposedError";
+	}
 }
 
 interface ModuleChrome {
@@ -161,9 +195,11 @@ interface ModuleChrome {
 }
 
 export function createWorkbench(options: WorkbenchOptions): Workbench {
+	validateSettingsOwnership();
 	const registeredViewTypes = new Set<string>();
+	const viewOwnerByType = new Map<string, FeatureSettingsOwner>();
 	const chromeByModule = new Map<string, ModuleChrome>();
-	const hostsByModule = new Map<string, WorkbenchHost>();
+	const hostsByModule = new Map<FeatureSettingsOwner, unknown>();
 	const sectionsById = new Map<string, WorkbenchSettingsSection>();
 	const catalogById = new Map<string, WorkbenchCatalogEntry>();
 	/** Command ids the host generated for the previous catalog, so it can clean up. */
@@ -189,20 +225,49 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 		chromeByModule.set(moduleId, { ribbonEl: null, commandIds: [] });
 	};
 
-	const hostFor = (moduleId: string): WorkbenchHost => {
+	const hostFor = <TOwner extends FeatureSettingsOwner>(
+		moduleId: TOwner,
+	): WorkbenchHost<TOwner> => {
 		const existing = hostsByModule.get(moduleId);
-		if (existing) return existing;
+		if (existing) return existing as WorkbenchHost<TOwner>;
 
-		const host: WorkbenchHost = {
+		const settings: BaseWorkbenchSettings<TOwner> & {
+			setLanguage?: (language: Language) => Promise<void>;
+		} = {
+			read: () => projectSettings(moduleId, options.readSettings()),
+			update: async (patch) => {
+				if (disposed) throw new WorkbenchDisposedError();
+				const detached = authorizeSettingsPatch(moduleId, patch);
+				await options.commitSettings(detached as Partial<FlashcardSettings>);
+			},
+		};
+		if (moduleId === "flashcards") {
+			settings.setLanguage = async (language) => {
+				if (disposed) throw new WorkbenchDisposedError();
+				if (language !== "zh" && language !== "en") {
+					throw new SettingsScopeViolation(moduleId, ["language"]);
+				}
+				await options.commitSettings({ language });
+			};
+		}
+
+		const host = {
 			app: options.app,
 
-			settings: () => options.readSettings(),
+			settings: settings as WorkbenchSettings<TOwner>,
 
 			settingsTab: settingsTabCapability,
 
 			registerView: (type, factory) => {
+				const existingOwner = viewOwnerByType.get(type);
+				if (existingOwner && existingOwner !== moduleId) {
+					throw new Error(
+						`Workbench view ${type} is already registered by ${existingOwner}`,
+					);
+				}
 				if (registeredViewTypes.has(type)) return;
 				registeredViewTypes.add(type);
+				viewOwnerByType.set(type, moduleId);
 				options.plugin.registerView(type, (leaf) => factory(leaf));
 			},
 
@@ -225,10 +290,6 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 			activateView: (type, activateOptions) =>
 				activateView(options.app, type, activateOptions),
 
-			updateSettings: async (patch) => {
-				await options.commitSettings(patch);
-			},
-
 			settingsSection: (section) => {
 				sectionsById.set(section.id, section);
 			},
@@ -246,7 +307,7 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 					settingsTabCapability.open(entry.settingsSectionId);
 				}
 			},
-		};
+		} satisfies WorkbenchHost<TOwner>;
 
 		hostsByModule.set(moduleId, host);
 		return host;
@@ -273,14 +334,15 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 		}
 	};
 
-	const pushSettingsToOpenViews = (): void => {
-		const settings = options.readSettings();
+	const pushSettingsToOpenViews = (owners?: ReadonlySet<FeatureSettingsOwner>): void => {
 		for (const type of registeredViewTypes) {
+			const owner = viewOwnerByType.get(type);
+			if (owners && (!owner || !owners.has(owner))) continue;
 			for (const leaf of options.app.workspace.getLeavesOfType(type)) {
 				const view = leaf.view as Partial<WorkbenchItemView>;
 				if (typeof view.updateSettings !== "function") continue;
 				try {
-					view.updateSettings(settings);
+					view.updateSettings();
 				} catch (error) {
 					console.error(
 						`Failed to refresh the ${type} view after settings changed:`,
@@ -291,19 +353,62 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 		}
 	};
 
+	const renderModules = (owners?: ReadonlySet<FeatureSettingsOwner>): void => {
+		for (const module of modules) {
+			if (owners && !owners.has(module.id)) continue;
+			try {
+				module.render(hostFor(module.id) as never);
+			} catch (error) {
+				console.error(`Failed to render the ${module.id} workbench module:`, error);
+			}
+		}
+		rebuildCatalogCommands();
+	};
+
+	const rebuildRing = (): void => {
+		if (!ringBuilder) return;
+		removeChrome(HOST_CHROME_ID);
+		const chrome = createChromeScope(HOST_CHROME_ID);
+		ringBuilder(chrome);
+	};
+
+	const createChromeScope = (moduleId: string): WorkbenchChromeScope => {
+		removeChrome(moduleId);
+		const chrome: ModuleChrome = { ribbonEl: null, commandIds: [] };
+		chromeByModule.set(moduleId, chrome);
+		return {
+			ribbon: (icon, title, onClick) => {
+				chrome.ribbonEl?.remove();
+				chrome.ribbonEl = options.plugin.addRibbonIcon(icon, title, onClick);
+			},
+			command: (spec) => {
+				chrome.commandIds.push(spec.id);
+				options.plugin.addCommand(toObsidianCommand(spec));
+			},
+		};
+	};
+
 	return {
 		refresh: () => {
 			if (disposed) return;
-			for (const module of modules) {
-				try {
-					module.render(hostFor(module.id));
-				} catch (error) {
-					console.error(`Failed to render the ${module.id} workbench module:`, error);
-				}
-			}
-			rebuildCatalogCommands();
-			if (ringBuilder) hostFor(HOST_CHROME_ID).chrome(ringBuilder);
+			renderModules();
+			rebuildRing();
 			pushSettingsToOpenViews();
+		},
+
+		settingsChanged: (previous, next) => {
+			if (disposed) return;
+			const languageChanged = previous.language !== next.language;
+			const changedOwners = changedSettingsOwners(previous, next);
+			const affected = new Set<FeatureSettingsOwner>();
+			for (const module of modules) {
+				if (languageChanged || changedOwners.has(module.id)) affected.add(module.id);
+			}
+			if (affected.size > 0) {
+				renderModules(affected);
+				pushSettingsToOpenViews(affected);
+			}
+			if (languageChanged) rebuildRing();
 		},
 
 		addSettingsSection: (section) => {

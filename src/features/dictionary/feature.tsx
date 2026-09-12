@@ -39,9 +39,11 @@ export interface DictionaryFeatureDeps {
 	plugin: Plugin;
 }
 
-export interface DictionaryFeature extends WorkbenchModule {
+export interface DictionaryFeature extends WorkbenchModule<"dictionary"> {
 	readonly selectionAdapter: SelectionDictionaryAdapter;
 }
+
+type DictionaryWorkbenchHost = WorkbenchHost<"dictionary">;
 
 /**
  * The 词典 workbench feature: dictionary lookup, the favorites sidebar, and the
@@ -52,34 +54,38 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 	let runtime: DictionaryRuntime | null = null;
 	let editor: DictionarySettingsEditor | null = null;
 	let modal: DictionaryLookupModal | null = null;
-	let activeHost: WorkbenchHost | null = null;
+	let activeHost: DictionaryWorkbenchHost | null = null;
 
-	const openSettings = (host: WorkbenchHost): void => {
+	const openSettings = (host: DictionaryWorkbenchHost): void => {
 		host.settingsTab.open(DICTIONARY_SECTION_ID);
 	};
 
 	/** A view only resets its session once the last leaf of that type is gone. */
-	const resetWhenClosed = (host: WorkbenchHost, viewType: string, reset: () => void): void => {
+	const resetWhenClosed = (
+		host: DictionaryWorkbenchHost,
+		viewType: string,
+		reset: () => void,
+	): void => {
 		queueMicrotask(() => {
 			if (host.app.workspace.getLeavesOfType(viewType).length === 0) reset();
 		});
 	};
 
-	const ensureRuntime = (host: WorkbenchHost): DictionaryRuntime => {
+	const ensureRuntime = (host: DictionaryWorkbenchHost): DictionaryRuntime => {
 		if (runtime) return runtime;
 		runtime = new DictionaryRuntime({
 			app: host.app,
 			plugin: deps.plugin,
 			settings: createDictionarySettingsStore({
-				readDictionarySettings: () => host.settings().dictionary,
+				readDictionarySettings: () => host.settings.read().dictionary,
 				commitDictionarySettings: async (dictionary) => {
-					await host.updateSettings({
+					await host.settings.update({
 						dictionary: normalizeDictionarySettings(dictionary),
 					});
 				},
 			}),
 			ai: deps.ai,
-			language: () => host.settings().language,
+			language: () => host.settings.read().language,
 			net: deps.net,
 			notify: (message) => new Notice(message),
 		});
@@ -87,7 +93,7 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 	};
 
 	/** The open command and ribbon prompt for a word first, matching the source tool. */
-	const openPrompt = (host: WorkbenchHost): void => {
+	const openPrompt = (host: DictionaryWorkbenchHost): void => {
 		modal?.close();
 		modal = new DictionaryLookupModal(
 			host.app,
@@ -95,17 +101,17 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 				modal = null;
 				void openQuery(host, query);
 			},
-			dictionaryStrings(host.settings().language),
+			dictionaryStrings(host.settings.read().language),
 		);
 		modal.open();
 	};
 
 	const openQuery = async (
-		host: WorkbenchHost,
+		host: DictionaryWorkbenchHost,
 		query: string,
 		mainTab = false,
 	): Promise<void> => {
-		const strings = dictionaryStrings(host.settings().language);
+		const strings = dictionaryStrings(host.settings.read().language);
 		try {
 			const dictionary = ensureRuntime(host);
 			const lookup = dictionary.query.send({ type: "lookup", query });
@@ -129,11 +135,11 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 	 * adapters rendered this placeholder instead of the lookup UI.
 	 */
 	const renderDictionaryBody = (
-		host: WorkbenchHost,
+		host: DictionaryWorkbenchHost,
 		language: Language,
 		body: () => React.ReactNode,
 	): React.ReactNode => {
-		if (host.settings().dictionary.enabled) return body();
+		if (host.settings.read().dictionary.enabled) return body();
 		const strings = dictionaryStrings(language);
 		return (
 			<div className={cls("flashcard-dictionary-disabled", styles.disabled)}>
@@ -146,13 +152,13 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 	};
 
 	const section = (
-		host: WorkbenchHost,
+		host: DictionaryWorkbenchHost,
 		dictionary: DictionaryRuntime,
 	): WorkbenchSettingsSection => {
 		editor ??= new DictionarySettingsEditor(
 			dictionary,
 			deps.ai,
-			() => host.settings().language,
+			() => host.settings.read().language,
 			() => host.settingsTab.refresh(),
 		);
 		const settingsEditor = editor;
@@ -181,7 +187,7 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 					title: (language) => dictionaryStrings(language).displayName,
 					// The sandbox document follows Obsidian's theme independently of CSS.
 					trackTheme: true,
-					readSettings: () => host.settings(),
+					readSettings: () => host.settings.read(),
 					renderErrorMessage: (language) => dictionaryStrings(language).openFailed,
 					onClose: () =>
 						resetWhenClosed(
@@ -217,7 +223,7 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 					type: VIEW_TYPE_DICTIONARY_FAVORITE,
 					icon: "bookmark",
 					title: (language) => dictionaryStrings(language).favoriteSidebarTitle,
-					readSettings: () => host.settings(),
+					readSettings: () => host.settings.read(),
 					renderErrorMessage: (language) =>
 						dictionaryStrings(language).favoriteRenderFailed,
 					onClose: () =>
@@ -243,13 +249,13 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 				openCommandId: OPEN_COMMAND_ID,
 				openHotkeys: [{ modifiers: ["Alt"], key: "2" }],
 				settingsSectionId: DICTIONARY_SECTION_ID,
-				available: () => host.settings().dictionary.enabled,
+				available: () => host.settings.read().dictionary.enabled,
 				open: () => openPrompt(host),
 			});
 
-			const strings = dictionaryStrings(host.settings().language);
+			const strings = dictionaryStrings(host.settings.read().language);
 			host.chrome((chrome) => {
-				if (!host.settings().dictionary.enabled) return;
+				if (!host.settings.read().dictionary.enabled) return;
 				chrome.command({
 					id: LOOKUP_SELECTION_COMMAND_ID,
 					name: strings.selectionCommand,

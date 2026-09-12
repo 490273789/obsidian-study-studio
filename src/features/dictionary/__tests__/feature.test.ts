@@ -53,7 +53,7 @@ describe("dictionary feature", () => {
 			net: {} as never,
 			plugin: {} as never,
 		});
-		const fake = createFakeWorkbenchHost(enabledSettings);
+		const fake = createFakeWorkbenchHost("dictionary", enabledSettings);
 
 		feature.render(fake.host);
 
@@ -86,7 +86,7 @@ describe("dictionary feature", () => {
 			net: {} as never,
 			plugin: {} as never,
 		});
-		const fake = createFakeWorkbenchHost({
+		const fake = createFakeWorkbenchHost("dictionary", {
 			...DEFAULT_SETTINGS,
 			dictionary: { ...DEFAULT_SETTINGS.dictionary, enabled: false },
 		});
@@ -108,7 +108,7 @@ describe("dictionary feature", () => {
 			net: {} as never,
 			plugin: {} as never,
 		});
-		const fake = createFakeWorkbenchHost(enabledSettings);
+		const fake = createFakeWorkbenchHost("dictionary", enabledSettings);
 
 		feature.render(fake.host);
 		feature.render(fake.host);
@@ -137,7 +137,7 @@ describe("dictionary feature", () => {
 			net: { request: netRequest } as never,
 			plugin: {} as never,
 		});
-		const fake = createFakeWorkbenchHost(enabledSettings);
+		const fake = createFakeWorkbenchHost("dictionary", enabledSettings);
 		feature.render(fake.host);
 
 		const runtime = runtimeSpies.instances[0] as { options?: { net: unknown } };

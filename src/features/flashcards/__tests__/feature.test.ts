@@ -113,7 +113,7 @@ function renderFeature() {
 		net: { request: vi.fn(), requestHostPinned: vi.fn(), readSecret: vi.fn() },
 		repository: createRepository() as never,
 	});
-	const fake = createFakeWorkbenchHost(DEFAULT_SETTINGS);
+	const fake = createFakeWorkbenchHost("flashcards", DEFAULT_SETTINGS);
 	feature.render(fake.host);
 	return { feature, fake };
 }

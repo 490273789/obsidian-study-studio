@@ -1,6 +1,5 @@
 import { createTranslator } from "../strings/index";
 import type {
-	FlashcardSettings,
 	Language,
 	OnlinePronunciationProvider,
 	PronunciationAccent,
@@ -8,12 +7,13 @@ import type {
 	StudySettings,
 } from "../../../core/shared/types";
 import type { PronunciationCacheUsage, PronunciationSnapshot } from "../domain/pronunciation";
+import type { ScopedWorkbenchSettings } from "../../../core/host/settingsSlices";
 import { STUDY_SETTINGS_LIMITS, STUDY_ORDER_OPTIONS, parseStudyOrder } from "./studyMeta";
 
 export type SettingsActionResult = void | Promise<void>;
 
 export interface SettingsViewModelState {
-	settings: FlashcardSettings;
+	settings: ScopedWorkbenchSettings<"flashcards">;
 	availableTags: string[];
 	isLoadingTags: boolean;
 	hasLoadedTags: boolean;

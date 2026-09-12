@@ -16,12 +16,16 @@ export interface SelectionHelperModuleDeps {
 	translation: SelectionTranslationAdapter;
 }
 
+type SelectionHelperWorkbenchHost = WorkbenchHost<"selectionHelper">;
+
 /** The 工作台-owned 选区助手 module and its settings section. */
-export function createSelectionHelperModule(deps: SelectionHelperModuleDeps): WorkbenchModule {
+export function createSelectionHelperModule(
+	deps: SelectionHelperModuleDeps,
+): WorkbenchModule<"selectionHelper"> {
 	let helper: SelectionHelper | null = null;
 	let listener: SelectionListener | null = null;
 
-	const section = (host: WorkbenchHost): WorkbenchSettingsSection => ({
+	const section = (host: SelectionHelperWorkbenchHost): WorkbenchSettingsSection => ({
 		id: SELECTION_HELPER_SECTION_ID,
 		order: 4,
 		label: (language) => selectionHelperStrings(language).settingsHeading,
@@ -29,7 +33,7 @@ export function createSelectionHelperModule(deps: SelectionHelperModuleDeps): Wo
 			const sources = deps.dictionary.sources();
 			return [
 				buildSelectionHelperSettingsViewModel(
-					host.settings().selectionPopup,
+					host.settings.read().selectionPopup,
 					sources.map(({ id, label }) => ({ id, label })),
 					{
 						setEnabled: async (enabled) => {
@@ -41,7 +45,8 @@ export function createSelectionHelperModule(deps: SelectionHelperModuleDeps): Wo
 							host.settingsTab.refresh();
 						},
 						toggleDictionary: async (id, enabled) => {
-							const current = host.settings().selectionPopup.selectedDictionaries;
+							const current =
+								host.settings.read().selectionPopup.selectedDictionaries;
 							const base =
 								current.length > 0 ? current : sources.map((source) => source.id);
 							const selectedDictionaries = enabled
@@ -63,13 +68,13 @@ export function createSelectionHelperModule(deps: SelectionHelperModuleDeps): Wo
 		render: (host) => {
 			if (!helper) {
 				helper = new SelectionHelper({
-					settings: () => host.settings().selectionPopup,
+					settings: () => host.settings.read().selectionPopup,
 					dictionary: deps.dictionary,
 					translation: deps.translation,
 				});
 				listener = new SelectionListener({
 					helper,
-					getLanguage: () => host.settings().language,
+					getLanguage: () => host.settings.read().language,
 				});
 				listener.start();
 			}
@@ -87,10 +92,10 @@ export function createSelectionHelperModule(deps: SelectionHelperModuleDeps): Wo
 }
 
 async function commitSelectionSettings(
-	host: WorkbenchHost,
+	host: SelectionHelperWorkbenchHost,
 	patch: Partial<SelectionHelperSettings>,
 ): Promise<void> {
-	await host.updateSettings({
-		selectionPopup: { ...host.settings().selectionPopup, ...patch },
+	await host.settings.update({
+		selectionPopup: { ...host.settings.read().selectionPopup, ...patch },
 	});
 }
