@@ -43,9 +43,7 @@
 	padding: var(--fc-space-2) var(--fc-space-2) var(--fc-control-touch);
 
 	&.animating {
-		opacity: 0.38;
-		transform: translateX(22px) scale(0.976);
-		filter: blur(1.4px) saturate(0.72);
+		animation: fc-card-slide-out 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 		border-color: rgba(var(--fc-magenta-rgb), 0.4);
 		box-shadow:
 			inset 0 0 34px rgba(var(--fc-magenta-rgb), 0.16),
@@ -58,6 +56,7 @@
 	flex-direction: column;
 	gap: var(--fc-space-4);
 	width: 100%;
+	animation: fc-card-slide-in 0.3s cubic-bezier(0.2, 0, 0, 1) forwards;
 }
 
 .flashcard-answer-section {

@@ -29,6 +29,32 @@
 }
 
 /* Motion */
+@keyframes fc-card-slide-out {
+	from {
+		opacity: 1;
+		transform: translateX(0) scale(1);
+		filter: blur(0) saturate(1);
+	}
+	to {
+		opacity: 0;
+		transform: translateX(-32px) scale(0.96);
+		filter: blur(2px) saturate(0.72);
+	}
+}
+
+@keyframes fc-card-slide-in {
+	from {
+		opacity: 0;
+		transform: translateX(32px) scale(0.96);
+		filter: blur(2px);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(0) scale(1);
+		filter: blur(0);
+	}
+}
+
 @keyframes fc-enter {
 	from {
 		opacity: 0;

@@ -177,7 +177,7 @@ export const PracticeView = React.memo(function PracticeView({
 
 			{/* Content */}
 			<div className={`flashcard-content ${isTransitioning ? "animating" : ""}`}>
-				<div className="flashcard-card-stack">
+				<div className="flashcard-card-stack" key={currentCard.identity}>
 					<div className="flashcard-question">
 						<div className="flashcard-label flashcard-label-question">
 							{t("common.question")}

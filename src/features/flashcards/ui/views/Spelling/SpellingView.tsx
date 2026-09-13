@@ -179,8 +179,8 @@ export const SpellingView = React.memo(function SpellingView({
 				closeTitle={t("spelling.exitTitle")}
 			/>
 
-			<div className="flashcard-content">
-				<div className="flashcard-card-stack">
+			<div className={`flashcard-content ${isTransitioning ? "animating" : ""}`}>
+				<div className="flashcard-card-stack" key={currentCard.identity}>
 					<div className="flashcard-question">
 						<div className="flashcard-label flashcard-label-question">
 							{t("spelling.meaningPrompt")}
