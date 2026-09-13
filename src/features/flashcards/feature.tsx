@@ -553,8 +553,12 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 							host.app?.vault?.adapter,
 							deps.plugin?.manifest?.dir,
 						),
+						initialSettings: host.settings.read(),
 					}),
 				);
+			if ("load" in repo && typeof repo.load === "function") {
+				void repo.load();
+			}
 			const sessionLifecycleWiring = createSessionLifecycle(repo);
 			const cardIdentityContinuity = createCardIdentityContinuity({
 				sources: createObsidianContinuitySourceStore(host.app),

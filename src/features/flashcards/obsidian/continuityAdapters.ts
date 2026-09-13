@@ -10,6 +10,32 @@ function normalizeTag(tag: string): string {
 	return tag.startsWith("#") ? tag : `#${tag}`;
 }
 
+function extractCacheTags(cache: {
+	tags?: Array<{ tag: string }>;
+	frontmatter?: Record<string, unknown>;
+}): string[] {
+	const tags: string[] = [];
+	if (Array.isArray(cache.tags)) {
+		for (const entry of cache.tags) {
+			if (entry?.tag) tags.push(entry.tag);
+		}
+	}
+	const fm = cache.frontmatter;
+	if (fm) {
+		if (Array.isArray(fm.tags)) {
+			for (const tag of fm.tags) {
+				if (typeof tag === "string") tags.push(tag);
+			}
+		} else if (typeof fm.tags === "string") {
+			tags.push(fm.tags);
+		}
+		if (typeof fm.tag === "string") {
+			tags.push(fm.tag);
+		}
+	}
+	return tags;
+}
+
 export function createObsidianContinuitySourceStore(app: App): ContinuitySourceStore {
 	return new ObsidianContinuitySourceStore(app);
 }
@@ -43,11 +69,12 @@ class ObsidianContinuitySourceStore implements ContinuitySourceStore {
 				candidates.push({ file, discoveryOnly: false });
 				continue;
 			}
-			if (!cache.tags || cache.tags.length === 0) {
+			const tags = extractCacheTags(cache);
+			if (tags.length === 0) {
 				continue;
 			}
-			const hasConfiguredTag = cache.tags.some((entry) =>
-				configuredLower.has(normalizeTag(entry.tag).toLowerCase()),
+			const hasConfiguredTag = tags.some((tag) =>
+				configuredLower.has(normalizeTag(tag).toLowerCase()),
 			);
 			candidates.push({ file, discoveryOnly: !hasConfiguredTag });
 		}

@@ -224,4 +224,32 @@ apple
 			fsrsCard: { reps: 7 },
 		});
 	});
+
+	it("recognizes configured tags defined in frontmatter tags or tag property", async () => {
+		const frontmatterFile = Object.assign(new TFile(), {
+			path: "notes/fm.md",
+			basename: "fm",
+		});
+		const read = vi.fn(async () => "");
+		const app = {
+			vault: {
+				getMarkdownFiles: () => [frontmatterFile],
+				read,
+				cachedRead: vi.fn(),
+				getAbstractFileByPath: () => null,
+				process: vi.fn(),
+			},
+			metadataCache: {
+				getFileCache: () => ({
+					frontmatter: { tags: ["单词"] },
+				}),
+			},
+		} as unknown as App;
+
+		const store = createObsidianContinuitySourceStore(app);
+		const docs = await store.list(["#单词"]);
+
+		expect(read).toHaveBeenCalledWith(frontmatterFile);
+		expect(docs).toHaveLength(1);
+	});
 });

@@ -18,6 +18,7 @@ const deep = vi.hoisted(() => ({
 vi.mock("../domain/storage/flashcardRepository", () => ({
 	FlashcardRepository: class {
 		dispose = vi.fn();
+		load = vi.fn().mockResolvedValue(undefined);
 		hasAvailableTagsSnapshot = () => true;
 		getAvailableTags = () => ["#wordTag"];
 		createContinuityStateStore = () => ({});
@@ -112,6 +113,7 @@ vi.mock("../obsidian/continuityModals", () => ({
 function createRepository() {
 	return {
 		dispose: vi.fn(),
+		load: vi.fn().mockResolvedValue(undefined),
 		hasAvailableTagsSnapshot: () => true,
 		getAvailableTags: () => ["#wordTag"],
 		createContinuityStateStore: () => ({}),
@@ -236,5 +238,23 @@ describe("flashcard feature", () => {
 
 		const repository = deep.repository as { dispose: ReturnType<typeof vi.fn> };
 		expect(repository.dispose).toHaveBeenCalledTimes(1);
+	});
+
+	it("triggers background load on the repository when started", () => {
+		const repository = createRepository();
+		const feature = createFlashcardFeature({
+			store: {
+				load: vi.fn(),
+				getSettings: () => DEFAULT_SETTINGS,
+				subscribe: () => () => {},
+			} as never,
+			net: { request: vi.fn(), requestHostPinned: vi.fn(), readSecret: vi.fn() },
+			repository: repository as never,
+		});
+		const fake = createFakeWorkbenchHost("flashcards", DEFAULT_SETTINGS);
+		feature.render(fake.host);
+
+		expect(repository.load).toHaveBeenCalledTimes(1);
+		feature.stop();
 	});
 });

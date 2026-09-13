@@ -488,4 +488,47 @@ describe("FlashcardRepository", () => {
 		expect(repo.getRevision()).toBe(2);
 		warning.mockRestore();
 	});
+
+	it("automatically loads data and configured tags on continuity store load without prior explicit load", async () => {
+		const authority = new MemoryFlashcardAuthority({
+			...DEFAULT_SETTINGS,
+			flashcardTags: ["#words", "#grammar"],
+		});
+		const repo = new FlashcardRepository({ authority, deckIndexCache: null });
+
+		// Intentionally do NOT call repo.load() before accessing continuity store.
+		const stateStore = repo.createContinuityStateStore();
+		const state = await stateStore.load();
+
+		expect(state.configuredTags).toEqual(["#words", "#grammar"]);
+		expect(repo.getRevision()).toBe(1);
+	});
+
+	it("uses initialSettings synchronously before load completes", () => {
+		const authority = new MemoryFlashcardAuthority(DEFAULT_SETTINGS);
+		const initialSettings = {
+			...DEFAULT_SETTINGS,
+			flashcardTags: ["#immediateTag"],
+			dailyNewCards: 50,
+		};
+		const repo = new FlashcardRepository({
+			authority,
+			deckIndexCache: null,
+			initialSettings,
+		});
+
+		expect(repo.getSettings().flashcardTags).toEqual(["#immediateTag"]);
+		expect(repo.getSettings().dailyNewCards).toBe(50);
+	});
+
+	it("deduplicates concurrent load operations into a single execution", async () => {
+		const authority = new MemoryFlashcardAuthority(DEFAULT_SETTINGS);
+		const readSpy = vi.spyOn(authority, "read");
+		const repo = new FlashcardRepository({ authority, deckIndexCache: null });
+
+		await Promise.all([repo.load(), repo.load(), repo.load()]);
+
+		expect(readSpy).toHaveBeenCalledTimes(1);
+		expect(repo.getRevision()).toBe(1);
+	});
 });

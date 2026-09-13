@@ -60,6 +60,7 @@ interface AuthorityCandidate {
 export interface FlashcardRepositoryOptions {
 	authority: FlashcardAuthority;
 	deckIndexCache?: DeckIndexCacheStore<SerializedDeck> | null;
+	initialSettings?: FlashcardStudySettings;
 }
 
 /**
@@ -92,6 +93,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 	private deckDueTimes = new Map<string, number[]>();
 	private deckDueTimesValid = false;
 	private dataLoaded = false;
+	private loadPromise: Promise<void> | null = null;
 	private authorityVersion = 0;
 	private authorityUnsubscribe: () => void;
 	private operationTail: Promise<void> = Promise.resolve();
@@ -102,18 +104,20 @@ export class FlashcardRepository implements DeckHomeRepository {
 		this.authority = options.authority;
 		this.deckIndexCache = options.deckIndexCache ?? null;
 
-		this.settings = {
-			flashcardTags: [],
-			wordLearningDecks: {},
-			deckOrder: [],
-			dailyNewCards: 20,
-			dailyReviewCards: 100,
-			studyOrder: "random",
-			fsrsParameters: { requestRetention: 0.9, maximumInterval: 365 },
-			deckStudySettings: {},
-			practicePerfectMessages: [],
-			practiceErrorMessages: [],
-		};
+		this.settings = options.initialSettings
+			? structuredClone(options.initialSettings)
+			: {
+					flashcardTags: [],
+					wordLearningDecks: {},
+					deckOrder: [],
+					dailyNewCards: 20,
+					dailyReviewCards: 100,
+					studyOrder: "random",
+					fsrsParameters: { requestRetention: 0.9, maximumInterval: 365 },
+					deckStudySettings: {},
+					practicePerfectMessages: [],
+					practiceErrorMessages: [],
+				};
 		this.scheduler = new FSRSScheduler(this.settings);
 
 		this.authorityUnsubscribe = this.authority.subscribe(() => this.handleAuthorityChange());
@@ -121,11 +125,15 @@ export class FlashcardRepository implements DeckHomeRepository {
 
 	async load(): Promise<void> {
 		if (this.dataLoaded) return;
-		await this.enqueueOperation(async () => {
+		if (this.loadPromise) return this.loadPromise;
+		this.loadPromise = this.enqueueOperation(async () => {
 			await this.restoreAuthority(true);
 			this.dataLoaded = true;
 			this.publishRevision();
+		}).finally(() => {
+			this.loadPromise = null;
 		});
+		return this.loadPromise;
 	}
 
 	getSettings(): FlashcardStudySettings {
@@ -278,6 +286,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 		startTimeMs: number,
 		endTimeMs: number,
 	): Promise<void> {
+		await this.load();
 		const entry = createWordListHistoryEntry(deckId, deckName, startTimeMs, endTimeMs);
 		if (!entry) return;
 
@@ -306,6 +315,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 	}
 
 	async commitSessionTransition(transition: SessionPersistenceTransition): Promise<void> {
+		await this.load();
 		await this.enqueueOperation(async () => {
 			let updatedDeckIds = new Set<string>();
 			await this.commitAuthority(() => {
@@ -370,6 +380,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 	createContinuityStateStore(): ContinuityStateStore {
 		return {
 			load: async (): Promise<CardIdentityContinuityState> => {
+				await this.load();
 				return {
 					configuredTags: [...this.settings.flashcardTags],
 					...(this.hasAvailableTagsSnapshotValue
@@ -380,6 +391,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 				};
 			},
 			commit: async (state: CardIdentityContinuityState): Promise<void> => {
+				await this.load();
 				await this.enqueueOperation(async () => {
 					let cacheDecks: ReadonlyMap<string, Deck> | null = null;
 					let cacheTags: readonly string[] = [];
@@ -416,6 +428,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 	}
 
 	async commit(state: CardIdentityContinuityState): Promise<void> {
+		await this.load();
 		return this.createContinuityStateStore().commit(state);
 	}
 
@@ -430,6 +443,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 		if (this.disposed) return Promise.resolve();
 		return this.enqueueOperation(async () => {
 			await this.restoreAuthority(false);
+			this.dataLoaded = true;
 			this.publishRevision();
 		});
 	}
