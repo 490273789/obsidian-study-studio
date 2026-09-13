@@ -8,7 +8,7 @@
 	"main": "main.js",
 	"scripts": {
 		"dev": "vite build --watch --mode development",
-		"test": "vitest run",
+		"test": "vitest run && node scripts/verify-commit-msg.test.mjs",
 		"test:watch": "vitest",
 		"typecheck": "tsc --noEmit --skipLibCheck",
 		"dictionary:engine": "cargo build --release --target wasm32-unknown-unknown -p dictionary-engine && wasm-bindgen target/wasm32-unknown-unknown/release/dictionary_engine.wasm --target web --out-dir src/features/dictionary/domain/engine --out-name dictionary_engine",
@@ -17,7 +17,8 @@
 		"architecture:check": "node scripts/check-module-boundaries.mjs",
 		"deploy": "pnpm run build && node scripts/deploy-icloud.mjs",
 		"version": "node scripts/version-bump.mjs && git add manifest.json versions.json",
-		"release": "pnpm version --message \"chore(release): %s\" --tag-version-prefix \"\"",
+		"postversion": "node scripts/postversion.mjs",
+		"release": "pnpm version --message \"chore(release): bump version to %s\" --tag-version-prefix \"\"",
 		"release:patch": "pnpm release patch",
 		"release:minor": "pnpm release minor",
 		"release:major": "pnpm release major",

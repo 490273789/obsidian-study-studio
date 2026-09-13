@@ -35,6 +35,37 @@ if (
 
 const firstLine = commitMsg.split("\n")[0].trim();
 
+// 针对版本发布（如 pnpm/pn version major 等）生成的提交信息进行智能规范化
+// 1. 纯版本号: "5.0.0", "v5.0.0" -> "chore(release): bump version to 5.0.0"
+// 2. 简短或拼写偏差版本信息: "chore(release): 5.0.0", "chore(realease): bump version to 5.0.0"
+const semverPattern = /^v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
+const shortReleasePattern =
+	/^chore\((?:release|realease)\):\s*(?:bump\s+version\s+to\s+)?(?:v)?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/i;
+
+const semverMatch = firstLine.match(semverPattern);
+const shortReleaseMatch = firstLine.match(shortReleasePattern);
+
+if (semverMatch || shortReleaseMatch) {
+	const version = semverMatch ? semverMatch[1] : shortReleaseMatch[1];
+	const normalizedFirstLine = `chore(release): bump version to ${version}`;
+	const allLines = rawContent.split("\n");
+	let replaced = false;
+	const newLines = allLines.map((line) => {
+		if (!replaced && line.trim() === firstLine) {
+			replaced = true;
+			return normalizedFirstLine;
+		}
+		return line;
+	});
+	if (!replaced) {
+		newLines[0] = normalizedFirstLine;
+	}
+	fs.writeFileSync(resolvedPath, newLines.join("\n"), "utf8");
+	console.log(`\x1b[32m✔\x1b[0m 自动将版本提交信息规范化为: "${normalizedFirstLine}"`);
+	console.log("\x1b[32m✔ Commit message 格式检查通过\x1b[0m");
+	process.exit(0);
+}
+
 // Conventional Commits 正则
 // 允许格式: <type>(<scope>): <subject> 或 <type>: <subject>
 // 也支持带感叹号的 breaking change: <type>(<scope>)!: <subject>
