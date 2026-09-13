@@ -183,7 +183,7 @@ export async function scanFilesWithTag(
 			// Check if file has the target tag (case-insensitive comparison)
 			if (tag && tag.toLowerCase() === targetTag.toLowerCase()) {
 				const existingDeck = existingDecks.get(file.path);
-				const deck = await parseFileIntoDeck(file, vault, existingDeck);
+				const deck = await parseFileIntoDeck(file, vault, existingDeck, content);
 				if (deck) {
 					decks.push(deck);
 				}

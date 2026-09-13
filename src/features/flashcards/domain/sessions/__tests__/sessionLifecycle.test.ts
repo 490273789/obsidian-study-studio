@@ -1,5 +1,5 @@
 import { createEmptyCard, State, type Card } from "ts-fsrs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
 	Deck,
 	FlashCard,
@@ -444,6 +444,48 @@ describe("SessionLifecycle", () => {
 			{ mode: "practice", cardCount: 1 },
 			{ mode: "practice", cardCount: 1 },
 		]);
+	});
+
+	it("reconciles a long practice queue without repeated linear membership scans", async () => {
+		const cards = Array.from({ length: 120 }, (_, index) =>
+			makeCard(`card-${index}`, `card ${index}`, index),
+		);
+		const subject = makeLifecycle(cards);
+		await subject.lifecycle.start({
+			mode: "practice",
+			deckId: DECK_ID,
+			direction: "normal",
+			selection: { kind: "range", startIndex: 1, endIndex: cards.length },
+		});
+
+		for (let index = 0; index < 60; index++) {
+			const active = subject.lifecycle.getSnapshot();
+			if (active.kind !== "active" || active.mode !== "practice") {
+				throw new Error("Expected an active practice session");
+			}
+			await subject.lifecycle.act(active.reference, { kind: "answer", correct: true });
+		}
+
+		const includes = vi.spyOn(Array.prototype, "includes");
+		let includesCallCount = 0;
+		try {
+			const availableIdentities = new Set(cards.map((card) => card.id));
+			availableIdentities.delete("card-60");
+			await subject.continuitySessions.reconcile({
+				availableIdentities,
+				deletedIdentities: new Set(["card-60"]),
+			});
+			includesCallCount = includes.mock.calls.length;
+		} finally {
+			includes.mockRestore();
+		}
+		expect(includesCallCount).toBeLessThanOrEqual(1);
+
+		expect(subject.lifecycle.getSnapshot()).toMatchObject({
+			kind: "active",
+			mode: "practice",
+			currentCard: { identity: "card-61" },
+		});
 	});
 
 	describe("getRestartViewState", () => {

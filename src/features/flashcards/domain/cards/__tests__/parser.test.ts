@@ -307,6 +307,7 @@ back
 		);
 
 		expect(decks).toHaveLength(1);
+		expect(vault.cachedRead).toHaveBeenCalledTimes(files.length);
 		expect(decks[0]?.cards[0]?.fsrsCard).toBe(existingFsrsCard);
 		expect(decks[0]?.studyCount).toBe(3);
 	});

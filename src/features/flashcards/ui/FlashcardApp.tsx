@@ -113,10 +113,18 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 	);
 	const presentedLifecycleSnapshot = answerPresentationSnapshot.lifecycle;
 	const isAnswerTransitioning = answerPresentationSnapshot.activity.kind === "transitioning";
+	const subscribeLifecycle = useCallback(
+		(listener: () => void) => sessionLifecycle.subscribe(listener),
+		[sessionLifecycle],
+	);
+	const readLifecycleSnapshot = useCallback(
+		() => sessionLifecycle.getSnapshot(),
+		[sessionLifecycle],
+	);
 	const lifecycleSnapshot = useSyncExternalStore(
-		(listener) => sessionLifecycle.subscribe(listener),
-		() => sessionLifecycle.getSnapshot(),
-		() => sessionLifecycle.getSnapshot(),
+		subscribeLifecycle,
+		readLifecycleSnapshot,
+		readLifecycleSnapshot,
 	);
 	useEffect(() => {
 		if (lifecycleSnapshot.kind !== "idle" || !lifecycleSnapshot.lastEnd) return;

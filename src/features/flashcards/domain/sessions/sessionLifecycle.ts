@@ -1335,9 +1335,10 @@ function reconcileCurrentIndex(
 		const currentNextIndex = nextQueue.indexOf(currentIdentity);
 		if (currentNextIndex !== -1) return currentNextIndex;
 	}
+	const nextIdentities = new Set(nextQueue);
 	const survivingBefore = previousQueue
 		.slice(0, previousIndex)
-		.filter((identity) => nextQueue.includes(identity)).length;
+		.filter((identity) => nextIdentities.has(identity)).length;
 	return Math.min(survivingBefore, nextQueue.length - 1);
 }
 
@@ -1358,9 +1359,10 @@ function reconcileSpellingCurrentIndex(
 			if (seen === occurrence) return index;
 		}
 	}
+	const nextIdentities = new Set(nextQueue);
 	const survivingBefore = previousQueue
 		.slice(0, previousIndex)
-		.filter((identity) => nextQueue.includes(identity)).length;
+		.filter((identity) => nextIdentities.has(identity)).length;
 	return Math.min(survivingBefore, nextQueue.length - 1);
 }
 

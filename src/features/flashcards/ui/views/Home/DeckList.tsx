@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useState } from "react";
+import React, { memo, useCallback, useMemo, useState } from "react";
 import {
 	closestCenter,
 	DndContext,
@@ -56,13 +56,10 @@ interface DeckCardProps {
 	deck: DeckHomeDeckSnapshot;
 	isReorderDisabled: boolean;
 	isRecentlyDropped: boolean;
-	onSelectDeck: (deckId: string) => void;
-	onOpenWordList: (deckId: string) => void;
-	onStartPractice: (deckId: string) => void;
+	onNavigate: (destination: DeckHomeDestination, deckId: string) => void;
 	onExportDeck: (deckId: string) => Promise<void>;
 	onOpenSourceFile: (filePath: string) => void;
 	onOpenSettings: (deckId: string) => void;
-	onStartSpelling: (deckId: string) => void;
 	isExporting: boolean;
 	isExportBusy: boolean;
 	isSettingsLocked: boolean;
@@ -72,13 +69,10 @@ const DeckCard = memo(function DeckCard({
 	deck,
 	isReorderDisabled,
 	isRecentlyDropped,
-	onSelectDeck,
-	onOpenWordList,
-	onStartPractice,
+	onNavigate,
 	onExportDeck,
 	onOpenSourceFile,
 	onOpenSettings,
-	onStartSpelling,
 	isExporting,
 	isExportBusy,
 	isSettingsLocked,
@@ -118,7 +112,7 @@ const DeckCard = memo(function DeckCard({
 			key: "list",
 			label: t("home.list"),
 			icon: List,
-			onSelect: () => onOpenWordList(deck.id),
+			onSelect: () => onNavigate("word-list", deck.id),
 		},
 		{
 			key: "source",
@@ -234,7 +228,7 @@ const DeckCard = memo(function DeckCard({
 						icon={Brain}
 						onClick={(event) => {
 							event.stopPropagation();
-							onSelectDeck(deck.id);
+							onNavigate("study", deck.id);
 						}}
 						title={t("home.studyModeTitle")}
 					>
@@ -246,7 +240,7 @@ const DeckCard = memo(function DeckCard({
 						icon={Target}
 						onClick={(event) => {
 							event.stopPropagation();
-							onStartPractice(deck.id);
+							onNavigate("practice", deck.id);
 						}}
 						title={t("home.practiceModeTitle")}
 					>
@@ -259,7 +253,7 @@ const DeckCard = memo(function DeckCard({
 							icon={Keyboard}
 							onClick={(event) => {
 								event.stopPropagation();
-								onStartSpelling(deck.id);
+								onNavigate("spelling", deck.id);
 							}}
 							disabled={!spellingReady}
 							title={
@@ -341,9 +335,12 @@ export const DeckList = React.memo(function DeckList({
 	const [previewDeckIds, setPreviewDeckIds] = useState<string[] | null>(null);
 	const [isOrderSaving, setIsOrderSaving] = useState(false);
 	const [recentlyDroppedDeckId, setRecentlyDroppedDeckId] = useState<string | null>(null);
-	const snapshotDeckIds = snapshot.decks.map((deck) => deck.id);
+	const snapshotDeckIds = useMemo(() => snapshot.decks.map((deck) => deck.id), [snapshot.decks]);
 	const visibleDeckIds = previewDeckIds ?? snapshotDeckIds;
-	const visibleDecks = orderDeckSnapshots(snapshot.decks, visibleDeckIds);
+	const visibleDecks = useMemo(
+		() => orderDeckSnapshots(snapshot.decks, visibleDeckIds),
+		[snapshot.decks, visibleDeckIds],
+	);
 	const sensors = useSensors(
 		useSensor(MouseSensor, {
 			activationConstraint: { distance: 6 },
@@ -566,18 +563,7 @@ export const DeckList = React.memo(function DeckList({
 												isRecentlyDropped={
 													recentlyDroppedDeckId === deck.id
 												}
-												onSelectDeck={(deckId) =>
-													onNavigate("study", deckId)
-												}
-												onOpenWordList={(deckId) =>
-													onNavigate("word-list", deckId)
-												}
-												onStartPractice={(deckId) =>
-													onNavigate("practice", deckId)
-												}
-												onStartSpelling={(deckId) =>
-													onNavigate("spelling", deckId)
-												}
+												onNavigate={onNavigate}
 												onExportDeck={handleExportDeck}
 												onOpenSourceFile={onOpenSourceFile}
 												onOpenSettings={handleOpenDeckSettings}
