@@ -609,4 +609,46 @@ describe("workbench", () => {
 		expect(openUnavailable).not.toHaveBeenCalled();
 		expect(mockSettingsTab.open).toHaveBeenCalledWith("sec-unavail");
 	});
+
+	it("rolls back chrome, settings sections, and catalog entries when module render fails", () => {
+		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		const { workbench, ribbonEls, commands } = setup([
+			feature("translation", (host) => {
+				host.chrome((chrome) => {
+					chrome.ribbon("icon-t", "Translation", () => {});
+					chrome.command({ id: "cmd-t", name: "Translation Command", run: () => {} });
+				});
+				host.catalog({
+					id: "translation",
+					icon: "icon-t",
+					title: () => "Translation",
+					openCommandId: "open-translation",
+					settingsSectionId: "sec-translation",
+					available: () => true,
+					open: () => {},
+				});
+				host.settingsSection({
+					id: "sec-translation",
+					order: 10,
+					label: () => "Translation",
+					presentation: () => ({
+						snapshot: {} as never,
+						invoke: async () => ({ status: "applied" }),
+						dispose: () => {},
+					}),
+				});
+				throw new Error("render failed");
+			}),
+		]);
+
+		workbench.refresh();
+
+		expect(workbench.catalog()).toEqual([]);
+		expect(workbench.settingsSections()).toEqual([]);
+		expect(ribbonEls).toHaveLength(1);
+		expect(ribbonEls[0]?.remove).toHaveBeenCalled();
+		expect(commands.has("cmd-t")).toBe(false);
+		expect(commands.has("open-translation")).toBe(false);
+		consoleSpy.mockRestore();
+	});
 });

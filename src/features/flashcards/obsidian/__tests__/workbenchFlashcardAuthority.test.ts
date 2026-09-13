@@ -74,4 +74,101 @@ describe("WorkbenchFlashcardAuthority", () => {
 		expect(snapshot.settings).not.toHaveProperty("pronunciation");
 		authority.dispose();
 	});
+
+	it("preserves local legacy backup when committing with discardLegacy", async () => {
+		const legacyDoc = {
+			schemaVersion: 1,
+			decks: { "d-1": { id: "d-1", name: "Deck 1" } },
+			studyHistory: [{ deckId: "d-1" }],
+		};
+		const store = new WorkbenchStore(createBackend(legacyDoc));
+		const write = vi.fn().mockResolvedValue(undefined);
+		const exists = vi.fn().mockResolvedValue(false);
+		const adapter = { exists, write } as unknown as import("obsidian").DataAdapter;
+
+		const authority = new WorkbenchFlashcardAuthority({
+			store,
+			adapter,
+			pluginDirectory: "plugins/study-studio",
+		});
+
+		const initial = await authority.read();
+		expect(initial.content.kind).toBe("legacy");
+
+		await authority.commit(initial.version, {
+			learning: emptyLearning(),
+			discardLegacy: true,
+		});
+
+		expect(exists).toHaveBeenCalledWith("plugins/study-studio/data.backup-v1.json");
+		expect(write).toHaveBeenCalledWith(
+			"plugins/study-studio/data.backup-v1.json",
+			expect.stringContaining('"decks"'),
+		);
+
+		// Raw document in store should have discarded legacy fields
+		expect(store.getRawDocument()).not.toHaveProperty("decks");
+		expect(store.getRawDocument()).not.toHaveProperty("studyHistory");
+		expect(store.getRawDocument()).toHaveProperty("learning");
+		authority.dispose();
+	});
+
+	it("does not overwrite existing backup file", async () => {
+		const legacyDoc = {
+			schemaVersion: 1,
+			decks: { "d-1": { id: "d-1", name: "Deck 1" } },
+		};
+		const store = new WorkbenchStore(createBackend(legacyDoc));
+		const write = vi.fn().mockResolvedValue(undefined);
+		const exists = vi.fn().mockResolvedValue(true);
+		const adapter = { exists, write } as unknown as import("obsidian").DataAdapter;
+
+		const authority = new WorkbenchFlashcardAuthority({
+			store,
+			adapter,
+			pluginDirectory: "plugins/study-studio",
+		});
+
+		const initial = await authority.read();
+		await authority.commit(initial.version, {
+			learning: emptyLearning(),
+			discardLegacy: true,
+		});
+
+		expect(exists).toHaveBeenCalledWith("plugins/study-studio/data.backup-v1.json");
+		expect(write).not.toHaveBeenCalled();
+		authority.dispose();
+	});
+
+	it("proceeds with commit even if local backup attempt throws", async () => {
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const legacyDoc = {
+			schemaVersion: 1,
+			decks: { "d-1": { id: "d-1", name: "Deck 1" } },
+		};
+		const store = new WorkbenchStore(createBackend(legacyDoc));
+		const write = vi.fn().mockRejectedValue(new Error("disk full"));
+		const exists = vi.fn().mockResolvedValue(false);
+		const adapter = { exists, write } as unknown as import("obsidian").DataAdapter;
+
+		const authority = new WorkbenchFlashcardAuthority({
+			store,
+			adapter,
+			pluginDirectory: "plugins/study-studio",
+		});
+
+		const initial = await authority.read();
+		const result = await authority.commit(initial.version, {
+			learning: emptyLearning(),
+			discardLegacy: true,
+		});
+
+		expect(result.version).toBeGreaterThan(0);
+		expect(warnSpy).toHaveBeenCalledWith(
+			"Failed to preserve the local legacy data backup:",
+			expect.any(Error),
+		);
+		authority.dispose();
+		warnSpy.mockRestore();
+	});
 });

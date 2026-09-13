@@ -202,6 +202,8 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 	const hostsByModule = new Map<FeatureSettingsOwner, unknown>();
 	const sectionsById = new Map<string, WorkbenchSettingsSection>();
 	const catalogById = new Map<string, WorkbenchCatalogEntry>();
+	const sectionOwnerById = new Map<string, FeatureSettingsOwner>();
+	const catalogOwnerById = new Map<string, FeatureSettingsOwner>();
 	/** Command ids the host generated for the previous catalog, so it can clean up. */
 	let catalogCommandIds: string[] = [];
 	/** Chrome id reserved for the workbench's own ribbon and commands. */
@@ -292,10 +294,12 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 
 			settingsSection: (section) => {
 				sectionsById.set(section.id, section);
+				sectionOwnerById.set(section.id, moduleId);
 			},
 
 			catalog: (entry) => {
 				catalogById.set(entry.id, entry);
+				catalogOwnerById.set(entry.id, moduleId);
 			},
 
 			openFeature: (targetFeatureId) => {
@@ -353,13 +357,26 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 		}
 	};
 
-	const renderModules = (owners?: ReadonlySet<FeatureSettingsOwner>): void => {
+	const renderModules = (targets?: ReadonlySet<FeatureSettingsOwner>): void => {
 		for (const module of modules) {
-			if (owners && !owners.has(module.id)) continue;
+			if (targets && !targets.has(module.id)) continue;
 			try {
 				module.render(hostFor(module.id) as never);
 			} catch (error) {
 				console.error(`Failed to render the ${module.id} workbench module:`, error);
+				removeChrome(module.id);
+				for (const [sectionId, owner] of sectionOwnerById) {
+					if (owner === module.id) {
+						sectionsById.delete(sectionId);
+						sectionOwnerById.delete(sectionId);
+					}
+				}
+				for (const [entryId, owner] of catalogOwnerById) {
+					if (owner === module.id) {
+						catalogById.delete(entryId);
+						catalogOwnerById.delete(entryId);
+					}
+				}
 			}
 		}
 		rebuildCatalogCommands();
@@ -445,6 +462,11 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 			removeChrome(HOST_CHROME_ID);
 			for (const id of catalogCommandIds) options.plugin.removeCommand(id);
 			catalogCommandIds = [];
+			hostsByModule.clear();
+			sectionsById.clear();
+			catalogById.clear();
+			sectionOwnerById.clear();
+			catalogOwnerById.clear();
 		},
 	};
 }
