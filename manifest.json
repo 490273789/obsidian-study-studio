@@ -1,7 +1,7 @@
 {
 	"id": "study-studio",
 	"name": "Study Studio",
-	"version": "4.9.0",
+	"version": "5.0.0",
 	"minAppVersion": "1.13.0",
 	"description": "一个学习插件，帮助你高效学习和复习知识点。支持自定义标签扫描、间隔重复学习。",
 	"author": "WSR",

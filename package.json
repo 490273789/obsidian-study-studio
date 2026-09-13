@@ -1,6 +1,6 @@
 {
 	"name": "StudyStudio",
-	"version": "4.9.0",
+	"version": "5.0.0",
 	"description": "A flashcard learning plugin for Obsidian based on FSRS algorithm",
 	"keywords": [],
 	"license": "0-BSD",
