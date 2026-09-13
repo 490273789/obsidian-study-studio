@@ -1,5 +1,5 @@
 import type { App, Command, Editor, Hotkey, ItemView, Plugin, WorkspaceLeaf } from "obsidian";
-import type { SettingsViewModelDefinition } from "../settings/viewModel";
+import type { SettingsPresentation } from "../settings/presentation";
 import type { FlashcardSettings, Language } from "../shared/types";
 import {
 	authorizeSettingsPatch,
@@ -77,8 +77,8 @@ export interface WorkbenchSettingsSection {
 	/** Position in the settings tab; lower comes first. */
 	order: number;
 	label(language: Language): string;
-	/** The live definition tree, rebuilt on every render. */
-	definitions(language: Language): SettingsViewModelDefinition[];
+	/** A fresh presentation generation, rebuilt on every render. */
+	presentation(language: Language): SettingsPresentation;
 	activate?(): void;
 	hide?(): void;
 }

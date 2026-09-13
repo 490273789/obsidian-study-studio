@@ -166,7 +166,7 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 			id: DICTIONARY_SECTION_ID,
 			order: 3,
 			label: (language) => dictionaryStrings(language).settingsHeading,
-			definitions: () => [settingsEditor.definitions()],
+			presentation: () => settingsEditor.presentation(),
 			activate: () => settingsEditor.activate(),
 			hide: () => settingsEditor.hide(),
 		};

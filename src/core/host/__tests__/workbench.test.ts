@@ -191,7 +191,11 @@ describe("workbench", () => {
 			id,
 			order,
 			label: () => id,
-			definitions: () => [],
+			presentation: () => ({
+				snapshot: { sectionId: id, generation: 0, groups: [] },
+				invoke: async () => ({ status: "applied" as const }),
+				dispose: () => undefined,
+			}),
 		});
 		const { workbench } = setup([
 			feature("translation", (host) => {

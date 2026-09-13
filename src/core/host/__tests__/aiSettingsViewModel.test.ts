@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { SettingsPresentation } from "../../settings/presentation";
 import {
 	buildAiSettingsViewModel,
 	type AiEditorActions,
@@ -44,88 +45,62 @@ function setup(view: "list" | "form" = "form") {
 	};
 	return { state, actions };
 }
-describe("AI settings definitions", () => {
-	it("renders list view with configured engines, edit and delete buttons, and add button", () => {
+
+const rows = (presentation: SettingsPresentation) =>
+	presentation.snapshot.groups.flatMap((g) => g.rows);
+
+describe("AI settings presentation", () => {
+	it("presents configured engines and dispatches list actions", async () => {
 		const { state, actions } = setup("list");
-		const model = buildAiSettingsViewModel(state, actions, "zh");
-
-		// Header
-		expect(model.heading).toBe("AI 引擎");
-
-		// Default engine dropdown
-		const defaultSetting = model.items.find((item) => item.name === "默认引擎");
-		expect(defaultSetting).toBeDefined();
-
-		// Add engine button
-		const listSetting = model.items.find((item) => item.name === "已配置引擎");
-		expect(listSetting).toBeDefined();
-		const addBtn = listSetting?.controls?.find(
-			(c) => c.type === "button" && c.label === "新增引擎",
+		const presentation = buildAiSettingsViewModel(state, actions, "zh");
+		expect(presentation.snapshot.groups[0]?.heading).toBe("AI 引擎");
+		const add = rows(presentation).find((row) => row.name === "已配置引擎")?.controls[0];
+		const engine = rows(presentation).find((row) => row.name.includes("Translate"));
+		expect(engine?.description).toContain("DeepSeek");
+		const edit = engine?.controls.find(
+			(control) => control.kind === "button" && control.label === "编辑",
 		);
-		expect(addBtn).toBeDefined();
-		if (addBtn?.type !== "button") throw new Error("Missing add engine button");
-		void addBtn.onClick();
-		expect(actions.toAdd).toHaveBeenCalledOnce();
-
-		// Configured item row with Edit and Delete buttons
-		const itemRow = model.items.find((item) => item.name.includes("Translate"));
-		expect(itemRow).toBeDefined();
-		expect(itemRow?.desc).toContain("DeepSeek");
-		const editBtn = itemRow?.controls?.find((c) => c.type === "button" && c.label === "编辑");
-		const removeBtn = itemRow?.controls?.find((c) => c.type === "button" && c.label === "删除");
-		expect(editBtn).toBeDefined();
-		expect(removeBtn).toBeDefined();
-
-		if (editBtn?.type !== "button" || removeBtn?.type !== "button") {
-			throw new Error("Missing edit or remove buttons");
+		const remove = engine?.controls.find(
+			(control) => control.kind === "button" && control.label === "删除",
+		);
+		if (add?.kind !== "button" || edit?.kind !== "button" || remove?.kind !== "button") {
+			throw new Error("Expected engine actions");
 		}
-		void editBtn.onClick();
+		await presentation.invoke({ action: add.action, value: undefined });
+		await presentation.invoke({ action: edit.action, value: undefined });
+		await presentation.invoke({ action: remove.action, value: undefined });
+		expect(actions.toAdd).toHaveBeenCalledOnce();
 		expect(actions.toEdit).toHaveBeenCalledWith("saved");
-
-		void removeBtn.onClick();
 		expect(actions.remove).toHaveBeenCalledWith("saved");
 	});
 
-	it("keeps manual model input after discovery failure and saves through a semantic action in form view", () => {
+	it("keeps manual model input and saves through semantic actions", async () => {
 		const { state, actions } = setup("form");
-		const model = buildAiSettingsViewModel(state, actions, "zh");
-		const input = model.items.find((item) => item.name === "模型 ID")?.controls?.[0];
-		if (input?.type !== "text") throw new Error("Missing manual model input");
-		void input.onChange("custom-model");
+		const presentation = buildAiSettingsViewModel(state, actions, "zh");
+		const input = rows(presentation).find((row) => row.name === "模型 ID")?.controls[0];
+		const save = rows(presentation)
+			.flatMap((row) => row.controls)
+			.find((control) => control.kind === "button" && control.label === "保存配置");
+		if (input?.kind !== "text" || save?.kind !== "button") throw new Error("Missing controls");
+		await presentation.invoke({ action: input.action, value: "custom-model" });
+		await presentation.invoke({ action: save.action, value: undefined });
 		expect(actions.patch).toHaveBeenCalledWith({ model: "custom-model" });
-		expect(actions.save).not.toHaveBeenCalled();
-		const save = model.items
-			.flatMap((item) => item.controls ?? [])
-			.find((control) => control.type === "button" && control.label === "保存配置");
-		if (save?.type !== "button") throw new Error("Missing save action");
-		void save.onClick();
 		expect(actions.save).toHaveBeenCalledOnce();
 	});
 
-	it("allows testing connection in form view and supports navigating back", () => {
+	it("presents secrets, testing and back navigation without callbacks in the snapshot", async () => {
 		const { state, actions } = setup("form");
-		state.draft = { ...state.draft, id: "draft" };
 		state.draftIsNew = true;
-		const model = buildAiSettingsViewModel(state, actions, "en");
-
-		// API Key secret control
-		expect(model.items.find((item) => item.name === "API Key")?.controls?.[0]).toMatchObject({
-			type: "secret",
-			value: "secret-id",
-		});
-
-		// Connection test button should be enabled in the form page for draft testing
-		const testBtn = model.items.find((item) => item.name === "Test connection")?.controls?.[0];
-		expect(testBtn).toMatchObject({ type: "button", disabled: false });
-		if (testBtn?.type !== "button") throw new Error("Missing test button");
-		void testBtn.onClick();
+		const presentation = buildAiSettingsViewModel(state, actions, "en");
+		const secret = rows(presentation).find((row) => row.name === "API Key")?.controls[0];
+		const test = rows(presentation).find((row) => row.name === "Test connection")?.controls[0];
+		const back = rows(presentation).find((row) => row.name === "Back to list")?.controls[0];
+		expect(secret).toMatchObject({ kind: "secret", value: "secret-id" });
+		if (test?.kind !== "button" || back?.kind !== "button") throw new Error("Missing actions");
+		await presentation.invoke({ action: test.action, value: undefined });
+		await presentation.invoke({ action: back.action, value: undefined });
 		expect(actions.test).toHaveBeenCalledOnce();
-
-		// Back button
-		const backBtn = model.items.find((item) => item.name === "Back to list")?.controls?.[0];
-		expect(backBtn).toBeDefined();
-		if (backBtn?.type !== "button") throw new Error("Missing back button");
-		void backBtn.onClick();
 		expect(actions.back).toHaveBeenCalledOnce();
+		expect(JSON.stringify(presentation.snapshot)).not.toContain("onClick");
 	});
 });

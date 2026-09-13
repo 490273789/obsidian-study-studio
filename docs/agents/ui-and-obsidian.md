@@ -27,12 +27,13 @@ Read this guide before changing React UI, deck home behavior, the Obsidian view/
 
 ## Settings compatibility
 
-`src/features/flashcards/settings/viewModel.ts` builds the pure definition tree; `src/core/host/settingsTab.ts` renders it and owns Obsidian effects. The tab is a shell: it renders the sections registered through the workbench (`WorkbenchSettingsSection`), and each feature builds its own section's definitions.
+`src/core/settings/presentation.ts` is the shared renderer-neutral settings presentation seam. Each registered `WorkbenchSettingsSection` builds one immutable snapshot with the keyed composer and exposes actions only as opaque references. `src/core/host/settingsTab.ts` is the production Obsidian adapter; it renders the snapshot and sends interactions back through `invoke`.
 
-- The tab renders the definition tree through the imperative `display()` → `renderSettings()` path only; keep that single path working.
-- `refreshDefinitions()` always re-renders through `renderSettings()`, so every control must read live view-model state on each render.
-- Narrow unknown/union definition shapes with runtime guards before calling `render` in the manual path.
-- Preserve async tag discovery/refresh and runtime subscription cleanup; both now live in `src/features/flashcards.ts`, reached through that feature's settings section.
+- The tab renders through the imperative `display()` → `renderSettings()` path only; keep that single path working.
+- `refreshDefinitions()` always creates a new presentation generation through `renderSettings()`, installs it atomically, and disposes the old generation so detached controls cannot mutate current state.
+- Feature and host settings editors retain drafts, persistence, notices, subscriptions, and activate/hide lifecycle. Do not move those effects into the presentation module.
+- Add common renderer-neutral recipes to the closed composer catalog only when multiple settings sections need them. Keep feature-specific shapes out of the shared module.
+- Preserve async tag discovery/refresh and runtime subscription cleanup; both live behind the section assembled in `src/features/flashcards/feature.tsx`.
 - Pronunciation controls derive values and busy/cache state from `PronunciationRuntime`; do not duplicate transient state in the settings adapter.
 - After settings changes, explicitly verify that the settings tab is not blank when manual Obsidian testing is feasible.
 

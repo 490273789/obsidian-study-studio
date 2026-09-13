@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { FlashcardSettingTab } from "../settingsTab";
 import { DEFAULT_SETTINGS } from "../settingsSlices";
+import { defineSettings } from "../../settings/presentation";
 
 class MockElement {
 	children: MockElement[] = [];
@@ -159,17 +160,16 @@ describe("FlashcardSettingTab", () => {
 	 * dictionary feature contribute in production.
 	 */
 	function createMockPlugin() {
+		const presentation = (id: string, heading?: string, name?: string) =>
+			defineSettings(id, (page) => {
+				if (!heading || !name) return;
+				page.group("general", heading, (group) => group.row("row", { name }));
+			});
 		const flashcardsSection = {
 			id: "flashcards",
 			order: 0,
 			label: () => "闪卡设置",
-			definitions: () => [
-				{
-					type: "group",
-					heading: "闪卡设置",
-					items: [{ type: "setting", name: "每日新卡" }],
-				},
-			],
+			presentation: () => presentation("flashcards", "闪卡设置", "每日新卡"),
 			activate: vi.fn(),
 			hide: vi.fn(),
 		};
@@ -177,7 +177,7 @@ describe("FlashcardSettingTab", () => {
 			id: "ai",
 			order: 1,
 			label: () => "AI 引擎设置",
-			definitions: () => [],
+			presentation: () => presentation("ai"),
 			activate: vi.fn(),
 			hide: vi.fn(),
 		};
@@ -186,13 +186,7 @@ describe("FlashcardSettingTab", () => {
 			order: 2,
 			label: () => "AI 翻译",
 			// One group with one row is enough to prove the pane is not blank.
-			definitions: () => [
-				{
-					type: "group",
-					heading: "AI 翻译",
-					items: [{ type: "setting", name: "翻译方向" }],
-				},
-			],
+			presentation: () => presentation("translation", "AI 翻译", "翻译方向"),
 			activate: vi.fn(),
 			hide: vi.fn(),
 		};
@@ -200,7 +194,7 @@ describe("FlashcardSettingTab", () => {
 			id: "dictionary",
 			order: 3,
 			label: () => "英语字典",
-			definitions: () => [],
+			presentation: () => presentation("dictionary"),
 			activate: vi.fn(),
 			hide: vi.fn(),
 		};
@@ -388,6 +382,36 @@ describe("FlashcardSettingTab", () => {
 
 		// The scroll position must be preserved rather than reset to 0
 		expect(container.scrollTop).toBe(300);
+	});
+
+	it("disposes replaced generations and preserves the installed pane when rebuilding fails", () => {
+		const plugin = createMockPlugin();
+		const first = defineSettings("flashcards", (page) => {
+			page.group("general", "Flashcards", (group) => group.row("row", { name: "First" }));
+		});
+		const firstDispose = vi.spyOn(first, "dispose");
+		plugin.flashcardsSection.presentation = vi.fn(() => first);
+		const tab = new FlashcardSettingTab({} as never, plugin as never);
+		tab.display();
+		const contentBeforeFailure = (tab.containerEl as unknown as MockElement).children.find(
+			(child) => child.classList.has("fc-settings-tab-content"),
+		);
+
+		plugin.flashcardsSection.presentation = vi.fn(() => {
+			throw new Error("invalid definition");
+		});
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		tab.refresh();
+		expect(firstDispose).not.toHaveBeenCalled();
+		expect((tab.containerEl as unknown as MockElement).children).toContain(
+			contentBeforeFailure,
+		);
+
+		const replacement = defineSettings("flashcards", () => undefined);
+		plugin.flashcardsSection.presentation = vi.fn(() => replacement);
+		tab.refresh();
+		expect(firstDispose).toHaveBeenCalledOnce();
+		consoleError.mockRestore();
 	});
 
 	it("isolates scroll position across different sections and restores previous section scroll", () => {

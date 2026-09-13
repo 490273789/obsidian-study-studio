@@ -149,15 +149,14 @@ describe("flashcard feature", () => {
 		feature.stop();
 	});
 
-	it("renders the flashcards settings definitions from committed settings", () => {
+	it("builds the flashcards settings presentation from committed settings", () => {
 		const { feature, fake } = renderFeature();
 		const section = fake.sections.get("flashcards")!;
 
-		const definitions = section.definitions("zh");
+		const presentation = section.presentation("zh");
 
-		expect(definitions.length).toBeGreaterThan(0);
-		expect(definitions[0]!.type).toBe("group");
-		expect(JSON.stringify(definitions)).toContain("每日新卡");
+		expect(presentation.snapshot.groups.length).toBeGreaterThan(0);
+		expect(JSON.stringify(presentation.snapshot)).toContain("每日新卡");
 		feature.stop();
 	});
 

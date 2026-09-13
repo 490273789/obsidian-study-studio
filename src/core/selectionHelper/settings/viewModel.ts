@@ -1,7 +1,8 @@
-import type {
-	SettingsViewModelDefinition,
-	SettingsViewModelSetting,
-} from "../../settings/viewModel";
+import {
+	defineSettings,
+	settingsKey,
+	type SettingsPresentation,
+} from "../../settings/presentation";
 import type { Language } from "../../shared/types";
 import type { SelectionHelperModifier, SelectionHelperSettings } from "../domain/types";
 import { selectionHelperStrings } from "../strings/selectionPopup";
@@ -22,29 +23,20 @@ export function buildSelectionHelperSettingsViewModel(
 	availableDictionaries: readonly AvailableDictionaryItem[],
 	actions: SelectionHelperSettingsActions,
 	language: Language,
-): SettingsViewModelDefinition {
+): SettingsPresentation {
 	const strings = selectionHelperStrings(language);
 
-	const items: SettingsViewModelSetting[] = [
-		{
-			type: "setting",
-			name: strings.enablePopup,
-			desc: strings.enablePopupDesc,
-			controls: [
+	return defineSettings("selection-helper", (page) => {
+		page.group("general", strings.settingsHeading, (group) => {
+			group.toggle(
+				"enabled",
+				{ name: strings.enablePopup, description: strings.enablePopupDesc },
+				{ value: settings.enabled, onChange: actions.setEnabled },
+			);
+			group.select(
+				"modifier",
+				{ name: strings.modifier, description: strings.modifierDesc },
 				{
-					type: "toggle",
-					value: settings.enabled,
-					onChange: (value) => actions.setEnabled(value),
-				},
-			],
-		},
-		{
-			type: "setting",
-			name: strings.modifier,
-			desc: strings.modifierDesc,
-			controls: [
-				{
-					type: "select",
 					value: settings.modifier,
 					options: [
 						{ value: "none", label: strings.modifierNone },
@@ -54,41 +46,29 @@ export function buildSelectionHelperSettingsViewModel(
 					],
 					onChange: (value) => actions.setModifier(value as SelectionHelperModifier),
 				},
-			],
-		},
-	];
+			);
 
-	if (availableDictionaries.length > 0) {
-		items.push({
-			type: "setting",
-			name: strings.dictSelectionHeading,
-			desc: strings.dictSelectionDesc,
-		});
-
-		const selectedSet = new Set(
-			settings.selectedDictionaries.length > 0
-				? settings.selectedDictionaries
-				: availableDictionaries.map((d) => d.id),
-		);
-
-		for (const dict of availableDictionaries) {
-			items.push({
-				type: "setting",
-				name: dict.label,
-				controls: [
-					{
-						type: "toggle",
-						value: selectedSet.has(dict.id),
-						onChange: (enabled) => actions.toggleDictionary(dict.id, enabled),
-					},
-				],
+			if (availableDictionaries.length === 0) return;
+			group.row("dictionary-selection", {
+				name: strings.dictSelectionHeading,
+				description: strings.dictSelectionDesc,
 			});
-		}
-	}
 
-	return {
-		type: "group",
-		heading: strings.settingsHeading,
-		items,
-	};
+			const selectedSet = new Set(
+				settings.selectedDictionaries.length > 0
+					? settings.selectedDictionaries
+					: availableDictionaries.map((dictionary) => dictionary.id),
+			);
+			for (const dictionary of availableDictionaries) {
+				group.toggle(
+					`dictionary-${settingsKey(dictionary.id)}`,
+					{ name: dictionary.label },
+					{
+						value: selectedSet.has(dictionary.id),
+						onChange: (enabled) => actions.toggleDictionary(dictionary.id, enabled),
+					},
+				);
+			}
+		});
+	});
 }

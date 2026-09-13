@@ -1,4 +1,4 @@
-import { createTranslator } from "../strings/index";
+import type { ScopedWorkbenchSettings } from "../../../core/host/settingsSlices";
 import type {
 	Language,
 	OnlinePronunciationProvider,
@@ -6,11 +6,14 @@ import type {
 	PronunciationRate,
 	StudySettings,
 } from "../../../core/shared/types";
+import {
+	defineSettings,
+	type SettingsActionResult,
+	type SettingsPresentation,
+} from "../../../core/settings/presentation";
 import type { PronunciationCacheUsage, PronunciationSnapshot } from "../domain/pronunciation";
-import type { ScopedWorkbenchSettings } from "../../../core/host/settingsSlices";
-import { STUDY_SETTINGS_LIMITS, STUDY_ORDER_OPTIONS, parseStudyOrder } from "./studyMeta";
-
-export type SettingsActionResult = void | Promise<void>;
+import { createTranslator } from "../strings/index";
+import { STUDY_ORDER_OPTIONS, STUDY_SETTINGS_LIMITS, parseStudyOrder } from "./studyMeta";
 
 export interface SettingsViewModelState {
 	settings: ScopedWorkbenchSettings<"flashcards">;
@@ -45,582 +48,325 @@ export interface SettingsViewModelActions {
 	clearPronunciationCache: () => SettingsActionResult;
 }
 
-export type SettingsViewModelDefinition = SettingsViewModelGroup;
-
-export interface SettingsViewModelGroup {
-	type: "group";
-	heading: string;
-	items: SettingsViewModelSetting[];
-	visible?: SettingsVisibleState;
-}
-
-export interface SettingsViewModelSetting {
-	type: "setting";
-	name: string;
-	desc?: string;
-	help?: SettingsHelpModel;
-	controls?: SettingsViewModelControl[];
-	visible?: SettingsVisibleState;
-}
-
-export type SettingsVisibleState = boolean | (() => boolean);
-
-export type SettingsViewModelControl =
-	| SettingsButtonControl
-	| SettingsEditableTextListControl
-	| SettingsTagButtonsControl
-	| SettingsSelectControl
-	| SettingsSliderControl
-	| SettingsIntegerTextControl
-	| SettingsToggleControl
-	| SettingsTextareaControl
-	| SettingsTextControl
-	| SettingsSecretControl
-	| SettingsStatusControl
-	| SettingsReorderableListControl;
-
-export interface SettingsButtonControl {
-	type: "button";
-	label: string;
-	disabled: boolean;
-	onClick: () => SettingsActionResult;
-	variant?: "default" | "warning";
-}
-
-export interface SettingsEditableTextListControl {
-	type: "editableTextList";
-	variant: "flashcardTags";
-	values: string[];
-	placeholder: string;
-	addLabel: string;
-	removeAriaLabel: string;
-	onChange: (index: number, value: string) => SettingsActionResult;
-	onAdd: () => SettingsActionResult;
-	onRemove: (index: number) => SettingsActionResult;
-}
-
-export interface SettingsTagButtonsControl {
-	type: "tagButtons";
-	tags: string[];
-	emptyText: string;
-	onClick: (tag: string) => SettingsActionResult;
-}
-
-export interface SettingsSelectControl {
-	type: "select";
-	value: string;
-	options: SettingsSelectOption[];
-	disabled?: boolean;
-	onChange: (value: string) => SettingsActionResult;
-}
-
-export interface SettingsSelectOption {
-	value: string;
-	label: string;
-}
-
-export interface SettingsSliderControl {
-	type: "slider";
-	value: number;
-	min: number;
-	max: number;
-	step: number;
-	onChange: (value: number) => SettingsActionResult;
-}
-
-export interface SettingsIntegerTextControl {
-	type: "integerText";
-	value: number;
-	placeholder: string;
-	min: number;
-	max: number;
-	onChange: (value: number) => SettingsActionResult;
-}
-
-export interface SettingsToggleControl {
-	type: "toggle";
-	value: boolean;
-	disabled?: boolean;
-	onChange: (value: boolean) => SettingsActionResult;
-}
-
-export interface SettingsTextControl {
-	type: "text";
-	value: string;
-	placeholder: string;
-	disabled?: boolean;
-	onChange: (value: string) => SettingsActionResult;
-}
-
-export interface SettingsTextareaControl {
-	type: "textarea";
-	value: string;
-	placeholder: string;
-	disabled?: boolean;
-	onChange: (value: string) => SettingsActionResult;
-}
-
-export interface SettingsSecretControl {
-	type: "secret";
-	value: string;
-	disabled?: boolean;
-	onChange: (value: string) => SettingsActionResult;
-}
-
-export interface SettingsStatusControl {
-	type: "status";
-	text: string;
-}
-
-export interface SettingsReorderableItem {
-	description?: string;
-	enabled: boolean;
-	id: string;
-	kindLabel: string;
-	label: string;
-	onToggle: (enabled: boolean) => void;
-}
-
-export interface SettingsReorderableListControl {
-	type: "reorderableList";
-	allowDrag: boolean;
-	emptyText?: string;
-	items: SettingsReorderableItem[];
-	onMove: (fromIndex: number, toIndex: number) => void;
-	onRemove?: (id: string) => void;
-	/** Tooltip for the remove button; required whenever `onRemove` is provided. */
-	tooltips: { drag: string; moveDown: string; moveUp: string; remove?: string };
-}
-
-export interface SettingsHelpModel {
-	cardFormatTitle: string;
-	cardFormatExample: string;
-	shortcutsTitle: string;
-	shortcuts: string[];
-}
-
 const LANGUAGE_OPTIONS: readonly Language[] = ["zh", "en"];
 
 export function buildSettingsViewModel(
 	state: SettingsViewModelState,
 	actions: SettingsViewModelActions,
-): SettingsViewModelDefinition[] {
+): SettingsPresentation {
 	const t = createTranslator(state.language);
 	const unusedTags = getUnusedTags(state.availableTags, state.settings.flashcardTags);
 	const pronunciation = state.pronunciation;
 	const pronunciationSettings = pronunciation.settings;
 	const pronunciationBusy = pronunciation.management !== "idle";
 
-	return [
-		{
-			type: "group",
-			heading: t("settings.flashcardGroup"),
-			items: [
+	return defineSettings("flashcards", (page) => {
+		page.group("flashcards", t("settings.flashcardGroup"), (group) => {
+			group.row(
+				"configured-tags",
 				{
-					type: "setting",
 					name: t("settings.flashcardTagsName"),
-					desc: t("settings.flashcardTagsDesc"),
-					controls: [
-						{
-							type: "button",
-							label: state.isLoadingTags
-								? t("settings.refreshingTags")
-								: t("settings.refreshAndCleanTags"),
-							disabled: state.isLoadingTags,
-							onClick: () =>
-								actions.refreshTags({
-									cleanConfiguredTags: true,
-								}),
-						},
-						{
-							type: "editableTextList",
-							variant: "flashcardTags",
-							values: state.settings.flashcardTags,
-							placeholder: t("settings.flashcardTagPlaceholder"),
-							addLabel: t("settings.addTag"),
-							removeAriaLabel: t("settings.delete"),
-							onChange: actions.updateFlashcardTag,
-							onAdd: actions.addFlashcardTag,
-							onRemove: actions.removeFlashcardTag,
-						},
-					],
+					description: t("settings.flashcardTagsDesc"),
 				},
+				(row) => {
+					row.button("refresh", {
+						label: state.isLoadingTags
+							? t("settings.refreshingTags")
+							: t("settings.refreshAndCleanTags"),
+						disabled: state.isLoadingTags,
+						onPress: () => actions.refreshTags({ cleanConfiguredTags: true }),
+					});
+					row.editableList("tags", {
+						values: state.settings.flashcardTags,
+						placeholder: t("settings.flashcardTagPlaceholder"),
+						addLabel: t("settings.addTag"),
+						removeAriaLabel: t("settings.delete"),
+						onChange: actions.updateFlashcardTag,
+						onAdd: actions.addFlashcardTag,
+						onRemove: actions.removeFlashcardTag,
+					});
+				},
+			);
+			group.row(
+				"discovered-tags",
 				{
-					type: "setting",
 					name: t("settings.discoveredTagsName"),
-					desc: t("settings.discoveredTagsDesc"),
-					controls: [
-						{
-							type: "button",
-							label: state.isLoadingTags
-								? t("settings.refreshingTags")
-								: t("settings.refreshTags"),
-							disabled: state.isLoadingTags,
-							onClick: () =>
-								actions.refreshTags({
-									cleanConfiguredTags: false,
-								}),
-						},
-						{
-							type: "tagButtons",
-							tags: unusedTags,
-							emptyText: state.hasLoadedTags
-								? t("settings.noDiscoveredTags")
-								: t("settings.discoveredTagsNotLoaded"),
-							onClick: actions.addDiscoveredTag,
-						},
-					],
+					description: t("settings.discoveredTagsDesc"),
 				},
-			],
-		},
-		{
-			type: "group",
-			heading: t("settings.interfaceGroup"),
-			items: [
-				{
-					type: "setting",
-					name: t("settings.languageName"),
-					desc: t("settings.languageDesc"),
-					controls: [
-						{
-							type: "select",
-							value: state.language,
-							options: LANGUAGE_OPTIONS.map((language) => ({
-								value: language,
-								label:
-									language === "zh"
-										? t("settings.languageZh")
-										: t("settings.languageEn"),
-							})),
-							onChange: (value) => actions.setLanguage(parseLanguage(value)),
-						},
-					],
+				(row) => {
+					row.button("refresh", {
+						label: state.isLoadingTags
+							? t("settings.refreshingTags")
+							: t("settings.refreshTags"),
+						disabled: state.isLoadingTags,
+						onPress: () => actions.refreshTags({ cleanConfiguredTags: false }),
+					});
+					row.choiceButtons("tags", {
+						choices: unusedTags.map((tag) => ({ id: tag, label: tag })),
+						emptyText: state.hasLoadedTags
+							? t("settings.noDiscoveredTags")
+							: t("settings.discoveredTagsNotLoaded"),
+						onChoose: actions.addDiscoveredTag,
+					});
 				},
-			],
-		},
-		{
-			type: "group",
-			heading: t("settings.defaultStudyGroup"),
-			items: [
+			);
+		});
+
+		page.group("interface", t("settings.interfaceGroup"), (group) => {
+			group.select(
+				"language",
+				{ name: t("settings.languageName"), description: t("settings.languageDesc") },
 				{
-					type: "setting",
-					name: t("settings.scopeName"),
-					desc: t("settings.scopeDesc"),
+					value: state.language,
+					options: LANGUAGE_OPTIONS.map((language) => ({
+						value: language,
+						label:
+							language === "zh" ? t("settings.languageZh") : t("settings.languageEn"),
+					})),
+					onChange: actions.setLanguage,
 				},
+			);
+		});
+
+		page.group("study", t("settings.defaultStudyGroup"), (group) => {
+			group.row("scope", {
+				name: t("settings.scopeName"),
+				description: t("settings.scopeDesc"),
+			});
+			group.slider(
+				"daily-new",
+				{ name: t("settings.dailyNewName"), description: t("settings.dailyNewDesc") },
 				{
-					type: "setting",
-					name: t("settings.dailyNewName"),
-					desc: t("settings.dailyNewDesc"),
-					controls: [
-						{
-							type: "slider",
-							min: STUDY_SETTINGS_LIMITS.dailyNewCards.min,
-							max: STUDY_SETTINGS_LIMITS.dailyNewCards.max,
-							step: STUDY_SETTINGS_LIMITS.dailyNewCards.step,
-							value: state.settings.dailyNewCards,
-							onChange: actions.setDailyNewCards,
-						},
-					],
+					...STUDY_SETTINGS_LIMITS.dailyNewCards,
+					value: state.settings.dailyNewCards,
+					onChange: actions.setDailyNewCards,
 				},
+			);
+			group.slider(
+				"daily-review",
+				{ name: t("settings.dailyReviewName"), description: t("settings.dailyReviewDesc") },
 				{
-					type: "setting",
-					name: t("settings.dailyReviewName"),
-					desc: t("settings.dailyReviewDesc"),
-					controls: [
-						{
-							type: "slider",
-							min: STUDY_SETTINGS_LIMITS.dailyReviewCards.min,
-							max: STUDY_SETTINGS_LIMITS.dailyReviewCards.max,
-							step: STUDY_SETTINGS_LIMITS.dailyReviewCards.step,
-							value: state.settings.dailyReviewCards,
-							onChange: actions.setDailyReviewCards,
-						},
-					],
+					...STUDY_SETTINGS_LIMITS.dailyReviewCards,
+					value: state.settings.dailyReviewCards,
+					onChange: actions.setDailyReviewCards,
 				},
+			);
+			group.select(
+				"study-order",
+				{ name: t("settings.studyOrderName"), description: t("settings.studyOrderDesc") },
 				{
-					type: "setting",
-					name: t("settings.studyOrderName"),
-					desc: t("settings.studyOrderDesc"),
-					controls: [
-						{
-							type: "select",
-							value: state.settings.studyOrder,
-							options: STUDY_ORDER_OPTIONS.map((order) => ({
-								value: order,
-								label: t(
-									order === "sequential" ? "order.sequential" : "order.random",
-								),
-							})),
-							onChange: (value) => actions.setStudyOrder(parseStudyOrder(value)),
-						},
-					],
+					value: state.settings.studyOrder,
+					options: STUDY_ORDER_OPTIONS.map((order) => ({
+						value: order,
+						label: t(order === "sequential" ? "order.sequential" : "order.random"),
+					})),
+					onChange: (value) => actions.setStudyOrder(parseStudyOrder(value)),
 				},
-			],
-		},
-		{
-			type: "group",
-			heading: t("settings.pronunciationGroup"),
-			items: [
+			);
+		});
+
+		page.group("pronunciation", t("settings.pronunciationGroup"), (group) => {
+			group.toggle(
+				"auto-play",
 				{
-					type: "setting",
 					name: t("settings.pronunciationAutoName"),
-					desc: t("settings.pronunciationAutoDesc"),
-					controls: [
-						{
-							type: "toggle",
-							value: pronunciationSettings.spellingAutoPlay,
-							disabled: pronunciationBusy,
-							onChange: actions.setPronunciationAutoPlay,
-						},
-					],
+					description: t("settings.pronunciationAutoDesc"),
 				},
 				{
-					type: "setting",
+					value: pronunciationSettings.spellingAutoPlay,
+					disabled: pronunciationBusy,
+					onChange: actions.setPronunciationAutoPlay,
+				},
+			);
+			group.select(
+				"accent",
+				{
 					name: t("settings.pronunciationAccentName"),
-					desc: t("settings.pronunciationAccentDesc"),
-					controls: [
-						{
-							type: "select",
-							value: pronunciationSettings.accent,
-							disabled: pronunciationBusy,
-							options: [
-								{
-									value: "system",
-									label: t("settings.pronunciationAccentSystem"),
-								},
-								{
-									value: "en-US",
-									label: t("settings.pronunciationAccentUs"),
-								},
-								{
-									value: "en-GB",
-									label: t("settings.pronunciationAccentGb"),
-								},
-							],
-							onChange: (value) =>
-								actions.setPronunciationAccent(parsePronunciationAccent(value)),
-						},
-					],
+					description: t("settings.pronunciationAccentDesc"),
 				},
 				{
-					type: "setting",
-					name: t("settings.pronunciationRateName"),
-					controls: [
-						{
-							type: "select",
-							value: pronunciationSettings.rate,
-							disabled: pronunciationBusy,
-							options: [
-								{
-									value: "normal",
-									label: t("settings.pronunciationRateNormal"),
-								},
-								{
-									value: "slow",
-									label: t("settings.pronunciationRateSlow"),
-								},
-							],
-							onChange: (value) =>
-								actions.setPronunciationRate(parsePronunciationRate(value)),
-						},
+					value: pronunciationSettings.accent,
+					disabled: pronunciationBusy,
+					options: [
+						{ value: "system", label: t("settings.pronunciationAccentSystem") },
+						{ value: "en-US", label: t("settings.pronunciationAccentUs") },
+						{ value: "en-GB", label: t("settings.pronunciationAccentGb") },
 					],
+					onChange: (value) =>
+						actions.setPronunciationAccent(parsePronunciationAccent(value)),
 				},
+			);
+			group.select(
+				"rate",
+				{ name: t("settings.pronunciationRateName") },
 				{
-					type: "setting",
+					value: pronunciationSettings.rate,
+					disabled: pronunciationBusy,
+					options: [
+						{ value: "normal", label: t("settings.pronunciationRateNormal") },
+						{ value: "slow", label: t("settings.pronunciationRateSlow") },
+					],
+					onChange: (value) =>
+						actions.setPronunciationRate(parsePronunciationRate(value)),
+				},
+			);
+			group.select(
+				"provider",
+				{
 					name: t("settings.pronunciationProviderName"),
-					desc: t("settings.pronunciationProviderDesc"),
-					controls: [
-						{
-							type: "select",
-							value: pronunciationSettings.onlineProvider,
-							disabled: pronunciationBusy,
-							options: [
-								{
-									value: "none",
-									label: t("settings.pronunciationProviderNone"),
-								},
-								{
-									value: "azure",
-									label: t("settings.pronunciationProviderAzure"),
-								},
-								{
-									value: "openai",
-									label: t("settings.pronunciationProviderOpenAi"),
-								},
-							],
-							onChange: (value) =>
-								actions.setOnlinePronunciationProvider(
-									parseOnlinePronunciationProvider(value),
-								),
-						},
-					],
+					description: t("settings.pronunciationProviderDesc"),
 				},
 				{
-					type: "setting",
+					value: pronunciationSettings.onlineProvider,
+					disabled: pronunciationBusy,
+					options: [
+						{ value: "none", label: t("settings.pronunciationProviderNone") },
+						{ value: "azure", label: t("settings.pronunciationProviderAzure") },
+						{ value: "openai", label: t("settings.pronunciationProviderOpenAi") },
+					],
+					onChange: (value) =>
+						actions.setOnlinePronunciationProvider(
+							parseOnlinePronunciationProvider(value),
+						),
+				},
+			);
+			group.select(
+				"azure-cloud",
+				{
 					name: t("settings.pronunciationAzureCloudName"),
 					visible: pronunciationSettings.onlineProvider === "azure",
-					controls: [
-						{
-							type: "select",
-							value: pronunciationSettings.azureCloud,
-							disabled: pronunciationBusy,
-							options: [
-								{
-									value: "china",
-									label: t("settings.pronunciationAzureChina"),
-								},
-								{
-									value: "global",
-									label: t("settings.pronunciationAzureGlobal"),
-								},
-							],
-							onChange: (value) =>
-								actions.setAzureCloud(value === "global" ? "global" : "china"),
-						},
-					],
 				},
 				{
-					type: "setting",
+					value: pronunciationSettings.azureCloud,
+					disabled: pronunciationBusy,
+					options: [
+						{ value: "china", label: t("settings.pronunciationAzureChina") },
+						{ value: "global", label: t("settings.pronunciationAzureGlobal") },
+					],
+					onChange: actions.setAzureCloud,
+				},
+			);
+			group.text(
+				"azure-region",
+				{
 					name: t("settings.pronunciationAzureRegionName"),
-					desc:
+					description:
 						pronunciationSettings.azureCloud === "china"
 							? t("settings.pronunciationAzureChinaRegionDesc")
 							: t("settings.pronunciationAzureGlobalRegionDesc"),
 					visible: pronunciationSettings.onlineProvider === "azure",
-					controls: [
-						{
-							type: "text",
-							value: pronunciationSettings.azureRegion,
-							placeholder:
-								pronunciationSettings.azureCloud === "china"
-									? "chinaeast2"
-									: "eastus",
-							disabled: pronunciationBusy,
-							onChange: actions.setAzureRegion,
-						},
-					],
 				},
 				{
-					type: "setting",
+					value: pronunciationSettings.azureRegion,
+					placeholder:
+						pronunciationSettings.azureCloud === "china" ? "chinaeast2" : "eastus",
+					disabled: pronunciationBusy,
+					onChange: actions.setAzureRegion,
+				},
+			);
+			group.secret(
+				"azure-secret",
+				{
 					name: t("settings.pronunciationAzureSecretName"),
-					desc: t("settings.pronunciationAzureSecretDesc"),
+					description: t("settings.pronunciationAzureSecretDesc"),
 					visible: pronunciationSettings.onlineProvider === "azure",
-					controls: [
-						{
-							type: "secret",
-							value: pronunciationSettings.azureSecretId,
-							disabled: pronunciationBusy,
-							onChange: actions.setAzureSecretId,
-						},
-					],
 				},
 				{
-					type: "setting",
+					value: pronunciationSettings.azureSecretId,
+					disabled: pronunciationBusy,
+					onChange: actions.setAzureSecretId,
+				},
+			);
+			group.secret(
+				"openai-secret",
+				{
 					name: t("settings.pronunciationOpenAiSecretName"),
-					desc: t("settings.pronunciationOpenAiSecretDesc"),
-					visible: pronunciationSettings.onlineProvider === "openai",
-					controls: [
-						{
-							type: "secret",
-							value: pronunciationSettings.openaiSecretId,
-							disabled: pronunciationBusy,
-							onChange: actions.setOpenAiSecretId,
-						},
-					],
-				},
-				{
-					type: "setting",
-					name: t("settings.pronunciationOpenAiWarningName"),
-					desc: t("settings.pronunciationOpenAiWarningDesc"),
+					description: t("settings.pronunciationOpenAiSecretDesc"),
 					visible: pronunciationSettings.onlineProvider === "openai",
 				},
 				{
-					type: "setting",
+					value: pronunciationSettings.openaiSecretId,
+					disabled: pronunciationBusy,
+					onChange: actions.setOpenAiSecretId,
+				},
+			);
+			group.row("openai-warning", {
+				name: t("settings.pronunciationOpenAiWarningName"),
+				description: t("settings.pronunciationOpenAiWarningDesc"),
+				visible: pronunciationSettings.onlineProvider === "openai",
+			});
+			group.button(
+				"test-provider",
+				{
 					name: t("settings.pronunciationTestName"),
-					desc: t("settings.pronunciationTestDesc"),
+					description: t("settings.pronunciationTestDesc"),
 					visible: pronunciationSettings.onlineProvider !== "none",
-					controls: [
-						{
-							type: "button",
-							label:
-								pronunciation.management === "testing-provider"
-									? t("settings.pronunciationTesting")
-									: t("settings.pronunciationTestButton"),
-							disabled: pronunciationBusy,
-							onClick: actions.testOnlinePronunciation,
-						},
-					],
 				},
 				{
-					type: "setting",
+					label:
+						pronunciation.management === "testing-provider"
+							? t("settings.pronunciationTesting")
+							: t("settings.pronunciationTestButton"),
+					disabled: pronunciationBusy,
+					onPress: actions.testOnlinePronunciation,
+				},
+			);
+			group.row(
+				"cache",
+				{
 					name: t("settings.pronunciationCacheName"),
-					desc: t("settings.pronunciationCacheDesc"),
-					controls: [
-						{
-							type: "status",
-							text: formatPronunciationCacheUsage(pronunciation.cacheUsage, t),
-						},
-						{
-							type: "button",
-							label:
-								pronunciation.management === "clearing-cache"
-									? t("settings.pronunciationCacheClearing")
-									: t("settings.pronunciationCacheClear"),
-							disabled: pronunciationBusy,
-							onClick: actions.clearPronunciationCache,
-						},
-					],
+					description: t("settings.pronunciationCacheDesc"),
 				},
-			],
-		},
-		{
-			type: "group",
-			heading: t("settings.fsrsGroup"),
-			items: [
-				{
-					type: "setting",
-					name: t("settings.retentionName"),
-					desc: t("settings.retentionDesc"),
-					controls: [
-						{
-							type: "slider",
-							min: STUDY_SETTINGS_LIMITS.requestRetention.min,
-							max: STUDY_SETTINGS_LIMITS.requestRetention.max,
-							step: STUDY_SETTINGS_LIMITS.requestRetention.step,
-							value: state.settings.fsrsParameters.requestRetention,
-							onChange: actions.setRequestRetention,
-						},
-					],
+				(row) => {
+					row.status("usage", formatPronunciationCacheUsage(pronunciation.cacheUsage, t));
+					row.button("clear", {
+						label:
+							pronunciation.management === "clearing-cache"
+								? t("settings.pronunciationCacheClearing")
+								: t("settings.pronunciationCacheClear"),
+						disabled: pronunciationBusy,
+						onPress: actions.clearPronunciationCache,
+					});
 				},
+			);
+		});
+
+		page.group("fsrs", t("settings.fsrsGroup"), (group) => {
+			group.slider(
+				"retention",
+				{ name: t("settings.retentionName"), description: t("settings.retentionDesc") },
 				{
-					type: "setting",
+					...STUDY_SETTINGS_LIMITS.requestRetention,
+					value: state.settings.fsrsParameters.requestRetention,
+					onChange: actions.setRequestRetention,
+				},
+			);
+			group.integer(
+				"maximum-interval",
+				{
 					name: t("settings.maxIntervalName"),
-					desc: t("settings.maxIntervalDesc"),
-					controls: [
-						{
-							type: "integerText",
-							placeholder: String(STUDY_SETTINGS_LIMITS.maximumInterval.default),
-							min: STUDY_SETTINGS_LIMITS.maximumInterval.min,
-							max: STUDY_SETTINGS_LIMITS.maximumInterval.max,
-							value: state.settings.fsrsParameters.maximumInterval,
-							onChange: actions.setMaximumInterval,
-						},
-					],
+					description: t("settings.maxIntervalDesc"),
 				},
-			],
-		},
-		{
-			type: "group",
-			heading: t("settings.helpGroup"),
-			items: [
 				{
-					type: "setting",
-					name: t("settings.helpName"),
-					help: {
-						cardFormatTitle: t("settings.cardFormatTitle"),
-						cardFormatExample: t("settings.cardFormatExample"),
-						shortcutsTitle: t("settings.shortcutsTitle"),
-						shortcuts: [
+					min: STUDY_SETTINGS_LIMITS.maximumInterval.min,
+					max: STUDY_SETTINGS_LIMITS.maximumInterval.max,
+					step: 1,
+					value: state.settings.fsrsParameters.maximumInterval,
+					onChange: actions.setMaximumInterval,
+				},
+			);
+		});
+
+		page.group("help", t("settings.helpGroup"), (group) => {
+			group.row("usage", {
+				name: t("settings.helpName"),
+				description: [
+					{ kind: "paragraph", text: t("settings.cardFormatTitle") },
+					{ kind: "code", text: t("settings.cardFormatExample") },
+					{ kind: "paragraph", text: t("settings.shortcutsTitle") },
+					{
+						kind: "list",
+						items: [
 							t("settings.shortcutSpace"),
 							t("settings.shortcutAgain"),
 							t("settings.shortcutHard"),
@@ -630,18 +376,14 @@ export function buildSettingsViewModel(
 							t("settings.shortcutPrevious"),
 						],
 					},
-				},
-			],
-		},
-	];
+				],
+			});
+		});
+	});
 }
 
 export function getUnusedTags(availableTags: string[], configuredTags: string[]): string[] {
 	return availableTags.filter((tag) => !configuredTags.includes(tag));
-}
-
-function parseLanguage(value: string): Language {
-	return value === "en" ? "en" : "zh";
 }
 
 function parsePronunciationAccent(value: string): PronunciationAccent {

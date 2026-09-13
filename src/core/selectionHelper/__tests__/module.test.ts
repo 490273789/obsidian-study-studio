@@ -16,7 +16,7 @@ describe("selection helper workbench module", () => {
 
 		const section = fakeHost.sections.get("selectionPopup");
 		expect(section?.order).toBe(4);
-		expect(section?.definitions("zh")[0]?.heading).toBe("划词助手");
+		expect(section?.presentation("zh").snapshot.groups[0]?.heading).toBe("划词助手");
 		expect(fakeHost.catalog.size).toBe(0);
 		expect(() => module.stop()).not.toThrow();
 	});

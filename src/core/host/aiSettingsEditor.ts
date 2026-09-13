@@ -36,7 +36,7 @@ export class AiSettingsEditor {
 		this.unsubscribe = null;
 		this.view = "list";
 	}
-	definitions() {
+	presentation() {
 		return buildAiSettingsViewModel(
 			{
 				snapshot: this.service.getSnapshot(),

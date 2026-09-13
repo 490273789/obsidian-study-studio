@@ -1,12 +1,13 @@
 import { aiStrings } from "../i18n/ai";
 import type { Language } from "../shared/types";
 import type { AiEngineConfig, AiModel, AiProvider, AiSnapshot } from "../ai";
-import type {
-	SettingsViewModelDefinition,
-	SettingsViewModelSetting,
-	SettingsViewModelControl,
-	SettingsActionResult,
-} from "../settings/viewModel";
+import {
+	defineSettings,
+	settingsKey,
+	type SettingsActionResult,
+	type SettingsPresentation,
+	type SettingsRowBuilder,
+} from "../settings/presentation";
 
 export type AiViewMode = "list" | "form";
 
@@ -38,41 +39,39 @@ export function buildAiSettingsViewModel(
 	state: AiEditorState,
 	actions: AiEditorActions,
 	language: Language,
-): SettingsViewModelDefinition {
+): SettingsPresentation {
 	const t = aiStrings(language);
 	const { draft, snapshot, saving, view = "list", draftIsNew = false } = state;
 	const loading = snapshot.loadingModels.includes(draft.id);
 	const testing = snapshot.testing.includes(draft.id);
 
-	const row = (
-		name: string,
-		controls: SettingsViewModelControl[],
-		desc?: string,
-	): SettingsViewModelSetting => ({ type: "setting", name, controls, desc });
 	const text = (
+		row: SettingsRowBuilder,
 		field: "name" | "baseUrl" | "model",
 		placeholder: string,
-	): SettingsViewModelControl => ({
-		type: "text",
-		value: draft[field],
-		placeholder,
-		disabled: saving,
-		onChange: (value) => actions.patch({ [field]: value }),
-	});
+	) =>
+		row.text(field, {
+			value: draft[field],
+			placeholder,
+			disabled: saving,
+			onChange: (value) => actions.patch({ [field]: value }),
+		});
 	const button = (
+		row: SettingsRowBuilder,
+		key: string,
 		label: string,
 		onClick: () => SettingsActionResult,
 		disabled = saving,
-		variant?: "default" | "warning",
-	): SettingsViewModelControl => ({ type: "button", label, onClick, disabled, variant });
+		tone?: "neutral" | "warning",
+	) => row.button(key, { label, onPress: onClick, disabled, tone });
 
-	if (view === "list") {
-		const items: SettingsViewModelSetting[] = [
-			row(
-				t.defaultConfig,
-				[
+	return defineSettings("ai-engines", (page) => {
+		if (view === "list") {
+			page.group("engines", t.heading, (group) => {
+				group.select(
+					"default",
+					{ name: t.defaultConfig, description: t.defaultHelp },
 					{
-						type: "select",
 						value: snapshot.settings.defaultConfigId ?? "",
 						disabled: saving,
 						options: [
@@ -84,117 +83,135 @@ export function buildAiSettingsViewModel(
 						],
 						onChange: actions.setDefault,
 					},
-				],
-				t.defaultHelp,
-			),
-			row(
-				t.engineList,
-				[button(t.addEngine, () => (actions.toAdd ? actions.toAdd() : actions.add?.()))],
-				t.engineListDesc,
-			),
-		];
+				);
+				group.button(
+					"add",
+					{ name: t.engineList, description: t.engineListDesc },
+					{
+						label: t.addEngine,
+						disabled: saving,
+						onPress: () => (actions.toAdd ? actions.toAdd() : actions.add?.()),
+					},
+				);
 
-		if (snapshot.settings.configs.length === 0) {
-			items.push(row(t.noConfigs, [], t.noConfigsDesc));
-		} else {
-			for (const config of snapshot.settings.configs) {
-				const isDefault = config.id === snapshot.settings.defaultConfigId;
-				const name = isDefault ? `${config.name} ${t.defaultBadge}` : config.name;
-				const providerLabel = t[config.provider] ?? config.provider;
-				const desc = `${providerLabel} · ${config.model || t.none}`;
-				items.push(
-					row(
-						name,
-						[
-							button(t.edit, () =>
+				if (snapshot.settings.configs.length === 0) {
+					group.row("empty", { name: t.noConfigs, description: t.noConfigsDesc });
+					return;
+				}
+				for (const config of snapshot.settings.configs) {
+					const isDefault = config.id === snapshot.settings.defaultConfigId;
+					const name = isDefault ? `${config.name} ${t.defaultBadge}` : config.name;
+					const providerLabel = t[config.provider] ?? config.provider;
+					group.row(
+						`engine-${settingsKey(config.id)}`,
+						{ name, description: `${providerLabel} · ${config.model || t.none}` },
+						(row) => {
+							button(row, "edit", t.edit, () =>
 								actions.toEdit
 									? actions.toEdit(config.id)
 									: actions.select?.(config.id),
-							),
-							button(t.delete, () => actions.remove(config.id), saving, "warning"),
-						],
-						desc,
-					),
-				);
-			}
+							);
+							button(
+								row,
+								"delete",
+								t.delete,
+								() => actions.remove(config.id),
+								saving,
+								"warning",
+							);
+						},
+					);
+				}
+			});
+			return;
 		}
 
-		return {
-			type: "group",
-			heading: t.heading,
-			items,
-		};
-	}
-
-	return {
-		type: "group",
-		heading: `${t.heading} - ${draftIsNew ? t.addEngineHeading : t.editEngineHeading}`,
-		items: [
-			row(t.back, [button(t.back, () => actions.back?.())], t.backDesc),
-			row(t.name, [text("name", t.namePlaceholder)]),
-			row(t.provider, [
-				{
-					type: "select",
-					value: draft.provider,
-					disabled: saving,
-					options: (["deepseek", "bailian", "youdao"] as const).map((provider) => ({
-						value: provider,
-						label: t[provider],
-					})),
-					onChange: (value) => {
-						if (value === "deepseek" || value === "bailian" || value === "youdao")
-							return actions.provider(value);
-					},
-				},
-			]),
-			row(t.baseUrl, [text("baseUrl", "https://…")], t.baseHelp),
-			row(
-				t.secret,
-				[
+		page.group(
+			"engine-form",
+			`${t.heading} - ${draftIsNew ? t.addEngineHeading : t.editEngineHeading}`,
+			(group) => {
+				group.button(
+					"back",
+					{ name: t.back, description: t.backDesc },
 					{
-						type: "secret",
+						label: t.back,
+						disabled: saving,
+						onPress: () => actions.back?.(),
+					},
+				);
+				group.row("name", { name: t.name }, (row) => text(row, "name", t.namePlaceholder));
+				group.select(
+					"provider",
+					{ name: t.provider },
+					{
+						value: draft.provider,
+						disabled: saving,
+						options: (["deepseek", "bailian", "youdao"] as const).map((provider) => ({
+							value: provider,
+							label: t[provider],
+						})),
+						onChange: actions.provider,
+					},
+				);
+				group.row("base-url", { name: t.baseUrl, description: t.baseHelp }, (row) =>
+					text(row, "baseUrl", "https://…"),
+				);
+				group.secret(
+					"secret",
+					{ name: t.secret, description: t.secretHelp },
+					{
 						value: draft.secretId,
 						disabled: saving,
 						onChange: (secretId) => actions.patch({ secretId }),
 					},
-				],
-				t.secretHelp,
-			),
-			row(t.model, [text("model", t.modelPlaceholder)], t.modelHelp),
-			row(t.modelList, [
-				button(loading ? t.loading : t.loadModels, actions.loadModels, saving || loading),
-				...(state.models.length
-					? [
-							{
-								type: "select" as const,
-								value: draft.model,
-								disabled: saving,
-								options: [
-									...(!state.models.some((model) => model.id === draft.model)
-										? [{ value: draft.model, label: draft.model || t.none }]
-										: []),
-									...state.models.map((model) => ({
-										value: model.id,
-										label: `${model.id} (${t[model.imageInput]})`,
-									})),
-								],
-								onChange: actions.selectModel,
-							},
-						]
-					: []),
-			]),
-			row(
-				t.test,
-				[button(testing ? t.testing : t.test, actions.test, saving || testing)],
-				t.testHelp,
-			),
-			row(t.configuration, [
-				button(t.save, actions.save),
-				button(t.cancel, () => actions.back?.()),
-				...(!draftIsNew
-					? [button(t.remove, () => actions.remove(draft.id), saving, "warning" as const)]
-					: []),
-			]),
-		],
-	};
+				);
+				group.row("model", { name: t.model, description: t.modelHelp }, (row) =>
+					text(row, "model", t.modelPlaceholder),
+				);
+				group.row("models", { name: t.modelList }, (row) => {
+					button(
+						row,
+						"load",
+						loading ? t.loading : t.loadModels,
+						actions.loadModels,
+						saving || loading,
+					);
+					if (state.models.length > 0) {
+						row.select("available", {
+							value: draft.model,
+							disabled: saving,
+							options: state.models.map((model) => ({
+								value: model.id,
+								label: `${model.id} (${t[model.imageInput]})`,
+							})),
+							missingValueLabel: draft.model || t.none,
+							onChange: actions.selectModel,
+						});
+					}
+				});
+				group.button(
+					"test",
+					{ name: t.test, description: t.testHelp },
+					{
+						label: testing ? t.testing : t.test,
+						disabled: saving || testing,
+						onPress: actions.test,
+					},
+				);
+				group.row("configuration", { name: t.configuration }, (row) => {
+					button(row, "save", t.save, actions.save);
+					button(row, "cancel", t.cancel, () => actions.back?.());
+					if (!draftIsNew)
+						button(
+							row,
+							"remove",
+							t.remove,
+							() => actions.remove(draft.id),
+							saving,
+							"warning",
+						);
+				});
+			},
+		);
+	});
 }

@@ -29,36 +29,33 @@ export function createSelectionHelperModule(
 		id: SELECTION_HELPER_SECTION_ID,
 		order: 4,
 		label: (language) => selectionHelperStrings(language).settingsHeading,
-		definitions: (language) => {
+		presentation: (language) => {
 			const sources = deps.dictionary.sources();
-			return [
-				buildSelectionHelperSettingsViewModel(
-					host.settings.read().selectionPopup,
-					sources.map(({ id, label }) => ({ id, label })),
-					{
-						setEnabled: async (enabled) => {
-							await commitSelectionSettings(host, { enabled });
-							host.settingsTab.refresh();
-						},
-						setModifier: async (modifier) => {
-							await commitSelectionSettings(host, { modifier });
-							host.settingsTab.refresh();
-						},
-						toggleDictionary: async (id, enabled) => {
-							const current =
-								host.settings.read().selectionPopup.selectedDictionaries;
-							const base =
-								current.length > 0 ? current : sources.map((source) => source.id);
-							const selectedDictionaries = enabled
-								? Array.from(new Set([...base, id]))
-								: base.filter((item) => item !== id);
-							await commitSelectionSettings(host, { selectedDictionaries });
-							host.settingsTab.refresh();
-						},
+			return buildSelectionHelperSettingsViewModel(
+				host.settings.read().selectionPopup,
+				sources.map(({ id, label }) => ({ id, label })),
+				{
+					setEnabled: async (enabled) => {
+						await commitSelectionSettings(host, { enabled });
+						host.settingsTab.refresh();
 					},
-					language,
-				),
-			];
+					setModifier: async (modifier) => {
+						await commitSelectionSettings(host, { modifier });
+						host.settingsTab.refresh();
+					},
+					toggleDictionary: async (id, enabled) => {
+						const current = host.settings.read().selectionPopup.selectedDictionaries;
+						const base =
+							current.length > 0 ? current : sources.map((source) => source.id);
+						const selectedDictionaries = enabled
+							? Array.from(new Set([...base, id]))
+							: base.filter((item) => item !== id);
+						await commitSelectionSettings(host, { selectedDictionaries });
+						host.settingsTab.refresh();
+					},
+				},
+				language,
+			);
 		},
 	});
 

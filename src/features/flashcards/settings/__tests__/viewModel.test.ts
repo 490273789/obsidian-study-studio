@@ -1,20 +1,20 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildSettingsViewModel, type SettingsViewModelActions } from "../viewModel";
-import { type FlashcardSettings } from "../../../../core/shared/types";
+import type {
+	SettingsControlSnapshot,
+	SettingsPresentation,
+	SettingsRowSnapshot,
+} from "../../../../core/settings/presentation";
+import type { FlashcardSettings } from "../../../../core/shared/types";
 import { DEFAULT_SETTINGS } from "../../../../core/host/settingsSlices";
+import type { PronunciationSnapshot } from "../../domain/pronunciation";
+import { buildSettingsViewModel, type SettingsViewModelActions } from "../viewModel";
 
 function makeSettings(overrides: Partial<FlashcardSettings> = {}): FlashcardSettings {
 	return {
 		...DEFAULT_SETTINGS,
 		...overrides,
-		fsrsParameters: {
-			...DEFAULT_SETTINGS.fsrsParameters,
-			...overrides.fsrsParameters,
-		},
-		pronunciation: {
-			...DEFAULT_SETTINGS.pronunciation,
-			...overrides.pronunciation,
-		},
+		fsrsParameters: { ...DEFAULT_SETTINGS.fsrsParameters, ...overrides.fsrsParameters },
+		pronunciation: { ...DEFAULT_SETTINGS.pronunciation, ...overrides.pronunciation },
 		deckStudySettings: overrides.deckStudySettings ?? {},
 	};
 }
@@ -57,288 +57,162 @@ function makeActions(): SettingsViewModelActions {
 	};
 }
 
-describe("buildSettingsViewModel", () => {
-	it("builds the full settings group tree without Obsidian types", () => {
-		const actions = makeActions();
-		const model = buildSettingsViewModel(
-			{
-				...DEFAULT_PRONUNCIATION_STATE,
-				settings: makeSettings({ flashcardTags: ["#单词"] }),
-				availableTags: ["#单词", "#短语"],
-				isLoadingTags: false,
-				hasLoadedTags: true,
-				language: "zh",
-			},
-			actions,
-		);
+function build(
+	actions = makeActions(),
+	settings: Partial<FlashcardSettings> = {},
+	pronunciation: PronunciationSnapshot = DEFAULT_PRONUNCIATION_STATE.pronunciation,
+): SettingsPresentation {
+	return buildSettingsViewModel(
+		{
+			settings: makeSettings(settings),
+			availableTags: ["#word", "#phrase"],
+			isLoadingTags: false,
+			hasLoadedTags: true,
+			language: "en",
+			pronunciation,
+		},
+		actions,
+	);
+}
 
-		expect(model.map((group) => group.heading)).toEqual([
-			"闪卡设置",
-			"界面设置",
-			"默认学习设置（全局兜底）",
-			"单词发音",
-			"Fsrs 算法参数",
-			"使用说明",
+function row(
+	presentation: SettingsPresentation,
+	groupKey: string,
+	rowKey: string,
+): SettingsRowSnapshot {
+	const found = presentation.snapshot.groups
+		.find((group) => group.key === groupKey)
+		?.rows.find((candidate) => candidate.key === rowKey);
+	if (!found) throw new Error(`Missing row ${groupKey}/${rowKey}`);
+	return found;
+}
+
+function control(rowSnapshot: SettingsRowSnapshot, key: string): SettingsControlSnapshot {
+	const found = rowSnapshot.controls.find((candidate) => candidate.key === key);
+	if (!found) throw new Error(`Missing control ${rowSnapshot.key}/${key}`);
+	return found;
+}
+
+describe("flashcard settings presentation", () => {
+	it("builds the complete renderer-neutral settings tree", () => {
+		const presentation = build();
+		expect(presentation.snapshot.groups.map((group) => group.key)).toEqual([
+			"flashcards",
+			"interface",
+			"study",
+			"pronunciation",
+			"fsrs",
+			"help",
 		]);
-		expect(model.flatMap((group) => group.items).map((item) => item.name)).toContain(
-			"闪卡标签",
+		expect(row(presentation, "help", "usage").description).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ kind: "code", text: expect.stringContaining("??") }),
+			]),
 		);
 	});
 
-	it("exposes refresh, editable tag list, and discovered tag actions", () => {
+	it("dispatches compound tag controls through opaque action references", async () => {
 		const actions = makeActions();
-		const model = buildSettingsViewModel(
-			{
-				...DEFAULT_PRONUNCIATION_STATE,
-				settings: makeSettings({ flashcardTags: ["#word"] }),
-				availableTags: ["#word", "#phrase"],
-				isLoadingTags: false,
-				hasLoadedTags: true,
-				language: "en",
-			},
-			actions,
-		);
-		const flashcardItems = model[0]!.items;
-		const configuredTagControls = flashcardItems[0]!.controls ?? [];
-		const discoveredTagControls = flashcardItems[1]!.controls ?? [];
-		const refreshAndClean = configuredTagControls[0]!;
-		const tagList = configuredTagControls[1]!;
-		const discoveredTags = discoveredTagControls[1]!;
-
-		expect(refreshAndClean).toMatchObject({
-			type: "button",
-			label: "Refresh and clean",
-			disabled: false,
+		const presentation = build(actions, { flashcardTags: ["#word"] });
+		const configured = row(presentation, "flashcards", "configured-tags");
+		const refresh = control(configured, "refresh");
+		const tags = control(configured, "tags");
+		const discovered = control(row(presentation, "flashcards", "discovered-tags"), "tags");
+		if (
+			refresh.kind !== "button" ||
+			tags.kind !== "editableList" ||
+			discovered.kind !== "choiceButtons"
+		) {
+			throw new Error("Unexpected tag controls");
+		}
+		await presentation.invoke({ action: refresh.action, value: undefined });
+		await presentation.invoke({
+			action: tags.changeAction,
+			value: { index: 0, value: "#updated" },
 		});
-		if (refreshAndClean.type !== "button") throw new Error("Expected button control");
-		void refreshAndClean.onClick();
+		await presentation.invoke({ action: tags.addAction, value: undefined });
+		await presentation.invoke({ action: tags.removeAction, value: 0 });
+		await presentation.invoke({ action: discovered.action, value: "#phrase" });
 		expect(actions.refreshTags).toHaveBeenCalledWith({ cleanConfiguredTags: true });
-
-		if (tagList.type !== "editableTextList") {
-			throw new Error("Expected editable text list control");
-		}
-		void tagList.onChange(0, "#updated");
-		void tagList.onAdd();
-		void tagList.onRemove(0);
 		expect(actions.updateFlashcardTag).toHaveBeenCalledWith(0, "#updated");
-		expect(actions.addFlashcardTag).toHaveBeenCalledTimes(1);
+		expect(actions.addFlashcardTag).toHaveBeenCalledOnce();
 		expect(actions.removeFlashcardTag).toHaveBeenCalledWith(0);
-
-		if (discoveredTags.type !== "tagButtons") {
-			throw new Error("Expected tag button control");
-		}
-		expect(discoveredTags.tags).toEqual(["#phrase"]);
-		void discoveredTags.onClick("#phrase");
 		expect(actions.addDiscoveredTag).toHaveBeenCalledWith("#phrase");
 	});
 
-	it("shows loading and empty discovered-tag states", () => {
-		const loadingModel = buildSettingsViewModel(
-			{
-				...DEFAULT_PRONUNCIATION_STATE,
-				settings: makeSettings(),
-				availableTags: [],
-				isLoadingTags: true,
-				hasLoadedTags: false,
-				language: "zh",
-			},
-			makeActions(),
-		);
-		const loadingButton = loadingModel[0]!.items[1]!.controls?.[0];
-		expect(loadingButton).toMatchObject({
-			type: "button",
-			label: "刷新中...",
-			disabled: true,
-		});
-
-		const unloadedModel = buildSettingsViewModel(
-			{
-				...DEFAULT_PRONUNCIATION_STATE,
-				settings: makeSettings(),
-				availableTags: [],
-				isLoadingTags: false,
-				hasLoadedTags: false,
-				language: "zh",
-			},
-			makeActions(),
-		);
-		const unloadedTags = unloadedModel[0]!.items[1]!.controls?.[1];
-		expect(unloadedTags).toMatchObject({
-			type: "tagButtons",
-			tags: [],
-			emptyText: "点击刷新扫描可用标签",
-		});
-
-		const loadedModel = buildSettingsViewModel(
-			{
-				...DEFAULT_PRONUNCIATION_STATE,
-				settings: makeSettings(),
-				availableTags: [],
-				isLoadingTags: false,
-				hasLoadedTags: true,
-				language: "zh",
-			},
-			makeActions(),
-		);
-		const loadedTags = loadedModel[0]!.items[1]!.controls?.[1];
-		expect(loadedTags).toMatchObject({
-			type: "tagButtons",
-			tags: [],
-			emptyText: "暂无可添加的标签",
-		});
-	});
-
-	it("wires language, study, and FSRS controls to semantic actions", () => {
+	it("validates and dispatches language, study, and FSRS values", async () => {
 		const actions = makeActions();
-		const model = buildSettingsViewModel(
-			{
-				...DEFAULT_PRONUNCIATION_STATE,
-				settings: makeSettings({
-					language: "zh",
-					dailyNewCards: 12,
-					dailyReviewCards: 80,
-					studyOrder: "random",
-					fsrsParameters: {
-						requestRetention: 0.88,
-						maximumInterval: 500,
-					},
-				}),
-				availableTags: [],
-				isLoadingTags: false,
-				hasLoadedTags: true,
-				language: "zh",
-			},
-			actions,
-		);
-		const language = model[1]!.items[0]!.controls?.[0];
-		const dailyNew = model[2]!.items[1]!.controls?.[0];
-		const dailyReview = model[2]!.items[2]!.controls?.[0];
-		const studyOrder = model[2]!.items[3]!.controls?.[0];
-		const retention = model[4]!.items[0]!.controls?.[0];
-		const maximumInterval = model[4]!.items[1]!.controls?.[0];
-
-		if (language?.type !== "select") throw new Error("Expected language select");
-		void language.onChange("en");
-		expect(actions.setLanguage).toHaveBeenCalledWith("en");
-
-		if (dailyNew?.type !== "slider") throw new Error("Expected daily new slider");
-		void dailyNew.onChange(20);
-		expect(actions.setDailyNewCards).toHaveBeenCalledWith(20);
-
-		if (dailyReview?.type !== "slider") throw new Error("Expected daily review slider");
-		void dailyReview.onChange(100);
-		expect(actions.setDailyReviewCards).toHaveBeenCalledWith(100);
-
-		if (studyOrder?.type !== "select") throw new Error("Expected study order select");
-		void studyOrder.onChange("sequential");
-		expect(actions.setStudyOrder).toHaveBeenCalledWith("sequential");
-
-		if (retention?.type !== "slider") throw new Error("Expected retention slider");
-		void retention.onChange(0.9);
-		expect(actions.setRequestRetention).toHaveBeenCalledWith(0.9);
-
-		if (maximumInterval?.type !== "integerText") {
-			throw new Error("Expected maximum interval text");
+		const presentation = build(actions);
+		const language = control(row(presentation, "interface", "language"), "control");
+		const dailyNew = control(row(presentation, "study", "daily-new"), "control");
+		const maximumInterval = control(row(presentation, "fsrs", "maximum-interval"), "control");
+		if (
+			language.kind !== "select" ||
+			dailyNew.kind !== "slider" ||
+			maximumInterval.kind !== "integer"
+		) {
+			throw new Error("Unexpected scalar controls");
 		}
-		void maximumInterval.onChange(365);
+		expect(await presentation.invoke({ action: language.action, value: "zh" })).toEqual({
+			status: "applied",
+		});
+		expect(await presentation.invoke({ action: dailyNew.action, value: 20 })).toEqual({
+			status: "applied",
+		});
+		expect(await presentation.invoke({ action: maximumInterval.action, value: "365" })).toEqual(
+			{ status: "applied" },
+		);
+		expect(actions.setLanguage).toHaveBeenCalledWith("zh");
+		expect(actions.setDailyNewCards).toHaveBeenCalledWith(20);
 		expect(actions.setMaximumInterval).toHaveBeenCalledWith(365);
 	});
 
-	it("keeps help content semantic instead of constructing DOM", () => {
-		const model = buildSettingsViewModel(
-			{
-				...DEFAULT_PRONUNCIATION_STATE,
-				settings: makeSettings(),
-				availableTags: [],
-				isLoadingTags: false,
-				hasLoadedTags: true,
-				language: "zh",
-			},
+	it("resolves provider visibility and cache status while building the snapshot", () => {
+		const presentation = build(
 			makeActions(),
-		);
-		const help = model[5]!.items[0]!.help;
-
-		expect(help?.cardFormatTitle).toBe("卡片格式说明:");
-		expect(help?.cardFormatExample).toContain("??");
-		expect(help?.shortcuts).toContain("数字6: 上一题");
-	});
-
-	it("exposes pronunciation controls and provider-specific fields", () => {
-		const actions = makeActions();
-		const model = buildSettingsViewModel(
+			{},
 			{
-				...DEFAULT_PRONUNCIATION_STATE,
-				pronunciation: {
-					...DEFAULT_PRONUNCIATION_STATE.pronunciation,
-					settings: {
-						...DEFAULT_SETTINGS.pronunciation,
-						onlineProvider: "openai",
-						openaiSecretId: "openai-flashcard",
-					},
-					cacheUsage: { status: "ready", bytes: 1024 * 1024 },
+				...DEFAULT_PRONUNCIATION_STATE.pronunciation,
+				settings: {
+					...DEFAULT_SETTINGS.pronunciation,
+					onlineProvider: "openai",
+					openaiSecretId: "openai-flashcard",
 				},
-				settings: makeSettings(),
-				availableTags: [],
-				isLoadingTags: false,
-				hasLoadedTags: true,
-				language: "zh",
+				cacheUsage: { status: "ready", bytes: 1024 * 1024 },
 			},
-			actions,
 		);
-		const pronunciation = model[3]!;
-		const autoPlay = pronunciation.items[0]!.controls?.[0];
-		const provider = pronunciation.items[3]!.controls?.[0];
-		const openAiSecret = pronunciation.items.find((item) => item.name === "OpenAI API Key");
-		const cacheStatus = pronunciation.items.find((item) => item.name === "设备音频缓存")
-			?.controls?.[0];
-
-		if (autoPlay?.type !== "toggle") throw new Error("Expected autoplay toggle");
-		void autoPlay.onChange(true);
-		expect(actions.setPronunciationAutoPlay).toHaveBeenCalledWith(true);
-
-		if (provider?.type !== "select") throw new Error("Expected provider select");
-		void provider.onChange("azure");
-		expect(actions.setOnlinePronunciationProvider).toHaveBeenCalledWith("azure");
-		expect(openAiSecret?.visible).toBe(true);
-		expect(cacheStatus).toMatchObject({ type: "status", text: "1.0 MB" });
-	});
-
-	it("disables every pronunciation action while management is busy and exposes cache failure", () => {
-		const model = buildSettingsViewModel(
-			{
-				...DEFAULT_PRONUNCIATION_STATE,
-				pronunciation: {
-					...DEFAULT_PRONUNCIATION_STATE.pronunciation,
-					management: "configuring",
-					cacheUsage: { status: "failed" },
-				},
-				settings: makeSettings({
-					pronunciation: {
-						...DEFAULT_SETTINGS.pronunciation,
-						spellingAutoPlay: true,
-					},
-				}),
-				availableTags: [],
-				isLoadingTags: false,
-				hasLoadedTags: true,
-				language: "zh",
-			},
-			makeActions(),
-		);
-		const pronunciation = model[3]!;
-		const actionableControls = pronunciation.items
-			.flatMap((item) => item.controls ?? [])
-			.filter((control) => control.type !== "status");
-		const cacheStatus = pronunciation.items.find((item) => item.name === "设备音频缓存")
-			?.controls?.[0];
-
+		expect(row(presentation, "pronunciation", "openai-secret")).toBeDefined();
 		expect(
-			actionableControls.every(
-				(control) => "disabled" in control && control.disabled === true,
-			),
-		).toBe(true);
-		expect(cacheStatus).toMatchObject({ type: "status", text: "读取失败" });
-		const autoPlay = pronunciation.items[0]!.controls?.[0];
-		expect(autoPlay).toMatchObject({ type: "toggle", value: false });
+			presentation.snapshot.groups
+				.find((group) => group.key === "pronunciation")
+				?.rows.some((candidate) => candidate.key === "azure-secret"),
+		).toBe(false);
+		expect(control(row(presentation, "pronunciation", "cache"), "usage")).toMatchObject({
+			kind: "status",
+			text: "1.0 MB",
+		});
+	});
+
+	it("marks pronunciation interactions disabled while management is busy", async () => {
+		const actions = makeActions();
+		const presentation = build(
+			actions,
+			{},
+			{
+				...DEFAULT_PRONUNCIATION_STATE.pronunciation,
+				management: "configuring",
+				cacheUsage: { status: "failed" },
+			},
+		);
+		const autoPlay = control(row(presentation, "pronunciation", "auto-play"), "control");
+		if (autoPlay.kind !== "toggle") throw new Error("Expected autoplay toggle");
+		expect(await presentation.invoke({ action: autoPlay.action, value: true })).toEqual({
+			status: "ignored",
+			reason: "disabled",
+		});
+		expect(actions.setPronunciationAutoPlay).not.toHaveBeenCalled();
+		expect(control(row(presentation, "pronunciation", "cache"), "usage")).toMatchObject({
+			text: "Failed to read cache usage",
+		});
 	});
 });

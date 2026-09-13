@@ -567,7 +567,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 		id: FLASHCARD_SECTION_ID,
 		order: 0,
 		label: (language: Language) => createTranslator(language)("settings.tabFlashcards"),
-		definitions: (language) => {
+		presentation: (language) => {
 			ensureAvailableTagsLoaded(host);
 			return buildSettingsViewModel(
 				{

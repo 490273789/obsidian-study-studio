@@ -15,7 +15,7 @@ import {
 	formatDictionaryBytes,
 	type DictionarySettingsEditorActions,
 } from "../settings/viewModel";
-import type { SettingsViewModelDefinition } from "../../../core/settings/viewModel";
+import type { SettingsPresentation } from "../../../core/settings/presentation";
 import { pickLocalDictionaryFiles } from "./localDictionaryFilePicker";
 import { confirmLocalDictionaryDeletion } from "./modals";
 
@@ -82,7 +82,7 @@ export class DictionarySettingsEditor {
 		this.unsubscribeAi = null;
 	}
 
-	definitions(): SettingsViewModelDefinition {
+	presentation(): SettingsPresentation {
 		return buildDictionarySettingsViewModel(
 			{
 				settings: this.runtime.settings.getDictionarySettings(),

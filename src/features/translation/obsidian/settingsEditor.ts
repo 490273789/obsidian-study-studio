@@ -10,7 +10,7 @@ import {
 import { DEFAULT_TRANSLATION_PROMPT, normalizeTranslationSettings } from "../domain/configuration";
 import type { TranslationRuntime } from "../domain/translationRuntime";
 import type { TranslationSettings } from "../domain/types";
-import type { SettingsViewModelDefinition } from "../../../core/settings/viewModel";
+import type { SettingsPresentation } from "../../../core/settings/presentation";
 
 export type TranslationSettingsRuntime = Pick<
 	TranslationRuntime,
@@ -47,7 +47,7 @@ export class TranslationSettingsEditor {
 			this.draft = normalizeTranslationSettings(this.runtime.getSnapshot().settings);
 	}
 
-	definitions(): SettingsViewModelDefinition[] {
+	presentation(): SettingsPresentation {
 		const snapshot = this.runtime.getSnapshot();
 		return buildTranslationSettingsViewModel(
 			{

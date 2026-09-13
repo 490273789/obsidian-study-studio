@@ -2,38 +2,24 @@ import { App, PluginSettingTab, SecretComponent, Setting } from "obsidian";
 import type FlashcardPlugin from "./main";
 import type { WorkbenchSettingsSection, WorkbenchSettingsTab } from "./workbench";
 import {
-	type SettingsButtonControl,
-	type SettingsEditableTextListControl,
-	type SettingsHelpModel,
-	type SettingsIntegerTextControl,
-	type SettingsSecretControl,
-	type SettingsSelectControl,
-	type SettingsSliderControl,
-	type SettingsStatusControl,
-	type SettingsTagButtonsControl,
-	type SettingsTextControl,
-	type SettingsToggleControl,
-	type SettingsReorderableListControl,
-	type SettingsProfileCardsControl,
-	type SettingsViewModelControl,
-	type SettingsViewModelDefinition,
-	type SettingsViewModelSetting,
-} from "../settings/viewModel";
+	type SettingsActionRef,
+	type SettingsButtonSnapshot,
+	type SettingsCardsSnapshot,
+	type SettingsChoiceButtonsSnapshot,
+	type SettingsContent,
+	type SettingsControlSnapshot,
+	type SettingsEditableListSnapshot,
+	type SettingsNumberSnapshot,
+	type SettingsPresentation,
+	type SettingsPrimitiveControlSnapshot,
+	type SettingsReorderableSnapshot,
+	type SettingsRowSnapshot,
+	type SettingsSelectSnapshot,
+	type SettingsStatusSnapshot,
+	type SettingsTextSnapshot,
+	type SettingsToggleSnapshot,
+} from "../settings/presentation";
 import type { Language } from "../shared/types";
-
-type VisibleDefinition = { visible?: boolean | (() => boolean) };
-type FlashcardSettingDefinition = VisibleDefinition & {
-	name: string;
-	desc?: string | DocumentFragment;
-	cls?: string;
-	render?: (setting: Setting) => void | (() => void);
-};
-type FlashcardSettingGroup = VisibleDefinition & {
-	type: "group";
-	heading: string;
-	items: FlashcardSettingDefinition[];
-};
-type FlashcardSettingItem = FlashcardSettingDefinition | FlashcardSettingGroup;
 
 interface ObsidianSettingsManager {
 	open(): void;
@@ -44,6 +30,7 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 	plugin: FlashcardPlugin;
 	private activeSectionId = "";
 	private sectionScrollPositions = new Map<string, number>();
+	private activePresentation: SettingsPresentation | null = null;
 
 	constructor(app: App, plugin: FlashcardPlugin) {
 		super(app, plugin);
@@ -76,6 +63,8 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 	}
 
 	hide(): void {
+		this.activePresentation?.dispose();
+		this.activePresentation = null;
 		for (const section of this.sections()) section.hide?.();
 		super.hide();
 	}
@@ -88,14 +77,6 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 	private activeSection(): WorkbenchSettingsSection | undefined {
 		const sections = this.sections();
 		return sections.find((section) => section.id === this.activeSectionId) ?? sections[0];
-	}
-
-	private getRenderableDefinitions(): FlashcardSettingItem[] {
-		const section = this.activeSection();
-		if (!section) return [];
-		return section
-			.definitions(this.getSelectedLanguage())
-			.map((definition) => this.toRenderableDefinition(definition));
 	}
 
 	private getSelectedLanguage(): Language {
@@ -163,6 +144,14 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 		const activeSection = this.activeSection();
 		const activeSectionId = activeSection?.id ?? "";
 		const scrollContainer = this.getScrollContainer();
+		const language = this.getSelectedLanguage();
+		let nextPresentation: SettingsPresentation | null = null;
+		try {
+			nextPresentation = activeSection?.presentation(language) ?? null;
+		} catch (error) {
+			console.error("Failed to build settings presentation:", error);
+			return;
+		}
 
 		const shouldPreserve = options.preserveScroll !== false;
 		const targetScrollTop = shouldPreserve
@@ -187,8 +176,9 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 
 		containerEl.empty();
 		containerEl.addClass("flashcard-settings-tab");
+		this.activePresentation?.dispose();
+		this.activePresentation = nextPresentation;
 
-		const language = this.getSelectedLanguage();
 		const sections = this.sections();
 		const navEl = containerEl.createDiv({ cls: "fc-settings-tab-nav" });
 
@@ -215,23 +205,9 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 
 		const contentEl = containerEl.createDiv({ cls: "fc-settings-tab-content" });
 
-		for (const definition of this.getRenderableDefinitions()) {
-			if (!this.isVisible(definition.visible)) {
-				continue;
-			}
-
-			if (this.isGroupDefinition(definition)) {
-				if (definition.heading) {
-					new Setting(contentEl).setName(definition.heading).setHeading();
-				}
-
-				for (const item of definition.items ?? []) {
-					this.renderSettingDefinition(contentEl, item);
-				}
-				continue;
-			}
-
-			this.renderSettingDefinition(contentEl, definition);
+		for (const group of nextPresentation?.snapshot.groups ?? []) {
+			if (group.heading) new Setting(contentEl).setName(group.heading).setHeading();
+			for (const row of group.rows) this.renderSetting(contentEl, row, nextPresentation!);
 		}
 
 		this.restoreScroll(targetScrollTop);
@@ -241,106 +217,87 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 		}
 	}
 
-	private toRenderableDefinition(definition: SettingsViewModelDefinition): FlashcardSettingGroup {
-		return {
-			type: "group",
-			heading: definition.heading,
-			visible: definition.visible,
-			items: definition.items.map((item) => this.toRenderableSetting(item)),
-		};
-	}
-
-	private toRenderableSetting(model: SettingsViewModelSetting): FlashcardSettingDefinition {
-		return {
-			name: model.name,
-			desc: model.help ? this.createHelpDescription(model.help) : model.desc,
-			visible: model.visible,
-			cls: model.cls,
-			render:
-				model.controls && model.controls.length > 0
-					? (setting) => {
-							for (const control of model.controls ?? []) {
-								this.renderControl(setting, control);
-							}
-						}
-					: undefined,
-		};
-	}
-
-	private renderControl(setting: Setting, control: SettingsViewModelControl): void {
-		switch (control.type) {
+	private renderControl(
+		setting: Setting,
+		control: SettingsControlSnapshot,
+		presentation: SettingsPresentation,
+	): void {
+		switch (control.kind) {
 			case "button":
-				this.renderButtonControl(setting, control);
+				this.renderButtonControl(setting, control, presentation);
 				break;
-			case "editableTextList":
-				this.renderEditableTextListControl(setting, control);
+			case "editableList":
+				this.renderEditableListControl(setting, control, presentation);
 				break;
-			case "tagButtons":
-				this.renderTagButtonsControl(setting, control);
+			case "choiceButtons":
+				this.renderChoiceButtonsControl(setting, control, presentation);
 				break;
 			case "select":
-				this.renderSelectControl(setting, control);
+				this.renderSelectControl(setting, control, presentation);
 				break;
 			case "slider":
-				this.renderSliderControl(setting, control);
+				this.renderSliderControl(setting, control, presentation);
 				break;
-			case "integerText":
-				this.renderIntegerTextControl(setting, control);
+			case "integer":
+				this.renderIntegerControl(setting, control, presentation);
 				break;
 			case "toggle":
-				this.renderToggleControl(setting, control);
+				this.renderToggleControl(setting, control, presentation);
 				break;
 			case "textarea":
 				setting.addTextArea((text) => {
 					text.setPlaceholder(control.placeholder)
 						.setValue(control.value)
-						.setDisabled(control.disabled ?? false);
+						.setDisabled(control.disabled);
 					text.inputEl.rows = 5;
 					text.inputEl.addEventListener("change", () => {
-						void control.onChange(text.getValue());
+						this.dispatch(presentation, control.action, text.getValue());
 					});
 				});
 				break;
 			case "text":
-				this.renderTextControl(setting, control);
+				this.renderTextControl(setting, control, presentation);
 				break;
 			case "secret":
-				this.renderSecretControl(setting, control);
+				this.renderSecretControl(setting, control, presentation);
 				break;
 			case "status":
 				this.renderStatusControl(setting, control);
 				break;
-			case "reorderableList":
-				this.renderReorderableListControl(setting, control);
+			case "reorderable":
+				this.renderReorderableControl(setting, control, presentation);
 				break;
-			case "profileCards":
-				this.renderProfileCardsControl(setting, control);
+			case "cards":
+				this.renderCardsControl(setting, control, presentation);
 				break;
 		}
 	}
 
-	private renderButtonControl(setting: Setting, control: SettingsButtonControl): void {
+	private renderButtonControl(
+		setting: Setting,
+		control: SettingsButtonSnapshot,
+		presentation: SettingsPresentation,
+	): void {
 		setting.addButton((button) => {
 			button
 				.setButtonText(control.label)
 				.setDisabled(control.disabled)
-				.onClick(() => {
-					void control.onClick();
-				});
-			if (control.variant === "warning") {
+				.onClick(() => this.dispatch(presentation, control.action, undefined));
+			if (control.tone === "warning" || control.tone === "danger") {
 				button.setWarning();
-			} else if (control.variant === "primary") {
+			} else if (control.tone === "primary") {
 				button.setCta();
 			}
 		});
 	}
 
-	private renderEditableTextListControl(
+	private renderEditableListControl(
 		setting: Setting,
-		control: SettingsEditableTextListControl,
+		control: SettingsEditableListSnapshot,
+		presentation: SettingsPresentation,
 	): void {
 		this.renderEditableTextList(setting.descEl, {
-			values: control.values,
+			values: [...control.values],
 			listClass: "flashcard-tags-list-settings",
 			itemClass: "flashcard-tag-item-settings",
 			inputClass: "flashcard-tag-input",
@@ -349,31 +306,37 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 			placeholder: control.placeholder,
 			addLabel: control.addLabel,
 			removeAriaLabel: control.removeAriaLabel,
+			disabled: control.disabled,
 			onChange: (index, value) => {
-				void control.onChange(index, value);
+				this.dispatch(presentation, control.changeAction, { index, value });
 			},
 			onAdd: () => {
-				void control.onAdd();
+				this.dispatch(presentation, control.addAction, undefined);
 			},
 			onRemove: (index) => {
-				void control.onRemove(index);
+				this.dispatch(presentation, control.removeAction, index);
 			},
 		});
 	}
 
-	private renderTagButtonsControl(setting: Setting, control: SettingsTagButtonsControl): void {
-		if (control.tags.length > 0) {
+	private renderChoiceButtonsControl(
+		setting: Setting,
+		control: SettingsChoiceButtonsSnapshot,
+		presentation: SettingsPresentation,
+	): void {
+		if (control.choices.length > 0) {
 			const tagsContainer = setting.descEl.createDiv({
 				cls: "flashcard-tags-container",
 			});
-			for (const tag of control.tags) {
+			for (const choice of control.choices) {
 				const tagBtn = tagsContainer.createEl("button", {
-					text: tag,
+					text: choice.label,
 					cls: "flashcard-tag-button",
 				});
-				tagBtn.addEventListener("click", () => {
-					void control.onClick(tag);
-				});
+				tagBtn.disabled = control.disabled;
+				tagBtn.addEventListener("click", () =>
+					this.dispatch(presentation, control.action, choice.id),
+				);
 			}
 			return;
 		}
@@ -384,78 +347,102 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 		});
 	}
 
-	private renderSelectControl(setting: Setting, control: SettingsSelectControl): void {
+	private renderSelectControl(
+		setting: Setting,
+		control: SettingsSelectSnapshot,
+		presentation: SettingsPresentation,
+	): void {
 		setting.addDropdown((dropdown) => {
 			for (const option of control.options) {
 				dropdown.addOption(option.value, option.label);
 			}
 			dropdown
 				.setValue(control.value)
-				.setDisabled(control.disabled ?? false)
+				.setDisabled(control.disabled)
 				.onChange((value) => {
-					void control.onChange(value);
+					this.dispatch(presentation, control.action, value);
 				});
 		});
 	}
 
-	private renderSliderControl(setting: Setting, control: SettingsSliderControl): void {
+	private renderSliderControl(
+		setting: Setting,
+		control: SettingsNumberSnapshot,
+		presentation: SettingsPresentation,
+	): void {
 		setting.addSlider((slider) =>
 			slider
 				.setLimits(control.min, control.max, control.step)
 				.setValue(control.value)
+				.setDisabled(control.disabled)
 				.onChange((value) => {
-					void control.onChange(value);
+					this.dispatch(presentation, control.action, value);
 				}),
 		);
 	}
 
-	private renderIntegerTextControl(setting: Setting, control: SettingsIntegerTextControl): void {
+	private renderIntegerControl(
+		setting: Setting,
+		control: SettingsNumberSnapshot,
+		presentation: SettingsPresentation,
+	): void {
 		setting.addText((text) =>
 			text
-				.setPlaceholder(control.placeholder)
+				.setPlaceholder(String(control.value))
 				.setValue(String(control.value))
+				.setDisabled(control.disabled)
 				.onChange((value) => {
-					const num = Number.parseInt(value, 10);
-					if (!Number.isNaN(num) && num >= control.min && num <= control.max) {
-						void control.onChange(num);
-					}
+					this.dispatch(presentation, control.action, value);
 				}),
 		);
 	}
 
-	private renderToggleControl(setting: Setting, control: SettingsToggleControl): void {
+	private renderToggleControl(
+		setting: Setting,
+		control: SettingsToggleSnapshot,
+		presentation: SettingsPresentation,
+	): void {
 		setting.addToggle((toggle) =>
 			toggle
 				.setValue(control.value)
-				.setDisabled(control.disabled ?? false)
+				.setDisabled(control.disabled)
+				.setTooltip(control.tooltip ?? "")
 				.onChange((value) => {
-					void control.onChange(value);
+					this.dispatch(presentation, control.action, value);
 				}),
 		);
 	}
 
-	private renderTextControl(setting: Setting, control: SettingsTextControl): void {
+	private renderTextControl(
+		setting: Setting,
+		control: SettingsTextSnapshot,
+		presentation: SettingsPresentation,
+	): void {
 		setting.addText((text) => {
 			text.setPlaceholder(control.placeholder)
 				.setValue(control.value)
-				.setDisabled(control.disabled ?? false);
+				.setDisabled(control.disabled);
 			text.inputEl.addEventListener("change", () => {
-				void control.onChange(text.getValue());
+				this.dispatch(presentation, control.action, text.getValue());
 			});
 		});
 	}
 
-	private renderSecretControl(setting: Setting, control: SettingsSecretControl): void {
+	private renderSecretControl(
+		setting: Setting,
+		control: SettingsTextSnapshot,
+		presentation: SettingsPresentation,
+	): void {
 		const component = new SecretComponent(this.app, setting.controlEl);
 		component
 			.setValue(control.value)
-			.setDisabled(control.disabled ?? false)
+			.setDisabled(control.disabled)
 			.onChange((value) => {
-				void control.onChange(value);
+				this.dispatch(presentation, control.action, value);
 			});
 	}
 
-	private renderStatusControl(setting: Setting, control: SettingsStatusControl): void {
+	private renderStatusControl(setting: Setting, control: SettingsStatusSnapshot): void {
 		setting.controlEl.createSpan({
 			text: control.text,
 			cls: "flashcard-settings-status",
@@ -466,9 +453,10 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 	 * Renders an ordered source list with drag & drop plus keyboard-reachable
 	 * move up/down buttons, mirroring the source tool's reorderable list.
 	 */
-	private renderReorderableListControl(
+	private renderReorderableControl(
 		setting: Setting,
-		control: SettingsReorderableListControl,
+		control: SettingsReorderableSnapshot,
+		presentation: SettingsPresentation,
 	): void {
 		const container = setting.descEl.createDiv({
 			cls: "flashcard-dictionary-source-list",
@@ -500,7 +488,7 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 				cls: "flashcard-dictionary-source-kind",
 			});
 
-			if (control.allowDrag) {
+			if (control.allowDrag && !control.disabled) {
 				row.addExtraButton((button) => {
 					button.setIcon("grip-vertical").setTooltip(control.tooltips.drag);
 					button.extraSettingsEl.draggable = true;
@@ -532,7 +520,10 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 						(candidate) => candidate.id === sourceId,
 					);
 					if (fromIndex < 0) return;
-					control.onMove(fromIndex, index);
+					this.dispatch(presentation, control.moveAction, {
+						fromIndex,
+						toIndex: index,
+					});
 				});
 			}
 
@@ -540,36 +531,49 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 				button
 					.setIcon("arrow-up")
 					.setTooltip(control.tooltips.moveUp)
-					.setDisabled(index === 0);
-				button.onClick(() => control.onMove(index, index - 1));
+					.setDisabled(control.disabled || index === 0);
+				button.onClick(() =>
+					this.dispatch(presentation, control.moveAction, {
+						fromIndex: index,
+						toIndex: index - 1,
+					}),
+				);
 			});
 			row.addExtraButton((button) => {
 				button
 					.setIcon("arrow-down")
 					.setTooltip(control.tooltips.moveDown)
-					.setDisabled(index === control.items.length - 1);
-				button.onClick(() => control.onMove(index, index + 1));
+					.setDisabled(control.disabled || index === control.items.length - 1);
+				button.onClick(() =>
+					this.dispatch(presentation, control.moveAction, {
+						fromIndex: index,
+						toIndex: index + 1,
+					}),
+				);
 			});
-			if (control.onRemove) {
-				const onRemove = control.onRemove;
+			if (control.removeAction) {
+				const removeAction = control.removeAction;
 				const removeTooltip = control.tooltips.remove;
 				row.addExtraButton((button) => {
 					button.setIcon("trash-2");
 					if (removeTooltip) button.setTooltip(removeTooltip);
-					button.onClick(() => onRemove(item.id));
+					button.setDisabled(control.disabled);
+					button.onClick(() => this.dispatch(presentation, removeAction, item.id));
 				});
 			}
 			row.addToggle((toggle) => {
-				toggle.setValue(item.enabled).onChange((value) => {
-					item.onToggle(value);
-				});
+				toggle
+					.setValue(item.enabled)
+					.setDisabled(control.disabled)
+					.onChange((value) => this.dispatch(presentation, item.toggleAction, value));
 			});
 		});
 	}
 
-	private renderProfileCardsControl(
+	private renderCardsControl(
 		setting: Setting,
-		control: SettingsProfileCardsControl,
+		control: SettingsCardsSnapshot,
+		presentation: SettingsPresentation,
 	): void {
 		setting.setClass("fc-profile-cards-setting");
 		const container = setting.controlEl.createDiv({
@@ -591,140 +595,106 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 				cls: `fc-profile-card ${item.enabled ? "is-enabled" : "is-disabled"}`,
 			});
 
-			// 1. 卡片头部
 			const header = card.createDiv({ cls: "fc-profile-card-header" });
 			const titleGroup = header.createDiv({ cls: "fc-profile-card-title-group" });
 
 			titleGroup.createSpan({ text: item.badge, cls: "fc-profile-badge" });
-
-			const nameInput = titleGroup.createEl("input", {
-				type: "text",
-				value: item.name,
-				placeholder: control.labels.namePlaceholder,
-				cls: "fc-profile-name-input",
-			});
-			nameInput.disabled = item.disabled;
-			nameInput.addEventListener("change", () => {
-				item.onNameChange(nameInput.value);
-			});
-
-			const toggleSetting = new Setting(titleGroup);
-			toggleSetting.setClass("fc-profile-toggle-setting");
-			toggleSetting.addToggle((toggle) => {
-				toggle
-					.setValue(item.enabled)
-					.setDisabled(item.disabled)
-					.setTooltip(control.labels.enabledDesc)
-					.onChange((enabled) => {
-						item.onToggle(enabled);
-					});
-			});
+			if (item.title) {
+				const title = item.title;
+				const nameInput = titleGroup.createEl("input", {
+					type: "text",
+					value: title.value,
+					placeholder: title.placeholder,
+					cls: "fc-profile-name-input",
+				});
+				nameInput.disabled = title.disabled;
+				nameInput.addEventListener("change", () =>
+					this.dispatch(presentation, title.action, nameInput.value),
+				);
+			}
+			if (item.toggle) {
+				const toggleSetting = new Setting(titleGroup);
+				toggleSetting.setClass("fc-profile-toggle-setting");
+				this.renderToggleControl(toggleSetting, item.toggle, presentation);
+			}
 
 			const actionsEl = header.createDiv({ cls: "fc-profile-card-actions" });
 			const actionsSetting = new Setting(actionsEl);
-			actionsSetting.addExtraButton((btn) => {
-				btn.setIcon("arrow-up")
-					.setTooltip(control.labels.moveUp)
-					.setDisabled(!item.canMoveUp || item.disabled)
-					.onClick(() => item.onMoveUp());
-			});
-			actionsSetting.addExtraButton((btn) => {
-				btn.setIcon("arrow-down")
-					.setTooltip(control.labels.moveDown)
-					.setDisabled(!item.canMoveDown || item.disabled)
-					.onClick(() => item.onMoveDown());
-			});
-			actionsSetting.addExtraButton((btn) => {
-				btn.setIcon("trash-2")
-					.setTooltip(control.labels.remove)
-					.setDisabled(!item.canRemove || item.disabled)
-					.onClick(() => item.onRemove());
-			});
-
-			// 2. 卡片内部配置项
-			const body = card.createDiv({ cls: "fc-profile-card-body" });
-
-			const providerRow = new Setting(body);
-			providerRow.setClass("fc-profile-field-setting");
-			providerRow.setName(control.labels.provider);
-			providerRow.addDropdown((dropdown) => {
-				dropdown
-					.addOption("engine", control.labels.engine)
-					.addOption("youdao", control.labels.youdao)
-					.setValue(item.kind)
-					.setDisabled(item.disabled)
-					.onChange((val) => {
-						if (val === "engine" || val === "youdao") {
-							item.onKindChange(val);
-						}
-					});
-			});
-
-			if (item.kind === "engine") {
-				const engineRow = new Setting(body);
-				engineRow.setClass("fc-profile-field-setting");
-				engineRow.setName(control.labels.engineConfig);
-				if (item.noEngineConfigsNotice && item.engineOptions.length <= 1) {
-					engineRow.setDesc(item.noEngineConfigsNotice);
-				}
-				engineRow.addDropdown((dropdown) => {
-					for (const opt of item.engineOptions) {
-						dropdown.addOption(opt.value, opt.label);
-					}
-					dropdown
-						.setValue(item.configId)
-						.setDisabled(item.disabled || item.engineOptions.length === 0)
-						.onChange((val) => item.onConfigChange(val));
+			for (const action of item.actions) {
+				actionsSetting.addExtraButton((button) => {
+					button
+						.setIcon(
+							action.icon === "move-up"
+								? "arrow-up"
+								: action.icon === "move-down"
+									? "arrow-down"
+									: "trash-2",
+						)
+						.setTooltip(action.label)
+						.setDisabled(action.disabled)
+						.onClick(() => this.dispatch(presentation, action.action, undefined));
 				});
+			}
+
+			const body = card.createDiv({ cls: "fc-profile-card-body" });
+			for (const field of item.fields) {
+				const fieldSetting = new Setting(body);
+				fieldSetting.setClass("fc-profile-field-setting");
+				fieldSetting.setName(field.name);
+				if (field.description) fieldSetting.setDesc(this.renderContent(field.description));
+				for (const fieldControl of field.controls) {
+					this.renderPrimitiveControl(fieldSetting, fieldControl, presentation);
+				}
 			}
 		}
 	}
 
-	private isGroupDefinition(
-		definition: FlashcardSettingItem,
-	): definition is FlashcardSettingGroup {
-		return "type" in definition && definition.type === "group";
+	private renderPrimitiveControl(
+		setting: Setting,
+		control: SettingsPrimitiveControlSnapshot,
+		presentation: SettingsPresentation,
+	): void {
+		this.renderControl(setting, control, presentation);
 	}
 
-	private renderSettingDefinition(parentEl: HTMLElement, definition: unknown): void {
-		if (!this.isImperativeSettingDefinition(definition)) {
-			return;
-		}
-
-		if (!this.isVisible(definition.visible)) {
-			return;
-		}
-
+	private renderSetting(
+		parentEl: HTMLElement,
+		row: SettingsRowSnapshot,
+		presentation: SettingsPresentation,
+	): void {
 		const setting = new Setting(parentEl);
-		if (definition.cls) {
-			setting.setClass(definition.cls);
-		}
-		setting.setName(definition.name);
-
-		if (definition.desc) {
-			setting.setDesc(definition.desc);
-		}
-
-		definition.render?.(setting);
+		if (row.layout === "wide") setting.setClass("fc-profile-cards-setting");
+		if (row.tone !== "neutral") setting.setClass(`fc-settings-tone-${row.tone}`);
+		setting.setName(row.name);
+		if (row.description) setting.setDesc(this.renderContent(row.description));
+		for (const control of row.controls) this.renderControl(setting, control, presentation);
 	}
 
-	private isImperativeSettingDefinition(
-		definition: unknown,
-	): definition is FlashcardSettingDefinition {
-		return (
-			typeof definition === "object" &&
-			definition !== null &&
-			"name" in definition &&
-			typeof definition.name === "string"
-		);
+	private dispatch(
+		presentation: SettingsPresentation,
+		action: SettingsActionRef<unknown>,
+		value: unknown,
+	): void {
+		void presentation.invoke({ action, value }).then((result) => {
+			if (result.status === "failed") console.error("Settings action failed:", result.error);
+		});
 	}
 
-	private isVisible(visible: VisibleDefinition["visible"]): boolean {
-		if (typeof visible === "function") {
-			return visible();
+	private renderContent(content: SettingsContent): string | DocumentFragment {
+		if (typeof content === "string") return content;
+		const fragment = activeDocument.createDocumentFragment();
+		const help = fragment.createDiv({ cls: "flashcard-help" });
+		for (const block of content) {
+			if (block.kind === "paragraph") help.createEl("p", { text: block.text });
+			else if (block.kind === "code") {
+				const codeBlock = help.createEl("pre");
+				codeBlock.createEl("code").textContent = block.text;
+			} else {
+				const list = help.createEl("ul");
+				for (const item of block.items) list.createEl("li", { text: item });
+			}
 		}
-
-		return visible !== false;
+		return fragment;
 	}
 
 	private renderEditableTextList(
@@ -739,6 +709,7 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 			placeholder: string;
 			addLabel: string;
 			removeAriaLabel: string;
+			disabled: boolean;
 			onChange: (index: number, value: string) => void;
 			onAdd: () => void;
 			onRemove: (index: number) => void;
@@ -764,6 +735,7 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 				placeholder: options.placeholder,
 				cls: `fc-settings-input ${options.inputClass}`,
 			});
+			input.disabled = options.disabled;
 
 			input.addEventListener("change", () => {
 				options.onChange(index, input.value);
@@ -776,6 +748,7 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 					cls: `fc-btn-remove ${options.removeButtonClass}`,
 				});
 				removeBtn.setAttr("aria-label", options.removeAriaLabel);
+				removeBtn.disabled = options.disabled;
 				removeBtn.addEventListener("click", () => {
 					options.onRemove(index);
 				});
@@ -787,27 +760,9 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 			text: options.addLabel,
 			cls: `fc-btn-add ${options.addButtonClass}`,
 		});
+		addBtn.disabled = options.disabled;
 		addBtn.addEventListener("click", () => {
 			options.onAdd();
 		});
-	}
-
-	private createHelpDescription(help: SettingsHelpModel): DocumentFragment {
-		const fragment = activeDocument.createDocumentFragment();
-		const helpDiv = fragment.createDiv({ cls: "flashcard-help" });
-
-		helpDiv.createEl("p", { text: help.cardFormatTitle });
-
-		const codeBlock = helpDiv.createEl("pre");
-		codeBlock.createEl("code").textContent = help.cardFormatExample;
-
-		helpDiv.createEl("p", { text: help.shortcutsTitle });
-
-		const shortcutsList = helpDiv.createEl("ul");
-		for (const shortcut of help.shortcuts) {
-			shortcutsList.createEl("li", { text: shortcut });
-		}
-
-		return fragment;
 	}
 }
