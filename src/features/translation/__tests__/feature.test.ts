@@ -82,6 +82,26 @@ describe("translation feature", () => {
 		feature.stop();
 	});
 
+	it("keeps its selection adapter inert before start and after cleanup", async () => {
+		const feature = createTranslationFeature({ ai: {} as never, net: {} as never });
+
+		expect(feature.selectionAdapter.available()).toBe(false);
+		await expect(
+			feature.selectionAdapter.openPrefilled("selected text"),
+		).resolves.toBeUndefined();
+		expect(runtimeSpies.instances).toHaveLength(0);
+
+		const fake = createFakeWorkbenchHost("translation", enabledSettings);
+		feature.render(fake.host);
+		feature.stop();
+
+		expect(feature.selectionAdapter.available()).toBe(false);
+		await expect(
+			feature.selectionAdapter.openPrefilled("selected text"),
+		).resolves.toBeUndefined();
+		expect(lastRuntime().prefill.mock.calls).toEqual([]);
+	});
+
 	it("adds no chrome while translation is disabled", () => {
 		const feature = createTranslationFeature({ ai: {} as never, net: {} as never });
 		const fake = createFakeWorkbenchHost("translation", {

@@ -28,11 +28,8 @@ import { createObsidianContinuitySourceStore } from "./obsidian/continuityAdapte
 import { WorkbenchFlashcardAuthority } from "./obsidian/workbenchFlashcardAuthority";
 import { FlashcardApp } from "./ui/FlashcardApp";
 import { createReactItemView } from "../../core/host/reactItemView";
-import type {
-	WorkbenchModule,
-	WorkbenchHost,
-	WorkbenchSettingsSection,
-} from "../../core/host/workbench";
+import { defineFeatureLifetime } from "../../core/host/featureLifetime";
+import type { WorkbenchHost, WorkbenchSettingsSection } from "../../core/host/workbench";
 
 /** Settings section id this feature contributes. */
 export const FLASHCARD_SECTION_ID = "flashcards";
@@ -67,8 +64,8 @@ type FlashcardWorkbenchHost = WorkbenchHost<"flashcards">;
  * other feature uses yet; the repository receives a feature-owned authority adapter
  * instead of the shared store's generic document interface.
  */
-export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchModule<"flashcards"> {
-	let repository: FlashcardRepository | null = deps.repository ?? null;
+export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
+	let repository: FlashcardRepository | null = null;
 	let services: FlashcardServices | null = null;
 	let exportNotice: Notice | null = null;
 	let pronunciationUnsubscribe: (() => void) | null = null;
@@ -80,73 +77,13 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 
 	const t = (host: FlashcardWorkbenchHost) => createTranslator(host.settings.read().language);
 
-	const ensureRepository = (host: FlashcardWorkbenchHost): FlashcardRepository => {
-		if (!repository) {
-			repository = new FlashcardRepository({
-				authority: new WorkbenchFlashcardAuthority({
-					store: deps.store,
-					adapter: host.app?.vault?.adapter,
-					pluginDirectory: deps.plugin?.manifest?.dir,
-				}),
-				deckIndexCache: createDeckIndexCacheStore<SerializedDeck>(
-					host.app?.vault?.adapter,
-					deps.plugin?.manifest?.dir,
-				),
-			});
-		}
+	const activeRepository = (): FlashcardRepository => {
+		if (!repository) throw new Error("Flashcard feature is not running");
 		return repository;
 	};
 
-	const ensureServices = (host: FlashcardWorkbenchHost): FlashcardServices => {
-		if (services) return services;
-		const repo = ensureRepository(host);
-		const sessionLifecycleWiring = createSessionLifecycle(repo);
-		const cardIdentityContinuity = createCardIdentityContinuity({
-			sources: createObsidianContinuitySourceStore(host.app),
-			state: repo.createContinuityStateStore(),
-			sessions: sessionLifecycleWiring.continuitySessions,
-			createIdentity: createCardIdentity,
-		});
-		const pronunciationRuntime = createPronunciationRuntime(
-			deps.net,
-			host.settings.read().pronunciation,
-			{
-				persistSettings: async (pronunciation) => {
-					await host.settings.update({ pronunciation: { ...pronunciation } });
-				},
-			},
-		);
-		const deckHome = createDeckHome({
-			repository: repo,
-			identity: cardIdentityContinuity,
-			saveSettingsPatch: async (patch) => saveDeckSettingsPatch(host, patch),
-			saveDeckOrder: async (deckOrder) => {
-				await host.settings.update({ deckOrder: [...deckOrder] });
-			},
-			exportDeck: async (deck, onProgress) => {
-				if (!Platform.isDesktopApp) {
-					throw new Error(t(host)("notice.pdfExportDesktopOnly"));
-				}
-				return exportDeckToPdf(
-					host.app,
-					deck,
-					{
-						frontColumn: t(host)("common.cardFront"),
-						backColumn: t(host)("common.cardBack"),
-						cardCount: (count) => t(host)("pdf.cardCount", { count }),
-						saveDialogTitle: t(host)("pdf.saveDialogTitle"),
-					},
-					{ onProgress },
-				);
-			},
-			report: (event) => reportDeckHomeEvent(host, event),
-		});
-		services = {
-			sessionLifecycle: sessionLifecycleWiring.lifecycle,
-			cardIdentityContinuity,
-			deckHome,
-			pronunciationRuntime,
-		};
+	const activeServices = (): FlashcardServices => {
+		if (!services) throw new Error("Flashcard feature is not running");
 		return services;
 	};
 
@@ -179,7 +116,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 		if (event.kind === "refresh-completed") {
 			const message = describeSynchronizationOutcome(
 				event.outcome,
-				services!.cardIdentityContinuity.inspect(),
+				activeServices().cardIdentityContinuity.inspect(),
 				host.settings.read().language,
 			);
 			if (message) new Notice(message, 12000);
@@ -285,7 +222,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 	};
 
 	const openIdentityMigration = async (host: FlashcardWorkbenchHost): Promise<void> => {
-		const { cardIdentityContinuity, deckHome } = ensureServices(host);
+		const { cardIdentityContinuity, deckHome } = activeServices();
 		const ownerId = "command:migrate-card-identities";
 		const request = await deckHome.act({ kind: "request-migration", ownerId });
 		if (request.kind === "rejected" && request.reason === "migration-unavailable") {
@@ -327,7 +264,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 	};
 
 	const openIdentityRepair = async (host: FlashcardWorkbenchHost): Promise<void> => {
-		const { cardIdentityContinuity } = ensureServices(host);
+		const { cardIdentityContinuity } = activeServices();
 		const outcome = await cardIdentityContinuity.synchronize();
 		if (outcome.kind === "failed") {
 			new Notice(t(host)("identity.syncFailed", { message: outcome.message }));
@@ -359,7 +296,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 	};
 
 	const runIdentitySynchronization = async (host: FlashcardWorkbenchHost): Promise<void> => {
-		const { cardIdentityContinuity, deckHome } = ensureServices(host);
+		const { cardIdentityContinuity, deckHome } = activeServices();
 		const outcome = await deckHome.act({ kind: "refresh" });
 		if (outcome.kind === "applied" && cardIdentityContinuity.inspect().issues.length === 0) {
 			new Notice(t(host)("identity.syncCurrent"));
@@ -379,11 +316,11 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 		if (refreshSection) host.settingsTab.refresh();
 	};
 
-	const ensureAvailableTagsLoaded = (host: FlashcardWorkbenchHost): void => {
+	const ensureAvailableTagsLoaded = (): void => {
 		if (hasLoadedTags || isLoadingTags) return;
 		// Opening settings must stay cheap. A full vault scan is reserved for the
 		// explicit refresh action; otherwise large vaults make the first render wait.
-		const repo = ensureRepository(host);
+		const repo = activeRepository();
 		if (!repo.hasAvailableTagsSnapshot()) return;
 		availableTags = repo.getAvailableTags();
 		hasLoadedTags = true;
@@ -412,8 +349,8 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 		host.settingsTab.refresh();
 
 		try {
-			await ensureServices(host).cardIdentityContinuity.synchronize();
-			availableTags = ensureRepository(host).getAvailableTags();
+			await activeServices().cardIdentityContinuity.synchronize();
+			availableTags = activeRepository().getAvailableTags();
 			hasLoadedTags = true;
 
 			let removedCount = 0;
@@ -443,7 +380,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 		host: FlashcardWorkbenchHost,
 		patch: Partial<PronunciationSettings>,
 	): Promise<void> => {
-		const outcome = await ensureServices(host).pronunciationRuntime.configure(patch);
+		const outcome = await activeServices().pronunciationRuntime.configure(patch);
 		if (outcome.status === "applied") return;
 		const strings = t(host);
 		new Notice(
@@ -456,8 +393,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 	const testOnlinePronunciation = async (host: FlashcardWorkbenchHost): Promise<void> => {
 		const strings = t(host);
 		try {
-			const outcome =
-				await ensureServices(host).pronunciationRuntime.testOnlineProvider("hello");
+			const outcome = await activeServices().pronunciationRuntime.testOnlineProvider("hello");
 			if (outcome.status === "success") {
 				new Notice(strings("settings.pronunciationTestSuccess"));
 				return;
@@ -486,7 +422,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 	const clearPronunciationCache = async (host: FlashcardWorkbenchHost): Promise<void> => {
 		const strings = t(host);
 		try {
-			const outcome = await ensureServices(host).pronunciationRuntime.clearCache();
+			const outcome = await activeServices().pronunciationRuntime.clearCache();
 			new Notice(
 				outcome.status === "cleared"
 					? strings("settings.pronunciationCacheCleared")
@@ -568,7 +504,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 		order: 0,
 		label: (language: Language) => createTranslator(language)("settings.tabFlashcards"),
 		presentation: (language) => {
-			ensureAvailableTagsLoaded(host);
+			ensureAvailableTagsLoaded();
 			return buildSettingsViewModel(
 				{
 					settings: host.settings.read(),
@@ -576,13 +512,13 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 					isLoadingTags,
 					hasLoadedTags,
 					language,
-					pronunciation: ensureServices(host).pronunciationRuntime.getSnapshot(),
+					pronunciation: activeServices().pronunciationRuntime.getSnapshot(),
 				},
 				createSettingsActions(host),
 			);
 		},
 		activate: () => {
-			const { pronunciationRuntime } = ensureServices(host);
+			const { pronunciationRuntime } = activeServices();
 			pronunciationUnsubscribe ??= pronunciationRuntime.subscribe(() =>
 				host.settingsTab.refresh(),
 			);
@@ -601,12 +537,80 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 		},
 	});
 
-	return {
+	return defineFeatureLifetime({
 		id: "flashcards",
-
-		render: (host) => {
-			const { sessionLifecycle, cardIdentityContinuity, deckHome, pronunciationRuntime } =
-				ensureServices(host);
+		start: (host, lifetime) => {
+			const repo =
+				deps.repository ??
+				lifetime.own(
+					new FlashcardRepository({
+						authority: new WorkbenchFlashcardAuthority({
+							store: deps.store,
+							adapter: host.app?.vault?.adapter,
+							pluginDirectory: deps.plugin?.manifest?.dir,
+						}),
+						deckIndexCache: createDeckIndexCacheStore<SerializedDeck>(
+							host.app?.vault?.adapter,
+							deps.plugin?.manifest?.dir,
+						),
+					}),
+				);
+			const sessionLifecycleWiring = createSessionLifecycle(repo);
+			const cardIdentityContinuity = createCardIdentityContinuity({
+				sources: createObsidianContinuitySourceStore(host.app),
+				state: repo.createContinuityStateStore(),
+				sessions: sessionLifecycleWiring.continuitySessions,
+				createIdentity: createCardIdentity,
+			});
+			const pronunciationRuntime = lifetime.own(
+				createPronunciationRuntime(deps.net, host.settings.read().pronunciation, {
+					persistSettings: async (pronunciation) => {
+						await host.settings.update({ pronunciation: { ...pronunciation } });
+					},
+				}),
+			);
+			const deckHome = lifetime.own(
+				createDeckHome({
+					repository: repo,
+					identity: cardIdentityContinuity,
+					saveSettingsPatch: async (patch) => saveDeckSettingsPatch(host, patch),
+					saveDeckOrder: async (deckOrder) => {
+						await host.settings.update({ deckOrder: [...deckOrder] });
+					},
+					exportDeck: async (deck, onProgress) => {
+						if (!Platform.isDesktopApp) {
+							throw new Error(t(host)("notice.pdfExportDesktopOnly"));
+						}
+						return exportDeckToPdf(
+							host.app,
+							deck,
+							{
+								frontColumn: t(host)("common.cardFront"),
+								backColumn: t(host)("common.cardBack"),
+								cardCount: (count) => t(host)("pdf.cardCount", { count }),
+								saveDialogTitle: t(host)("pdf.saveDialogTitle"),
+							},
+							{ onProgress },
+						);
+					},
+					report: (event) => reportDeckHomeEvent(host, event),
+				}),
+			);
+			repository = repo;
+			services = {
+				sessionLifecycle: sessionLifecycleWiring.lifecycle,
+				cardIdentityContinuity,
+				deckHome,
+				pronunciationRuntime,
+			};
+			lifetime.defer(() => {
+				pronunciationUnsubscribe?.();
+				pronunciationUnsubscribe = null;
+				exportNotice?.hide();
+				exportNotice = null;
+				services = null;
+				repository = null;
+			});
 
 			host.registerView(
 				VIEW_TYPE_FLASHCARD,
@@ -627,7 +631,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 							app={app}
 							modalHost={rootEl}
 							cardIdentityContinuity={cardIdentityContinuity}
-							sessionLifecycle={sessionLifecycle}
+							sessionLifecycle={sessionLifecycleWiring.lifecycle}
 							pronunciationRuntime={pronunciationRuntime}
 							deckHome={deckHome}
 							settings={settings}
@@ -653,43 +657,34 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps): WorkbenchMod
 					void host.activateView(VIEW_TYPE_FLASHCARD);
 				},
 			});
-
-			const strings = t(host);
-			host.chrome((chrome) => {
-				chrome.command({
-					id: SYNC_COMMAND_ID,
-					name: strings("main.commandSyncDecks"),
-					run: () => {
-						void runIdentitySynchronization(host);
-					},
-				});
-				chrome.command({
-					id: MIGRATE_IDENTITIES_COMMAND_ID,
-					name: strings("main.commandMigrateCardIdentities"),
-					run: () => {
-						void openIdentityMigration(host);
-					},
-				});
-				chrome.command({
-					id: REPAIR_IDENTITIES_COMMAND_ID,
-					name: strings("main.commandRepairCardIdentities"),
-					run: () => {
-						void openIdentityRepair(host);
-					},
-				});
-			});
-
 			host.settingsSection(section(host));
-		},
 
-		stop: () => {
-			pronunciationUnsubscribe?.();
-			pronunciationUnsubscribe = null;
-			exportNotice?.hide();
-			exportNotice = null;
-			services?.deckHome.dispose();
-			services?.pronunciationRuntime.dispose();
-			services = null;
+			return () => {
+				const strings = t(host);
+				host.chrome((chrome) => {
+					chrome.command({
+						id: SYNC_COMMAND_ID,
+						name: strings("main.commandSyncDecks"),
+						run: () => {
+							void runIdentitySynchronization(host);
+						},
+					});
+					chrome.command({
+						id: MIGRATE_IDENTITIES_COMMAND_ID,
+						name: strings("main.commandMigrateCardIdentities"),
+						run: () => {
+							void openIdentityMigration(host);
+						},
+					});
+					chrome.command({
+						id: REPAIR_IDENTITIES_COMMAND_ID,
+						name: strings("main.commandRepairCardIdentities"),
+						run: () => {
+							void openIdentityRepair(host);
+						},
+					});
+				});
+			};
 		},
-	};
+	});
 }

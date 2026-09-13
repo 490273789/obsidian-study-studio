@@ -12,10 +12,11 @@ import { TranslatorView } from "./ui";
 import { createReactItemView } from "../../core/host/reactItemView";
 import { TranslationSettingsEditor } from "./obsidian/settingsEditor";
 import type {
-	WorkbenchModule,
 	WorkbenchHost,
+	WorkbenchModule,
 	WorkbenchSettingsSection,
 } from "../../core/host/workbench";
+import { defineFeatureLifetime } from "../../core/host/featureLifetime";
 import type { SelectionTranslationAdapter } from "../../core/selectionHelper/domain/types";
 
 /** Settings section id this feature contributes. */
@@ -43,25 +44,7 @@ type TranslationWorkbenchHost = WorkbenchHost<"translation">;
  * Owns its runtime, its chrome, and its persisted settings slice.
  */
 export function createTranslationFeature(deps: TranslationFeatureDeps): TranslationFeature {
-	let runtime: TranslationRuntime | null = null;
-	let editor: TranslationSettingsEditor | null = null;
-	/** Open-view lease handed to the runtime; the last view closing clears the session. */
-	let detachOpenView: (() => void) | null = null;
-	let activeHost: TranslationWorkbenchHost | null = null;
-
-	const ensureRuntime = (host: TranslationWorkbenchHost): TranslationRuntime => {
-		if (runtime) return runtime;
-		runtime = new TranslationRuntime(host.settings.read().translation, deps.ai, {
-			persist: async (translation) => {
-				await host.settings.update({
-					translation: normalizeTranslationSettings(translation),
-				});
-			},
-			youdao: (connection, text, direction, signal) =>
-				translateYoudao(connection, text, direction, deps.net, signal),
-		});
-		return runtime;
-	};
+	let active: { host: TranslationWorkbenchHost; runtime: TranslationRuntime } | null = null;
 
 	const activateView = async (host: TranslationWorkbenchHost): Promise<void> => {
 		try {
@@ -72,10 +55,10 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 	};
 
 	const selectionAdapter: SelectionTranslationAdapter = {
-		available: () => Boolean(activeHost?.settings.read().translation.enabled),
+		available: () => Boolean(active?.host.settings.read().translation.enabled),
 		openPrefilled: async (text) => {
-			if (!activeHost) return;
-			const translation = ensureRuntime(activeHost);
+			if (!active) return;
+			const { host, runtime: translation } = active;
 			const direction = detectTranslationDirection(text);
 			const snapshot = translation.getSnapshot();
 			if (snapshot.settings.direction !== direction) {
@@ -83,40 +66,56 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 			}
 			translation.prefill(text);
 			try {
-				await activeHost.activateView(VIEW_TYPE_TRANSLATOR, { mainTab: true });
+				await host.activateView(VIEW_TYPE_TRANSLATOR, { mainTab: true });
 			} catch {
-				new Notice(translationStrings(activeHost.settings.read().language).openFailed);
+				new Notice(translationStrings(host.settings.read().language).openFailed);
 			}
 		},
 	};
 
 	const section = (
-		host: TranslationWorkbenchHost,
 		translation: TranslationRuntime,
+		editor: TranslationSettingsEditor,
 	): WorkbenchSettingsSection => {
-		editor ??= new TranslationSettingsEditor(
-			translation,
-			deps.ai,
-			() => host.settings.read().language,
-			() => host.settingsTab.refresh(),
-		);
-		const settingsEditor = editor;
 		return {
 			id: TRANSLATION_SECTION_ID,
 			order: 2,
 			label: (language) => translationSettingsStrings(language).heading,
-			presentation: () => settingsEditor.presentation(),
-			activate: () => settingsEditor.activate(),
-			hide: () => settingsEditor.hide(),
+			presentation: () => editor.presentation(),
+			activate: () => editor.activate(),
+			hide: () => editor.hide(),
 		};
 	};
 
-	return {
+	const module = defineFeatureLifetime({
 		id: "translation",
+		start(host, lifetime) {
+			const translation = lifetime.own(
+				new TranslationRuntime(host.settings.read().translation, deps.ai, {
+					persist: async (settings) => {
+						await host.settings.update({
+							translation: normalizeTranslationSettings(settings),
+						});
+					},
+					youdao: (connection, text, direction, signal) =>
+						translateYoudao(connection, text, direction, deps.net, signal),
+				}),
+			);
+			active = { host, runtime: translation };
 
-		render: (host) => {
-			activeHost = host;
-			const translation = ensureRuntime(host);
+			const editor = new TranslationSettingsEditor(
+				translation,
+				deps.ai,
+				() => host.settings.read().language,
+				() => host.settingsTab.refresh(),
+			);
+			let detachOpenView: (() => void) | null = null;
+			lifetime.defer(() => {
+				editor.hide();
+				detachOpenView?.();
+				detachOpenView = null;
+				active = null;
+			});
 
 			host.registerView(
 				VIEW_TYPE_TRANSLATOR,
@@ -157,31 +156,27 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 				},
 			});
 
-			const strings = translationStrings(host.settings.read().language);
-			host.chrome((chrome) => {
-				if (!host.settings.read().translation.enabled) return;
-				chrome.command({
-					id: SELECTION_COMMAND_ID,
-					name: strings.selectionCommand,
-					selection: {
-						// Prefilling only: translating always needs an explicit action.
-						run: (selection) => {
-							translation.prefill(selection);
-							void activateView(host);
+			host.settingsSection(section(translation, editor));
+
+			return () => {
+				const strings = translationStrings(host.settings.read().language);
+				host.chrome((chrome) => {
+					if (!host.settings.read().translation.enabled) return;
+					chrome.command({
+						id: SELECTION_COMMAND_ID,
+						name: strings.selectionCommand,
+						selection: {
+							// Prefilling only: translating always needs an explicit action.
+							run: (selection) => {
+								translation.prefill(selection);
+								void activateView(host);
+							},
 						},
-					},
+					});
 				});
-			});
-
-			host.settingsSection(section(host, translation));
+			};
 		},
+	});
 
-		stop: () => {
-			activeHost = null;
-			runtime?.dispose();
-			runtime = null;
-		},
-
-		selectionAdapter,
-	};
+	return { ...module, selectionAdapter };
 }

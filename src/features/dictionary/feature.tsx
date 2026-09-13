@@ -15,11 +15,12 @@ import { createDictionarySettingsStore } from "./obsidian/settingsStore";
 import { createDictionarySelectionAdapter } from "./selectionAdapter";
 import type { SelectionDictionaryAdapter } from "../../core/selectionHelper/domain/types";
 import { createReactItemView } from "../../core/host/reactItemView";
+import { defineFeatureLifetime } from "../../core/host/featureLifetime";
 import { cls } from "../../core/shared/classNames";
 import styles from "./ui/Dictionary.module.scss";
 import type {
-	WorkbenchModule,
 	WorkbenchHost,
+	WorkbenchModule,
 	WorkbenchSettingsSection,
 } from "../../core/host/workbench";
 
@@ -51,10 +52,8 @@ type DictionaryWorkbenchHost = WorkbenchHost<"dictionary">;
  * persisted settings slice.
  */
 export function createDictionaryFeature(deps: DictionaryFeatureDeps): DictionaryFeature {
-	let runtime: DictionaryRuntime | null = null;
-	let editor: DictionarySettingsEditor | null = null;
+	let active: { host: DictionaryWorkbenchHost; runtime: DictionaryRuntime } | null = null;
 	let modal: DictionaryLookupModal | null = null;
-	let activeHost: DictionaryWorkbenchHost | null = null;
 
 	const openSettings = (host: DictionaryWorkbenchHost): void => {
 		host.settingsTab.open(DICTIONARY_SECTION_ID);
@@ -71,35 +70,14 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 		});
 	};
 
-	const ensureRuntime = (host: DictionaryWorkbenchHost): DictionaryRuntime => {
-		if (runtime) return runtime;
-		runtime = new DictionaryRuntime({
-			app: host.app,
-			plugin: deps.plugin,
-			settings: createDictionarySettingsStore({
-				readDictionarySettings: () => host.settings.read().dictionary,
-				commitDictionarySettings: async (dictionary) => {
-					await host.settings.update({
-						dictionary: normalizeDictionarySettings(dictionary),
-					});
-				},
-			}),
-			ai: deps.ai,
-			language: () => host.settings.read().language,
-			net: deps.net,
-			notify: (message) => new Notice(message),
-		});
-		return runtime;
-	};
-
 	/** The open command and ribbon prompt for a word first, matching the source tool. */
-	const openPrompt = (host: DictionaryWorkbenchHost): void => {
+	const openPrompt = (host: DictionaryWorkbenchHost, dictionary: DictionaryRuntime): void => {
 		modal?.close();
 		modal = new DictionaryLookupModal(
 			host.app,
 			(query) => {
 				modal = null;
-				void openQuery(host, query);
+				void openQuery(host, dictionary, query);
 			},
 			dictionaryStrings(host.settings.read().language),
 		);
@@ -108,12 +86,12 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 
 	const openQuery = async (
 		host: DictionaryWorkbenchHost,
+		dictionary: DictionaryRuntime,
 		query: string,
 		mainTab = false,
 	): Promise<void> => {
 		const strings = dictionaryStrings(host.settings.read().language);
 		try {
-			const dictionary = ensureRuntime(host);
 			const lookup = dictionary.query.send({ type: "lookup", query });
 			await host.activateView(VIEW_TYPE_DICTIONARY, mainTab ? { mainTab: true } : undefined);
 			await lookup;
@@ -124,10 +102,10 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 	};
 
 	const selectionAdapter = createDictionarySelectionAdapter({
-		runtime: () => runtime,
+		runtime: () => active?.runtime ?? null,
 		openInMainTab: async (query) => {
-			if (!activeHost) return;
-			await openQuery(activeHost, query, true);
+			if (!active) return;
+			await openQuery(active.host, active.runtime, query, true);
 		},
 	});
 	/**
@@ -154,30 +132,53 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 	const section = (
 		host: DictionaryWorkbenchHost,
 		dictionary: DictionaryRuntime,
+		editor: DictionarySettingsEditor,
 	): WorkbenchSettingsSection => {
-		editor ??= new DictionarySettingsEditor(
-			dictionary,
-			deps.ai,
-			() => host.settings.read().language,
-			() => host.settingsTab.refresh(),
-		);
-		const settingsEditor = editor;
 		return {
 			id: DICTIONARY_SECTION_ID,
 			order: 3,
 			label: (language) => dictionaryStrings(language).settingsHeading,
-			presentation: () => settingsEditor.presentation(),
-			activate: () => settingsEditor.activate(),
-			hide: () => settingsEditor.hide(),
+			presentation: () => editor.presentation(),
+			activate: () => editor.activate(),
+			hide: () => editor.hide(),
 		};
 	};
 
-	return {
+	const module = defineFeatureLifetime({
 		id: "dictionary",
-
-		render: (host) => {
-			activeHost = host;
-			const dictionary = ensureRuntime(host);
+		start: (host, lifetime) => {
+			const dictionary = lifetime.own(
+				new DictionaryRuntime({
+					app: host.app,
+					plugin: deps.plugin,
+					settings: createDictionarySettingsStore({
+						readDictionarySettings: () => host.settings.read().dictionary,
+						commitDictionarySettings: async (dictionarySettings) => {
+							await host.settings.update({
+								dictionary: normalizeDictionarySettings(dictionarySettings),
+							});
+						},
+					}),
+					ai: deps.ai,
+					language: () => host.settings.read().language,
+					net: deps.net,
+					notify: (message) => new Notice(message),
+				}),
+			);
+			active = { host, runtime: dictionary };
+			const editor = new DictionarySettingsEditor(
+				dictionary,
+				deps.ai,
+				() => host.settings.read().language,
+				() => host.settingsTab.refresh(),
+			);
+			lifetime.defer(() => {
+				editor.hide();
+				modal?.close();
+				modal = null;
+				stopDictionaryAudio();
+				active = null;
+			});
 
 			host.registerView(
 				VIEW_TYPE_DICTIONARY,
@@ -240,8 +241,6 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 				}),
 			);
 
-			dictionary.applySettings();
-
 			host.catalog({
 				id: "dictionary",
 				icon: "book-open",
@@ -250,31 +249,26 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 				openHotkeys: [{ modifiers: ["Alt"], key: "2" }],
 				settingsSectionId: DICTIONARY_SECTION_ID,
 				available: () => host.settings.read().dictionary.enabled,
-				open: () => openPrompt(host),
+				open: () => openPrompt(host, dictionary),
 			});
+			host.settingsSection(section(host, dictionary, editor));
 
-			const strings = dictionaryStrings(host.settings.read().language);
-			host.chrome((chrome) => {
-				if (!host.settings.read().dictionary.enabled) return;
-				chrome.command({
-					id: LOOKUP_SELECTION_COMMAND_ID,
-					name: strings.selectionCommand,
-					selection: { run: (selection) => void openQuery(host, selection) },
+			return () => {
+				dictionary.applySettings();
+				const strings = dictionaryStrings(host.settings.read().language);
+				host.chrome((chrome) => {
+					if (!host.settings.read().dictionary.enabled) return;
+					chrome.command({
+						id: LOOKUP_SELECTION_COMMAND_ID,
+						name: strings.selectionCommand,
+						selection: {
+							run: (selection) => void openQuery(host, dictionary, selection),
+						},
+					});
 				});
-			});
-
-			host.settingsSection(section(host, dictionary));
+			};
 		},
+	});
 
-		stop: () => {
-			activeHost = null;
-			modal?.close();
-			modal = null;
-			stopDictionaryAudio();
-			runtime?.dispose();
-			runtime = null;
-		},
-
-		selectionAdapter,
-	};
+	return { ...module, selectionAdapter };
 }

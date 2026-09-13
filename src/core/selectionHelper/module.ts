@@ -1,3 +1,4 @@
+import { defineFeatureLifetime } from "../host/featureLifetime";
 import type { WorkbenchHost, WorkbenchModule, WorkbenchSettingsSection } from "../host/workbench";
 import { SelectionHelper } from "./domain/selectionHelper";
 import type {
@@ -22,9 +23,6 @@ type SelectionHelperWorkbenchHost = WorkbenchHost<"selectionHelper">;
 export function createSelectionHelperModule(
 	deps: SelectionHelperModuleDeps,
 ): WorkbenchModule<"selectionHelper"> {
-	let helper: SelectionHelper | null = null;
-	let listener: SelectionListener | null = null;
-
 	const section = (host: SelectionHelperWorkbenchHost): WorkbenchSettingsSection => ({
 		id: SELECTION_HELPER_SECTION_ID,
 		order: 4,
@@ -59,33 +57,27 @@ export function createSelectionHelperModule(
 		},
 	});
 
-	return {
+	return defineFeatureLifetime({
 		id: "selectionHelper",
-
-		render: (host) => {
-			if (!helper) {
-				helper = new SelectionHelper({
+		start: (host, lifetime) => {
+			const helper = lifetime.own(
+				new SelectionHelper({
 					settings: () => host.settings.read().selectionPopup,
 					dictionary: deps.dictionary,
 					translation: deps.translation,
-				});
-				listener = new SelectionListener({
-					helper,
-					getLanguage: () => host.settings.read().language,
-				});
-				listener.start();
-			}
-			helper.refresh();
+				}),
+			);
+			const listener = new SelectionListener({
+				helper,
+				getLanguage: () => host.settings.read().language,
+			});
+			lifetime.defer(() => listener.stop());
+			listener.start();
 			host.settingsSection(section(host));
-		},
 
-		stop: () => {
-			listener?.stop();
-			listener = null;
-			helper?.dispose();
-			helper = null;
+			return () => helper.refresh();
 		},
-	};
+	});
 }
 
 async function commitSelectionSettings(

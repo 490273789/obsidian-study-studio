@@ -12,6 +12,20 @@ vi.mock("obsidian", () => ({
 const deep = vi.hoisted(() => ({
 	deckHome: null as unknown,
 	pronunciation: null as unknown,
+	repository: null as unknown,
+}));
+
+vi.mock("../domain/storage/flashcardRepository", () => ({
+	FlashcardRepository: class {
+		dispose = vi.fn();
+		hasAvailableTagsSnapshot = () => true;
+		getAvailableTags = () => ["#wordTag"];
+		createContinuityStateStore = () => ({});
+
+		constructor() {
+			deep.repository = this;
+		}
+	},
 }));
 
 vi.mock("../domain/decks/deckHome", () => ({
@@ -97,6 +111,7 @@ vi.mock("../obsidian/continuityModals", () => ({
 
 function createRepository() {
 	return {
+		dispose: vi.fn(),
 		hasAvailableTagsSnapshot: () => true,
 		getAvailableTags: () => ["#wordTag"],
 		createContinuityStateStore: () => ({}),
@@ -122,6 +137,7 @@ describe("flashcard feature", () => {
 	beforeEach(() => {
 		deep.deckHome = null;
 		deep.pronunciation = null;
+		deep.repository = null;
 	});
 
 	it("registers its view, catalog entry, commands, and settings section", () => {
@@ -185,5 +201,40 @@ describe("flashcard feature", () => {
 
 		expect(deckHome.dispose.mock.calls).toHaveLength(1);
 		expect(pronunciation.dispose.mock.calls).toHaveLength(1);
+	});
+
+	it("keeps an injected repository borrowed", () => {
+		const repository = createRepository();
+		const feature = createFlashcardFeature({
+			store: {
+				load: vi.fn(),
+				getSettings: () => DEFAULT_SETTINGS,
+				subscribe: () => () => {},
+			} as never,
+			net: { request: vi.fn(), requestHostPinned: vi.fn(), readSecret: vi.fn() },
+			repository: repository as never,
+		});
+		const fake = createFakeWorkbenchHost("flashcards", DEFAULT_SETTINGS);
+		feature.render(fake.host);
+		feature.stop();
+
+		expect(repository.dispose).not.toHaveBeenCalled();
+	});
+
+	it("disposes a repository it creates", () => {
+		const feature = createFlashcardFeature({
+			store: {
+				load: vi.fn(),
+				getSettings: () => DEFAULT_SETTINGS,
+				subscribe: () => () => {},
+			} as never,
+			net: { request: vi.fn(), requestHostPinned: vi.fn(), readSecret: vi.fn() },
+		});
+		const fake = createFakeWorkbenchHost("flashcards", DEFAULT_SETTINGS);
+		feature.render(fake.host);
+		feature.stop();
+
+		const repository = deep.repository as { dispose: ReturnType<typeof vi.fn> };
+		expect(repository.dispose).toHaveBeenCalledTimes(1);
 	});
 });

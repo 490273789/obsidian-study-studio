@@ -12,6 +12,7 @@ vi.mock("obsidian", () => ({
 }));
 
 const runtimeSpies = vi.hoisted(() => ({ instances: [] as unknown[] }));
+const editorSpies = vi.hoisted(() => ({ instances: [] as unknown[] }));
 
 vi.mock("../domain/dictionaryRuntime", () => ({
 	DictionaryRuntime: class {
@@ -37,6 +38,17 @@ vi.mock("../obsidian/modals", () => ({
 	},
 }));
 
+vi.mock("../obsidian/settingsEditor", () => ({
+	DictionarySettingsEditor: class {
+		readonly activate = vi.fn();
+		readonly hide = vi.fn();
+		readonly presentation = vi.fn(() => ({ generation: 1, groups: [] }));
+		constructor() {
+			editorSpies.instances.push(this);
+		}
+	},
+}));
+
 const enabledSettings = {
 	...DEFAULT_SETTINGS,
 	dictionary: { ...DEFAULT_SETTINGS.dictionary, enabled: true },
@@ -45,6 +57,19 @@ const enabledSettings = {
 describe("dictionary feature", () => {
 	beforeEach(() => {
 		runtimeSpies.instances.length = 0;
+		editorSpies.instances.length = 0;
+	});
+
+	it("keeps its selection adapter inert before the feature lifetime starts", async () => {
+		const feature = createDictionaryFeature({
+			ai: {} as never,
+			net: {} as never,
+			plugin: {} as never,
+		});
+
+		expect(feature.selectionAdapter.sources()).toEqual([]);
+		expect(feature.selectionAdapter.startLookup("term", [])).toBeNull();
+		await expect(feature.selectionAdapter.openInMainTab("term")).resolves.toBeUndefined();
 	});
 
 	it("registers its two views, its chrome, and its settings section", () => {
@@ -102,7 +127,7 @@ describe("dictionary feature", () => {
 		feature.stop();
 	});
 
-	it("builds one runtime, applies settings on every render, and disposes it on stop", () => {
+	it("builds one runtime, applies settings on every render, and releases nested state on stop", () => {
 		const feature = createDictionaryFeature({
 			ai: {} as never,
 			net: {} as never,
@@ -124,6 +149,8 @@ describe("dictionary feature", () => {
 
 		feature.stop();
 		expect(runtime.dispose.mock.calls).toHaveLength(1);
+		const editor = editorSpies.instances[0] as { hide: { mock: { calls: unknown[] } } };
+		expect(editor.hide.mock.calls).toHaveLength(1);
 	});
 
 	it("passes the outbound port directly to the runtime", () => {

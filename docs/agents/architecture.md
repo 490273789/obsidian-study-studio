@@ -24,9 +24,11 @@ The composition root owns only the settings document, its write queue (`commitSe
 the shared `AiService` and `WorkbenchStore`, and the plugin lifecycle; it never names a feature's
 views, chrome, commands, or settings slice.
 
-Each feature owns everything else it needs. `src/features/flashcards/feature.tsx` constructs
-`SessionLifecycle`, `CardIdentityContinuity`, `DeckHome`, `FlashcardRepository`, and `PronunciationRuntime` on first
-render and disposes them in `stop()`, because no other feature uses them. `FlashcardRepository`
+Each feature owns everything else it needs. `src/core/host/featureLifetime.ts` adapts a feature's
+one-time synchronous acquisition, settings-driven refresh, and LIFO release into the existing
+`WorkbenchModule` seam (ADR-0031). `src/features/flashcards/feature.tsx` constructs
+`SessionLifecycle`, `CardIdentityContinuity`, `DeckHome`, `FlashcardRepository`, and `PronunciationRuntime` during
+that acquisition; production-created resources are owned while injected dependencies remain borrowed. `FlashcardRepository`
 crosses persistence only through its feature-owned `FlashcardAuthority` adapter: it owns migration,
 learning-state choreography, external reload reconciliation, cache ordering, and its own revision;
 the production adapter alone knows WorkbenchStore's generic document mechanics (ADR-0029). `AI 翻译`
@@ -74,7 +76,8 @@ Read the layering inside a slice the same way as before: `domain/` and `settings
 | Area                | Primary modules                                                                                                            | Owns                                                                                                                                                                                                                                                     |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Workbench host      | `src/core/host/workbench.ts`                                                                                               | Feature registration, view registration and owner-targeted settings signals, owner-scoped settings capabilities, chrome lifetime, view activation, settings-patch commits, the settings-section registry                                                 |
-| Workbench features  | `src/features/`                                                                                                            | Per-feature runtime construction and disposal, views, ribbon/commands, settings sections, and feature-owned settings patches                                                                                                                             |
+| Feature lifetime    | `src/core/host/featureLifetime.ts`                                                                                         | Synchronous feature acquisition, first and subsequent settings refresh, fixed-host enforcement, LIFO owned-resource release, and terminal failure semantics                                                                                              |
+| Workbench features  | `src/features/`                                                                                                            | Feature declarations, owned runtime acquisition, views, ribbon/commands, settings sections, and feature-owned settings patches                                                                                                                           |
 | Obsidian boundary   | `src/core/host/`                                                                                                           | Plugin/view lifecycle, vault adapters, notices, settings rendering, identity modals                                                                                                                                                                      |
 | Shared UI           | `src/core/ui/`                                                                                                             | UI primitives, the i18n context, and hooks used by more than one feature                                                                                                                                                                                 |
 | Deck home           | `src/features/flashcards/domain/decks/deckHome.ts`                                                                         | Shared home snapshot, deck readiness, settings draft, refresh/migration/save/export activity, navigation revalidation, reorder persistence, word list visit recording, and read facades for deck data                                                    |
@@ -95,6 +98,7 @@ Read the layering inside a slice the same way as before: `domain/` and `settings
 
 - Register Obsidian-facing commands and services in `src/core/host/main.ts`; keep feature behavior in its domain module.
 - 工作台 modules run through the workbench seam (`WorkbenchModule.render(host)`). 工作台功能 reach Obsidian chrome only through `WorkbenchHost` and declare identity through the catalog; the 选区助手 uses the lifecycle without becoming a 工作台功能. `main.ts` and `settingsTab.ts` must not name a feature's views, ribbon, commands, or settings slice: add composition in `src/features/index.ts` instead.
+- New feature lifetimes use `defineFeatureLifetime`: `start(host, lifetime)` synchronously acquires owned resources and declares static workbench contributions, then returns an optional refresh function. Register every feature-created disposable with `lifetime.own()` and listeners, leases, notices, or other release-only resources with `lifetime.defer()`. Do not release injected dependencies, and do not add per-feature nullable runtime/hand-written `stop()` state machines (ADR-0031).
 - A feature declares its identity with `host.catalog(entry)` (title, icon, open command id, settings section, availability, how to open) and never adds its own ribbon: the workbench owns the entry point and the home list (ADR-0022). `host.chrome(...)` is only for commands specific to that feature.
 - `Workbench.ring(build)` is the only place host-owned chrome is declared; it is rebuilt with every refresh so it relabels with the interface language.
 - A feature reads settings through `host.settings.read()`, which returns only shared `language` plus the slices assigned to its owner in `SETTINGS_SLICES_BY_OWNER`. It writes only through `host.settings.update(patch)`; unauthorized own keys reject the whole patch before persistence. Only flashcards may change the shared language through `host.settings.setLanguage(language)` (ADR-0028).
@@ -122,5 +126,6 @@ Use ADR status, not filename order, to decide what is current. Notable current d
 - ADR-0028: project owner-scoped settings capabilities at the workbench seam and route committed settings changes only to affected owners.
 - ADR-0029: deepen the flashcard persistence seam around a versioned authority adapter; `FlashcardRepository` owns learning-state choreography and cache reconciliation.
 - ADR-0030: deepen the settings presentation seam around renderer-neutral snapshots and opaque action references; keep persistence and lifecycle in each owning editor.
+- ADR-0031: deepen the feature lifetime seam around synchronous acquisition, refresh, and explicit owned-resource release.
 
 When implementation and an accepted ADR disagree, surface the conflict rather than silently introducing a third model.
