@@ -187,7 +187,11 @@ describe("SessionLifecycle", () => {
 		});
 		subject.repository.getCard(DECK_ID, "one")!.front = "edited later";
 		expect(subject.lifecycle.getSnapshot()).toBe(result);
-		expect(result.kind === "result" ? result.incorrectCards[0]?.front : "").toBe("old one");
+		expect(
+			result.kind === "result" && result.mode !== "study"
+				? result.incorrectCards[0]?.front
+				: "",
+		).toBe("old one");
 	});
 
 	it("keeps the old snapshot on atomic persistence failure and allows the same reference to retry", async () => {
@@ -215,7 +219,10 @@ describe("SessionLifecycle", () => {
 			rating: 3,
 		});
 		expect(applied.kind).toBe("applied");
-		expect(subject.lifecycle.getSnapshot().kind).toBe("idle");
+		const resultSnapshot = subject.lifecycle.getSnapshot();
+		expect(resultSnapshot.kind).toBe("result");
+		if (resultSnapshot.kind !== "result") throw new Error("result");
+		expect(resultSnapshot.mode).toBe("study");
 		expect(subject.repository.commits).toHaveLength(1);
 		expect(subject.repository.commits[0]).toMatchObject({
 			cardUpdates: [{ cardId: "one" }],
@@ -581,6 +588,22 @@ describe("SessionLifecycle", () => {
 			});
 		});
 
+		it("maps study setup defaults to study-setup", () => {
+			const viewState = getRestartViewState({
+				mode: "study",
+				deckId: DECK_ID,
+				studyOrder: "random",
+				direction: "reversed",
+			});
+
+			expect(viewState).toEqual({
+				type: "study-setup",
+				deckId: DECK_ID,
+				initialStudyOrder: "random",
+				initialDirection: "reversed",
+			});
+		});
+
 		it("maps spelling range defaults to spelling-setup", () => {
 			const viewState = getRestartViewState({
 				mode: "spelling",
@@ -598,5 +621,53 @@ describe("SessionLifecycle", () => {
 				initialSelection: { kind: "range", startIndex: 5, endIndex: 15 },
 			});
 		});
+	});
+
+	it("creates a study result snapshot upon completion with rating counts, rejects retry-incorrect, and dismisses to idle", async () => {
+		const subject = makeLifecycle([makeCard("one"), makeCard("two")]);
+		await subject.lifecycle.start({
+			mode: "study",
+			deckId: DECK_ID,
+			studyOrder: "sequential",
+			direction: "normal",
+		});
+
+		const active1 = subject.lifecycle.getSnapshot();
+		if (active1.kind !== "active" || active1.mode !== "study") throw new Error("active");
+		await subject.lifecycle.act(active1.reference, { kind: "answer", rating: 3 });
+
+		const active2 = subject.lifecycle.getSnapshot();
+		if (active2.kind !== "active" || active2.mode !== "study") throw new Error("active");
+		await subject.lifecycle.act(active2.reference, { kind: "answer", rating: 4 });
+
+		const result = subject.lifecycle.getSnapshot();
+		expect(result.kind).toBe("result");
+		if (result.kind !== "result" || result.mode !== "study") throw new Error("result");
+
+		expect(result.cardCount).toBe(2);
+		expect(result.totalReviews).toBe(2);
+		expect(result.ratingCounts).toEqual({
+			1: 0,
+			2: 0,
+			3: 1,
+			4: 1,
+			5: 0,
+		});
+
+		// retry-incorrect should be rejected for study results
+		const retry = await subject.lifecycle.act(result.reference, {
+			kind: "retry-incorrect",
+		});
+		expect(retry).toMatchObject({
+			kind: "rejected",
+			reason: "action-not-available",
+		});
+
+		// dismiss should transition to idle
+		const dismiss = await subject.lifecycle.act(result.reference, {
+			kind: "dismiss",
+		});
+		expect(dismiss.kind).toBe("applied");
+		expect(subject.lifecycle.getSnapshot().kind).toBe("idle");
 	});
 });

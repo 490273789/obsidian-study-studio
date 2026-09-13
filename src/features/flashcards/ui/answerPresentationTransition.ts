@@ -368,7 +368,7 @@ function getTransitionDelay(
 	action: Exclude<AnswerPresentationActionKind, "spelling-answer">,
 	next: SessionLifecycleSnapshot,
 ): number {
-	if (action === "study-answer" && next.kind === "idle") return 300;
+	if (action === "study-answer" && (next.kind === "idle" || next.kind === "result")) return 300;
 	if (action === "practice-answer" && next.kind === "result") return 300;
 	return 200;
 }

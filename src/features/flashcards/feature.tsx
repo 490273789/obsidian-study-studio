@@ -639,7 +639,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 							pronunciationRuntime={pronunciationRuntime}
 							deckHome={deckHome}
 							settings={settings}
-							onOpenSettings={() => host.settingsTab.open()}
+							onOpenSettings={() => host.settingsTab.open(FLASHCARD_SECTION_ID)}
 							onOpenTranslation={() => host.openFeature("translation")}
 							onOpenDictionary={() => host.openFeature("dictionary")}
 						/>

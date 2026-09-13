@@ -87,6 +87,11 @@ export interface ActiveSpellingReference extends ReferenceBase {
 	readonly mode: "spelling";
 }
 
+export interface StudyResultReference extends ReferenceBase {
+	readonly kind: "result";
+	readonly mode: "study";
+}
+
 export interface PracticeResultReference extends ReferenceBase {
 	readonly kind: "result";
 	readonly mode: "practice";
@@ -102,6 +107,7 @@ export type LifecycleReference =
 	| ActiveStudyReference
 	| ActivePracticeReference
 	| ActiveSpellingReference
+	| StudyResultReference
 	| PracticeResultReference
 	| SpellingResultReference;
 
@@ -176,6 +182,20 @@ export type SessionStartRequest =
 			readonly selection: SpellingSelection;
 	  };
 
+export interface StudyResultSnapshot {
+	readonly kind: "result";
+	readonly mode: "study";
+	readonly revision: number;
+	readonly reference: StudyResultReference;
+	readonly originDeck: Readonly<SessionOriginDeckSnapshot>;
+	readonly completedAt: number;
+	readonly cardCount: number;
+	readonly totalReviews: number;
+	readonly timeSpent: number;
+	readonly ratingCounts: Record<StudyRating, number>;
+	readonly setupDefaults: Readonly<Extract<SessionStartRequest, { mode: "study" }>>;
+}
+
 export interface PracticeResultSnapshot {
 	readonly kind: "result";
 	readonly mode: "practice";
@@ -215,13 +235,26 @@ export interface SpellingResultSnapshot {
 	readonly setupDefaults: Readonly<Extract<SessionStartRequest, { mode: "spelling" }>>;
 }
 
-export type ResultLifecycleSnapshot = PracticeResultSnapshot | SpellingResultSnapshot;
+export type ResultLifecycleSnapshot =
+	| StudyResultSnapshot
+	| PracticeResultSnapshot
+	| SpellingResultSnapshot;
 
 export function getRestartViewState(
 	setupDefaults:
+		| Readonly<Extract<SessionStartRequest, { mode: "study" }>>
 		| Readonly<Extract<SessionStartRequest, { mode: "practice" }>>
 		| Readonly<Extract<SessionStartRequest, { mode: "spelling" }>>,
 ): ViewState {
+	if (setupDefaults.mode === "study") {
+		return {
+			type: "study-setup",
+			deckId: setupDefaults.deckId,
+			initialStudyOrder: setupDefaults.studyOrder,
+			initialDirection: setupDefaults.direction,
+		};
+	}
+
 	if (setupDefaults.selection.kind === "study-day") {
 		if (setupDefaults.mode === "practice") {
 			return {
@@ -287,7 +320,7 @@ export type ActionFor<R extends LifecycleReference> = R extends ActiveStudyRefer
 		? PracticeLifecycleAction
 		: R extends ActiveSpellingReference
 			? SpellingLifecycleAction
-			: R extends PracticeResultReference | SpellingResultReference
+			: R extends StudyResultReference | PracticeResultReference | SpellingResultReference
 				? ResultLifecycleAction
 				: R extends IdleLifecycleReference
 					? IdleLifecycleAction
@@ -415,6 +448,18 @@ type InternalActiveState =
 	  };
 
 type InternalResultState =
+	| {
+			kind: "result";
+			mode: "study";
+			key: string;
+			originDeck: SessionOriginDeckSnapshot;
+			completedAt: number;
+			cardCount: number;
+			totalReviews: number;
+			timeSpent: number;
+			ratingCounts: Record<StudyRating, number>;
+			setupDefaults: Extract<SessionStartRequest, { mode: "study" }>;
+	  }
 	| {
 			kind: "result";
 			mode: "practice";
@@ -675,12 +720,13 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		const cardId = getCurrentStudyCardId(state.session);
 		const card = cardId ? this.repository.getCard(state.session.deckId, cardId) : undefined;
 		if (!card) return this.rejected("current-card-unavailable");
+		const now = this.now();
 		const step = answerStudyCard({
 			session: state.session,
 			card,
 			rating: action.rating,
 			scheduler: this.repository,
-			now: this.now(),
+			now,
 		});
 		const transition = emptyTransition();
 		transition.cardUpdates.push(step.cardUpdate);
@@ -692,7 +738,24 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		}
 		await this.commit(transition);
 		if (step.type === "complete") {
-			this.publish({ kind: "idle", key: this.makeKey("idle"), lastEnd: null });
+			const ratingCounts: Record<StudyRating, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+			for (const event of step.session.answerEvents) {
+				ratingCounts[event.rating] = (ratingCounts[event.rating] ?? 0) + 1;
+			}
+			const uniqueCardCount = new Set(step.session.answerEvents.map((event) => event.cardId))
+				.size;
+			this.publish({
+				kind: "result",
+				mode: "study",
+				key: this.makeKey("study-result"),
+				originDeck: getOriginDeck(state.session),
+				completedAt: now,
+				cardCount: uniqueCardCount,
+				totalReviews: step.session.answerEvents.length,
+				timeSpent: step.finishIntent.duration,
+				ratingCounts,
+				setupDefaults: state.setupDefaults,
+			});
 		} else {
 			this.publish({ ...state, session: step.session });
 		}
@@ -813,7 +876,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			this.publish({ kind: "idle", key: this.makeKey("idle"), lastEnd: null });
 			return this.applied();
 		}
-		if (action.kind !== "retry-incorrect") {
+		if (state.mode === "study" || action.kind !== "retry-incorrect") {
 			return this.rejected("action-not-available");
 		}
 		const planResult = planRetryIncorrectSession({
@@ -1029,6 +1092,26 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 	}
 
 	private buildResultSnapshot(state: InternalResultState): ResultLifecycleSnapshot {
+		if (state.mode === "study") {
+			return {
+				kind: "result",
+				mode: "study",
+				revision: this.revision,
+				reference: {
+					kind: "result",
+					mode: "study",
+					revision: this.revision,
+					key: state.key,
+				},
+				originDeck: state.originDeck,
+				completedAt: state.completedAt,
+				cardCount: state.cardCount,
+				totalReviews: state.totalReviews,
+				timeSpent: state.timeSpent,
+				ratingCounts: state.ratingCounts,
+				setupDefaults: state.setupDefaults,
+			};
+		}
 		if (state.mode === "practice") {
 			return {
 				kind: "result",

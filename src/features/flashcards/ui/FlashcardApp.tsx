@@ -26,7 +26,7 @@ import { DeckList } from "./views/Home";
 import { CardView, CardEditorModal, type CardEditorSavePayload } from "./views/Card";
 import { PracticeSetup, PracticeView, PracticeSummary } from "./views/Practice";
 import { WordListView } from "./views/WordList";
-import { StudySetup } from "./views/Study";
+import { StudySetup, StudySummary } from "./views/Study";
 import { StatsView } from "./views/Stats";
 import { SpellingSetup, SpellingView, SpellingSummary } from "./views/Spelling";
 import { createTranslator } from "../strings/index";
@@ -698,6 +698,15 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 		}
 
 		if (presentedLifecycleSnapshot.kind === "result") {
+			if (presentedLifecycleSnapshot.mode === "study") {
+				return (
+					<StudySummary
+						result={presentedLifecycleSnapshot}
+						onHome={handleResultHomeClick}
+						onRestart={handlePracticeRestart}
+					/>
+				);
+			}
 			return presentedLifecycleSnapshot.mode === "practice" ? (
 				<PracticeSummary
 					result={presentedLifecycleSnapshot}
