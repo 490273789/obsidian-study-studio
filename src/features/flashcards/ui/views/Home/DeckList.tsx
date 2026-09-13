@@ -287,7 +287,7 @@ const DeckCard = memo(function DeckCard({
 	);
 });
 
-export function getDeckCardTransition(
+function getDeckCardTransition(
 	isDragging: boolean,
 	isRecentlyDropped: boolean,
 	transition: string | undefined,
