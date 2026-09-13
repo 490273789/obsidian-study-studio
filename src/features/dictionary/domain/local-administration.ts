@@ -114,6 +114,17 @@ interface LocalDictionaryCandidate {
 interface LocalDictionarySourceFile {
 	readonly directory: string;
 	readonly file: File;
+	readonly lowerName: string;
+	readonly name: string;
+}
+
+interface LocalDictionaryDirectoryIndex {
+	mdxCount: number;
+	readonly resourcesByBase: Map<string, LocalDictionarySourceFile[]>;
+	readonly scripts: LocalDictionarySourceFile[];
+	readonly scriptsByBase: Map<string, LocalDictionarySourceFile[]>;
+	readonly stylesheets: LocalDictionarySourceFile[];
+	readonly stylesheetsByBase: Map<string, LocalDictionarySourceFile[]>;
 }
 
 const MAX_DICTIONARY_CSS_BYTES = 8 * 1_048_576;
@@ -128,9 +139,9 @@ function dictionaryBase(name: string): string {
 	return name.replace(/\.(?:eudic|mdx)$/i, "");
 }
 
-function compareFiles(left: File, right: File): number {
-	const leftName = left.name.normalize("NFKC");
-	const rightName = right.name.normalize("NFKC");
+function compareFileNames(left: string, right: string): number {
+	const leftName = left.normalize("NFKC");
+	const rightName = right.normalize("NFKC");
 	return leftName < rightName ? -1 : Number(leftName > rightName);
 }
 
@@ -138,20 +149,45 @@ function normalizedDictionaryBase(name: string): string {
 	return dictionaryBase(name).normalize("NFKC").toLowerCase();
 }
 
-function isAncestorDirectory(parent: string, child: string): boolean {
-	return parent !== child && (parent === "" || child.startsWith(`${parent}/`));
+function insensitiveFileBase(value: string): string {
+	return value.toUpperCase().toLowerCase();
+}
+
+function addIndexedFile(
+	index: Map<string, LocalDictionarySourceFile[]>,
+	base: string,
+	file: LocalDictionarySourceFile,
+): void {
+	const key = insensitiveFileBase(base);
+	const indexed = index.get(key) ?? [];
+	indexed.push(file);
+	index.set(key, indexed);
+}
+
+function createDirectoryIndex(): LocalDictionaryDirectoryIndex {
+	return {
+		mdxCount: 0,
+		resourcesByBase: new Map(),
+		scripts: [],
+		scriptsByBase: new Map(),
+		stylesheets: [],
+		stylesheetsByBase: new Map(),
+	};
 }
 
 function isNestedAlternative(
 	source: LocalDictionarySourceFile,
-	mdxFiles: readonly LocalDictionarySourceFile[],
+	mdxDirectoriesByBase: ReadonlyMap<string, ReadonlySet<string>>,
 ): boolean {
-	const base = normalizedDictionaryBase(source.file.name);
-	return mdxFiles.some(
-		(candidate) =>
-			normalizedDictionaryBase(candidate.file.name) === base &&
-			isAncestorDirectory(candidate.directory, source.directory),
-	);
+	const directories = mdxDirectoriesByBase.get(normalizedDictionaryBase(source.name));
+	if (!directories || source.directory === "") return false;
+	let parentEnd = source.directory.lastIndexOf("/");
+	while (parentEnd >= 0) {
+		const parent = source.directory.slice(0, parentEnd);
+		if (directories.has(parent)) return true;
+		parentEnd = parent.lastIndexOf("/");
+	}
+	return directories.has("");
 }
 
 function resourceVolume(name: string, pattern: RegExp): number {
@@ -160,70 +196,103 @@ function resourceVolume(name: string, pattern: RegExp): number {
 }
 
 function matchingCompanionFiles(
-	usable: readonly LocalDictionarySourceFile[],
-	mdxFiles: readonly LocalDictionarySourceFile[],
-	directory: string,
+	companions: readonly LocalDictionarySourceFile[],
+	exactCandidates: readonly LocalDictionarySourceFile[],
+	mdxCount: number,
 	pattern: RegExp,
-	extension: "css" | "js",
 ): File[] {
-	const companions = usable.filter(
-		(candidate) =>
-			candidate.directory === directory &&
-			candidate.file.name.toLowerCase().endsWith(`.${extension}`),
-	);
-	const exact = companions.filter((candidate) => pattern.test(candidate.file.name));
+	const exact = exactCandidates.filter((candidate) => pattern.test(candidate.name));
 	const selected =
-		exact.length > 0
-			? exact
-			: companions.length === 1 &&
-				  mdxFiles.filter((candidate) => candidate.directory === directory).length === 1
-				? companions
-				: [];
+		exact.length > 0 ? exact : companions.length === 1 && mdxCount === 1 ? companions : [];
 	return selected.map((candidate) => candidate.file);
 }
 
-function groupDictionaryFiles(files: readonly File[]): LocalDictionaryCandidate[] {
+export function groupDictionaryFiles(files: readonly File[]): LocalDictionaryCandidate[] {
 	const usable = files.flatMap((file): LocalDictionarySourceFile[] => {
-		if (!safeFileName(file.name)) return [];
+		const name = file.name;
+		if (!safeFileName(name)) return [];
 		const relativePath = (file.webkitRelativePath ?? "").replaceAll("\\", "/");
 		const parts = relativePath ? relativePath.split("/").filter(Boolean) : [];
 		if (parts.some((part) => part === "." || part === "..")) return [];
-		return [{ directory: parts.slice(0, -1).join("/"), file }];
+		return [
+			{
+				directory: parts.slice(0, -1).join("/"),
+				file,
+				lowerName: name.toLowerCase(),
+				name,
+			},
+		];
 	});
-	const mdxFiles = usable.filter(({ file }) => file.name.toLowerCase().endsWith(".mdx"));
+	const indexesByDirectory = new Map<string, LocalDictionaryDirectoryIndex>();
+	const mdxFiles: LocalDictionarySourceFile[] = [];
+	const mdxDirectoriesByBase = new Map<string, Set<string>>();
+	for (const source of usable) {
+		const directoryIndex = indexesByDirectory.get(source.directory) ?? createDirectoryIndex();
+		indexesByDirectory.set(source.directory, directoryIndex);
+		if (source.lowerName.endsWith(".mdx")) {
+			mdxFiles.push(source);
+			directoryIndex.mdxCount += 1;
+			const base = normalizedDictionaryBase(source.name);
+			const directories = mdxDirectoriesByBase.get(base) ?? new Set<string>();
+			directories.add(source.directory);
+			mdxDirectoriesByBase.set(base, directories);
+			continue;
+		}
+		if (source.lowerName.endsWith(".mdd")) {
+			const resourceBase = source.name.slice(0, -4);
+			addIndexedFile(directoryIndex.resourcesByBase, resourceBase, source);
+			const numberedVolume = /^(.*)\.(\d+)$/.exec(resourceBase);
+			if (numberedVolume?.[1] !== undefined) {
+				addIndexedFile(directoryIndex.resourcesByBase, numberedVolume[1], source);
+			}
+			continue;
+		}
+		if (source.lowerName.endsWith(".css")) {
+			directoryIndex.stylesheets.push(source);
+			addIndexedFile(directoryIndex.stylesheetsByBase, source.name.slice(0, -4), source);
+			continue;
+		}
+		if (source.lowerName.endsWith(".js")) {
+			directoryIndex.scripts.push(source);
+			addIndexedFile(directoryIndex.scriptsByBase, source.name.slice(0, -3), source);
+		}
+	}
 	const groups = mdxFiles
-		.filter((source) => !isNestedAlternative(source, mdxFiles))
-		.map(({ directory, file: mdx }): LocalDictionaryCandidate => {
-			const name = dictionaryBase(mdx.name);
+		.filter((source) => !isNestedAlternative(source, mdxDirectoriesByBase))
+		.map(({ directory, file: mdx, name: sourceName }): LocalDictionaryCandidate => {
+			const name = dictionaryBase(sourceName);
+			const directoryIndex = indexesByDirectory.get(directory) ?? createDirectoryIndex();
+			const fileBase = insensitiveFileBase(name);
 			const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 			const resourcePattern = new RegExp(`^${escaped}(?:\\.(\\d+))?\\.mdd$`, "i");
 			const stylesheetPattern = new RegExp(`^${escaped}\\.css$`, "i");
 			const javascriptPattern = new RegExp(`^${escaped}\\.js$`, "i");
-			const resources = usable
-				.filter(
-					(candidate) =>
-						candidate.directory === directory &&
-						resourcePattern.test(candidate.file.name),
-				)
-				.map((candidate) => candidate.file);
+			const resources = (directoryIndex.resourcesByBase.get(fileBase) ?? []).filter(
+				(candidate) => resourcePattern.test(candidate.name),
+			);
 			// oxlint-disable-next-line unicorn/no-array-sort -- resources is a new ES2022-compatible array.
 			resources.sort(
 				(left, right) =>
 					resourceVolume(left.name, resourcePattern) -
-						resourceVolume(right.name, resourcePattern) || compareFiles(left, right),
+						resourceVolume(right.name, resourcePattern) ||
+					compareFileNames(left.name, right.name),
 			);
 			return {
 				files: [
 					mdx,
-					...resources,
+					...resources.map((candidate) => candidate.file),
 					...matchingCompanionFiles(
-						usable,
-						mdxFiles,
-						directory,
+						directoryIndex.stylesheets,
+						directoryIndex.stylesheetsByBase.get(fileBase) ?? [],
+						directoryIndex.mdxCount,
 						stylesheetPattern,
-						"css",
 					),
-					...matchingCompanionFiles(usable, mdxFiles, directory, javascriptPattern, "js"),
+					...matchingCompanionFiles(
+						directoryIndex.scripts,
+						directoryIndex.scriptsByBase.get(fileBase) ?? [],
+						directoryIndex.mdxCount,
+						javascriptPattern,
+					),
 				],
 				format: "mdict",
 				name,
@@ -231,11 +300,11 @@ function groupDictionaryFiles(files: readonly File[]): LocalDictionaryCandidate[
 		});
 	groups.push(
 		...usable
-			.filter(({ file }) => file.name.toLowerCase().endsWith(".eudic"))
-			.map(({ file }): LocalDictionaryCandidate => ({
+			.filter(({ lowerName }) => lowerName.endsWith(".eudic"))
+			.map(({ file, name }): LocalDictionaryCandidate => ({
 				files: [file],
 				format: "eudic",
-				name: dictionaryBase(file.name),
+				name: dictionaryBase(name),
 			})),
 	);
 	return groups;
