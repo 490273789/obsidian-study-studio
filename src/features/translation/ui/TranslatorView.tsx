@@ -95,7 +95,7 @@ export const TranslatorView = React.memo(function TranslatorView({
 	};
 
 	return (
-		<main className="fc-page fc-page--column" aria-busy={isLoading}>
+		<main className={cls("fc-page fc-page--column", styles.page)} aria-busy={isLoading}>
 			<FlashcardHeader
 				icon={Languages}
 				title={strings.title}

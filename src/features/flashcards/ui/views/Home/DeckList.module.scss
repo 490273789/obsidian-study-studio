@@ -145,6 +145,7 @@
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	max-width: 100%;
+	flex-shrink: 0;
 }
 
 .wordLearningBadge {
@@ -159,6 +160,8 @@
 	font-family: var(--fc-font-data);
 	font-size: var(--fc-font-xs);
 	font-weight: var(--fc-weight-semibold);
+	white-space: nowrap;
+	flex-shrink: 0;
 
 	&.isInvalid {
 		border-color: rgba(var(--fc-red-rgb), 0.34);
@@ -235,21 +238,17 @@
 	margin-top: 0;
 	display: flex;
 	align-items: center;
+	flex-shrink: 0;
 }
 
 .deckActions {
-	display: grid;
+	display: flex;
+	align-items: center;
 	gap: var(--fc-space-2);
-	width: 100%;
-	grid-template-columns: auto auto var(--fc-control-md);
-
-	&.hasSpelling {
-		grid-template-columns: auto auto auto var(--fc-control-md);
-	}
+	width: auto;
 
 	:global(.flashcard-btn) {
 		font-size: var(--fc-font-xs);
-		width: 100%;
 		height: var(--fc-control-md);
 		min-width: 0;
 		min-height: var(--fc-control-md);
@@ -367,7 +366,7 @@
 
 /* ── Responsive Overrides ────────────────────────────────────────────────── */
 
-@media (max-width: 900px) {
+@mixin deck-stacked-layout {
 	.deckItem {
 		flex-direction: column;
 		align-items: stretch;
@@ -375,8 +374,32 @@
 	}
 
 	.deckSide {
+		width: 100%;
 		align-self: stretch;
 	}
+
+	.deckActions {
+		display: grid;
+		gap: var(--fc-space-2);
+		width: 100%;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--fc-control-md);
+
+		&.hasSpelling {
+			grid-template-columns: repeat(3, minmax(0, 1fr)) var(--fc-control-md);
+		}
+
+		:global(.flashcard-btn) {
+			width: 100%;
+		}
+	}
+}
+
+@container flashcard-page (max-width: 768px) {
+	@include deck-stacked-layout;
+}
+
+@media (max-width: 768px) {
+	@include deck-stacked-layout;
 }
 
 @container flashcard-page (max-width: 960px) {

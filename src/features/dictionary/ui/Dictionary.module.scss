@@ -120,11 +120,14 @@
 
 .savedList {
 	display: flex;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 	align-items: center;
 	gap: var(--fc-space-1);
+	overflow-x: auto;
+	overscroll-behavior-x: contain;
 
 	strong {
+		flex: 0 0 auto;
 		color: var(--fc-faint);
 		font-size: var(--fc-font-xs);
 		font-weight: var(--fc-weight-medium);
@@ -133,6 +136,7 @@
 	.savedItem {
 		@include fc-button-reset;
 		display: inline-flex;
+		flex: 0 0 auto;
 		align-items: center;
 		cursor: pointer;
 		padding: var(--fc-space-1) var(--fc-space-3) var(--fc-space-2);
@@ -221,10 +225,10 @@
 	gap: var(--fc-space-1);
 	min-height: var(--fc-control-md);
 	padding: 0 var(--fc-space-2);
-	border: 1px solid transparent;
+	border: 1px solid var(--fc-line-soft);
 	border-radius: var(--fc-radius-sm);
-	background: transparent;
-	color: var(--fc-muted);
+	background: var(--fc-surface-control);
+	color: var(--fc-text);
 	font-size: var(--fc-font-sm);
 	cursor: pointer;
 	transition:

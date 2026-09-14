@@ -3,6 +3,14 @@
  * core/styles/layout.scss; only translator-specific rules stay here.
  */
 
+.page {
+	height: 100%;
+	min-height: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	-webkit-overflow-scrolling: touch;
+}
+
 .direction {
 	align-self: center;
 	display: grid;
@@ -181,6 +189,15 @@
 
 	.panel > :global(.flashcard-textarea) {
 		min-height: 240px;
+	}
+
+	/* Keep each translation readable without allowing a long response to take
+	   over the whole phone view. The textarea owns the vertical scroll. */
+	.results > .panel > :global(.flashcard-textarea) {
+		height: min(44vh, 360px);
+		min-height: 240px;
+		overflow-y: auto;
+		scrollbar-gutter: stable;
 	}
 
 	.footer {

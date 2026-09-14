@@ -324,12 +324,14 @@ export function DictionaryView({
 								}
 							/>
 							<FlashcardButton
+								preset="icon"
 								icon={Settings2}
 								title={strings.openSettings}
 								aria-label={strings.openSettings}
 								onClick={onOpenSettings}
 							/>
 							<FlashcardButton
+								preset="icon"
 								icon={Trash2}
 								title={strings.clear}
 								aria-label={strings.clear}
@@ -382,11 +384,13 @@ export function DictionaryView({
 						<h2>{state.query}</h2>
 						<div>
 							<FlashcardButton
+								preset="icon"
 								size="sm"
 								icon={Bookmark}
 								onClick={() => void onOpenFavorite(state.query)}
 							></FlashcardButton>
 							<FlashcardButton
+								preset="icon"
 								size="sm"
 								icon={Copy}
 								onClick={() => void copyQuery()}

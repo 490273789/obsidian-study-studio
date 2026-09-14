@@ -10,7 +10,7 @@
 	}
 
 	.flashcard-deck-list .flashcard-deck-item {
-		grid-template-columns: 1fr;
+		flex-direction: column;
 		min-height: auto;
 	}
 
@@ -159,6 +159,17 @@
 		align-items: stretch;
 	}
 
+	/* Confirmation choices remain adjacent so both actions are immediately
+	   comparable and use the modal width evenly on phones. */
+	.flashcard-modal-footer.flashcard-confirm-footer {
+		flex-direction: row;
+
+		.flashcard-btn {
+			min-width: 0;
+			flex: 1 1 0;
+		}
+	}
+
 	.flashcard-word-list-toolbar {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
@@ -172,7 +183,7 @@
 	}
 
 	.flashcard-deck-list .flashcard-deck-item {
-		grid-template-columns: minmax(0, 1fr);
+		flex-direction: column;
 		min-height: auto;
 		gap: var(--fc-space-3);
 		padding: var(--fc-space-3);
@@ -338,12 +349,16 @@
 		grid-template-columns: var(--fc-control-touch) minmax(0, 1fr);
 		align-items: stretch;
 		gap: var(--fc-space-2);
+		width: 100%;
+		padding: 0 var(--fc-space-4);
 	}
 
 	.flashcard-study .flashcard-practice-response-controls {
 		grid-template-columns: var(--fc-control-touch) minmax(0, 1fr);
 		align-items: stretch;
 		gap: var(--fc-space-2);
+		width: 100%;
+		padding: 0 var(--fc-space-4);
 	}
 
 	.flashcard-study .flashcard-rating-grid {
@@ -394,6 +409,11 @@
 		height: var(--fc-control-touch);
 		min-height: var(--fc-control-touch);
 		padding: 0;
+	}
+
+	.flashcard-footer .flashcard-btn-show {
+		width: calc(100% - var(--fc-space-8));
+		margin: 0 var(--fc-space-4);
 	}
 
 	.flashcard-study .flashcard-practice-answer-buttons {
@@ -486,6 +506,40 @@
 
 /* Respond to the Obsidian pane width, including desktop split panes and mobile phone views. */
 @container flashcard-page (max-width: 640px) {
+	/* Obsidian Mobile may keep a desktop-sized CSS viewport.  These setup
+	   controls therefore need to follow the page container, not just the
+	   viewport media query above. */
+	.flashcard-practice-setup .flashcard-setup-control-group {
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--fc-space-3);
+		padding: var(--fc-space-4);
+
+		.flashcard-setup-control-copy {
+			padding: 0 0 var(--fc-space-3);
+			border-right: 0;
+			border-bottom: 1px solid var(--fc-line-faint);
+		}
+
+		.flashcard-setup-control-body {
+			min-width: 0;
+		}
+	}
+
+	.flashcard-practice-setup .flashcard-setup-segmented {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		width: 100%;
+	}
+
+	.flashcard-practice-setup .flashcard-setup-segment-btn {
+		min-width: 0;
+		padding-inline: var(--fc-space-2);
+	}
+
+	.flashcard-practice-setup .flashcard-setup-segment-label {
+		overflow-wrap: anywhere;
+	}
+
 	.flashcard-header-stats.columns-3,
 	.flashcard-header-stats.columns-4,
 	.flashcard-header-stats.columns-5 {
@@ -502,7 +556,7 @@
 	}
 
 	.flashcard-deck-list .flashcard-deck-item {
-		grid-template-columns: minmax(0, 1fr);
+		flex-direction: column;
 		min-height: auto;
 		gap: var(--fc-space-3);
 		padding: var(--fc-space-3);
@@ -548,8 +602,39 @@
 
 /* Explicit fallback for Obsidian mobile phone environment */
 .is-phone {
-	.flashcard-deck-list .flashcard-deck-item {
+	.flashcard-practice-setup .flashcard-setup-control-group {
 		grid-template-columns: minmax(0, 1fr);
+		gap: var(--fc-space-3);
+		padding: var(--fc-space-4);
+
+		.flashcard-setup-control-copy {
+			padding: 0 0 var(--fc-space-3);
+			border-right: 0;
+			border-bottom: 1px solid var(--fc-line-faint);
+		}
+
+		.flashcard-setup-control-body {
+			min-width: 0;
+		}
+	}
+
+	.flashcard-practice-setup .flashcard-setup-segmented {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		width: 100%;
+	}
+
+	.flashcard-practice-setup .flashcard-setup-segment-btn {
+		min-width: 0;
+		padding-inline: var(--fc-space-2);
+	}
+
+	.flashcard-practice-setup .flashcard-setup-segment-label {
+		overflow-wrap: anywhere;
+	}
+
+	.flashcard-deck-list .flashcard-deck-item {
+		flex-direction: column;
 		min-height: auto;
 		gap: var(--fc-space-3);
 		padding: var(--fc-space-3);
