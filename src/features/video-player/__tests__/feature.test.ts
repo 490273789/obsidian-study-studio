@@ -59,7 +59,7 @@ describe("video player feature", () => {
 			"videoPlayer",
 			{
 				...DEFAULT_SETTINGS,
-				videoPlayer: { enabled: false },
+				videoPlayer: { ...DEFAULT_SETTINGS.videoPlayer, enabled: false },
 			},
 			app,
 		);

@@ -64,6 +64,7 @@ export function parseDeviceVideoPlayerState(value: unknown): DeviceVideoPlayerSt
 			? (value.playbackRate as (typeof VIDEO_PLAYBACK_RATES)[number])
 			: 1,
 		floatingRect: parseRect(value.floatingRect),
+		queueExpanded: value.queueExpanded !== false,
 	};
 }
 

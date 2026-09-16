@@ -9,6 +9,7 @@ import {
 	type SettingsContent,
 	type SettingsControlSnapshot,
 	type SettingsEditableListSnapshot,
+	type SettingsKeybindingSnapshot,
 	type SettingsNumberSnapshot,
 	type SettingsPresentation,
 	type SettingsPrimitiveControlSnapshot,
@@ -258,6 +259,9 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 			case "text":
 				this.renderTextControl(setting, control, presentation);
 				break;
+			case "keybinding":
+				this.renderKeybindingControl(setting, control, presentation);
+				break;
 			case "secret":
 				this.renderSecretControl(setting, control, presentation);
 				break;
@@ -425,6 +429,50 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 			text.inputEl.addEventListener("change", () => {
 				this.dispatch(presentation, control.action, text.getValue());
 			});
+		});
+	}
+
+	private renderKeybindingControl(
+		setting: Setting,
+		control: SettingsKeybindingSnapshot,
+		presentation: SettingsPresentation,
+	): void {
+		const button = setting.controlEl.createEl("button", {
+			type: "button",
+			text: control.value || control.emptyLabel,
+			cls: "fc-keybinding-capture",
+		});
+		button.disabled = control.disabled;
+		button.setAttribute("aria-label", control.recordingLabel);
+		const error = setting.controlEl.createSpan({ cls: "fc-keybinding-error" });
+		button.addEventListener("focus", () => {
+			button.textContent = control.recordingLabel;
+			button.classList.add("is-recording");
+		});
+		button.addEventListener("blur", () => {
+			button.textContent = control.value || control.emptyLabel;
+			button.classList.remove("is-recording");
+		});
+		button.addEventListener("keydown", (event) => {
+			if (event.key === "Escape") {
+				event.preventDefault();
+				button.blur();
+				return;
+			}
+			const shortcut = settingsShortcutFromEvent(event);
+			if (!shortcut) return;
+			event.preventDefault();
+			event.stopPropagation();
+			if (control.unavailableValues.includes(shortcut)) {
+				error.textContent = control.conflictMessage;
+				button.classList.add("has-error");
+				return;
+			}
+			error.textContent = "";
+			button.classList.remove("has-error");
+			button.textContent = shortcut;
+			this.dispatch(presentation, control.action, shortcut);
+			button.blur();
 		});
 	}
 
@@ -765,4 +813,28 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 			options.onAdd();
 		});
 	}
+}
+
+function settingsShortcutFromEvent(event: KeyboardEvent): string | null {
+	if (["Control", "Alt", "Shift", "Meta"].includes(event.key)) return null;
+	const key =
+		event.key === " " || event.key === "Spacebar"
+			? "Space"
+			: event.key === "+"
+				? "Plus"
+				: event.key === "-"
+					? "Minus"
+					: event.key.length === 1
+						? event.key.toUpperCase()
+						: event.key;
+	if (!key) return null;
+	return [
+		event.ctrlKey ? "Ctrl" : null,
+		event.altKey ? "Alt" : null,
+		event.shiftKey ? "Shift" : null,
+		event.metaKey ? "Meta" : null,
+		key,
+	]
+		.filter((part): part is string => part !== null)
+		.join("+");
 }

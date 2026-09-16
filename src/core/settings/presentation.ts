@@ -65,6 +65,16 @@ export interface SettingsTextSnapshot extends SettingsControlState {
 	action: SettingsActionRef<string>;
 }
 
+export interface SettingsKeybindingSnapshot extends SettingsControlState {
+	kind: "keybinding";
+	value: string;
+	emptyLabel: string;
+	recordingLabel: string;
+	conflictMessage: string;
+	unavailableValues: readonly string[];
+	action: SettingsActionRef<string>;
+}
+
 export interface SettingsNumberSnapshot extends SettingsControlState {
 	kind: "slider" | "integer";
 	value: number;
@@ -144,6 +154,7 @@ export type SettingsPrimitiveControlSnapshot =
 	| SettingsToggleSnapshot
 	| SettingsSelectSnapshot
 	| SettingsTextSnapshot
+	| SettingsKeybindingSnapshot
 	| SettingsNumberSnapshot
 	| SettingsStatusSnapshot;
 
@@ -223,6 +234,13 @@ export interface SettingsValueSpec<T> {
 
 export interface SettingsTextSpec extends SettingsValueSpec<string> {
 	placeholder?: string;
+}
+
+export interface SettingsKeybindingSpec extends SettingsValueSpec<string> {
+	emptyLabel: string;
+	recordingLabel: string;
+	conflictMessage: string;
+	unavailableValues?: readonly string[];
 }
 
 export interface SettingsSelectSpec<T extends string = string> extends SettingsValueSpec<T> {
@@ -307,6 +325,7 @@ export interface SettingsGroupBuilder {
 	toggle(key: string, copy: SettingsRowCopy, spec: SettingsValueSpec<boolean>): void;
 	select<T extends string>(key: string, copy: SettingsRowCopy, spec: SettingsSelectSpec<T>): void;
 	text(key: string, copy: SettingsRowCopy, spec: SettingsTextSpec): void;
+	keybinding(key: string, copy: SettingsRowCopy, spec: SettingsKeybindingSpec): void;
 	textarea(key: string, copy: SettingsRowCopy, spec: SettingsTextSpec): void;
 	secret(key: string, copy: SettingsRowCopy, spec: SettingsTextSpec): void;
 	slider(key: string, copy: SettingsRowCopy, spec: SettingsNumberSpec): void;
@@ -323,6 +342,7 @@ export interface SettingsRowBuilder {
 	toggle(key: string, spec: SettingsValueSpec<boolean> & { tooltip?: string }): void;
 	select<T extends string>(key: string, spec: SettingsSelectSpec<T>): void;
 	text(key: string, spec: SettingsTextSpec): void;
+	keybinding(key: string, spec: SettingsKeybindingSpec): void;
 	textarea(key: string, spec: SettingsTextSpec): void;
 	secret(key: string, spec: SettingsTextSpec): void;
 	slider(key: string, spec: SettingsNumberSpec): void;
@@ -466,6 +486,9 @@ class GroupComposer implements SettingsGroupBuilder {
 	}
 	text(key: string, copy: SettingsRowCopy, spec: SettingsTextSpec): void {
 		this.row(key, copy, (row) => row.text("control", spec));
+	}
+	keybinding(key: string, copy: SettingsRowCopy, spec: SettingsKeybindingSpec): void {
+		this.row(key, copy, (row) => row.keybinding("control", spec));
 	}
 	textarea(key: string, copy: SettingsRowCopy, spec: SettingsTextSpec): void {
 		this.row(key, copy, (row) => row.textarea("control", spec));
@@ -654,6 +677,28 @@ class RowComposer implements SettingsRowBuilder {
 	}
 	text(key: string, spec: SettingsTextSpec): void {
 		this.textLike("text", key, spec);
+	}
+	keybinding(key: string, spec: SettingsKeybindingSpec): void {
+		const disabled = this.parentDisabled || (spec.disabled ?? false);
+		const unavailableValues = [...(spec.unavailableValues ?? [])].filter(Boolean);
+		assertUniqueValues(unavailableValues, `${this.path}/${key}/unavailable`);
+		this.add(key, {
+			kind: "keybinding",
+			key,
+			disabled,
+			value: spec.value,
+			emptyLabel: spec.emptyLabel,
+			recordingLabel: spec.recordingLabel,
+			conflictMessage: spec.conflictMessage,
+			unavailableValues,
+			action: registerAction(
+				this.actions,
+				`${this.path}/${key}:change`,
+				disabled,
+				parseString,
+				(value) => spec.onChange(value),
+			),
+		});
 	}
 	textarea(key: string, spec: SettingsTextSpec): void {
 		this.textLike("textarea", key, spec);

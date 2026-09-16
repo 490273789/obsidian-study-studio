@@ -150,6 +150,28 @@
 	padding: var(--fc-space-2) var(--fc-space-3);
 }
 
+.fc-keybinding-capture {
+	min-width: 132px;
+	padding-inline: var(--fc-space-3);
+	font-family: var(--fc-font-data);
+	font-variant-numeric: tabular-nums;
+
+	&.is-recording {
+		border-color: var(--interactive-accent);
+		box-shadow: var(--fc-focus-ring);
+	}
+
+	&.has-error {
+		border-color: var(--fc-red);
+	}
+}
+
+.fc-keybinding-error {
+	max-width: 180px;
+	color: var(--fc-red);
+	font-size: var(--fc-font-xs);
+}
+
 .flashcard-tag-button,
 .fc-btn-add,
 .fc-btn-remove {

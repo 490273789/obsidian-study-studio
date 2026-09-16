@@ -9,13 +9,16 @@ import React, {
 import { createPortal } from "react-dom";
 import {
 	ChevronDown,
-	ChevronUp,
+	ChevronRight,
 	FastForward,
 	FolderPlus,
+	GripVertical,
 	Minimize2,
+	MoreHorizontal,
 	Pause,
 	Play,
 	Rewind,
+	Settings,
 	SkipBack,
 	SkipForward,
 	Trash2,
@@ -24,19 +27,28 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { FlashcardButton } from "../../../core/ui/primitives/Button";
 import type { Language } from "../../../core/shared/types";
-import type { FloatingRect, LocalVideoSource } from "../domain/types";
+import type { FloatingRect, LocalVideoSource, VideoPlayerSnapshot } from "../domain/types";
 import { VIDEO_PLAYBACK_RATES } from "../domain/types";
 import type { VideoPlayerRuntime } from "../domain/videoPlayerRuntime";
+import { matchesKeyboardShortcut } from "../settings/keyboardShortcut";
+import type { VideoPlayerSettings } from "../settings/slice";
 import { videoPlayerStrings } from "../strings/videoPlayer";
 import styles from "./VideoPlayer.module.scss";
+import type { PlayerFocusController } from "./playerFocusController";
 import type { VideoPlayerPresenterLease } from "./presenterLease";
+
+/* oxlint-disable jsx-a11y/no-noninteractive-element-interactions -- The player is a composite keyboard surface. */
+/* oxlint-disable jsx-a11y/no-noninteractive-tabindex -- The composite player must be tabbable. */
 
 export interface VideoPlayerViewProps {
 	runtime: VideoPlayerRuntime;
 	language: Language;
 	rootEl: HTMLElement;
 	presenterLease: VideoPlayerPresenterLease;
+	focusController: PlayerFocusController;
+	settings: VideoPlayerSettings;
 	onFocusExisting: () => void;
+	onOpenSettings: () => void;
 	onPickVideos: () => Promise<readonly LocalVideoSource[]>;
 	onPickReplacement: (sourceId: string) => Promise<LocalVideoSource | null>;
 }
@@ -50,7 +62,10 @@ export function VideoPlayerView({
 	language,
 	rootEl,
 	presenterLease,
+	focusController,
+	settings,
 	onFocusExisting,
+	onOpenSettings,
 	onPickVideos,
 	onPickReplacement,
 }: VideoPlayerViewProps): React.ReactNode {
@@ -64,6 +79,7 @@ export function VideoPlayerView({
 		element.className = styles.video;
 		element.playsInline = true;
 		element.preload = "metadata";
+		element.tabIndex = -1;
 		return element;
 	});
 	const dockedHost = useRef<HTMLDivElement>(null);
@@ -131,15 +147,21 @@ export function VideoPlayerView({
 			dockedHost={dockedHost}
 			playing={snapshot.playing}
 			rate={snapshot.playbackRate}
+			settings={settings}
+			focusController={focusController}
 			canPrevious={currentIndex > 0}
 			canNext={currentIndex >= 0 && currentIndex < snapshot.sources.length - 1}
 			onToggle={() => runtime.togglePlayback()}
 			onPrevious={() => runtime.previous()}
 			onNext={() => runtime.next()}
-			onBackward={() => runtime.seekBy(-10)}
-			onForward={() => runtime.seekBy(10)}
+			onBackward={() => runtime.seekBy(-settings.skipInterval)}
+			onForward={() => runtime.seekBy(settings.skipInterval)}
+			onSeek={(time) => runtime.seekTo(time)}
 			onRate={(rate) => runtime.setPlaybackRate(rate)}
-			onFloat={() => runtime.setFloating(true)}
+			onFloat={() => {
+				focusController.requestFocusAfterRemount();
+				runtime.setFloating(true);
+			}}
 			t={t}
 		/>
 	);
@@ -151,13 +173,16 @@ export function VideoPlayerView({
 					<p className="fc-kicker">Study Studio</p>
 					<h2>{t.title}</h2>
 				</div>
-				<FlashcardButton
-					variant="primary"
-					icon={FolderPlus}
-					onClick={() => void addVideos()}
-				>
-					{t.addVideos}
-				</FlashcardButton>
+				<div className={styles.headerActions}>
+					<IconButton icon={Settings} label={t.settings} onClick={onOpenSettings} />
+					<FlashcardButton
+						variant="primary"
+						icon={FolderPlus}
+						onClick={() => void addVideos()}
+					>
+						{t.addVideos}
+					</FlashcardButton>
+				</div>
 			</header>
 
 			{snapshot.sources.length === 0 ? (
@@ -181,6 +206,7 @@ export function VideoPlayerView({
 								<FlashcardButton
 									variant="secondary"
 									onClick={() => {
+										focusController.requestFocusAfterRemount();
 										runtime.pause();
 										runtime.setFloating(false);
 									}}
@@ -193,90 +219,125 @@ export function VideoPlayerView({
 						)}
 					</section>
 					<aside className={styles.queue} aria-label={t.queue}>
-						<div className={styles.queueHeading}>
-							<h3>{t.queue}</h3>
-							<span>{snapshot.sources.length}</span>
-						</div>
-						<div className={styles.queueList}>
-							{snapshot.sources.map((source, index) => (
-								<div
-									key={source.id}
-									className={`${styles.queueItem} ${source.id === snapshot.currentSourceId ? styles.active : ""}`}
-									draggable
-									onDragStart={() => {
-										draggedId.current = source.id;
-									}}
-									onDragOver={(event) => event.preventDefault()}
-									onDrop={() => {
-										const dragged = draggedId.current;
-										if (!dragged || dragged === source.id) return;
-										const ids = snapshot.sources.map((item) => item.id);
-										const from = ids.indexOf(dragged);
-										const to = ids.indexOf(source.id);
-										if (from < 0 || to < 0) return;
-										ids.splice(to, 0, ...ids.splice(from, 1));
-										runtime.reorderSources(ids);
-									}}
-								>
-									<button
-										type="button"
-										className={styles.sourceButton}
-										onClick={() => runtime.selectSource(source.id)}
-										title={source.path}
+						<button
+							type="button"
+							className={styles.queueHeading}
+							aria-expanded={snapshot.queueExpanded}
+							onClick={() => runtime.setQueueExpanded(!snapshot.queueExpanded)}
+						>
+							{snapshot.queueExpanded ? <ChevronDown /> : <ChevronRight />}
+							<span>{t.queueSummary(snapshot.sources.length, currentIndex + 1)}</span>
+							<span className={styles.queueToggleLabel}>
+								{snapshot.queueExpanded ? t.queueCollapse : t.queueExpand}
+							</span>
+						</button>
+						{snapshot.queueExpanded && (
+							<div className={styles.queueList}>
+								{snapshot.sources.map((source, index) => (
+									<div
+										key={source.id}
+										className={`${styles.queueItem} ${source.id === snapshot.currentSourceId ? styles.active : ""}`}
+										onDragOver={(event) => event.preventDefault()}
+										onDrop={() => {
+											const dragged = draggedId.current;
+											if (!dragged || dragged === source.id) return;
+											const ids = snapshot.sources.map((item) => item.id);
+											const from = ids.indexOf(dragged);
+											const to = ids.indexOf(source.id);
+											if (from < 0 || to < 0) return;
+											ids.splice(to, 0, ...ids.splice(from, 1));
+											runtime.reorderSources(ids);
+										}}
 									>
-										<span className={styles.sourceIndex}>{index + 1}</span>
-										<span className={styles.sourceName}>{source.name}</span>
-										{snapshot.completedSourceIds.includes(source.id) && (
-											<span className={styles.completed}>{t.completed}</span>
-										)}
-									</button>
-									<div className={styles.itemActions}>
-										<IconButton
-											icon={ChevronUp}
-											label={t.moveUp}
-											disabled={index === 0}
-											onClick={() =>
-												moveSource(
-													runtime,
-													snapshot.sources,
-													index,
-													index - 1,
-												)
-											}
-										/>
-										<IconButton
-											icon={ChevronDown}
-											label={t.moveDown}
-											disabled={index === snapshot.sources.length - 1}
-											onClick={() =>
-												moveSource(
-													runtime,
-													snapshot.sources,
-													index,
-													index + 1,
-												)
-											}
-										/>
-										<IconButton
-											icon={FolderPlus}
-											label={t.replace}
-											onClick={async () => {
-												const replacement = await onPickReplacement(
-													source.id,
-												);
-												if (replacement)
-													runtime.replaceSource(source.id, replacement);
+										<button
+											type="button"
+											className={styles.dragHandle}
+											draggable
+											aria-label={t.dragToReorder}
+											title={t.dragToReorder}
+											onDragStart={() => {
+												draggedId.current = source.id;
 											}}
-										/>
-										<IconButton
-											icon={Trash2}
-											label={t.remove}
-											onClick={() => runtime.removeSource(source.id)}
-										/>
+										>
+											<GripVertical aria-hidden="true" />
+										</button>
+										<button
+											type="button"
+											className={styles.sourceButton}
+											onClick={() => runtime.selectSource(source.id)}
+											title={source.path}
+										>
+											<span className={styles.sourceIndex}>{index + 1}</span>
+											<span className={styles.sourceCopy}>
+												<span className={styles.sourceName}>
+													{source.name}
+												</span>
+												<span className={styles.sourceMeta}>
+													{sourceProgressLabel(source.id, snapshot, t)}
+												</span>
+											</span>
+										</button>
+										<details className={styles.itemMenu}>
+											<summary
+												aria-label={t.queueActions}
+												title={t.queueActions}
+											>
+												<MoreHorizontal aria-hidden="true" />
+											</summary>
+											<div className={styles.itemActions}>
+												<button
+													type="button"
+													disabled={index === 0}
+													onClick={() =>
+														moveSource(
+															runtime,
+															snapshot.sources,
+															index,
+															index - 1,
+														)
+													}
+												>
+													{t.moveUp}
+												</button>
+												<button
+													type="button"
+													disabled={index === snapshot.sources.length - 1}
+													onClick={() =>
+														moveSource(
+															runtime,
+															snapshot.sources,
+															index,
+															index + 1,
+														)
+													}
+												>
+													{t.moveDown}
+												</button>
+												<IconButton
+													icon={FolderPlus}
+													label={t.replace}
+													onClick={async () => {
+														const replacement = await onPickReplacement(
+															source.id,
+														);
+														if (replacement)
+															runtime.replaceSource(
+																source.id,
+																replacement,
+															);
+													}}
+												/>
+												<IconButton
+													icon={Trash2}
+													label={t.remove}
+													onClick={() => runtime.removeSource(source.id)}
+												/>
+											</div>
+										</details>
 									</div>
-								</div>
-							))}
-						</div>
+								))}
+							</div>
+						)}
 					</aside>
 				</div>
 			)}
@@ -288,10 +349,13 @@ export function VideoPlayerView({
 						initialRect={snapshot.floatingRect}
 						onRectChange={(rect) => runtime.setFloatingRect(rect)}
 						onClose={() => {
+							focusController.requestFocusAfterRemount();
 							runtime.pause();
 							runtime.setFloating(false);
 						}}
 						title={t.title}
+						resizeLeftLabel={t.resizeLeft}
+						resizeRightLabel={t.resizeRight}
 					>
 						{player}
 					</FloatingPlayer>,
@@ -301,16 +365,7 @@ export function VideoPlayerView({
 	);
 }
 
-interface PlayerCopy {
-	play: string;
-	pause: string;
-	previous: string;
-	next: string;
-	backward: string;
-	forward: string;
-	floating: string;
-	rate: string;
-}
+type PlayerCopy = ReturnType<typeof videoPlayerStrings>;
 
 function PlayerSurface({
 	currentTime,
@@ -321,6 +376,8 @@ function PlayerSurface({
 	dockedHost,
 	playing,
 	rate,
+	settings,
+	focusController,
 	canPrevious,
 	canNext,
 	onToggle,
@@ -328,6 +385,7 @@ function PlayerSurface({
 	onNext,
 	onBackward,
 	onForward,
+	onSeek,
 	onRate,
 	onFloat,
 	t,
@@ -340,6 +398,8 @@ function PlayerSurface({
 	dockedHost: React.RefObject<HTMLDivElement | null>;
 	playing: boolean;
 	rate: number;
+	settings: VideoPlayerSettings;
+	focusController: PlayerFocusController;
 	canPrevious: boolean;
 	canNext: boolean;
 	onToggle: () => void;
@@ -347,18 +407,60 @@ function PlayerSurface({
 	onNext: () => void;
 	onBackward: () => void;
 	onForward: () => void;
+	onSeek: (time: number) => void;
 	onRate: (rate: (typeof VIDEO_PLAYBACK_RATES)[number]) => void;
 	onFloat: () => void;
 	t: PlayerCopy;
 }): React.ReactNode {
+	const surfaceRef = useRef<HTMLDivElement>(null);
+	useEffect(
+		() =>
+			focusController.register(() => {
+				const element = surfaceRef.current;
+				const win = element?.ownerDocument.defaultView;
+				if (!element) return;
+				if (win?.requestAnimationFrame) win.requestAnimationFrame(() => element.focus());
+				else element.focus();
+			}),
+		[focusController],
+	);
+
+	const handleShortcut = (event: React.KeyboardEvent<HTMLDivElement>) => {
+		if (isInteractiveTarget(event.target)) return;
+		const action = matchesKeyboardShortcut(event, settings.shortcuts.togglePlayback)
+			? onToggle
+			: matchesKeyboardShortcut(event, settings.shortcuts.seekBackward)
+				? onBackward
+				: matchesKeyboardShortcut(event, settings.shortcuts.seekForward)
+					? onForward
+					: null;
+		if (!action) return;
+		event.preventDefault();
+		event.stopPropagation();
+		if (!event.repeat) action();
+	};
+
 	return (
-		<div className={styles.surface}>
+		<div
+			ref={surfaceRef}
+			className={styles.surface}
+			tabIndex={0}
+			role="application"
+			aria-label={t.playerRegion}
+			onKeyDown={handleShortcut}
+			onPointerDown={(event) => {
+				if (!isInteractiveTarget(event.target)) surfaceRef.current?.focus();
+			}}
+		>
 			<div ref={floating ? floatingHost : dockedHost} className={styles.mediaHost} />
 			{error && <p className={styles.error}>{error}</p>}
-			<div className={styles.timeRow}>
-				<span>{formatTime(currentTime)}</span>
-				<span>{formatTime(duration ?? 0)}</span>
-			</div>
+			<ProgressSlider
+				currentTime={currentTime}
+				duration={duration}
+				skipInterval={settings.skipInterval}
+				label={t.progress}
+				onSeek={onSeek}
+			/>
 			<div className={styles.controls}>
 				<IconButton
 					icon={SkipBack}
@@ -366,7 +468,11 @@ function PlayerSurface({
 					disabled={!canPrevious}
 					onClick={onPrevious}
 				/>
-				<IconButton icon={Rewind} label={t.backward} onClick={onBackward} />
+				<IconButton
+					icon={Rewind}
+					label={t.backward(settings.skipInterval)}
+					onClick={onBackward}
+				/>
 				<FlashcardButton
 					preset="icon"
 					variant="primary"
@@ -375,7 +481,11 @@ function PlayerSurface({
 					title={playing ? t.pause : t.play}
 					onClick={onToggle}
 				/>
-				<IconButton icon={FastForward} label={t.forward} onClick={onForward} />
+				<IconButton
+					icon={FastForward}
+					label={t.forward(settings.skipInterval)}
+					onClick={onForward}
+				/>
 				<IconButton
 					icon={SkipForward}
 					label={t.next}
@@ -405,12 +515,76 @@ function PlayerSurface({
 	);
 }
 
+function ProgressSlider({
+	currentTime,
+	duration,
+	skipInterval,
+	label,
+	onSeek,
+}: {
+	currentTime: number;
+	duration: number | null;
+	skipInterval: number;
+	label: string;
+	onSeek: (time: number) => void;
+}): React.ReactNode {
+	const [draft, setDraft] = useState<number | null>(null);
+	const draftRef = useRef<number | null>(null);
+	const maximum = duration && duration > 0 ? duration : 0;
+	const displayed = maximum > 0 ? clamp(draft ?? currentTime, 0, maximum) : 0;
+	const updateDraft = (value: number) => {
+		const next = clamp(value, 0, maximum);
+		draftRef.current = next;
+		setDraft(next);
+	};
+	const commit = () => {
+		if (draftRef.current === null) return;
+		onSeek(draftRef.current);
+		draftRef.current = null;
+		setDraft(null);
+	};
+
+	return (
+		<div className={styles.progressRow}>
+			<span>{formatTime(displayed)}</span>
+			<input
+				type="range"
+				className={styles.progress}
+				aria-label={label}
+				aria-valuetext={`${formatTime(displayed)} / ${formatTime(maximum)}`}
+				min={0}
+				max={maximum}
+				step={1}
+				value={displayed}
+				disabled={maximum <= 0}
+				onChange={(event) => updateDraft(Number(event.target.value))}
+				onPointerUp={commit}
+				onBlur={commit}
+				onKeyDown={(event) => {
+					if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+					event.preventDefault();
+					event.stopPropagation();
+					if (event.repeat) return;
+					const direction = event.key === "ArrowLeft" ? -1 : 1;
+					updateDraft(displayed + direction * (event.shiftKey ? skipInterval : 1));
+				}}
+				onKeyUp={(event) => {
+					if (event.key === "ArrowLeft" || event.key === "ArrowRight") commit();
+				}}
+			/>
+			<span>{formatTime(maximum)}</span>
+		</div>
+	);
+}
+
 function FloatingPlayer({
 	document,
 	initialRect,
 	onRectChange,
 	onClose,
 	title,
+	resizeLeftLabel,
+	resizeRightLabel,
 	children,
 }: {
 	document: Document;
@@ -418,6 +592,8 @@ function FloatingPlayer({
 	onRectChange: (rect: FloatingRect) => void;
 	onClose: () => void;
 	title: string;
+	resizeLeftLabel: string;
+	resizeRightLabel: string;
 	children: React.ReactNode;
 }): React.ReactNode {
 	const viewport = useCallback(
@@ -447,7 +623,10 @@ function FloatingPlayer({
 		return () => win.removeEventListener("resize", onResize);
 	}, [document, onRectChange, viewport]);
 
-	const beginPointer = (event: React.PointerEvent, kind: "move" | "resize") => {
+	const beginPointer = (
+		event: React.PointerEvent,
+		kind: "move" | "resize-left" | "resize-right",
+	) => {
 		event.preventDefault();
 		const start = rectRef.current;
 		const origin = { x: event.clientX, y: event.clientY };
@@ -456,12 +635,15 @@ function FloatingPlayer({
 		const move = (pointer: PointerEvent) => {
 			const dx = pointer.clientX - origin.x;
 			const dy = pointer.clientY - origin.y;
-			const next = clampRect(
-				kind === "move"
-					? { ...start, x: start.x + dx, y: start.y + dy }
-					: { ...start, width: start.width + dx, height: start.height + dy },
-				viewport(),
-			);
+			const next =
+				kind === "resize-left"
+					? resizeFromLeft(start, dx, dy, viewport())
+					: clampRect(
+							kind === "move"
+								? { ...start, x: start.x + dx, y: start.y + dy }
+								: { ...start, width: start.width + dx, height: start.height + dy },
+							viewport(),
+						);
 			rectRef.current = next;
 			setRect(next);
 		};
@@ -481,7 +663,9 @@ function FloatingPlayer({
 		>
 			<header
 				className={styles.floatingHeader}
-				onPointerDown={(event) => beginPointer(event, "move")}
+				onPointerDown={(event) => {
+					if (!isInteractiveTarget(event.target)) beginPointer(event, "move");
+				}}
 			>
 				<strong>{title}</strong>
 				<IconButton icon={X} label={title} onClick={onClose} />
@@ -489,9 +673,15 @@ function FloatingPlayer({
 			<div className={styles.floatingBody}>{children}</div>
 			<button
 				type="button"
-				className={styles.resizeHandle}
-				aria-label={title}
-				onPointerDown={(event) => beginPointer(event, "resize")}
+				className={`${styles.resizeHandle} ${styles.resizeLeft}`}
+				aria-label={resizeLeftLabel}
+				onPointerDown={(event) => beginPointer(event, "resize-left")}
+			/>
+			<button
+				type="button"
+				className={`${styles.resizeHandle} ${styles.resizeRight}`}
+				aria-label={resizeRightLabel}
+				onPointerDown={(event) => beginPointer(event, "resize-right")}
 			/>
 		</section>
 	);
@@ -544,6 +734,34 @@ function formatTime(value: number): string {
 		: `${minutes}:${seconds}`;
 }
 
+function sourceProgressLabel(
+	sourceId: string,
+	snapshot: VideoPlayerSnapshot,
+	t: PlayerCopy,
+): string {
+	if (snapshot.completedSourceIds.includes(sourceId)) return t.completed;
+	const progress =
+		sourceId === snapshot.currentSourceId
+			? snapshot.currentTime
+			: (snapshot.progressBySource[sourceId] ?? 0);
+	if (sourceId === snapshot.currentSourceId && snapshot.duration) {
+		return `${formatTime(progress)} / ${formatTime(snapshot.duration)}`;
+	}
+	return progress > 0 ? t.watched(formatTime(progress)) : "";
+}
+
+function isInteractiveTarget(target: EventTarget): boolean {
+	return Boolean(
+		(target as Element | null)?.closest?.(
+			"button, input, select, textarea, summary, a, [contenteditable='true']",
+		),
+	);
+}
+
+function clamp(value: number, min: number, max: number): number {
+	return Math.min(max, Math.max(min, value));
+}
+
 function defaultRect(viewport: { width: number; height: number }): FloatingRect {
 	const width = Math.min(480, viewport.width - EDGE_GAP * 2);
 	const height = Math.min(320, viewport.height - EDGE_GAP * 2);
@@ -572,4 +790,17 @@ function clampRect(rect: FloatingRect, viewport: { width: number; height: number
 		width,
 		height,
 	};
+}
+
+function resizeFromLeft(
+	start: FloatingRect,
+	dx: number,
+	dy: number,
+	viewport: { width: number; height: number },
+): FloatingRect {
+	const right = start.x + start.width;
+	const maxWidth = Math.max(1, right - EDGE_GAP);
+	const minWidth = Math.min(MIN_WIDTH, maxWidth);
+	const width = clamp(start.width - dx, minWidth, maxWidth);
+	return clampRect({ x: right - width, y: start.y, width, height: start.height + dy }, viewport);
 }

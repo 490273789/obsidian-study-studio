@@ -173,7 +173,13 @@ export class VideoPlayerRuntime {
 
 	seekBy(seconds: number): void {
 		if (!this.media || !Number.isFinite(this.media.duration)) return;
-		this.media.currentTime = clamp(this.media.currentTime + seconds, 0, this.media.duration);
+		this.seekTo(this.media.currentTime + seconds);
+	}
+
+	seekTo(seconds: number): void {
+		if (!this.media || !Number.isFinite(this.media.duration) || !Number.isFinite(seconds))
+			return;
+		this.media.currentTime = clamp(seconds, 0, this.media.duration);
 		this.saveProgress(true);
 		this.publish();
 	}
@@ -208,6 +214,13 @@ export class VideoPlayerRuntime {
 	setFloatingRect(rect: FloatingRect | null): void {
 		if (this.disposed) return;
 		this.state = { ...this.state, floatingRect: rect };
+		this.persist();
+		this.publish();
+	}
+
+	setQueueExpanded(queueExpanded: boolean): void {
+		if (this.disposed || this.state.queueExpanded === queueExpanded) return;
+		this.state = { ...this.state, queueExpanded };
 		this.persist();
 		this.publish();
 	}
@@ -334,6 +347,7 @@ export class VideoPlayerRuntime {
 		this.snapshot = {
 			sources: this.state.sources,
 			completedSourceIds: this.state.completedSourceIds,
+			progressBySource: this.state.progressBySource,
 			currentSourceId: this.state.currentSourceId,
 			currentTime:
 				this.media?.currentTime ??
@@ -344,6 +358,7 @@ export class VideoPlayerRuntime {
 			playing: this.media ? !this.media.paused : false,
 			floating: overrides.floating ?? this.snapshot?.floating ?? false,
 			floatingRect: this.state.floatingRect,
+			queueExpanded: this.state.queueExpanded,
 			error: this.error,
 		};
 		for (const listener of this.listeners) listener();
@@ -372,6 +387,7 @@ export function emptyState(): DeviceVideoPlayerStateV1 {
 		completedSourceIds: [],
 		playbackRate: 1,
 		floatingRect: null,
+		queueExpanded: true,
 	};
 }
 

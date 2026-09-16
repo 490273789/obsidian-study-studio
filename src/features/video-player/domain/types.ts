@@ -23,11 +23,13 @@ export interface DeviceVideoPlayerStateV1 {
 	readonly completedSourceIds: readonly string[];
 	readonly playbackRate: VideoPlaybackRate;
 	readonly floatingRect: FloatingRect | null;
+	readonly queueExpanded: boolean;
 }
 
 export interface VideoPlayerSnapshot {
 	readonly sources: readonly LocalVideoSource[];
 	readonly completedSourceIds: readonly string[];
+	readonly progressBySource: Readonly<Record<string, number>>;
 	readonly currentSourceId: string | null;
 	readonly currentTime: number;
 	readonly duration: number | null;
@@ -35,6 +37,7 @@ export interface VideoPlayerSnapshot {
 	readonly playing: boolean;
 	readonly floating: boolean;
 	readonly floatingRect: FloatingRect | null;
+	readonly queueExpanded: boolean;
 	readonly error: "media" | "playback" | null;
 }
 

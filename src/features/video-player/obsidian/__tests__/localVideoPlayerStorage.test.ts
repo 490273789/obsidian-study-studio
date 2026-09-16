@@ -18,6 +18,7 @@ describe("parseDeviceVideoPlayerState", () => {
 			completedSourceIds: ["a", "a", "stale"],
 			playbackRate: 1.5,
 			floatingRect: { x: 3, y: 4, width: 480, height: 320 },
+			queueExpanded: false,
 		});
 		expect(state).toMatchObject({
 			currentSourceId: "a",
@@ -25,6 +26,7 @@ describe("parseDeviceVideoPlayerState", () => {
 			completedSourceIds: ["a"],
 			playbackRate: 1.5,
 			floatingRect: { width: 480 },
+			queueExpanded: false,
 		});
 	});
 });

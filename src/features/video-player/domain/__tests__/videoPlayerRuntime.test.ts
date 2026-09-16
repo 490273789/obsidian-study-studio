@@ -80,12 +80,22 @@ describe("VideoPlayerRuntime", () => {
 		expect(media.currentTime).toBe(0);
 		runtime.seekBy(500);
 		expect(media.currentTime).toBe(100);
+		runtime.seekTo(37);
+		expect(media.currentTime).toBe(37);
 		runtime.setPlaybackRate(1.5);
 		expect(media.playbackRate).toBe(1.5);
 		now = 6_000;
 		media.currentTime = 42;
 		media.emit("timeupdate");
 		expect(store.state.progressBySource.one).toBe(42);
+	});
+
+	it("persists the queue disclosure state on this device", () => {
+		const store = new MemoryStore();
+		const runtime = new VideoPlayerRuntime({ state: store, toMediaUrl: (path) => path });
+		runtime.setQueueExpanded(false);
+		expect(runtime.getSnapshot().queueExpanded).toBe(false);
+		expect(store.state.queueExpanded).toBe(false);
 	});
 
 	it("does not wrap queue navigation and auto-plays the next item after completion", async () => {

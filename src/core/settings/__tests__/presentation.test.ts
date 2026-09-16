@@ -155,4 +155,34 @@ describe("settings presentation", () => {
 		).toMatchObject({ status: "failed", error: { code: "invalid-interaction" } });
 		expect(change).not.toHaveBeenCalled();
 	});
+
+	it("presents keybinding capture without leaking its callback", async () => {
+		const change = vi.fn();
+		const presentation = defineSettings("example", (page) => {
+			page.group("keyboard", "Keyboard", (group) => {
+				group.keybinding(
+					"play",
+					{ name: "Play" },
+					{
+						value: "Space",
+						emptyLabel: "None",
+						recordingLabel: "Press keys",
+						conflictMessage: "Already used",
+						unavailableValues: ["ArrowLeft"],
+						onChange: change,
+					},
+				);
+			});
+		});
+		const control = presentation.snapshot.groups[0]?.rows[0]?.controls[0];
+		if (control?.kind !== "keybinding") throw new Error("Expected keybinding");
+		expect(control).toMatchObject({
+			value: "Space",
+			unavailableValues: ["ArrowLeft"],
+		});
+		expect(await presentation.invoke({ action: control.action, value: "Shift+P" })).toEqual({
+			status: "applied",
+		});
+		expect(change).toHaveBeenCalledWith("Shift+P");
+	});
 });
