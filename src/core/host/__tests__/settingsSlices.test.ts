@@ -43,6 +43,7 @@ describe("settings slices registry", () => {
 			"selectionPopup",
 			"studyOrder",
 			"translation",
+			"videoPlayer",
 			"wordLearningDecks",
 		]);
 	});
@@ -66,9 +67,11 @@ describe("settings slices registry", () => {
 			"translation",
 			"dictionary",
 			"selectionHelper",
+			"videoPlayer",
 		]);
 		expect(settingsOwnerKeys("flashcards")).toContain("pronunciation");
 		expect(settingsOwnerKeys("translation")).toEqual(["translation"]);
+		expect(settingsOwnerKeys("videoPlayer")).toEqual(["videoPlayer"]);
 	});
 
 	it("projects detached runtime snapshots instead of hiding a full document with types", () => {

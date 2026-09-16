@@ -4,6 +4,7 @@ import type { DictionarySettings } from "../../features/dictionary/domain/types"
 import type { AiSettings } from "../ai/types";
 import type { FlashcardStudySettings } from "../../features/flashcards/settings/slice";
 import type { HostSettings } from "../settings/hostSlice";
+import type { VideoPlayerSettings } from "../../features/video-player/settings/slice";
 import { Card } from "ts-fsrs";
 
 export type Language = "zh" | "en";
@@ -72,6 +73,8 @@ export interface FlashcardSettings extends HostSettings, FlashcardStudySettings 
 	dictionary: DictionarySettings;
 	/** Selection popup helper preferences. */
 	selectionPopup: SelectionHelperSettings;
+	/** Availability of the desktop local-video feature; paths remain device-local. */
+	videoPlayer: VideoPlayerSettings;
 }
 
 /**

@@ -7,6 +7,7 @@ import { createDictionaryFeature } from "./dictionary/feature";
 import { createFlashcardFeature } from "./flashcards/feature";
 import { createTranslationFeature } from "./translation/feature";
 import { createSelectionHelperModule } from "../core/selectionHelper/module";
+import { createVideoPlayerFeature } from "./video-player/feature";
 
 export interface WorkbenchModuleDeps {
 	ai: AiService;
@@ -28,11 +29,12 @@ export function createWorkbenchModules(deps: WorkbenchModuleDeps): AnyWorkbenchM
 	});
 	const translation = createTranslationFeature({ ai: deps.ai, net: deps.net });
 	const dictionary = createDictionaryFeature({ ai: deps.ai, net: deps.net, plugin: deps.plugin });
+	const videoPlayer = createVideoPlayerFeature();
 
 	const selectionHelper = createSelectionHelperModule({
 		dictionary: dictionary.selectionAdapter,
 		translation: translation.selectionAdapter,
 	});
 
-	return [flashcards, translation, dictionary, selectionHelper];
+	return [flashcards, translation, dictionary, videoPlayer, selectionHelper];
 }
