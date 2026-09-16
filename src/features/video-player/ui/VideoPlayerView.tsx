@@ -11,6 +11,7 @@ import {
 	ChevronDown,
 	ChevronRight,
 	ChevronUp,
+	CirclePlay,
 	FastForward,
 	FolderPlus,
 	GripVertical,
@@ -26,6 +27,8 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { FlashcardButton } from "../../../core/ui/primitives/Button";
+import { FlashcardHeader } from "../../../core/ui/primitives/Header";
+import { cls } from "../../../core/shared/classNames";
 import type { Language } from "../../../core/shared/types";
 import type { FloatingRect, LocalVideoSource, VideoPlayerSnapshot } from "../domain/types";
 import { VIDEO_PLAYBACK_RATES } from "../domain/types";
@@ -174,250 +177,260 @@ export function VideoPlayerView({
 	);
 
 	return (
-		<div className={styles.page}>
-			<header className={styles.header}>
-				<div>
-					<p className="fc-kicker">Study Studio</p>
-					<h2>{t.title}</h2>
-				</div>
-				<div className={styles.headerActions}>
-					<IconButton icon={Settings} label={t.settings} onClick={onOpenSettings} />
-					<FlashcardButton
-						variant="primary"
-						icon={FolderPlus}
-						onClick={() => void addVideos()}
-					>
-						{t.addVideos}
-					</FlashcardButton>
-				</div>
-			</header>
+		<div className={cls("fc-page fc-page--fill", styles.page)}>
+			<FlashcardHeader
+				className={styles.header}
+				icon={CirclePlay}
+				title={t.title}
+				badge={snapshot.sources.length > 0 ? snapshot.sources.length : undefined}
+				right={
+					<div className="flashcard-header-actions">
+						<FlashcardButton
+							preset="icon"
+							icon={Settings}
+							title={t.settings}
+							aria-label={t.settings}
+							onClick={onOpenSettings}
+						/>
+						<FlashcardButton
+							variant="primary"
+							icon={FolderPlus}
+							onClick={() => void addVideos()}
+						>
+							{t.addVideos}
+						</FlashcardButton>
+					</div>
+				}
+			/>
 
-			{snapshot.sources.length === 0 ? (
-				<div className={styles.empty}>
-					<h3>{t.emptyTitle}</h3>
-					<p>{t.emptyDescription}</p>
-					<FlashcardButton
-						variant="primary"
-						icon={FolderPlus}
-						onClick={() => void addVideos()}
-					>
-						{t.addVideos}
-					</FlashcardButton>
-				</div>
-			) : (
-				<div className={styles.layout}>
-					<section className={styles.playerPanel}>
-						{snapshot.floating ? (
-							<div className={styles.floatingPlaceholder}>
-								<p>{t.floating}</p>
-								<FlashcardButton
-									variant="secondary"
-									onClick={() => {
-										focusController.requestFocusAfterRemount();
-										runtime.pause();
-										runtime.setFloating(false);
-									}}
-								>
-									{t.dockAndPause}
-								</FlashcardButton>
-							</div>
-						) : (
-							player
-						)}
-					</section>
-					<aside className={styles.queue} aria-label={t.queue}>
-						<div className={styles.queueHeader}>
-							<button
-								type="button"
-								className={styles.queueHeading}
-								aria-expanded={snapshot.queueExpanded}
-								onClick={() => runtime.setQueueExpanded(!snapshot.queueExpanded)}
-							>
-								<span className={styles.queueChevron}>
-									{snapshot.queueExpanded ? (
-										<ChevronDown size={16} />
-									) : (
-										<ChevronRight size={16} />
-									)}
-								</span>
-								<span className={styles.queueSummaryText}>
-									{t.queueSummary(snapshot.sources.length, currentIndex + 1)}
-								</span>
-							</button>
-							<div className={styles.queueHeaderActions}>
+			<div className={cls("fc-page__body", styles.pageBody)}>
+				{snapshot.sources.length === 0 ? (
+					<div className={styles.empty}>
+						<h3>{t.emptyTitle}</h3>
+						<p>{t.emptyDescription}</p>
+						<FlashcardButton
+							variant="primary"
+							icon={FolderPlus}
+							onClick={() => void addVideos()}
+						>
+							{t.addVideos}
+						</FlashcardButton>
+					</div>
+				) : (
+					<div className={styles.layout}>
+						<section className={styles.playerPanel}>
+							{snapshot.floating ? (
+								<div className={styles.floatingPlaceholder}>
+									<p>{t.floating}</p>
+									<FlashcardButton
+										variant="secondary"
+										onClick={() => {
+											focusController.requestFocusAfterRemount();
+											runtime.pause();
+											runtime.setFloating(false);
+										}}
+									>
+										{t.dockAndPause}
+									</FlashcardButton>
+								</div>
+							) : (
+								player
+							)}
+						</section>
+						<aside className={styles.queue} aria-label={t.queue}>
+							<div className={styles.queueHeader}>
 								<button
 									type="button"
-									className={styles.queueAddBtn}
-									onClick={(event) => {
-										event.stopPropagation();
-										void addVideos();
-									}}
-									title={t.addVideos}
-								>
-									<FolderPlus size={14} aria-hidden="true" />
-									<span>{t.addVideos}</span>
-								</button>
-								<button
-									type="button"
-									className={styles.queueToggleBtn}
+									className={styles.queueHeading}
+									aria-expanded={snapshot.queueExpanded}
+									title={snapshot.queueExpanded ? t.queueCollapse : t.queueExpand}
 									onClick={() =>
 										runtime.setQueueExpanded(!snapshot.queueExpanded)
 									}
 								>
-									{snapshot.queueExpanded ? t.queueCollapse : t.queueExpand}
+									<span className={styles.queueChevron}>
+										{snapshot.queueExpanded ? (
+											<ChevronDown size={16} />
+										) : (
+											<ChevronRight size={16} />
+										)}
+									</span>
+									<span className={styles.queueSummaryText}>
+										{t.queueSummary(snapshot.sources.length, currentIndex + 1)}
+									</span>
 								</button>
+								<div className={styles.queueHeaderActions}>
+									<button
+										type="button"
+										className={styles.queueAddBtn}
+										onClick={(event) => {
+											event.stopPropagation();
+											void addVideos();
+										}}
+										title={t.addVideos}
+									>
+										<FolderPlus size={14} aria-hidden="true" />
+										<span>{t.addVideos}</span>
+									</button>
+								</div>
 							</div>
-						</div>
-						{snapshot.queueExpanded && (
-							<div className={styles.queueList}>
-								{snapshot.sources.map((source, index) => {
-									const isActive = source.id === snapshot.currentSourceId;
-									const progressLabel = sourceProgressLabel(
-										source.id,
-										snapshot,
-										t,
-									);
-									return (
-										<div
-											key={source.id}
-											className={`${styles.queueItem} ${isActive ? styles.active : ""}`}
-											onDragOver={(event) => event.preventDefault()}
-											onDrop={() => {
-												const dragged = draggedId.current;
-												if (!dragged || dragged === source.id) return;
-												const ids = snapshot.sources.map((item) => item.id);
-												const from = ids.indexOf(dragged);
-												const to = ids.indexOf(source.id);
-												if (from < 0 || to < 0) return;
-												ids.splice(to, 0, ...ids.splice(from, 1));
-												runtime.reorderSources(ids);
-											}}
-										>
+							{snapshot.queueExpanded && (
+								<div className={styles.queueList}>
+									{snapshot.sources.map((source, index) => {
+										const isActive = source.id === snapshot.currentSourceId;
+										const progressLabel = sourceProgressLabel(
+											source.id,
+											snapshot,
+											t,
+										);
+										return (
 											<div
-												className={styles.dragHandle}
-												draggable
-												aria-label={t.dragToReorder}
-												title={t.dragToReorder}
-												onDragStart={() => {
-													draggedId.current = source.id;
+												key={source.id}
+												className={`${styles.queueItem} ${isActive ? styles.active : ""}`}
+												onDragOver={(event) => event.preventDefault()}
+												onDrop={() => {
+													const dragged = draggedId.current;
+													if (!dragged || dragged === source.id) return;
+													const ids = snapshot.sources.map(
+														(item) => item.id,
+													);
+													const from = ids.indexOf(dragged);
+													const to = ids.indexOf(source.id);
+													if (from < 0 || to < 0) return;
+													ids.splice(to, 0, ...ids.splice(from, 1));
+													runtime.reorderSources(ids);
 												}}
 											>
-												<GripVertical size={14} aria-hidden="true" />
-											</div>
-											<div className={styles.sourceIndex} aria-hidden="true">
-												{isActive ? (
-													<Play
-														size={11}
-														className={styles.activePlayIcon}
-													/>
-												) : (
-													<span>{index + 1}</span>
-												)}
-											</div>
-											<div
-												role="button"
-												tabIndex={0}
-												className={styles.sourceContent}
-												onClick={() => runtime.selectSource(source.id)}
-												onKeyDown={(event) => {
-													if (
-														event.key === "Enter" ||
-														event.key === " "
-													) {
-														event.preventDefault();
-														runtime.selectSource(source.id);
-													}
-												}}
-												title={source.path}
-											>
-												<div className={styles.sourceName}>
-													{source.name}
+												<div
+													className={styles.dragHandle}
+													draggable
+													aria-label={t.dragToReorder}
+													title={t.dragToReorder}
+													onDragStart={() => {
+														draggedId.current = source.id;
+													}}
+												>
+													<GripVertical size={14} aria-hidden="true" />
 												</div>
-												{progressLabel && (
-													<div className={styles.sourceMeta}>
-														<span
-															className={
-																isActive
-																	? styles.playingTag
-																	: styles.progressTag
-															}
-														>
-															{progressLabel}
-														</span>
-													</div>
-												)}
-											</div>
-											<div className={styles.itemActions}>
-												{snapshot.sources.length > 1 && (
-													<>
-														<IconButton
-															icon={ChevronUp}
-															size={14}
-															className={styles.actionBtn}
-															label={t.moveUp}
-															disabled={index === 0}
-															onClick={() =>
-																moveSource(
-																	runtime,
-																	snapshot.sources,
-																	index,
-																	index - 1,
-																)
-															}
+												<div
+													className={styles.sourceIndex}
+													aria-hidden="true"
+												>
+													{isActive ? (
+														<Play
+															size={11}
+															className={styles.activePlayIcon}
 														/>
-														<IconButton
-															icon={ChevronDown}
-															size={14}
-															className={styles.actionBtn}
-															label={t.moveDown}
-															disabled={
-																index ===
-																snapshot.sources.length - 1
-															}
-															onClick={() =>
-																moveSource(
-																	runtime,
-																	snapshot.sources,
-																	index,
-																	index + 1,
-																)
-															}
-														/>
-													</>
-												)}
-												<IconButton
-													icon={FolderPlus}
-													size={14}
-													className={styles.actionBtn}
-													label={t.replace}
-													onClick={async () => {
-														const replacement = await onPickReplacement(
-															source.id,
-														);
-														if (replacement) {
-															runtime.replaceSource(
-																source.id,
-																replacement,
-															);
+													) : (
+														<span>{index + 1}</span>
+													)}
+												</div>
+												<div
+													role="button"
+													tabIndex={0}
+													className={styles.sourceContent}
+													onClick={() => runtime.selectSource(source.id)}
+													onKeyDown={(event) => {
+														if (
+															event.key === "Enter" ||
+															event.key === " "
+														) {
+															event.preventDefault();
+															runtime.selectSource(source.id);
 														}
 													}}
-												/>
-												<IconButton
-													icon={Trash2}
-													size={14}
-													className={`${styles.actionBtn} ${styles.deleteBtn}`}
-													label={t.remove}
-													onClick={() => runtime.removeSource(source.id)}
-												/>
+													title={source.path}
+												>
+													<div className={styles.sourceName}>
+														{source.name}
+													</div>
+													{progressLabel && (
+														<div className={styles.sourceMeta}>
+															<span
+																className={
+																	isActive
+																		? styles.playingTag
+																		: styles.progressTag
+																}
+															>
+																{progressLabel}
+															</span>
+														</div>
+													)}
+												</div>
+												<div className={styles.itemActions}>
+													{snapshot.sources.length > 1 && (
+														<>
+															<IconButton
+																icon={ChevronUp}
+																size={14}
+																className={styles.actionBtn}
+																label={t.moveUp}
+																disabled={index === 0}
+																onClick={() =>
+																	moveSource(
+																		runtime,
+																		snapshot.sources,
+																		index,
+																		index - 1,
+																	)
+																}
+															/>
+															<IconButton
+																icon={ChevronDown}
+																size={14}
+																className={styles.actionBtn}
+																label={t.moveDown}
+																disabled={
+																	index ===
+																	snapshot.sources.length - 1
+																}
+																onClick={() =>
+																	moveSource(
+																		runtime,
+																		snapshot.sources,
+																		index,
+																		index + 1,
+																	)
+																}
+															/>
+														</>
+													)}
+													<IconButton
+														icon={FolderPlus}
+														size={14}
+														className={styles.actionBtn}
+														label={t.replace}
+														onClick={async () => {
+															const replacement =
+																await onPickReplacement(source.id);
+															if (replacement) {
+																runtime.replaceSource(
+																	source.id,
+																	replacement,
+																);
+															}
+														}}
+													/>
+													<IconButton
+														icon={Trash2}
+														size={14}
+														className={`${styles.actionBtn} ${styles.deleteBtn}`}
+														label={t.remove}
+														onClick={() =>
+															runtime.removeSource(source.id)
+														}
+													/>
+												</div>
 											</div>
-										</div>
-									);
-								})}
-							</div>
-						)}
-					</aside>
-				</div>
-			)}
+										);
+									})}
+								</div>
+							)}
+						</aside>
+					</div>
+				)}
+			</div>
 
 			{snapshot.floating &&
 				createPortal(

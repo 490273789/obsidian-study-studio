@@ -34,7 +34,8 @@
 	background: color-mix(in srgb, var(--background-primary) 90%, transparent);
 	backdrop-filter: blur(12px);
 	-webkit-backdrop-filter: blur(12px);
-	min-height: var(--fc-control-touch);
+	min-height: var(--fc-header-height);
+	padding: var(--fc-space-1) 0;
 
 	.flashcard-header-left,
 	.flashcard-header-right {
