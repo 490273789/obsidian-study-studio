@@ -153,8 +153,9 @@ describe("flashcard feature", () => {
 		expect(entry.openHotkeys).toEqual([{ modifiers: ["Alt"], key: "1" }]);
 		expect(entry.settingsSectionId).toBe("flashcards");
 		expect(entry.available()).toBe(true);
-		// The workbench owns the ribbon and the open command.
-		expect(fake.ribbons).toEqual([]);
+		expect(fake.ribbons.map(({ icon, title }) => ({ icon, title }))).toEqual([
+			{ icon: "layers", title: "打开闪卡" },
+		]);
 		expect(fake.commands.map((command) => command.id)).toEqual([
 			"sync-flashcard-decks",
 			"migrate-card-identities",

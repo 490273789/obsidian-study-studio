@@ -642,13 +642,14 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 							onOpenSettings={() => host.settingsTab.open(FLASHCARD_SECTION_ID)}
 							onOpenTranslation={() => host.openFeature("translation")}
 							onOpenDictionary={() => host.openFeature("dictionary")}
+							onOpenVideoPlayer={() => host.openFeature("video-player")}
 						/>
 					),
 				}),
 			);
 
-			// The workbench owns the entry point (ribbon, home list, and the open
-			// command); a feature only declares what it is and what else it offers.
+			// Catalog identity powers generated open commands and the feature shortcuts
+			// displayed on the flashcard landing page.
 			host.catalog({
 				id: "flashcards",
 				icon: "layers",
@@ -666,6 +667,9 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 			return () => {
 				const strings = t(host);
 				host.chrome((chrome) => {
+					chrome.ribbon("layers", strings("main.ribbonOpenFlashcards"), () => {
+						void host.activateView(VIEW_TYPE_FLASHCARD);
+					});
 					chrome.command({
 						id: SYNC_COMMAND_ID,
 						name: strings("main.commandSyncDecks"),

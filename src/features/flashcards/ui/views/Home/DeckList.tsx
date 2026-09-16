@@ -31,6 +31,7 @@ import {
 	List,
 	LoaderCircle,
 	NotebookPen,
+	CirclePlay,
 	Plus,
 	RefreshCcw,
 	Settings,
@@ -309,6 +310,7 @@ interface DeckListProps {
 	onOpenAddCard: () => void;
 	onOpenTranslation?: () => void;
 	onOpenDictionary?: () => void;
+	onOpenVideoPlayer?: () => void;
 }
 
 export const DeckList = React.memo(function DeckList({
@@ -323,6 +325,7 @@ export const DeckList = React.memo(function DeckList({
 	onOpenAddCard,
 	onOpenTranslation,
 	onOpenDictionary,
+	onOpenVideoPlayer,
 }: DeckListProps) {
 	const { t } = useFlashcardI18n();
 	const isLoading = snapshot.mutation.kind === "refreshing";
@@ -438,6 +441,14 @@ export const DeckList = React.memo(function DeckList({
 									icon={BookA}
 									onClick={onOpenDictionary}
 									title={t("home.dictionaryTitle")}
+								/>
+							)}
+							{onOpenVideoPlayer && (
+								<FlashcardButton
+									preset="icon"
+									icon={CirclePlay}
+									onClick={onOpenVideoPlayer}
+									title={t("home.videoPlayerTitle")}
 								/>
 							)}
 							<FlashcardButton

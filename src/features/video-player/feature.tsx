@@ -112,6 +112,7 @@ export function createVideoPlayerFeature(): WorkbenchModule<"videoPlayer"> {
 				icon: "circle-play",
 				title: (language) => videoPlayerStrings(language).title,
 				openCommandId: OPEN_COMMAND_ID,
+				openHotkeys: [{ modifiers: ["Alt"], key: "4" }],
 				settingsSectionId: VIDEO_PLAYER_SECTION_ID,
 				available: () => host.settings.read().videoPlayer.enabled,
 				open: () => void open(host),

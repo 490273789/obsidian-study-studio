@@ -63,7 +63,7 @@ export interface WorkbenchCatalogEntry {
 	openCommandId: string;
 	/** Default hotkeys for the generated open command. */
 	openHotkeys?: Hotkey[];
-	/** Settings section that configures this feature; the home links to it. */
+	/** Settings section used when an unavailable feature is opened. */
 	settingsSectionId: string;
 	/** Whether the feature currently offers an entry point. */
 	available(): boolean;
@@ -154,13 +154,6 @@ export interface Workbench {
 	addSettingsSection(section: WorkbenchSettingsSection): void;
 	/** Settings sections from the host and every feature, ordered. */
 	settingsSections(): WorkbenchSettingsSection[];
-	/** Catalog entries of every feature, in feature order. */
-	catalog(): WorkbenchCatalogEntry[];
-	/**
-	 * Declares the workbench's own chrome (its ribbon and commands). Rebuilt on
-	 * every refresh like a feature's chrome, so it relabels on a language change.
-	 */
-	ring(build: (chrome: WorkbenchChromeScope) => void): void;
 	/** The settings tab registers itself here so features can reach it. */
 	setSettingsTab(tab: WorkbenchSettingsTab): void;
 	/** The settings-tab capability, for host-owned sections created outside features. */
@@ -206,9 +199,6 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 	const catalogOwnerById = new Map<string, FeatureSettingsOwner>();
 	/** Command ids the host generated for the previous catalog, so it can clean up. */
 	let catalogCommandIds: string[] = [];
-	/** Chrome id reserved for the workbench's own ribbon and commands. */
-	const HOST_CHROME_ID = "\u0000workbench-host";
-	let ringBuilder: ((chrome: WorkbenchChromeScope) => void) | null = null;
 	const modules = options.createModules();
 	let settingsTab: WorkbenchSettingsTab | null = null;
 	let disposed = false;
@@ -382,34 +372,10 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 		rebuildCatalogCommands();
 	};
 
-	const rebuildRing = (): void => {
-		if (!ringBuilder) return;
-		removeChrome(HOST_CHROME_ID);
-		const chrome = createChromeScope(HOST_CHROME_ID);
-		ringBuilder(chrome);
-	};
-
-	const createChromeScope = (moduleId: string): WorkbenchChromeScope => {
-		removeChrome(moduleId);
-		const chrome: ModuleChrome = { ribbonEl: null, commandIds: [] };
-		chromeByModule.set(moduleId, chrome);
-		return {
-			ribbon: (icon, title, onClick) => {
-				chrome.ribbonEl?.remove();
-				chrome.ribbonEl = options.plugin.addRibbonIcon(icon, title, onClick);
-			},
-			command: (spec) => {
-				chrome.commandIds.push(spec.id);
-				options.plugin.addCommand(toObsidianCommand(spec));
-			},
-		};
-	};
-
 	return {
 		refresh: () => {
 			if (disposed) return;
 			renderModules();
-			rebuildRing();
 			pushSettingsToOpenViews();
 		},
 
@@ -425,7 +391,6 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 				renderModules(affected);
 				pushSettingsToOpenViews(affected);
 			}
-			if (languageChanged) rebuildRing();
 		},
 
 		addSettingsSection: (section) => {
@@ -433,13 +398,6 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 		},
 
 		settingsSections: () => [...sectionsById.values()].sort((a, b) => a.order - b.order),
-
-		// Catalog order follows the order feature modules register their entries.
-		catalog: () => [...catalogById.values()],
-
-		ring: (build) => {
-			ringBuilder = build;
-		},
 
 		setSettingsTab: (tab) => {
 			settingsTab = tab;
@@ -459,7 +417,6 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 				}
 			}
 			for (const module of modules) removeChrome(module.id);
-			removeChrome(HOST_CHROME_ID);
 			for (const id of catalogCommandIds) options.plugin.removeCommand(id);
 			catalogCommandIds = [];
 			hostsByModule.clear();

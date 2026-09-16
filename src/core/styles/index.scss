@@ -11,7 +11,6 @@
 // 1b. 布局模块：页面外壳、面板与视图容器（功能样式可覆盖它）
 @use "./layout.scss";
 @use "./cardStack.scss";
-@use "./workbenchHome.scss";
 
 // 2. 基础 UI 组件样式 (UI Primitives)
 @use "../ui/primitives/Button/Button.scss";

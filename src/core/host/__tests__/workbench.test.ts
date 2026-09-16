@@ -504,65 +504,6 @@ describe("workbench", () => {
 		expect(commands.has("open-only")).toBe(false);
 	});
 
-	it("exposes catalog entries in feature order and replaces them by id", () => {
-		const { workbench, host } = setup([
-			feature("flashcards", (h) =>
-				h.catalog({
-					id: "a",
-					icon: "a",
-					title: () => "A",
-					openCommandId: "open-a",
-					settingsSectionId: "a",
-					available: () => true,
-					open: vi.fn(),
-				}),
-			),
-			feature("dictionary", (h) =>
-				h.catalog({
-					id: "b",
-					icon: "b",
-					title: () => "B",
-					openCommandId: "open-b",
-					settingsSectionId: "b",
-					available: () => true,
-					open: vi.fn(),
-				}),
-			),
-		]);
-
-		workbench.refresh();
-		expect(workbench.catalog().map((entry) => entry.id)).toEqual(["a", "b"]);
-
-		// A second render must replace, not duplicate.
-		workbench.refresh();
-		expect(workbench.catalog()).toHaveLength(2);
-		void host;
-	});
-
-	it("rebuilds the workbench ring chrome and clears it on dispose", () => {
-		const { plugin, ribbonEls, commands, workbench } = setup([
-			feature("translation", () => {}),
-		]);
-		workbench.ring((chrome) => {
-			chrome.ribbon("layout-grid", "Home", () => {});
-			chrome.command({ id: "open-home", name: "Home", run: () => {} });
-		});
-
-		workbench.refresh();
-		expect(ribbonEls).toHaveLength(1);
-		expect(commands.has("open-home")).toBe(true);
-
-		// The ring is rebuilt with everything else, so it relabels on a language change.
-		workbench.refresh();
-		expect(ribbonEls).toHaveLength(2);
-		expect(ribbonEls[0]!.remove).toHaveBeenCalledTimes(1);
-		expect(plugin.removeCommand).toHaveBeenCalledWith("open-home");
-
-		workbench.dispose();
-		expect(ribbonEls[1]!.remove).toHaveBeenCalledTimes(1);
-		expect(commands.has("open-home")).toBe(false);
-	});
-
 	it("opens available feature directly or opens settings when unavailable via host.openFeature", () => {
 		const openAvailable = vi.fn();
 		const openUnavailable = vi.fn();
@@ -643,7 +584,6 @@ describe("workbench", () => {
 
 		workbench.refresh();
 
-		expect(workbench.catalog()).toEqual([]);
 		expect(workbench.settingsSections()).toEqual([]);
 		expect(ribbonEls).toHaveLength(1);
 		expect(ribbonEls[0]?.remove).toHaveBeenCalled();
