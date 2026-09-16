@@ -10,11 +10,11 @@ import { createPortal } from "react-dom";
 import {
 	ChevronDown,
 	ChevronRight,
+	ChevronUp,
 	FastForward,
 	FolderPlus,
 	GripVertical,
 	Minimize2,
-	MoreHorizontal,
 	Pause,
 	Play,
 	Rewind,
@@ -82,8 +82,16 @@ export function VideoPlayerView({
 		element.tabIndex = -1;
 		return element;
 	});
-	const dockedHost = useRef<HTMLDivElement>(null);
-	const floatingHost = useRef<HTMLDivElement>(null);
+	const hostElementRef = useRef<HTMLDivElement | null>(null);
+	const attachMediaHost = useCallback(
+		(node: HTMLDivElement | null) => {
+			hostElementRef.current = node;
+			if (node && media.parentElement !== node) {
+				node.append(media);
+			}
+		},
+		[media],
+	);
 	const draggedId = useRef<string | null>(null);
 	const activePresenter = presenter === presenterToken;
 
@@ -109,9 +117,9 @@ export function VideoPlayerView({
 	}, [activePresenter, media, runtime]);
 
 	useLayoutEffect(() => {
-		const host = snapshot.floating ? floatingHost.current : dockedHost.current;
+		const host = hostElementRef.current;
 		if (host && media.parentElement !== host) host.append(media);
-	}, [media, snapshot.floating]);
+	});
 
 	const addVideos = useCallback(async () => {
 		const sources = await onPickVideos();
@@ -143,8 +151,7 @@ export function VideoPlayerView({
 						: null
 			}
 			floating={snapshot.floating}
-			floatingHost={floatingHost}
-			dockedHost={dockedHost}
+			mediaHostRef={attachMediaHost}
 			playing={snapshot.playing}
 			rate={snapshot.playbackRate}
 			settings={settings}
@@ -219,123 +226,193 @@ export function VideoPlayerView({
 						)}
 					</section>
 					<aside className={styles.queue} aria-label={t.queue}>
-						<button
-							type="button"
-							className={styles.queueHeading}
-							aria-expanded={snapshot.queueExpanded}
-							onClick={() => runtime.setQueueExpanded(!snapshot.queueExpanded)}
-						>
-							{snapshot.queueExpanded ? <ChevronDown /> : <ChevronRight />}
-							<span>{t.queueSummary(snapshot.sources.length, currentIndex + 1)}</span>
-							<span className={styles.queueToggleLabel}>
-								{snapshot.queueExpanded ? t.queueCollapse : t.queueExpand}
-							</span>
-						</button>
+						<div className={styles.queueHeader}>
+							<button
+								type="button"
+								className={styles.queueHeading}
+								aria-expanded={snapshot.queueExpanded}
+								onClick={() => runtime.setQueueExpanded(!snapshot.queueExpanded)}
+							>
+								<span className={styles.queueChevron}>
+									{snapshot.queueExpanded ? (
+										<ChevronDown size={16} />
+									) : (
+										<ChevronRight size={16} />
+									)}
+								</span>
+								<span className={styles.queueSummaryText}>
+									{t.queueSummary(snapshot.sources.length, currentIndex + 1)}
+								</span>
+							</button>
+							<div className={styles.queueHeaderActions}>
+								<button
+									type="button"
+									className={styles.queueAddBtn}
+									onClick={(event) => {
+										event.stopPropagation();
+										void addVideos();
+									}}
+									title={t.addVideos}
+								>
+									<FolderPlus size={14} aria-hidden="true" />
+									<span>{t.addVideos}</span>
+								</button>
+								<button
+									type="button"
+									className={styles.queueToggleBtn}
+									onClick={() =>
+										runtime.setQueueExpanded(!snapshot.queueExpanded)
+									}
+								>
+									{snapshot.queueExpanded ? t.queueCollapse : t.queueExpand}
+								</button>
+							</div>
+						</div>
 						{snapshot.queueExpanded && (
 							<div className={styles.queueList}>
-								{snapshot.sources.map((source, index) => (
-									<div
-										key={source.id}
-										className={`${styles.queueItem} ${source.id === snapshot.currentSourceId ? styles.active : ""}`}
-										onDragOver={(event) => event.preventDefault()}
-										onDrop={() => {
-											const dragged = draggedId.current;
-											if (!dragged || dragged === source.id) return;
-											const ids = snapshot.sources.map((item) => item.id);
-											const from = ids.indexOf(dragged);
-											const to = ids.indexOf(source.id);
-											if (from < 0 || to < 0) return;
-											ids.splice(to, 0, ...ids.splice(from, 1));
-											runtime.reorderSources(ids);
-										}}
-									>
-										<button
-											type="button"
-											className={styles.dragHandle}
-											draggable
-											aria-label={t.dragToReorder}
-											title={t.dragToReorder}
-											onDragStart={() => {
-												draggedId.current = source.id;
+								{snapshot.sources.map((source, index) => {
+									const isActive = source.id === snapshot.currentSourceId;
+									const progressLabel = sourceProgressLabel(
+										source.id,
+										snapshot,
+										t,
+									);
+									return (
+										<div
+											key={source.id}
+											className={`${styles.queueItem} ${isActive ? styles.active : ""}`}
+											onDragOver={(event) => event.preventDefault()}
+											onDrop={() => {
+												const dragged = draggedId.current;
+												if (!dragged || dragged === source.id) return;
+												const ids = snapshot.sources.map((item) => item.id);
+												const from = ids.indexOf(dragged);
+												const to = ids.indexOf(source.id);
+												if (from < 0 || to < 0) return;
+												ids.splice(to, 0, ...ids.splice(from, 1));
+												runtime.reorderSources(ids);
 											}}
 										>
-											<GripVertical aria-hidden="true" />
-										</button>
-										<button
-											type="button"
-											className={styles.sourceButton}
-											onClick={() => runtime.selectSource(source.id)}
-											title={source.path}
-										>
-											<span className={styles.sourceIndex}>{index + 1}</span>
-											<span className={styles.sourceCopy}>
-												<span className={styles.sourceName}>
-													{source.name}
-												</span>
-												<span className={styles.sourceMeta}>
-													{sourceProgressLabel(source.id, snapshot, t)}
-												</span>
-											</span>
-										</button>
-										<details className={styles.itemMenu}>
-											<summary
-												aria-label={t.queueActions}
-												title={t.queueActions}
+											<div
+												className={styles.dragHandle}
+												draggable
+												aria-label={t.dragToReorder}
+												title={t.dragToReorder}
+												onDragStart={() => {
+													draggedId.current = source.id;
+												}}
 											>
-												<MoreHorizontal aria-hidden="true" />
-											</summary>
+												<GripVertical size={14} aria-hidden="true" />
+											</div>
+											<div className={styles.sourceIndex} aria-hidden="true">
+												{isActive ? (
+													<Play
+														size={11}
+														className={styles.activePlayIcon}
+													/>
+												) : (
+													<span>{index + 1}</span>
+												)}
+											</div>
+											<div
+												role="button"
+												tabIndex={0}
+												className={styles.sourceContent}
+												onClick={() => runtime.selectSource(source.id)}
+												onKeyDown={(event) => {
+													if (
+														event.key === "Enter" ||
+														event.key === " "
+													) {
+														event.preventDefault();
+														runtime.selectSource(source.id);
+													}
+												}}
+												title={source.path}
+											>
+												<div className={styles.sourceName}>
+													{source.name}
+												</div>
+												{progressLabel && (
+													<div className={styles.sourceMeta}>
+														<span
+															className={
+																isActive
+																	? styles.playingTag
+																	: styles.progressTag
+															}
+														>
+															{progressLabel}
+														</span>
+													</div>
+												)}
+											</div>
 											<div className={styles.itemActions}>
-												<button
-													type="button"
-													disabled={index === 0}
-													onClick={() =>
-														moveSource(
-															runtime,
-															snapshot.sources,
-															index,
-															index - 1,
-														)
-													}
-												>
-													{t.moveUp}
-												</button>
-												<button
-													type="button"
-													disabled={index === snapshot.sources.length - 1}
-													onClick={() =>
-														moveSource(
-															runtime,
-															snapshot.sources,
-															index,
-															index + 1,
-														)
-													}
-												>
-													{t.moveDown}
-												</button>
+												{snapshot.sources.length > 1 && (
+													<>
+														<IconButton
+															icon={ChevronUp}
+															size={14}
+															className={styles.actionBtn}
+															label={t.moveUp}
+															disabled={index === 0}
+															onClick={() =>
+																moveSource(
+																	runtime,
+																	snapshot.sources,
+																	index,
+																	index - 1,
+																)
+															}
+														/>
+														<IconButton
+															icon={ChevronDown}
+															size={14}
+															className={styles.actionBtn}
+															label={t.moveDown}
+															disabled={
+																index ===
+																snapshot.sources.length - 1
+															}
+															onClick={() =>
+																moveSource(
+																	runtime,
+																	snapshot.sources,
+																	index,
+																	index + 1,
+																)
+															}
+														/>
+													</>
+												)}
 												<IconButton
 													icon={FolderPlus}
+													size={14}
+													className={styles.actionBtn}
 													label={t.replace}
 													onClick={async () => {
 														const replacement = await onPickReplacement(
 															source.id,
 														);
-														if (replacement)
+														if (replacement) {
 															runtime.replaceSource(
 																source.id,
 																replacement,
 															);
+														}
 													}}
 												/>
 												<IconButton
 													icon={Trash2}
+													size={14}
+													className={`${styles.actionBtn} ${styles.deleteBtn}`}
 													label={t.remove}
 													onClick={() => runtime.removeSource(source.id)}
 												/>
 											</div>
-										</details>
-									</div>
-								))}
+										</div>
+									);
+								})}
 							</div>
 						)}
 					</aside>
@@ -372,8 +449,7 @@ function PlayerSurface({
 	duration,
 	error,
 	floating,
-	floatingHost,
-	dockedHost,
+	mediaHostRef,
 	playing,
 	rate,
 	settings,
@@ -394,8 +470,7 @@ function PlayerSurface({
 	duration: number | null;
 	error: string | null;
 	floating: boolean;
-	floatingHost: React.RefObject<HTMLDivElement | null>;
-	dockedHost: React.RefObject<HTMLDivElement | null>;
+	mediaHostRef: (node: HTMLDivElement | null) => void;
 	playing: boolean;
 	rate: number;
 	settings: VideoPlayerSettings;
@@ -452,7 +527,7 @@ function PlayerSurface({
 				if (!isInteractiveTarget(event.target)) surfaceRef.current?.focus();
 			}}
 		>
-			<div ref={floating ? floatingHost : dockedHost} className={styles.mediaHost} />
+			<div ref={mediaHostRef} className={styles.mediaHost} />
 			{error && <p className={styles.error}>{error}</p>}
 			<ProgressSlider
 				currentTime={currentTime}
@@ -692,20 +767,26 @@ function IconButton({
 	label,
 	disabled,
 	onClick,
+	className,
+	size = 16,
 }: {
 	icon: LucideIcon;
 	label: string;
 	disabled?: boolean;
 	onClick: () => void | Promise<void>;
+	className?: string;
+	size?: number;
 }): React.ReactNode {
 	return (
 		<FlashcardButton
 			preset="icon"
 			variant="ghost"
 			icon={icon}
+			iconSize={size}
 			aria-label={label}
 			title={label}
 			disabled={disabled}
+			className={className}
 			onClick={() => void onClick()}
 		/>
 	);
@@ -739,14 +820,11 @@ function sourceProgressLabel(
 	snapshot: VideoPlayerSnapshot,
 	t: PlayerCopy,
 ): string {
-	if (snapshot.completedSourceIds.includes(sourceId)) return t.completed;
-	const progress =
-		sourceId === snapshot.currentSourceId
-			? snapshot.currentTime
-			: (snapshot.progressBySource[sourceId] ?? 0);
 	if (sourceId === snapshot.currentSourceId && snapshot.duration) {
-		return `${formatTime(progress)} / ${formatTime(snapshot.duration)}`;
+		return `${formatTime(snapshot.currentTime)} / ${formatTime(snapshot.duration)}`;
 	}
+	if (snapshot.completedSourceIds.includes(sourceId)) return t.completed;
+	const progress = snapshot.progressBySource[sourceId] ?? 0;
 	return progress > 0 ? t.watched(formatTime(progress)) : "";
 }
 

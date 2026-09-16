@@ -66,6 +66,16 @@
 
 .playerPanel {
 	overflow: hidden;
+	transition:
+		border-color 150ms ease,
+		box-shadow 150ms ease;
+
+	&:focus-within {
+		border-color: color-mix(in srgb, var(--interactive-accent) 72%, transparent);
+		box-shadow:
+			var(--shadow-s),
+			0 0 0 1px color-mix(in srgb, var(--interactive-accent) 72%, transparent);
+	}
 }
 
 .surface {
@@ -75,25 +85,27 @@
 	flex-direction: column;
 	background: #08090b;
 	outline: none;
-
-	&:focus-visible,
-	&:focus-within {
-		box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 72%, transparent);
-	}
+	border-radius: inherit;
+	overflow: hidden;
 }
 
 .mediaHost {
-	display: grid;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 	min-height: 240px;
 	flex: 1;
-	place-items: center;
 	overflow: hidden;
+	position: relative;
+	width: 100%;
+	background: #08090b;
 }
 
 .video {
 	display: block;
 	width: 100%;
 	height: 100%;
+	max-width: 100%;
 	max-height: 100%;
 	object-fit: contain;
 	background: #08090b;
@@ -110,9 +122,9 @@
 
 .progressRow {
 	display: grid;
-	grid-template-columns: auto minmax(80px, 1fr) auto;
+	grid-template-columns: auto minmax(0, 1fr) auto;
 	align-items: center;
-	gap: 10px;
+	gap: 12px;
 	padding: 10px 16px 2px;
 	color: #c4c8d0;
 	font-variant-numeric: tabular-nums;
@@ -120,7 +132,10 @@
 }
 
 .progress {
-	width: 100%;
+	--slider-width: 100% !important;
+	width: 100% !important;
+	min-width: 0 !important;
+	max-width: 100% !important;
 	margin: 0;
 	accent-color: var(--interactive-accent);
 	cursor: pointer;
@@ -173,196 +188,296 @@
 	overflow: hidden;
 }
 
-.queueHeading {
+.queueHeader {
 	display: flex;
-	width: 100%;
 	align-items: center;
-	gap: 10px;
-	padding: 14px 16px;
+	justify-content: space-between;
+	padding: 8px 12px;
+	gap: 8px;
+	border-bottom: 1px solid transparent;
+	transition: background-color 120ms ease;
+
+	&:has(+ .queueList) {
+		border-bottom-color: var(--background-modifier-border);
+	}
+}
+
+.queueHeading {
+	appearance: none;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 8px;
 	border: 0;
+	border-radius: 6px;
 	color: var(--text-normal);
 	background: transparent;
-	font-size: var(--font-ui-medium);
+	font-size: var(--font-ui-small);
 	font-weight: 600;
 	text-align: left;
 	cursor: pointer;
-
-	svg {
-		width: 18px;
-		height: 18px;
-		color: var(--text-muted);
-	}
+	min-height: unset !important;
+	height: auto !important;
+	box-shadow: none !important;
+	transition: background-color 120ms ease;
 
 	&:hover {
 		background: var(--background-modifier-hover);
 	}
+
+	&:focus-visible {
+		outline: 2px solid var(--interactive-accent);
+		outline-offset: 1px;
+	}
 }
 
-.queueToggleLabel {
-	margin-left: auto;
+.queueChevron {
+	display: flex;
+	align-items: center;
+	color: var(--text-muted);
+}
+
+.queueSummaryText {
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.queueHeaderActions {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.queueAddBtn,
+.queueToggleBtn {
+	appearance: none;
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 5px 8px;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
-	font-weight: 400;
+	cursor: pointer;
+	box-shadow: none !important;
+	height: auto !important;
+	min-height: unset !important;
+	transition: all 120ms ease;
+
+	&:hover {
+		background: var(--background-modifier-hover);
+		color: var(--text-normal);
+	}
+
+	&:focus-visible {
+		outline: 2px solid var(--interactive-accent);
+		outline-offset: 1px;
+	}
+}
+
+.queueAddBtn {
+	color: var(--interactive-accent);
+	font-weight: 500;
+
+	&:hover {
+		background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+		color: var(--interactive-accent);
+	}
 }
 
 .queueList {
 	display: flex;
 	max-height: min(420px, 45vh);
 	flex-direction: column;
-	gap: 8px;
+	gap: 6px;
 	overflow-y: auto;
-	padding: 0 12px 12px;
-	border-top: 1px solid var(--background-modifier-border);
+	padding: 10px 12px 12px;
 }
 
 .queueItem {
-	display: grid;
-	grid-template-columns: 32px minmax(0, 1fr) 36px;
+	display: flex;
 	align-items: center;
-	gap: 4px;
-	margin-top: 8px;
-	border: 1px solid transparent;
-	border-radius: 12px;
-	background: color-mix(in srgb, var(--background-secondary) 72%, transparent);
+	gap: 8px;
+	padding: 6px 10px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 10px;
+	background: var(--background-primary);
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 	transition:
 		border-color 120ms ease,
-		background-color 120ms ease;
+		background-color 120ms ease,
+		box-shadow 120ms ease;
 
-	&:hover,
+	&:hover {
+		border-color: var(--background-modifier-border-hover);
+		background: var(--background-modifier-hover);
+
+		.dragHandle {
+			opacity: 0.85;
+		}
+
+		.itemActions {
+			opacity: 1;
+		}
+	}
+
 	&:focus-within {
 		border-color: var(--background-modifier-border-hover);
-		background: var(--background-secondary);
+
+		.itemActions {
+			opacity: 1;
+		}
 	}
 
 	&.active {
-		border-color: color-mix(in srgb, var(--interactive-accent) 72%, transparent);
-		background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-secondary));
-		box-shadow: inset 3px 0 0 var(--interactive-accent);
+		border-color: color-mix(in srgb, var(--interactive-accent) 55%, transparent);
+		background: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-primary));
+		box-shadow:
+			0 1px 3px rgba(0, 0, 0, 0.06),
+			inset 3px 0 0 var(--interactive-accent);
+
+		.sourceName {
+			color: var(--text-accent, var(--interactive-accent));
+			font-weight: 600;
+		}
+
+		.sourceIndex {
+			background: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+			color: var(--interactive-accent);
+		}
 	}
 }
 
 .dragHandle {
-	display: grid;
-	width: 32px;
-	height: 44px;
-	place-items: center;
-	padding: 0;
-	border: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 32px;
 	color: var(--text-faint);
-	background: transparent;
 	cursor: grab;
+	flex-shrink: 0;
+	opacity: 0.35;
+	border-radius: 4px;
+	transition:
+		opacity 120ms ease,
+		color 120ms ease;
+
+	&:hover {
+		opacity: 1;
+		color: var(--text-muted);
+	}
 
 	&:active {
 		cursor: grabbing;
 	}
-
-	svg {
-		width: 16px;
-		height: 16px;
-	}
-}
-
-.sourceButton {
-	display: grid;
-	grid-template-columns: 28px minmax(0, 1fr);
-	min-width: 0;
-	align-items: center;
-	gap: 10px;
-	padding: 10px 6px;
-	border: 0;
-	color: var(--text-normal);
-	background: transparent;
-	text-align: left;
-	cursor: pointer;
 }
 
 .sourceIndex {
-	display: grid;
-	width: 28px;
-	height: 28px;
-	place-items: center;
-	border-radius: 8px;
-	background: var(--background-modifier-hover);
+	display: flex;
+	width: 24px;
+	height: 24px;
+	align-items: center;
+	justify-content: center;
+	border-radius: 6px;
+	background: var(--background-secondary);
 	color: var(--text-muted);
 	font-variant-numeric: tabular-nums;
 	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	flex-shrink: 0;
 }
 
-.sourceCopy {
+.activePlayIcon {
+	fill: currentColor;
+}
+
+.sourceContent {
 	display: flex;
+	flex: 1;
 	min-width: 0;
 	flex-direction: column;
-	gap: 3px;
+	justify-content: center;
+	gap: 2px;
+	padding: 4px 6px;
+	border-radius: 6px;
+	cursor: pointer;
+	outline: none;
+	text-align: left;
+	user-select: none;
+
+	&:focus-visible {
+		outline: 2px solid var(--interactive-accent);
+		outline-offset: 1px;
+	}
 }
 
 .sourceName {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	font-size: var(--font-ui-small);
+	font-weight: 500;
+	color: var(--text-normal);
+	line-height: 1.35;
 }
 
 .sourceMeta {
-	min-height: 1em;
-	color: var(--text-muted);
+	display: flex;
+	align-items: center;
+	gap: 6px;
 	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	line-height: 1.2;
 }
 
-.itemMenu {
-	position: relative;
-	display: grid;
-	place-items: center;
+.playingTag {
+	color: var(--text-accent, var(--interactive-accent));
+	font-variant-numeric: tabular-nums;
+	font-weight: 500;
+}
 
-	summary {
-		display: grid;
-		width: 32px;
-		height: 32px;
-		place-items: center;
-		border-radius: 8px;
-		color: var(--text-muted);
-		cursor: pointer;
-		list-style: none;
-
-		&::-webkit-details-marker {
-			display: none;
-		}
-
-		&:hover {
-			color: var(--text-normal);
-			background: var(--background-modifier-hover);
-		}
-
-		svg {
-			width: 18px;
-			height: 18px;
-		}
-	}
+.progressTag {
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
 }
 
 .itemActions {
-	position: absolute;
-	z-index: 5;
-	top: calc(100% + 4px);
-	right: 0;
-	display: grid;
-	min-width: 140px;
-	padding: 6px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 10px;
-	background: var(--background-primary);
-	box-shadow: var(--shadow-s);
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	flex-shrink: 0;
+	opacity: 0.6;
+	transition: opacity 120ms ease;
+}
 
-	button {
-		justify-content: flex-start;
-		width: 100%;
-		min-height: 32px;
-		padding: 6px 10px;
-		border: 0;
-		background: transparent;
-		text-align: left;
+.actionBtn {
+	width: 26px !important;
+	height: 26px !important;
+	min-width: 26px !important;
+	min-height: 26px !important;
+	padding: 0 !important;
+	border-radius: 6px !important;
+	color: var(--text-muted) !important;
 
-		&:hover:not(:disabled) {
-			background: var(--background-modifier-hover);
-		}
+	&:hover:not(:disabled) {
+		color: var(--text-normal) !important;
+		background: var(--background-modifier-hover) !important;
+	}
+
+	&:disabled {
+		opacity: 0.3 !important;
+	}
+}
+
+.deleteBtn {
+	&:hover:not(:disabled) {
+		color: var(--text-error, #f43f5e) !important;
+		background: color-mix(in srgb, var(--text-error, #f43f5e) 12%, transparent) !important;
 	}
 }
 
@@ -378,6 +493,16 @@
 	border-radius: 12px;
 	background: var(--background-primary);
 	box-shadow: var(--shadow-l);
+	transition:
+		border-color 150ms ease,
+		box-shadow 150ms ease;
+
+	&:focus-within {
+		border-color: color-mix(in srgb, var(--interactive-accent) 72%, transparent);
+		box-shadow:
+			var(--shadow-l),
+			0 0 0 1px color-mix(in srgb, var(--interactive-accent) 72%, transparent);
+	}
 }
 
 .floatingHeader {
@@ -435,6 +560,14 @@
 @media (max-width: 760px) {
 	.queue {
 		max-height: 320px;
+	}
+
+	.dragHandle {
+		opacity: 0.7;
+	}
+
+	.itemActions {
+		opacity: 1;
 	}
 }
 
