@@ -22,6 +22,11 @@ import {
 	parseMaximumInterval,
 } from "../../settings/studyMeta";
 import type { DeckPdfExportProgress, DeckPdfExportResult } from "./deckPdfExporter";
+import {
+	buildLearningFootprint,
+	type DailyLearningActivity,
+	type LearningFootprintSnapshot,
+} from "../history/dailyLearningActivity";
 
 export interface DeckHomeTotals {
 	readonly deckCount: number;
@@ -107,6 +112,7 @@ export interface DeckHomeSnapshot {
 	readonly revision: number;
 	readonly decks: ReadonlyArray<DeckHomeDeckSnapshot>;
 	readonly totals: Readonly<DeckHomeTotals>;
+	readonly learningFootprint: LearningFootprintSnapshot;
 	readonly migration: Readonly<Pick<MigrationPreview, "sourceCount" | "cardCount">> | null;
 	readonly mutation: DeckHomeMutationActivity;
 	readonly export: DeckHomeExportActivity;
@@ -229,6 +235,7 @@ export interface DeckHomeRepository {
 	getEffectiveStudySettings?(deckId: string): StudySettings;
 	getSpellingProgress?(): Readonly<Record<string, SpellingCardProgress>>;
 	getStudyHistory?(): StudyHistoryEntry[];
+	getDailyLearningActivities?(): DailyLearningActivity[];
 	recordWordListVisit?(
 		deckId: string,
 		deckName: string,
@@ -862,6 +869,10 @@ class DefaultDeckHome implements DeckHome {
 			revision,
 			decks: deckSnapshots,
 			totals,
+			learningFootprint: buildLearningFootprint(
+				this.options.repository.getDailyLearningActivities?.() ?? [],
+				now,
+			),
 			migration: migration
 				? {
 						sourceCount: migration.sourceCount,
@@ -1031,6 +1042,25 @@ function freezeDeckHomeSnapshot(snapshot: DeckHomeSnapshot): DeckHomeSnapshot {
 	}
 	Object.freeze(snapshot.decks);
 	Object.freeze(snapshot.totals);
+	Object.freeze(snapshot.learningFootprint.today.answers);
+	Object.freeze(snapshot.learningFootprint.today.seconds);
+	Object.freeze(snapshot.learningFootprint.today.completedAnswers);
+	Object.freeze(snapshot.learningFootprint.today.completedSessions);
+	Object.freeze(snapshot.learningFootprint.today);
+	for (const week of snapshot.learningFootprint.weeks) {
+		for (const day of week.days) {
+			Object.freeze(day.activity.answers);
+			Object.freeze(day.activity.seconds);
+			Object.freeze(day.activity.completedAnswers);
+			Object.freeze(day.activity.completedSessions);
+			Object.freeze(day.activity);
+			Object.freeze(day);
+		}
+		Object.freeze(week.days);
+		Object.freeze(week);
+	}
+	Object.freeze(snapshot.learningFootprint.weeks);
+	Object.freeze(snapshot.learningFootprint);
 	if (snapshot.migration) Object.freeze(snapshot.migration);
 	Object.freeze(snapshot.mutation);
 	Object.freeze(snapshot.export);

@@ -187,6 +187,7 @@ describe("FlashcardRepository", () => {
 
 		expect(repo.getAllDecks()).toHaveLength(1);
 		expect(repo.getStudyHistory()).toHaveLength(1);
+		expect(repo.getDailyLearningActivities()).toEqual([]);
 
 		// Saved partition to store
 		const savedLearning = store.getPartition<any>("learning");
@@ -267,6 +268,7 @@ describe("FlashcardRepository", () => {
 					duration: 5000,
 				},
 			],
+			activityEntries: [{ mode: "study", answerCount: 3, duration: 5000, completed: true }],
 		});
 
 		const updatedDeck = repo.getDeck("deck-1")!;
@@ -274,6 +276,11 @@ describe("FlashcardRepository", () => {
 		expect(updatedDeck.cards[0]?.fsrsCard.state).toBe(State.Review);
 		expect(repo.getSpellingProgress()["c1"]?.correctAttempts).toBe(1);
 		expect(repo.getStudyHistory()).toHaveLength(1);
+		expect(repo.getDailyLearningActivities()).toHaveLength(1);
+		expect(repo.getDailyLearningActivities()[0]).toMatchObject({
+			answers: { study: 3, practice: 0, spelling: 0 },
+			completedAnswers: { study: 3, practice: 0, spelling: 0 },
+		});
 		expect(listener).toHaveBeenCalledTimes(1);
 
 		// WorkbenchStore partition was updated
@@ -374,6 +381,8 @@ describe("FlashcardRepository", () => {
 		expect(repo.getStudyHistory()).toHaveLength(1);
 		expect(repo.getStudyHistory()[0]?.deckName).toBe("My Deck");
 		expect(repo.getStudyHistory()[0]?.duration).toBe(6);
+		expect(repo.getDailyLearningActivities()).toHaveLength(1);
+		expect(repo.getDailyLearningActivities()[0]?.seconds["word-list"]).toBe(6);
 	});
 
 	it("rehydrates the complete learning snapshot after external Sync", async () => {
@@ -428,6 +437,15 @@ describe("FlashcardRepository", () => {
 						timestamp: 1,
 					},
 				],
+				dailyLearningActivities: [
+					{
+						date: "2026-04-01",
+						answers: { study: 1, practice: 0, spelling: 0 },
+						seconds: { study: 10, practice: 0, spelling: 0, "word-list": 0 },
+						completedAnswers: { study: 1, practice: 0, spelling: 0 },
+						completedSessions: { study: 1, practice: 0, spelling: 0 },
+					},
+				],
 				spellingProgress: {
 					synced: {
 						attempts: 2,
@@ -449,6 +467,7 @@ describe("FlashcardRepository", () => {
 			expect(repo.getSettings().dailyNewCards).toBe(31);
 			expect(repo.getDeck("notes/external.md")?.studyCount).toBe(9);
 			expect(repo.getStudyHistory()).toHaveLength(1);
+			expect(repo.getDailyLearningActivities()).toHaveLength(1);
 			expect(repo.getSpellingProgress().synced?.correctStreak).toBe(2);
 		});
 	});
@@ -466,6 +485,7 @@ describe("FlashcardRepository", () => {
 
 		expect(repo.getRevision()).toBe(revision);
 		expect(repo.getStudyHistory()).toEqual([]);
+		expect(repo.getDailyLearningActivities()).toEqual([]);
 	});
 
 	it("does not roll back a durable continuity commit when the rebuildable cache fails", async () => {

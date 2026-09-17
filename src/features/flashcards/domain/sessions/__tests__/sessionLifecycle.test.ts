@@ -13,6 +13,7 @@ import {
 	type SessionLifecycleRepository,
 	type SessionPersistenceTransition,
 } from "../sessionLifecycle";
+import type { LearningActivityDelta } from "../../history/dailyLearningActivity";
 
 const DECK_ID = "notes/deck.md";
 
@@ -42,6 +43,7 @@ function makeDeck(cards: FlashCard[]): Deck {
 class MemoryLifecycleRepository implements SessionLifecycleRepository {
 	readonly decks = new Map<string, Deck>();
 	readonly history: SessionPersistenceTransition["historyEntries"][number][] = [];
+	readonly activity: LearningActivityDelta[] = [];
 	readonly spellingProgress: Record<string, SpellingCardProgress> = {};
 	commits: SessionPersistenceTransition[] = [];
 	failNextCommit = false;
@@ -132,6 +134,7 @@ class MemoryLifecycleRepository implements SessionLifecycleRepository {
 			if (deck) deck.studyCount++;
 		}
 		this.history.push(...transition.historyEntries);
+		this.activity.push(...(transition.activityEntries ?? []));
 	}
 }
 
@@ -228,6 +231,7 @@ describe("SessionLifecycle", () => {
 			cardUpdates: [{ cardId: "one" }],
 			incrementStudyCountFor: [DECK_ID],
 			historyEntries: [{ mode: "study", cardCount: 1, duration: 60 }],
+			activityEntries: [{ mode: "study", answerCount: 1, duration: 60, completed: true }],
 		});
 	});
 
@@ -295,6 +299,16 @@ describe("SessionLifecycle", () => {
 			answerEventCount: 0,
 		});
 		expect(subject.repository.getCard(DECK_ID, "one")?.fsrsCard.reps).toBe(0);
+
+		active = subject.lifecycle.getSnapshot();
+		if (active.kind !== "active" || active.mode !== "study") throw new Error("active");
+		await subject.lifecycle.act(active.reference, { kind: "answer", rating: 3 });
+		active = subject.lifecycle.getSnapshot();
+		if (active.kind !== "active" || active.mode !== "study") throw new Error("active");
+		await subject.lifecycle.act(active.reference, { kind: "answer", rating: 3 });
+		expect(subject.repository.activity).toEqual([
+			{ mode: "study", answerCount: 3, duration: 0, completed: true },
+		]);
 	});
 
 	it("counts only spelling retrievals and freezes incorrect result details", async () => {
@@ -341,6 +355,7 @@ describe("SessionLifecycle", () => {
 		expect(subject.repository.commits[1]).toMatchObject({
 			spellingAttempts: [{ cardId: identity, correct: true }],
 			historyEntries: [{ mode: "spelling", cardCount: 1 }],
+			activityEntries: [{ mode: "spelling", answerCount: 4, completed: true }],
 		});
 		expect(subject.repository.history).toMatchObject([{ mode: "spelling", cardCount: 1 }]);
 		if (result.kind !== "result" || result.mode !== "spelling") throw new Error("result");
@@ -348,6 +363,32 @@ describe("SessionLifecycle", () => {
 		const retry = await subject.lifecycle.act(result.reference, { kind: "retry-incorrect" });
 		expect(retry).toMatchObject({ kind: "rejected", reason: "no-retryable-cards" });
 		expect(subject.lifecycle.getSnapshot()).toBe(result);
+	});
+
+	it("counts every practice submission after returning to a previous card", async () => {
+		const subject = makeLifecycle([makeCard("one"), makeCard("two")]);
+		await subject.lifecycle.start({
+			mode: "practice",
+			deckId: DECK_ID,
+			direction: "normal",
+			selection: { kind: "range", startIndex: 1, endIndex: 2 },
+		});
+		let active = subject.lifecycle.getSnapshot();
+		if (active.kind !== "active" || active.mode !== "practice") throw new Error("active");
+		await subject.lifecycle.act(active.reference, { kind: "answer", correct: false });
+		active = subject.lifecycle.getSnapshot();
+		if (active.kind !== "active" || active.mode !== "practice") throw new Error("active");
+		await subject.lifecycle.act(active.reference, { kind: "previous" });
+		active = subject.lifecycle.getSnapshot();
+		if (active.kind !== "active" || active.mode !== "practice") throw new Error("active");
+		await subject.lifecycle.act(active.reference, { kind: "answer", correct: true });
+		active = subject.lifecycle.getSnapshot();
+		if (active.kind !== "active" || active.mode !== "practice") throw new Error("active");
+		await subject.lifecycle.act(active.reference, { kind: "answer", correct: true });
+
+		expect(subject.repository.activity).toEqual([
+			{ mode: "practice", answerCount: 3, duration: 0, completed: true },
+		]);
 	});
 
 	it("revalidates incorrect retry identities against the current card index", async () => {
@@ -409,6 +450,9 @@ describe("SessionLifecycle", () => {
 		await subject.lifecycle.act(active.reference, { kind: "exit" });
 		expect(subject.repository.history).toMatchObject([
 			{ mode: "practice", cardCount: 1, duration: 30 },
+		]);
+		expect(subject.repository.activity).toMatchObject([
+			{ mode: "practice", answerCount: 1, duration: 30, completed: false },
 		]);
 
 		await subject.lifecycle.start({

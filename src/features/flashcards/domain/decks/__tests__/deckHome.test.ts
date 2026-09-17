@@ -18,6 +18,7 @@ import {
 	type DeckHomeEvent,
 	type DeckHomeRepository,
 } from "../deckHome";
+import type { DailyLearningActivity } from "../../history/dailyLearningActivity";
 
 const STABLE_ONE = "550e8400-e29b-41d4-a716-446655440000";
 const STABLE_TWO = "7d444840-9dc0-11d1-b245-5ffdce74fad2";
@@ -76,6 +77,7 @@ class MemoryRepository implements DeckHomeRepository {
 	getEffectiveStudySettings?: (deckId: string) => StudySettings;
 	getSpellingProgress?: () => Readonly<Record<string, SpellingCardProgress>>;
 	getStudyHistory?: () => StudyHistoryEntry[];
+	getDailyLearningActivities?: () => DailyLearningActivity[];
 	recordWordListVisit?: (
 		deckId: string,
 		deckName: string,
@@ -208,6 +210,15 @@ describe("DeckHome", () => {
 			[deck],
 			makeSettings({ wordLearningDecks: { [deck.id]: true } }),
 		);
+		repository.getDailyLearningActivities = () => [
+			{
+				date: "2026-08-02",
+				answers: { study: 3, practice: 2, spelling: 1 },
+				seconds: { study: 60, practice: 30, spelling: 20, "word-list": 10 },
+				completedAnswers: { study: 3, practice: 0, spelling: 0 },
+				completedSessions: { study: 1, practice: 0, spelling: 0 },
+			},
+		];
 		const home = createDeckHome({
 			repository,
 			identity: makeIdentity(),
@@ -238,6 +249,12 @@ describe("DeckHome", () => {
 			},
 		});
 		expect(snapshot.decks[0]).not.toHaveProperty("cards");
+		expect(snapshot.learningFootprint).toMatchObject({
+			today: { answers: { study: 3, practice: 2, spelling: 1 } },
+			todayTotalSeconds: 120,
+			currentStreak: 1,
+			bestStreak: 1,
+		});
 		expect(Object.isFrozen(snapshot)).toBe(true);
 		expect(Object.isFrozen(snapshot.decks[0])).toBe(true);
 	});

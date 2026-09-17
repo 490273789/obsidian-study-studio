@@ -70,6 +70,7 @@ export function createStudySession(params: {
 		repeatQueue: [],
 		history: [],
 		answerEvents: [],
+		attemptCount: 0,
 		unavailableCardIds: [],
 	};
 }
@@ -198,6 +199,7 @@ export function canUndoStudyAnswer(session: StudySession): boolean {
 function addAnswerEvent(session: StudySession, event: StudyAnswerEvent): StudySession {
 	return {
 		...session,
+		attemptCount: (session.attemptCount ?? session.answerEvents.length) + 1,
 		repeatQueue: event.repeatInSession
 			? [...session.repeatQueue, event.cardId]
 			: [...session.repeatQueue],
@@ -229,6 +231,7 @@ function normalizeStudySession(session: StudySession): StudySession {
 		repeatQueue: normalizeStringArray(session.repeatQueue),
 		history: normalizeStringArray(session.history),
 		answerEvents: Array.isArray(session.answerEvents) ? session.answerEvents : [],
+		attemptCount: Math.max(0, session.attemptCount ?? session.answerEvents.length),
 		unavailableCardIds: normalizeStringArray(session.unavailableCardIds),
 	};
 }

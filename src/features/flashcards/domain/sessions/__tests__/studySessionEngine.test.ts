@@ -38,6 +38,7 @@ function makeSession(overrides: Partial<StudySession> = {}): StudySession {
 		repeatQueue: [],
 		history: [],
 		answerEvents: [],
+		attemptCount: overrides.attemptCount ?? overrides.answerEvents?.length ?? 0,
 		unavailableCardIds: [],
 		...overrides,
 	};
@@ -74,6 +75,7 @@ describe("createStudySession", () => {
 			repeatQueue: [],
 			history: [],
 			answerEvents: [],
+			attemptCount: 0,
 			unavailableCardIds: [],
 		});
 	});
@@ -238,7 +240,7 @@ describe("undoStudyAnswer", () => {
 			cardId: "card-1",
 			fsrsCard: previousCard,
 		});
-		expect(result?.session).toEqual(makeSession());
+		expect(result?.session).toEqual(makeSession({ attemptCount: 1 }));
 		expect(canUndoStudyAnswer(result!.session)).toBe(false);
 	});
 

@@ -27,6 +27,7 @@ import type {
 	ViewState,
 } from "../../../../core/shared/types";
 import type { FlashcardStudySettings } from "../../settings/slice";
+import type { LearningActivityDelta } from "../history/dailyLearningActivity";
 import { shuffleArray } from "../../../../core/shared/utils";
 import type { StudyCardScheduler } from "./studySessionEngine";
 import {
@@ -393,6 +394,7 @@ export interface SessionPersistenceTransition {
 	}[];
 	readonly incrementStudyCountFor: readonly string[];
 	readonly historyEntries: readonly PendingSessionHistoryEntry[];
+	readonly activityEntries?: readonly LearningActivityDelta[];
 }
 
 export interface SessionLifecycleRepository extends StudyCardScheduler {
@@ -584,10 +586,15 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			}
 
 			const answerEventCount = getAnswerEventCount(current);
-			if (answerEventCount > 0) {
+			const activityAnswerCount = getActivityAnswerCount(current);
+			if (activityAnswerCount > 0) {
 				await this.commit({
 					...emptyTransition(),
-					historyEntries: [this.buildPartialHistory(current, answerEventCount)],
+					historyEntries:
+						answerEventCount > 0
+							? [this.buildPartialHistory(current, answerEventCount)]
+							: [],
+					activityEntries: [this.buildActivity(current, false)],
 				});
 			}
 			const originDeck = getOriginDeck(current.session);
@@ -735,6 +742,14 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			transition.historyEntries.push(
 				this.buildHistory(state, step.finishIntent.cardCount, step.finishIntent.duration),
 			);
+			transition.activityEntries.push(
+				this.buildActivity(
+					state,
+					true,
+					step.session.attemptCount ?? step.session.answerEvents.length,
+					step.finishIntent.duration,
+				),
+			);
 		}
 		await this.commit(transition);
 		if (step.type === "complete") {
@@ -798,6 +813,14 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			historyEntries: [
 				this.buildHistory(state, step.result.totalQuestions, step.result.timeSpent),
 			],
+			activityEntries: [
+				this.buildActivity(
+					state,
+					true,
+					(state.session.attemptCount ?? state.session.history.length) + 1,
+					step.result.timeSpent,
+				),
+			],
 		});
 		this.publish({
 			kind: "result",
@@ -843,6 +866,14 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		if (step.type === "complete") {
 			transition.historyEntries.push(
 				this.buildHistory(state, step.result.totalWords, step.result.timeSpent),
+			);
+			transition.activityEntries.push(
+				this.buildActivity(
+					state,
+					true,
+					state.session.attempts.length + 1,
+					step.result.timeSpent,
+				),
 			);
 		}
 		if (!isEmptyTransition(transition)) await this.commit(transition);
@@ -927,10 +958,13 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 
 	private async exitActive(state: InternalActiveState): Promise<LifecycleOutcome> {
 		const answerEventCount = getAnswerEventCount(state);
-		if (answerEventCount > 0) {
+		const activityAnswerCount = getActivityAnswerCount(state);
+		if (activityAnswerCount > 0) {
 			await this.commit({
 				...emptyTransition(),
-				historyEntries: [this.buildPartialHistory(state, answerEventCount)],
+				historyEntries:
+					answerEventCount > 0 ? [this.buildPartialHistory(state, answerEventCount)] : [],
+				activityEntries: [this.buildActivity(state, false)],
 			});
 		}
 		this.publish({ kind: "idle", key: this.makeKey("idle"), lastEnd: null });
@@ -960,6 +994,20 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			mode: state.mode,
 			cardCount,
 			duration: Math.max(0, duration),
+		};
+	}
+
+	private buildActivity(
+		state: InternalActiveState,
+		completed: boolean,
+		answerCount = getActivityAnswerCount(state),
+		duration = Math.max(0, Math.floor((this.now() - state.session.startTime) / 1000)),
+	): LearningActivityDelta {
+		return {
+			mode: state.mode,
+			answerCount,
+			duration,
+			completed,
 		};
 	}
 
@@ -1260,17 +1308,27 @@ function getAnswerEventCount(state: InternalActiveState): number {
 			: Object.keys(state.session.firstAttempts).length;
 }
 
+function getActivityAnswerCount(state: InternalActiveState): number {
+	return state.mode === "study"
+		? (state.session.attemptCount ?? state.session.answerEvents.length)
+		: state.mode === "practice"
+			? (state.session.attemptCount ?? state.session.history.length)
+			: state.session.attempts.length;
+}
+
 function emptyTransition(): {
 	cardUpdates: Array<{ deckId: string; cardId: string; fsrsCard: Card }>;
 	spellingAttempts: Array<{ cardId: string; correct: boolean; attemptedAt: number }>;
 	incrementStudyCountFor: string[];
 	historyEntries: PendingSessionHistoryEntry[];
+	activityEntries: LearningActivityDelta[];
 } {
 	return {
 		cardUpdates: [],
 		spellingAttempts: [],
 		incrementStudyCountFor: [],
 		historyEntries: [],
+		activityEntries: [],
 	};
 }
 
@@ -1279,7 +1337,8 @@ function isEmptyTransition(transition: SessionPersistenceTransition): boolean {
 		transition.cardUpdates.length === 0 &&
 		transition.spellingAttempts.length === 0 &&
 		transition.incrementStudyCountFor.length === 0 &&
-		transition.historyEntries.length === 0
+		transition.historyEntries.length === 0 &&
+		(transition.activityEntries?.length ?? 0) === 0
 	);
 }
 

@@ -43,6 +43,7 @@ function makePracticeSession(overrides: Partial<PracticeSession> = {}): Practice
 		totalQuestions: 3,
 		answers: {},
 		history: [],
+		attemptCount: overrides.attemptCount ?? overrides.history?.length ?? 0,
 		unavailableCardIds: [],
 		...overrides,
 	};
@@ -66,6 +67,7 @@ describe("practice session engine", () => {
 			totalQuestions: 2,
 			answers: {},
 			history: [],
+			attemptCount: 0,
 			unavailableCardIds: [],
 		});
 	});
@@ -274,6 +276,7 @@ describe("practice session engine", () => {
 				currentIndex: 0,
 				answers: {},
 				history: [],
+				attemptCount: 1,
 			}),
 		);
 	});
@@ -298,6 +301,7 @@ describe("practice session engine", () => {
 				currentIndex: 0,
 				answers: { "card-2": false },
 				history: ["card-2"],
+				attemptCount: 2,
 				unavailableCardIds: ["card-2"],
 			}),
 		);

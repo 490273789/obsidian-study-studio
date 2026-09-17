@@ -66,6 +66,7 @@ export function createPracticeSession(params: {
 		totalQuestions: params.cardIds.length,
 		answers: {},
 		history: [],
+		attemptCount: 0,
 		unavailableCardIds: [],
 	};
 }
@@ -183,6 +184,7 @@ export function answerPracticeCard(params: {
 	};
 	const nextSession: PracticeSession = {
 		...session,
+		attemptCount: (session.attemptCount ?? session.history.length) + 1,
 		answers,
 		history: [...session.history, params.cardId],
 	};
@@ -251,6 +253,7 @@ function normalizePracticeSession(session: PracticeSession): PracticeSession {
 		cardQueue: normalizeStringArray(session.cardQueue),
 		answers: normalizeAnswerMap(session.answers),
 		history: normalizeStringArray(session.history),
+		attemptCount: Math.max(0, session.attemptCount ?? session.history.length),
 		unavailableCardIds: normalizeStringArray(session.unavailableCardIds),
 	};
 }

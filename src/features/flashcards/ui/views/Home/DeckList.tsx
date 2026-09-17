@@ -52,6 +52,7 @@ import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
 import { DeckSettingsModal } from "../DeckSettings";
 import { useFlashcardI18n } from "../../../strings/context";
 import styles from "./DeckList.module.scss";
+import { LearningFootprint } from "./LearningFootprint";
 
 interface DeckCardProps {
 	deck: DeckHomeDeckSnapshot;
@@ -513,6 +514,11 @@ export const DeckList = React.memo(function DeckList({
 						</FlashcardButton>
 					</section>
 				)}
+
+				<LearningFootprint
+					key={snapshot.learningFootprint.today.date}
+					footprint={snapshot.learningFootprint}
+				/>
 
 				{snapshot.decks.length === 0 ? (
 					<div className={cls("flashcard-empty", styles.empty)}>

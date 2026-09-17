@@ -137,6 +137,8 @@ export interface StudySession {
 	history: string[];
 	/** Answer events used for statistics and true undo */
 	answerEvents: StudyAnswerEvent[];
+	/** Monotonic count of every submitted rating, including answers later undone */
+	attemptCount?: number;
 	/** Deck identity and name captured when the session began */
 	originDeck?: SessionOriginDeckSnapshot;
 	/** Identities removed from the source after their answer events were recorded */
@@ -306,6 +308,8 @@ export interface PracticeSession {
 	answers: Record<string, boolean>;
 	/** Answered-card history for the previous-card function */
 	history: string[];
+	/** Monotonic count of every submitted answer, including answers later revisited */
+	attemptCount?: number;
 	/** Deck identity and name captured when the session began */
 	originDeck?: SessionOriginDeckSnapshot;
 	/** Identities removed from the source after their answer events were recorded */
