@@ -8,7 +8,7 @@ import { TranslationRuntime } from "./domain/translationRuntime";
 import { detectTranslationDirection } from "./domain/selectionDirection";
 import { translateYoudao } from "./domain/youdao";
 import { createSharedTranslator } from "../../core/i18n";
-import { TranslatorView } from "./ui";
+import { TranslatorFocusController, TranslatorView } from "./ui";
 import { createReactItemView } from "../../core/host/reactItemView";
 import { TranslationSettingsEditor } from "./obsidian/settingsEditor";
 import type {
@@ -44,11 +44,19 @@ type TranslationWorkbenchHost = WorkbenchHost<"translation">;
  * Owns its runtime, its chrome, and its persisted settings slice.
  */
 export function createTranslationFeature(deps: TranslationFeatureDeps): TranslationFeature {
-	let active: { host: TranslationWorkbenchHost; runtime: TranslationRuntime } | null = null;
+	let active: {
+		host: TranslationWorkbenchHost;
+		runtime: TranslationRuntime;
+		focusController: TranslatorFocusController;
+	} | null = null;
 
-	const activateView = async (host: TranslationWorkbenchHost): Promise<void> => {
+	const activateView = async (
+		host: TranslationWorkbenchHost,
+		focusController: TranslatorFocusController,
+	): Promise<void> => {
 		try {
 			await host.activateView(VIEW_TYPE_TRANSLATOR);
+			focusController.requestFocus();
 		} catch {
 			new Notice(translationStrings(host.settings.read().language).openFailed);
 		}
@@ -58,7 +66,7 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 		available: () => Boolean(active?.host.settings.read().translation.enabled),
 		openPrefilled: async (text) => {
 			if (!active) return;
-			const { host, runtime: translation } = active;
+			const { host, runtime: translation, focusController } = active;
 			const direction = detectTranslationDirection(text);
 			const snapshot = translation.getSnapshot();
 			if (snapshot.settings.direction !== direction) {
@@ -67,6 +75,7 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 			translation.prefill(text);
 			try {
 				await host.activateView(VIEW_TYPE_TRANSLATOR, { mainTab: true });
+				focusController.requestFocus();
 			} catch {
 				new Notice(translationStrings(host.settings.read().language).openFailed);
 			}
@@ -90,6 +99,7 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 	const module = defineFeatureLifetime({
 		id: "translation",
 		start(host, lifetime) {
+			const focusController = new TranslatorFocusController();
 			const translation = lifetime.own(
 				new TranslationRuntime(host.settings.read().translation, deps.ai, {
 					persist: async (settings) => {
@@ -101,7 +111,7 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 						translateYoudao(connection, text, direction, deps.net, signal),
 				}),
 			);
-			active = { host, runtime: translation };
+			active = { host, runtime: translation, focusController };
 
 			const editor = new TranslationSettingsEditor(
 				translation,
@@ -137,6 +147,7 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 						<TranslatorView
 							runtime={translation}
 							language={language}
+							focusController={focusController}
 							onOpenSettings={() => host.settingsTab.open(TRANSLATION_SECTION_ID)}
 						/>
 					),
@@ -152,7 +163,7 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 				settingsSectionId: TRANSLATION_SECTION_ID,
 				available: () => host.settings.read().translation.enabled,
 				open: () => {
-					void activateView(host);
+					void activateView(host, focusController);
 				},
 			});
 
@@ -169,7 +180,7 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 							// Prefilling only: translating always needs an explicit action.
 							run: (selection) => {
 								translation.prefill(selection);
-								void activateView(host);
+								void activateView(host, focusController);
 							},
 						},
 					});

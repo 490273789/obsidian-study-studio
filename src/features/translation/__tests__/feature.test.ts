@@ -174,6 +174,19 @@ describe("translation feature", () => {
 		feature.stop();
 	});
 
+	it("activates view when opening through the catalog entry", () => {
+		const feature = createTranslationFeature({ ai: {} as never, net: {} as never });
+		const fake = createFakeWorkbenchHost("translation", enabledSettings);
+		feature.render(fake.host);
+
+		const entry = fake.catalog.get("translation")!;
+		entry.open();
+
+		expect(fake.activateView).toHaveBeenCalledWith("flashcard-translator-view");
+
+		feature.stop();
+	});
+
 	it("builds one runtime and disposes it on stop", () => {
 		const feature = createTranslationFeature({ ai: {} as never, net: {} as never });
 		const fake = createFakeWorkbenchHost("translation", enabledSettings);

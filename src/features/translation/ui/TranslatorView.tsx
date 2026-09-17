@@ -1,4 +1,11 @@
-import React, { useCallback, useId, useState, useSyncExternalStore } from "react";
+import React, {
+	useCallback,
+	useEffect,
+	useId,
+	useRef,
+	useState,
+	useSyncExternalStore,
+} from "react";
 import { Copy, Languages, Settings2, Trash2 } from "lucide-react";
 import { aiErrorText } from "../../../core/i18n/ai";
 import { cls } from "../../../core/shared/classNames";
@@ -9,11 +16,13 @@ import { FlashcardTextarea } from "../../../core/ui/primitives/Input";
 import type { TranslationRuntime } from "../domain/translationRuntime";
 import type { TranslationResultState } from "../domain/types";
 import { formatTranslationString, translationStrings } from "../strings/translation";
+import type { TranslatorFocusController } from "./translatorFocusController";
 import styles from "./Translator.module.scss";
 
 interface TranslatorViewProps {
 	runtime: TranslationRuntime;
 	language: Language;
+	focusController?: TranslatorFocusController;
 	onOpenSettings: () => void;
 }
 
@@ -41,13 +50,34 @@ function providerLabel(provider: string, strings: ReturnType<typeof translationS
 export const TranslatorView = React.memo(function TranslatorView({
 	runtime,
 	language,
+	focusController,
 	onOpenSettings,
 }: TranslatorViewProps) {
 	const subscribe = useCallback((listener: () => void) => runtime.subscribe(listener), [runtime]);
 	const getSnapshot = useCallback(() => runtime.getSnapshot(), [runtime]);
 	const snapshot = useSyncExternalStore(subscribe, getSnapshot);
 	const [copyFeedback, setCopyFeedback] = useState<CopyFeedback | null>(null);
+	const inputRef = useRef<HTMLTextAreaElement>(null);
 	const viewId = useId();
+
+	useEffect(() => {
+		if (!focusController) return;
+		return focusController.register(() => {
+			const element = inputRef.current;
+			if (!element || element.disabled) return;
+			const win = element.ownerDocument.defaultView;
+			const focus = () => {
+				if (!inputRef.current || inputRef.current.disabled) return;
+				inputRef.current.focus();
+				inputRef.current.select();
+			};
+			if (win?.requestAnimationFrame) {
+				win.requestAnimationFrame(focus);
+			} else {
+				focus();
+			}
+		});
+	}, [focusController]);
 	const strings = translationStrings(language);
 	const isLoading = snapshot.status === "loading";
 	const configuredProfiles = snapshot.settings.profiles.filter((profile) => profile.enabled);
@@ -159,6 +189,7 @@ export const TranslatorView = React.memo(function TranslatorView({
 						</span>
 					</header>
 					<FlashcardTextarea
+						ref={inputRef}
 						id={`${viewId}-translator-input`}
 						value={snapshot.input}
 						placeholder={strings.inputPlaceholder}
