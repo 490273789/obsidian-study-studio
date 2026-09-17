@@ -71,24 +71,49 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 		},
 	];
 
+	const monthLabels = useMemo(() => {
+		let lastMonthKey = "";
+		let lastWeekWithLabel = -99;
+
+		return footprint.weeks.map((week, weekIndex) => {
+			const dayWithFirst = week.days.find((day) => day.date.slice(8, 10) === "01");
+			let anchorDay = dayWithFirst;
+			if (!anchorDay && weekIndex === 0) {
+				anchorDay = week.days[0];
+			}
+
+			if (!anchorDay) return "";
+
+			const monthKey = anchorDay.date.slice(0, 7);
+			if (monthKey === lastMonthKey || weekIndex - lastWeekWithLabel < 3) {
+				return "";
+			}
+
+			lastMonthKey = monthKey;
+			lastWeekWithLabel = weekIndex;
+
+			const date = new Date(`${anchorDay.date}T00:00:00`);
+			return new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", {
+				month: "short",
+			}).format(date);
+		});
+	}, [footprint.weeks, language]);
+
 	return (
 		<section className={styles.panel} aria-labelledby={titleId}>
 			<header className={styles.header}>
-				<div>
-					<h2 id={titleId} className={styles.title}>
-						{t("footprint.title")}
-					</h2>
-					<p className={styles.subtitle}>{t("footprint.subtitle")}</p>
-				</div>
+				<h2 id={titleId} className={styles.title}>
+					{t("footprint.title")}
+				</h2>
 				<div className={styles.streaks}>
 					<div className={styles.streakPrimary}>
-						<Flame size={17} aria-hidden="true" />
+						<Flame size={16} aria-hidden="true" />
 						<span>
 							{t("footprint.currentStreak", { count: footprint.currentStreak })}
 						</span>
 					</div>
 					<div className={styles.streakBest}>
-						<Trophy size={14} aria-hidden="true" />
+						<Trophy size={13} aria-hidden="true" />
 						<span>{t("footprint.bestStreak", { count: footprint.bestStreak })}</span>
 					</div>
 				</div>
@@ -97,14 +122,18 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 			<div className={styles.metrics}>
 				{todayMetrics.map(({ key, icon: Icon, value, label, subtitle }) => (
 					<div key={key} className={styles.metric}>
-						<Icon size={16} className={styles.metricIcon} aria-hidden="true" />
-						<div>
+						<Icon size={15} className={styles.metricIcon} aria-hidden="true" />
+						<div className={styles.metricBody}>
 							<div className={styles.metricValue}>
 								{value}
 								{key !== "duration" && <span>{t("footprint.times")}</span>}
 							</div>
-							<div className={styles.metricLabel}>{label}</div>
-							{subtitle && <div className={styles.metricSubtitle}>{subtitle}</div>}
+							<div className={styles.metricLabelRow}>
+								<span className={styles.metricLabel}>{label}</span>
+								{subtitle && (
+									<span className={styles.metricSubtitle}>{subtitle}</span>
+								)}
+							</div>
 						</div>
 					</div>
 				))}
@@ -139,10 +168,8 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 					<div ref={scrollerRef} className={styles.scroller}>
 						<div className={styles.heatmapContent}>
 							<div className={styles.months} aria-hidden="true">
-								{footprint.weeks.map((week, index) => (
-									<span key={week.days[0]?.date ?? index}>
-										{getMonthLabel(week.days, language)}
-									</span>
+								{monthLabels.map((label, index) => (
+									<span key={index}>{label}</span>
 								))}
 							</div>
 							<div className={styles.grid} aria-label={t("footprint.gridLabel")}>
@@ -233,15 +260,6 @@ function DayDetails({ day }: { day: LearningFootprintDay }) {
 			)}
 		</div>
 	);
-}
-
-function getMonthLabel(days: readonly LearningFootprintDay[], language: "zh" | "en"): string {
-	const boundary = days.find((day) => Number(day.date.slice(8, 10)) <= 7);
-	if (!boundary) return "";
-	const date = new Date(`${boundary.date}T00:00:00`);
-	return new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", {
-		month: "short",
-	}).format(date);
 }
 
 function formatActivityDate(dateKey: string, language: "zh" | "en"): string {
