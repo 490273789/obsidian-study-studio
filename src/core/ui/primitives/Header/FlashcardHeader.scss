@@ -77,11 +77,16 @@
 		}
 
 		.flashcard-header-badge {
+			display: inline-flex;
+			align-items: center;
+			gap: var(--fc-space-1);
 			flex-shrink: 0;
 			font-size: var(--fc-font-xs);
-			padding: 1px var(--fc-space-1);
-			border-radius: var(--fc-radius-xs);
+			line-height: 1.2;
+			padding: 2px var(--fc-space-2);
+			border-radius: var(--fc-radius-pill);
 			background: var(--fc-surface-section);
+			border: 1px solid var(--fc-line-soft);
 			color: var(--fc-muted);
 		}
 	}

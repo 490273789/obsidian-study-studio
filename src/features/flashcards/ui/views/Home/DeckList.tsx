@@ -30,7 +30,6 @@ import {
 	Languages,
 	List,
 	LoaderCircle,
-	NotebookPen,
 	CirclePlay,
 	Plus,
 	RefreshCcw,
@@ -410,22 +409,21 @@ export const DeckList = React.memo(function DeckList({
 				<FlashcardHeader
 					icon={BookOpen}
 					title={t("home.title")}
-					stats={[
-						{
-							key: "total",
-							icon: Calculator,
-							value: snapshot.totals.totalCards,
-							label: t("home.totalCards"),
-							tone: "purple",
-						},
-						{
-							key: "studies",
-							icon: NotebookPen,
-							value: snapshot.totals.studyCount,
-							label: t("home.studyCount"),
-							tone: "orange",
-						},
-					]}
+					badge={
+						<span
+							className={styles.totalBadge}
+							title={t("home.totalCardsTooltip", {
+								count: snapshot.totals.totalCards,
+							})}
+						>
+							<Calculator size={12} className={styles.totalBadgeIcon} />
+							<span>
+								{t("home.totalCardsBadge", {
+									count: snapshot.totals.totalCards,
+								})}
+							</span>
+						</span>
+					}
 					right={
 						<div className="flashcard-header-actions">
 							{onOpenTranslation && (

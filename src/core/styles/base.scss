@@ -77,8 +77,8 @@
 	/* 画布保持纯粹的系统底层色 */
 	--fc-surface-canvas: var(--background-secondary);
 
-	/* 显著提升卡片层级的 text-normal 混入度（原 4% -> 10%），让卡片在画布上更凸显 */
-	--fc-surface-card: color-mix(in srgb, var(--background-primary) 90%, var(--text-normal) 10%);
+	/* 卡片表面：避免高混入度导致深色下发白发虚，采用深邃基底并保持极佳质感 */
+	--fc-surface-card: color-mix(in srgb, var(--background-primary) 97%, var(--text-normal) 3%);
 
 	/* 区块容器，介于画布与卡片之间 */
 	--fc-surface-section: color-mix(in srgb, var(--fc-bg-panel) 94%, var(--text-normal) 6%);
@@ -188,9 +188,11 @@
 	--fc-font-data: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 	--fc-shadow-sm: 0 1px 2px rgba(var(--fc-black-rgb), 0.05);
 	--fc-shadow-card:
-		0 2px 8px rgba(var(--fc-black-rgb), 0.06), 0 1px 2px rgba(var(--fc-black-rgb), 0.04);
+		0 1px 3px rgba(var(--fc-black-rgb), 0.12), 0 3px 10px rgba(var(--fc-black-rgb), 0.05),
+		inset 0 1px 0 0 rgba(var(--fc-white-rgb), 0.05);
 	--fc-shadow-card-hover:
-		0 6px 16px rgba(var(--fc-black-rgb), 0.1), 0 2px 4px rgba(var(--fc-black-rgb), 0.06);
+		0 4px 16px rgba(var(--fc-black-rgb), 0.16), 0 2px 4px rgba(var(--fc-black-rgb), 0.08),
+		inset 0 1px 0 0 rgba(var(--fc-white-rgb), 0.08);
 	--fc-shadow-inset: inset 0 1px 3px rgba(var(--fc-black-rgb), 0.12);
 	--fc-line-glow: color-mix(in srgb, var(--text-normal) 8%, transparent);
 	--fc-shadow:

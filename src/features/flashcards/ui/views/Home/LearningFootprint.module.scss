@@ -1,9 +1,13 @@
 .panel {
 	flex: 0 0 auto;
 	padding: var(--fc-space-4);
-	border: 1px solid var(--fc-line-glow);
+	border: 1px solid var(--fc-line-soft);
 	border-radius: var(--fc-radius-md);
-	background: var(--fc-surface-card);
+	background: linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--fc-surface-card) 97%, var(--text-normal) 3%) 0%,
+		var(--fc-surface-card) 100%
+	);
 	box-shadow: var(--fc-shadow-card);
 	display: grid;
 	gap: var(--fc-space-4);
