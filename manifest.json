@@ -6,5 +6,5 @@
 	"description": "一个学习插件，帮助你高效学习和复习知识点。支持自定义标签扫描、间隔重复学习。",
 	"author": "WSR",
 	"authorUrl": "https://obsidian.md",
-	"isDesktopOnly": true
+	"isDesktopOnly": false
 }
