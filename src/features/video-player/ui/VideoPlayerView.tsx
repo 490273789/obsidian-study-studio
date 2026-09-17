@@ -30,7 +30,11 @@ import { FlashcardButton } from "../../../core/ui/primitives/Button";
 import { FlashcardHeader } from "../../../core/ui/primitives/Header";
 import { cls } from "../../../core/shared/classNames";
 import type { Language } from "../../../core/shared/types";
-import type { FloatingRect, LocalVideoSource, VideoPlayerSnapshot } from "../domain/types";
+import type {
+	FloatingRect,
+	LocalVideoSource,
+	VideoPlayerSnapshot,
+} from "../domain/types";
 import { VIDEO_PLAYBACK_RATES } from "../domain/types";
 import type { VideoPlayerRuntime } from "../domain/videoPlayerRuntime";
 import { matchesKeyboardShortcut } from "../settings/keyboardShortcut";
@@ -72,8 +76,14 @@ export function VideoPlayerView({
 	onPickVideos,
 	onPickReplacement,
 }: VideoPlayerViewProps): React.ReactNode {
-	const snapshot = useSyncExternalStore(runtime.subscribe, runtime.getSnapshot);
-	const presenter = useSyncExternalStore(presenterLease.subscribe, presenterLease.getSnapshot);
+	const snapshot = useSyncExternalStore(
+		runtime.subscribe,
+		runtime.getSnapshot,
+	);
+	const presenter = useSyncExternalStore(
+		presenterLease.subscribe,
+		presenterLease.getSnapshot,
+	);
 	const [presenterToken] = useState(() => Symbol("video-player-view"));
 	const t = videoPlayerStrings(language);
 	const document = rootEl.ownerDocument;
@@ -160,7 +170,9 @@ export function VideoPlayerView({
 			settings={settings}
 			focusController={focusController}
 			canPrevious={currentIndex > 0}
-			canNext={currentIndex >= 0 && currentIndex < snapshot.sources.length - 1}
+			canNext={
+				currentIndex >= 0 && currentIndex < snapshot.sources.length - 1
+			}
 			onToggle={() => runtime.togglePlayback()}
 			onPrevious={() => runtime.previous()}
 			onNext={() => runtime.next()}
@@ -179,10 +191,13 @@ export function VideoPlayerView({
 	return (
 		<div className={cls("fc-page fc-page--fill", styles.page)}>
 			<FlashcardHeader
-				className={styles.header}
 				icon={CirclePlay}
 				title={t.title}
-				badge={snapshot.sources.length > 0 ? snapshot.sources.length : undefined}
+				badge={
+					snapshot.sources.length > 0
+						? snapshot.sources.length
+						: undefined
+				}
 				right={
 					<div className="flashcard-header-actions">
 						<FlashcardButton
@@ -193,12 +208,12 @@ export function VideoPlayerView({
 							onClick={onOpenSettings}
 						/>
 						<FlashcardButton
-							variant="primary"
 							icon={FolderPlus}
+							preset="icon"
+							title={t.addVideos}
+							aria-label={t.addVideos}
 							onClick={() => void addVideos()}
-						>
-							{t.addVideos}
-						</FlashcardButton>
+						/>
 					</div>
 				}
 			/>
@@ -243,9 +258,15 @@ export function VideoPlayerView({
 									type="button"
 									className={styles.queueHeading}
 									aria-expanded={snapshot.queueExpanded}
-									title={snapshot.queueExpanded ? t.queueCollapse : t.queueExpand}
+									title={
+										snapshot.queueExpanded
+											? t.queueCollapse
+											: t.queueExpand
+									}
 									onClick={() =>
-										runtime.setQueueExpanded(!snapshot.queueExpanded)
+										runtime.setQueueExpanded(
+											!snapshot.queueExpanded,
+										)
 									}
 								>
 									<span className={styles.queueChevron}>
@@ -256,7 +277,10 @@ export function VideoPlayerView({
 										)}
 									</span>
 									<span className={styles.queueSummaryText}>
-										{t.queueSummary(snapshot.sources.length, currentIndex + 1)}
+										{t.queueSummary(
+											snapshot.sources.length,
+											currentIndex + 1,
+										)}
 									</span>
 								</button>
 								<div className={styles.queueHeaderActions}>
@@ -269,7 +293,10 @@ export function VideoPlayerView({
 										}}
 										title={t.addVideos}
 									>
-										<FolderPlus size={14} aria-hidden="true" />
+										<FolderPlus
+											size={14}
+											aria-hidden="true"
+										/>
 										<span>{t.addVideos}</span>
 									</button>
 								</div>
@@ -277,49 +304,78 @@ export function VideoPlayerView({
 							{snapshot.queueExpanded && (
 								<div className={styles.queueList}>
 									{snapshot.sources.map((source, index) => {
-										const isActive = source.id === snapshot.currentSourceId;
-										const progressLabel = sourceProgressLabel(
-											source.id,
-											snapshot,
-											t,
-										);
+										const isActive =
+											source.id ===
+											snapshot.currentSourceId;
+										const progressLabel =
+											sourceProgressLabel(
+												source.id,
+												snapshot,
+												t,
+											);
 										return (
 											<div
 												key={source.id}
 												className={`${styles.queueItem} ${isActive ? styles.active : ""}`}
-												onDragOver={(event) => event.preventDefault()}
+												onDragOver={(event) =>
+													event.preventDefault()
+												}
 												onDrop={() => {
-													const dragged = draggedId.current;
-													if (!dragged || dragged === source.id) return;
-													const ids = snapshot.sources.map(
-														(item) => item.id,
+													const dragged =
+														draggedId.current;
+													if (
+														!dragged ||
+														dragged === source.id
+													)
+														return;
+													const ids =
+														snapshot.sources.map(
+															(item) => item.id,
+														);
+													const from =
+														ids.indexOf(dragged);
+													const to = ids.indexOf(
+														source.id,
 													);
-													const from = ids.indexOf(dragged);
-													const to = ids.indexOf(source.id);
-													if (from < 0 || to < 0) return;
-													ids.splice(to, 0, ...ids.splice(from, 1));
+													if (from < 0 || to < 0)
+														return;
+													ids.splice(
+														to,
+														0,
+														...ids.splice(from, 1),
+													);
 													runtime.reorderSources(ids);
 												}}
 											>
 												<div
-													className={styles.dragHandle}
+													className={
+														styles.dragHandle
+													}
 													draggable
 													aria-label={t.dragToReorder}
 													title={t.dragToReorder}
 													onDragStart={() => {
-														draggedId.current = source.id;
+														draggedId.current =
+															source.id;
 													}}
 												>
-													<GripVertical size={14} aria-hidden="true" />
+													<GripVertical
+														size={14}
+														aria-hidden="true"
+													/>
 												</div>
 												<div
-													className={styles.sourceIndex}
+													className={
+														styles.sourceIndex
+													}
 													aria-hidden="true"
 												>
 													{isActive ? (
 														<Play
 															size={11}
-															className={styles.activePlayIcon}
+															className={
+																styles.activePlayIcon
+															}
 														/>
 													) : (
 														<span>{index + 1}</span>
@@ -328,24 +384,41 @@ export function VideoPlayerView({
 												<div
 													role="button"
 													tabIndex={0}
-													className={styles.sourceContent}
-													onClick={() => runtime.selectSource(source.id)}
+													className={
+														styles.sourceContent
+													}
+													onClick={() =>
+														runtime.selectSource(
+															source.id,
+														)
+													}
 													onKeyDown={(event) => {
 														if (
-															event.key === "Enter" ||
+															event.key ===
+																"Enter" ||
 															event.key === " "
 														) {
 															event.preventDefault();
-															runtime.selectSource(source.id);
+															runtime.selectSource(
+																source.id,
+															);
 														}
 													}}
 													title={source.path}
 												>
-													<div className={styles.sourceName}>
+													<div
+														className={
+															styles.sourceName
+														}
+													>
 														{source.name}
 													</div>
 													{progressLabel && (
-														<div className={styles.sourceMeta}>
+														<div
+															className={
+																styles.sourceMeta
+															}
+														>
 															<span
 																className={
 																	isActive
@@ -358,39 +431,59 @@ export function VideoPlayerView({
 														</div>
 													)}
 												</div>
-												<div className={styles.itemActions}>
-													{snapshot.sources.length > 1 && (
+												<div
+													className={
+														styles.itemActions
+													}
+												>
+													{snapshot.sources.length >
+														1 && (
 														<>
 															<IconButton
 																icon={ChevronUp}
 																size={14}
-																className={styles.actionBtn}
+																className={
+																	styles.actionBtn
+																}
 																label={t.moveUp}
-																disabled={index === 0}
+																disabled={
+																	index === 0
+																}
 																onClick={() =>
 																	moveSource(
 																		runtime,
 																		snapshot.sources,
 																		index,
-																		index - 1,
+																		index -
+																			1,
 																	)
 																}
 															/>
 															<IconButton
-																icon={ChevronDown}
+																icon={
+																	ChevronDown
+																}
 																size={14}
-																className={styles.actionBtn}
-																label={t.moveDown}
+																className={
+																	styles.actionBtn
+																}
+																label={
+																	t.moveDown
+																}
 																disabled={
 																	index ===
-																	snapshot.sources.length - 1
+																	snapshot
+																		.sources
+																		.length -
+																		1
 																}
 																onClick={() =>
 																	moveSource(
 																		runtime,
 																		snapshot.sources,
 																		index,
-																		index + 1,
+																		index +
+																			1,
 																	)
 																}
 															/>
@@ -399,11 +492,15 @@ export function VideoPlayerView({
 													<IconButton
 														icon={FolderPlus}
 														size={14}
-														className={styles.actionBtn}
+														className={
+															styles.actionBtn
+														}
 														label={t.replace}
 														onClick={async () => {
 															const replacement =
-																await onPickReplacement(source.id);
+																await onPickReplacement(
+																	source.id,
+																);
 															if (replacement) {
 																runtime.replaceSource(
 																	source.id,
@@ -418,7 +515,9 @@ export function VideoPlayerView({
 														className={`${styles.actionBtn} ${styles.deleteBtn}`}
 														label={t.remove}
 														onClick={() =>
-															runtime.removeSource(source.id)
+															runtime.removeSource(
+																source.id,
+															)
 														}
 													/>
 												</div>
@@ -507,7 +606,8 @@ function PlayerSurface({
 				const element = surfaceRef.current;
 				const win = element?.ownerDocument.defaultView;
 				if (!element) return;
-				if (win?.requestAnimationFrame) win.requestAnimationFrame(() => element.focus());
+				if (win?.requestAnimationFrame)
+					win.requestAnimationFrame(() => element.focus());
 				else element.focus();
 			}),
 		[focusController],
@@ -515,7 +615,10 @@ function PlayerSurface({
 
 	const handleShortcut = (event: React.KeyboardEvent<HTMLDivElement>) => {
 		if (isInteractiveTarget(event.target)) return;
-		const action = matchesKeyboardShortcut(event, settings.shortcuts.togglePlayback)
+		const action = matchesKeyboardShortcut(
+			event,
+			settings.shortcuts.togglePlayback,
+		)
 			? onToggle
 			: matchesKeyboardShortcut(event, settings.shortcuts.seekBackward)
 				? onBackward
@@ -537,7 +640,8 @@ function PlayerSurface({
 			aria-label={t.playerRegion}
 			onKeyDown={handleShortcut}
 			onPointerDown={(event) => {
-				if (!isInteractiveTarget(event.target)) surfaceRef.current?.focus();
+				if (!isInteractiveTarget(event.target))
+					surfaceRef.current?.focus();
 			}}
 		>
 			<div ref={mediaHostRef} className={styles.mediaHost} />
@@ -586,7 +690,9 @@ function PlayerSurface({
 						value={String(rate)}
 						onChange={(event) =>
 							onRate(
-								Number(event.target.value) as (typeof VIDEO_PLAYBACK_RATES)[number],
+								Number(
+									event.target.value,
+								) as (typeof VIDEO_PLAYBACK_RATES)[number],
 							)
 						}
 					>
@@ -597,7 +703,13 @@ function PlayerSurface({
 						))}
 					</select>
 				</label>
-				{!floating && <IconButton icon={Minimize2} label={t.floating} onClick={onFloat} />}
+				{!floating && (
+					<IconButton
+						icon={Minimize2}
+						label={t.floating}
+						onClick={onFloat}
+					/>
+				)}
 			</div>
 		</div>
 	);
@@ -649,15 +761,20 @@ function ProgressSlider({
 				onPointerUp={commit}
 				onBlur={commit}
 				onKeyDown={(event) => {
-					if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+					if (event.key !== "ArrowLeft" && event.key !== "ArrowRight")
+						return;
 					event.preventDefault();
 					event.stopPropagation();
 					if (event.repeat) return;
 					const direction = event.key === "ArrowLeft" ? -1 : 1;
-					updateDraft(displayed + direction * (event.shiftKey ? skipInterval : 1));
+					updateDraft(
+						displayed +
+							direction * (event.shiftKey ? skipInterval : 1),
+					);
 				}}
 				onKeyUp={(event) => {
-					if (event.key === "ArrowLeft" || event.key === "ArrowRight") commit();
+					if (event.key === "ArrowLeft" || event.key === "ArrowRight")
+						commit();
 				}}
 			/>
 			<span>{formatTime(maximum)}</span>
@@ -729,7 +846,11 @@ function FloatingPlayer({
 					: clampRect(
 							kind === "move"
 								? { ...start, x: start.x + dx, y: start.y + dy }
-								: { ...start, width: start.width + dx, height: start.height + dy },
+								: {
+										...start,
+										width: start.width + dx,
+										height: start.height + dy,
+									},
 							viewport(),
 						);
 			rectRef.current = next;
@@ -747,12 +868,18 @@ function FloatingPlayer({
 	return (
 		<section
 			className={styles.floatingPlayer}
-			style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
+			style={{
+				left: rect.x,
+				top: rect.y,
+				width: rect.width,
+				height: rect.height,
+			}}
 		>
 			<header
 				className={styles.floatingHeader}
 				onPointerDown={(event) => {
-					if (!isInteractiveTarget(event.target)) beginPointer(event, "move");
+					if (!isInteractiveTarget(event.target))
+						beginPointer(event, "move");
 				}}
 			>
 				<strong>{title}</strong>
@@ -853,7 +980,10 @@ function clamp(value: number, min: number, max: number): number {
 	return Math.min(max, Math.max(min, value));
 }
 
-function defaultRect(viewport: { width: number; height: number }): FloatingRect {
+function defaultRect(viewport: {
+	width: number;
+	height: number;
+}): FloatingRect {
 	const width = Math.min(480, viewport.width - EDGE_GAP * 2);
 	const height = Math.min(320, viewport.height - EDGE_GAP * 2);
 	return {
@@ -864,11 +994,20 @@ function defaultRect(viewport: { width: number; height: number }): FloatingRect 
 	};
 }
 
-function clampRect(rect: FloatingRect, viewport: { width: number; height: number }): FloatingRect {
+function clampRect(
+	rect: FloatingRect,
+	viewport: { width: number; height: number },
+): FloatingRect {
 	const maxWidth = Math.max(1, viewport.width - EDGE_GAP * 2);
 	const maxHeight = Math.max(1, viewport.height - EDGE_GAP * 2);
-	const width = Math.min(Math.max(Math.min(MIN_WIDTH, maxWidth), rect.width), maxWidth);
-	const height = Math.min(Math.max(Math.min(MIN_HEIGHT, maxHeight), rect.height), maxHeight);
+	const width = Math.min(
+		Math.max(Math.min(MIN_WIDTH, maxWidth), rect.width),
+		maxWidth,
+	);
+	const height = Math.min(
+		Math.max(Math.min(MIN_HEIGHT, maxHeight), rect.height),
+		maxHeight,
+	);
 	return {
 		x: Math.min(
 			Math.max(EDGE_GAP, rect.x),
@@ -893,5 +1032,8 @@ function resizeFromLeft(
 	const maxWidth = Math.max(1, right - EDGE_GAP);
 	const minWidth = Math.min(MIN_WIDTH, maxWidth);
 	const width = clamp(start.width - dx, minWidth, maxWidth);
-	return clampRect({ x: right - width, y: start.y, width, height: start.height + dy }, viewport);
+	return clampRect(
+		{ x: right - width, y: start.y, width, height: start.height + dy },
+		viewport,
+	);
 }

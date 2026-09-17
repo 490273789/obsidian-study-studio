@@ -35,7 +35,7 @@
 	backdrop-filter: blur(12px);
 	-webkit-backdrop-filter: blur(12px);
 	min-height: var(--fc-header-height);
-	padding: var(--fc-space-1) 0;
+	padding: 0 var(--fc-space-4);
 
 	.flashcard-header-left,
 	.flashcard-header-right {
