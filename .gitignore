@@ -31,7 +31,6 @@ data.backup-v*.json
 
 # ai
 .agents
-.superdesign/tmp/
 
 docs/adr/
 CONTEXT.md
