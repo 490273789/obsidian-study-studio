@@ -15,6 +15,7 @@ import {
 	FastForward,
 	FolderPlus,
 	GripVertical,
+	Maximize2,
 	Minimize2,
 	Pause,
 	Play,
@@ -142,7 +143,7 @@ export function VideoPlayerView({
 			</div>
 		);
 	}
-	const player = (
+	const renderPlayer = (onToggleMaximize?: () => void) => (
 		<PlayerSurface
 			currentTime={snapshot.currentTime}
 			duration={snapshot.duration}
@@ -172,6 +173,7 @@ export function VideoPlayerView({
 				focusController.requestFocusAfterRemount();
 				runtime.setFloating(true);
 			}}
+			onToggleMaximize={onToggleMaximize}
 			t={t}
 		/>
 	);
@@ -233,7 +235,7 @@ export function VideoPlayerView({
 									</FlashcardButton>
 								</div>
 							) : (
-								player
+								renderPlayer()
 							)}
 						</section>
 						<aside className={styles.queue} aria-label={t.queue}>
@@ -443,10 +445,13 @@ export function VideoPlayerView({
 							runtime.setFloating(false);
 						}}
 						title={t.title}
+						closeLabel={t.dockAndPause}
+						maximizeLabel={t.maximize}
+						restoreLabel={t.restore}
 						resizeLeftLabel={t.resizeLeft}
 						resizeRightLabel={t.resizeRight}
 					>
-						{player}
+						{({ toggleMaximize }) => renderPlayer(toggleMaximize)}
 					</FloatingPlayer>,
 					document.body,
 				)}
@@ -476,6 +481,7 @@ function PlayerSurface({
 	onSeek,
 	onRate,
 	onFloat,
+	onToggleMaximize,
 	t,
 }: {
 	currentTime: number;
@@ -497,6 +503,7 @@ function PlayerSurface({
 	onSeek: (time: number) => void;
 	onRate: (rate: (typeof VIDEO_PLAYBACK_RATES)[number]) => void;
 	onFloat: () => void;
+	onToggleMaximize?: () => void;
 	t: PlayerCopy;
 }): React.ReactNode {
 	const surfaceRef = useRef<HTMLDivElement>(null);
@@ -539,7 +546,16 @@ function PlayerSurface({
 				if (!isInteractiveTarget(event.target)) surfaceRef.current?.focus();
 			}}
 		>
-			<div ref={mediaHostRef} className={styles.mediaHost} />
+			<div
+				ref={mediaHostRef}
+				className={styles.mediaHost}
+				onDoubleClick={(event) => {
+					if (onToggleMaximize && !isInteractiveTarget(event.target)) {
+						event.preventDefault();
+						onToggleMaximize();
+					}
+				}}
+			/>
 			{error && <p className={styles.error}>{error}</p>}
 			<ProgressSlider
 				currentTime={currentTime}
@@ -664,12 +680,15 @@ function ProgressSlider({
 	);
 }
 
-function FloatingPlayer({
+export function FloatingPlayer({
 	document,
 	initialRect,
 	onRectChange,
 	onClose,
 	title,
+	closeLabel,
+	maximizeLabel,
+	restoreLabel,
 	resizeLeftLabel,
 	resizeRightLabel,
 	children,
@@ -679,9 +698,12 @@ function FloatingPlayer({
 	onRectChange: (rect: FloatingRect) => void;
 	onClose: () => void;
 	title: string;
+	closeLabel: string;
+	maximizeLabel: string;
+	restoreLabel: string;
 	resizeLeftLabel: string;
 	resizeRightLabel: string;
-	children: React.ReactNode;
+	children: (context: { isMaximized: boolean; toggleMaximize: () => void }) => React.ReactNode;
 }): React.ReactNode {
 	const viewport = useCallback(
 		() => ({
@@ -693,18 +715,47 @@ function FloatingPlayer({
 	const [rect, setRect] = useState(() =>
 		clampRect(initialRect ?? defaultRect(viewport()), viewport()),
 	);
+	const [isMaximized, setIsMaximized] = useState(false);
+	const isMaximizedRef = useRef(isMaximized);
+	useEffect(() => {
+		isMaximizedRef.current = isMaximized;
+	}, [isMaximized]);
+
 	const rectRef = useRef(rect);
 	useEffect(() => {
 		rectRef.current = rect;
 	}, [rect]);
 
+	const normalRectRef = useRef(rect);
+	if (!isMaximized) {
+		normalRectRef.current = rect;
+	}
+
+	const toggleMaximize = useCallback(() => {
+		setIsMaximized((prev) => {
+			if (!prev) {
+				normalRectRef.current = rectRef.current;
+				return true;
+			}
+			const restored = clampRect(normalRectRef.current, viewport());
+			rectRef.current = restored;
+			setRect(restored);
+			onRectChange(restored);
+			return false;
+		});
+	}, [onRectChange, viewport]);
+
 	useEffect(() => {
 		const win = document.defaultView;
 		if (!win) return;
 		const onResize = () => {
-			const next = clampRect(rectRef.current, viewport());
-			setRect(next);
-			onRectChange(next);
+			const next = clampRect(normalRectRef.current, viewport());
+			normalRectRef.current = next;
+			if (!isMaximizedRef.current) {
+				rectRef.current = next;
+				setRect(next);
+				onRectChange(next);
+			}
 		};
 		win.addEventListener("resize", onResize);
 		return () => win.removeEventListener("resize", onResize);
@@ -715,11 +766,30 @@ function FloatingPlayer({
 		kind: "move" | "resize-left" | "resize-right",
 	) => {
 		event.preventDefault();
-		const start = rectRef.current;
 		const origin = { x: event.clientX, y: event.clientY };
 		const win = document.defaultView;
 		if (!win) return;
+
+		let start = rectRef.current;
+		let moved = false;
+		let demotedFromMaximized = false;
+
 		const move = (pointer: PointerEvent) => {
+			const rawDx = pointer.clientX - origin.x;
+			const rawDy = pointer.clientY - origin.y;
+			if (!moved) {
+				if (Math.hypot(rawDx, rawDy) < 3) return;
+				moved = true;
+				if (kind === "move" && isMaximizedRef.current) {
+					start = computeDemotedDragStart(origin, normalRectRef.current, viewport());
+					demotedFromMaximized = true;
+					setIsMaximized(false);
+					rectRef.current = start;
+					normalRectRef.current = start;
+					setRect(start);
+				}
+			}
+
 			const dx = pointer.clientX - origin.x;
 			const dy = pointer.clientY - origin.y;
 			const next =
@@ -736,12 +806,17 @@ function FloatingPlayer({
 							viewport(),
 						);
 			rectRef.current = next;
+			if (!demotedFromMaximized || !isMaximizedRef.current) {
+				normalRectRef.current = next;
+			}
 			setRect(next);
 		};
 		const finish = () => {
 			win.removeEventListener("pointermove", move);
 			win.removeEventListener("pointerup", finish);
-			onRectChange(rectRef.current);
+			if (moved || demotedFromMaximized) {
+				onRectChange(rectRef.current);
+			}
 		};
 		win.addEventListener("pointermove", move);
 		win.addEventListener("pointerup", finish, { once: true });
@@ -749,12 +824,20 @@ function FloatingPlayer({
 
 	return (
 		<section
-			className={styles.floatingPlayer}
+			className={cls(styles.floatingPlayer, isMaximized && styles.maximized)}
+			tabIndex={-1}
 			style={{
-				left: rect.x,
-				top: rect.y,
-				width: rect.width,
-				height: rect.height,
+				left: isMaximized ? 0 : rect.x,
+				top: isMaximized ? 0 : rect.y,
+				width: isMaximized ? "100%" : rect.width,
+				height: isMaximized ? "100%" : rect.height,
+			}}
+			onKeyDown={(event) => {
+				if (event.key === "Escape" && isMaximized) {
+					event.preventDefault();
+					event.stopPropagation();
+					toggleMaximize();
+				}
 			}}
 		>
 			<header
@@ -762,23 +845,40 @@ function FloatingPlayer({
 				onPointerDown={(event) => {
 					if (!isInteractiveTarget(event.target)) beginPointer(event, "move");
 				}}
+				onDoubleClick={(event) => {
+					if (!isInteractiveTarget(event.target)) {
+						event.preventDefault();
+						toggleMaximize();
+					}
+				}}
 			>
 				<strong>{title}</strong>
-				<IconButton icon={X} label={title} onClick={onClose} />
+				<div className={styles.floatingHeaderActions}>
+					<IconButton
+						icon={isMaximized ? Minimize2 : Maximize2}
+						label={isMaximized ? restoreLabel : maximizeLabel}
+						onClick={toggleMaximize}
+					/>
+					<IconButton icon={X} label={closeLabel} onClick={onClose} />
+				</div>
 			</header>
-			<div className={styles.floatingBody}>{children}</div>
-			<button
-				type="button"
-				className={`${styles.resizeHandle} ${styles.resizeLeft}`}
-				aria-label={resizeLeftLabel}
-				onPointerDown={(event) => beginPointer(event, "resize-left")}
-			/>
-			<button
-				type="button"
-				className={`${styles.resizeHandle} ${styles.resizeRight}`}
-				aria-label={resizeRightLabel}
-				onPointerDown={(event) => beginPointer(event, "resize-right")}
-			/>
+			<div className={styles.floatingBody}>{children({ isMaximized, toggleMaximize })}</div>
+			{!isMaximized && (
+				<>
+					<button
+						type="button"
+						className={`${styles.resizeHandle} ${styles.resizeLeft}`}
+						aria-label={resizeLeftLabel}
+						onPointerDown={(event) => beginPointer(event, "resize-left")}
+					/>
+					<button
+						type="button"
+						className={`${styles.resizeHandle} ${styles.resizeRight}`}
+						aria-label={resizeRightLabel}
+						onPointerDown={(event) => beginPointer(event, "resize-right")}
+					/>
+				</>
+			)}
 		</section>
 	);
 }
@@ -872,7 +972,10 @@ function defaultRect(viewport: { width: number; height: number }): FloatingRect 
 	};
 }
 
-function clampRect(rect: FloatingRect, viewport: { width: number; height: number }): FloatingRect {
+export function clampRect(
+	rect: FloatingRect,
+	viewport: { width: number; height: number },
+): FloatingRect {
 	const maxWidth = Math.max(1, viewport.width - EDGE_GAP * 2);
 	const maxHeight = Math.max(1, viewport.height - EDGE_GAP * 2);
 	const width = Math.min(Math.max(Math.min(MIN_WIDTH, maxWidth), rect.width), maxWidth);
@@ -891,7 +994,7 @@ function clampRect(rect: FloatingRect, viewport: { width: number; height: number
 	};
 }
 
-function resizeFromLeft(
+export function resizeFromLeft(
 	start: FloatingRect,
 	dx: number,
 	dy: number,
@@ -902,4 +1005,29 @@ function resizeFromLeft(
 	const minWidth = Math.min(MIN_WIDTH, maxWidth);
 	const width = clamp(start.width - dx, minWidth, maxWidth);
 	return clampRect({ x: right - width, y: start.y, width, height: start.height + dy }, viewport);
+}
+
+export function computeDemotedDragStart(
+	origin: { x: number; y: number },
+	normal: FloatingRect,
+	viewport: { width: number; height: number },
+): FloatingRect {
+	const clampedNormal = clampRect(normal, viewport);
+	const ratioX = viewport.width > 0 ? origin.x / viewport.width : 0.5;
+	const targetX = clamp(
+		origin.x - ratioX * clampedNormal.width,
+		EDGE_GAP,
+		Math.max(EDGE_GAP, viewport.width - clampedNormal.width - EDGE_GAP),
+	);
+	const targetY = clamp(
+		origin.y - 18,
+		EDGE_GAP,
+		Math.max(EDGE_GAP, viewport.height - clampedNormal.height - EDGE_GAP),
+	);
+	return {
+		x: targetX,
+		y: targetY,
+		width: clampedNormal.width,
+		height: clampedNormal.height,
+	};
 }

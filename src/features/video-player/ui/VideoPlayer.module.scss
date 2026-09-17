@@ -491,6 +491,16 @@
 			var(--shadow-l),
 			0 0 0 1px color-mix(in srgb, var(--interactive-accent) 72%, transparent);
 	}
+
+	&.maximized {
+		top: 0 !important;
+		left: 0 !important;
+		width: 100% !important;
+		height: 100% !important;
+		border: none;
+		border-radius: 0;
+		box-shadow: none;
+	}
 }
 
 .floatingHeader {
@@ -503,6 +513,12 @@
 	background: var(--background-secondary-alt);
 	cursor: move;
 	user-select: none;
+}
+
+.floatingHeaderActions {
+	display: flex;
+	align-items: center;
+	gap: 4px;
 }
 
 .floatingBody {
