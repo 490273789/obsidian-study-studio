@@ -1,0 +1,280 @@
+.panel {
+	flex: 0 0 auto;
+	padding: var(--fc-space-4);
+	border: 1px solid var(--fc-line-glow);
+	border-radius: var(--fc-radius-md);
+	background: var(--fc-surface-card);
+	box-shadow: var(--fc-shadow-card);
+	display: grid;
+	gap: var(--fc-space-4);
+}
+
+.header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--fc-space-4);
+}
+
+.title {
+	margin: 0;
+	color: var(--fc-text);
+	font-size: var(--fc-font-lg);
+	font-weight: var(--fc-weight-semibold);
+}
+
+.subtitle,
+.metricLabel,
+.metricSubtitle,
+.details,
+.legend,
+.weekdays,
+.months {
+	color: var(--fc-muted);
+	font-size: var(--fc-font-xs);
+}
+
+.subtitle {
+	margin: var(--fc-space-1) 0 0;
+}
+
+.streaks {
+	display: flex;
+	align-items: center;
+	gap: var(--fc-space-3);
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+
+.streakPrimary,
+.streakBest {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--fc-space-1);
+	white-space: nowrap;
+}
+
+.streakPrimary {
+	color: var(--fc-amber);
+	font-weight: var(--fc-weight-semibold);
+}
+
+.streakBest {
+	color: var(--fc-muted);
+	font-size: var(--fc-font-xs);
+}
+
+.metrics {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: var(--fc-space-2);
+}
+
+.metric {
+	min-width: 0;
+	padding: var(--fc-space-3);
+	border: 1px solid var(--fc-line);
+	border-radius: var(--fc-radius-sm);
+	background: color-mix(in srgb, var(--fc-surface-card) 88%, var(--fc-lime) 12%);
+	display: flex;
+	align-items: flex-start;
+	gap: var(--fc-space-2);
+}
+
+.metricIcon {
+	margin-top: 2px;
+	color: var(--fc-lime);
+	flex: 0 0 auto;
+}
+
+.metricValue {
+	color: var(--fc-text);
+	font-family: var(--fc-font-data);
+	font-size: var(--fc-font-lg);
+	font-weight: var(--fc-weight-semibold);
+	font-variant-numeric: tabular-nums;
+	line-height: 1.2;
+
+	span {
+		margin-left: var(--fc-space-1);
+		font-family: var(--fc-font-ui);
+		font-size: var(--fc-font-xs);
+		font-weight: var(--fc-weight-medium);
+		color: var(--fc-muted);
+	}
+}
+
+.metricLabel {
+	margin-top: var(--fc-space-1);
+}
+
+.metricSubtitle {
+	margin-top: var(--fc-space-half);
+	white-space: nowrap;
+}
+
+.heatmapSection {
+	min-width: 0;
+	display: grid;
+	gap: var(--fc-space-2);
+}
+
+.heatmapHeading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--fc-space-3);
+	color: var(--fc-text);
+	font-size: var(--fc-font-sm);
+	font-weight: var(--fc-weight-semibold);
+}
+
+.legend {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--fc-space-1);
+	font-weight: var(--fc-weight-regular);
+}
+
+.heatmapLayout {
+	min-width: 0;
+	display: grid;
+	grid-template-columns: 24px minmax(0, 1fr);
+	gap: var(--fc-space-2);
+}
+
+.weekdays {
+	padding-top: 21px;
+	display: grid;
+	grid-template-rows: repeat(7, 12px);
+	gap: 4px;
+	line-height: 12px;
+}
+
+.scroller {
+	min-width: 0;
+	overflow-x: auto;
+	overflow-y: hidden;
+	overscroll-behavior-inline: contain;
+	scrollbar-width: thin;
+}
+
+.heatmapContent {
+	width: max-content;
+	min-width: 100%;
+}
+
+.months,
+.grid {
+	display: grid;
+	grid-template-columns: repeat(53, 12px);
+	gap: 4px;
+}
+
+.months {
+	height: 17px;
+	line-height: 12px;
+
+	span {
+		width: 34px;
+		white-space: nowrap;
+	}
+}
+
+.week {
+	display: grid;
+	grid-template-rows: repeat(7, 12px);
+	gap: 4px;
+}
+
+.cell {
+	box-sizing: border-box;
+	width: 12px;
+	height: 12px;
+	min-width: 12px;
+	min-height: 12px;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	border-radius: 3px;
+	background: color-mix(in srgb, var(--fc-surface-card) 75%, var(--fc-line) 25%);
+	box-shadow: none;
+
+	&:disabled {
+		opacity: 0.35;
+	}
+}
+
+button.cell:not(:disabled) {
+	cursor: pointer;
+
+	&:hover,
+	&:focus-visible,
+	&.activeCell {
+		outline: 2px solid color-mix(in srgb, var(--fc-lime) 72%, var(--fc-text));
+		outline-offset: 1px;
+	}
+}
+
+.level1 {
+	background: color-mix(in srgb, var(--fc-lime) 25%, var(--fc-surface-card));
+}
+
+.level2 {
+	background: color-mix(in srgb, var(--fc-lime) 45%, var(--fc-surface-card));
+}
+
+.level3 {
+	background: color-mix(in srgb, var(--fc-lime) 68%, var(--fc-surface-card));
+}
+
+.level4 {
+	background: var(--fc-lime);
+}
+
+.details {
+	min-height: 18px;
+	display: flex;
+	align-items: center;
+	gap: var(--fc-space-2) var(--fc-space-3);
+	flex-wrap: wrap;
+
+	strong {
+		color: var(--fc-text);
+		font-weight: var(--fc-weight-semibold);
+	}
+}
+
+@container flashcard-page (max-width: 640px) {
+	.header {
+		flex-direction: column;
+	}
+
+	.streaks {
+		justify-content: flex-start;
+	}
+
+	.metrics {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@media (max-width: 640px) {
+	.header {
+		flex-direction: column;
+	}
+
+	.streaks {
+		justify-content: flex-start;
+	}
+
+	.metrics {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.scroller {
+		scroll-behavior: auto;
+	}
+}
