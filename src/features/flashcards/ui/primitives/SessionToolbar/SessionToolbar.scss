@@ -179,13 +179,6 @@
 	.flashcard-session-header {
 		gap: var(--fc-space-2);
 		padding: var(--fc-space-2);
-
-		.flashcard-session-close {
-			width: var(--fc-control-touch);
-			height: var(--fc-control-touch);
-			min-width: var(--fc-control-touch);
-			min-height: var(--fc-control-touch);
-		}
 	}
 
 	.flashcard-session-identity .flashcard-deck-title {
@@ -209,18 +202,10 @@
 	.flashcard-session-actions {
 		.flashcard-session-actions-toggle {
 			display: inline-flex;
-			width: var(--fc-control-touch);
-			height: var(--fc-control-touch);
-			min-width: var(--fc-control-touch);
-			min-height: var(--fc-control-touch);
 		}
 
 		.flashcard-session-action-item {
 			display: none;
-		}
-
-		.flashcard-session-actions-menu .flashcard-menu-item {
-			min-height: var(--fc-control-touch);
 		}
 	}
 

@@ -6,8 +6,10 @@ import type { SessionStartRequest } from "../../../domain/sessions/sessionLifecy
 import type { StudySetupPlan } from "../../../domain/sessions/sessionPlanner";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
+import { StatCards } from "../../../../../core/ui/primitives/StatCards";
 import { useFlashcardI18n } from "../../../strings/context";
 import { SetupControlGroup, SetupSelector } from "../../../../../core/ui/primitives/SetupSelector";
+import { useWindowKeyDown } from "../../../../../core/ui/hooks/hooks";
 import styles from "./StudySetup.module.scss";
 
 interface StudySetupProps {
@@ -131,36 +133,31 @@ export const StudySetup = React.memo(function StudySetup({
 		todayTotal,
 	} = plan;
 
+	const isStartDisabled = !hasAnythingToStudy && !allCompleted;
+
 	const handleMainStart = useCallback(() => {
+		if (isStartDisabled) return;
 		onStartSession({
 			mode: "study",
 			deckId: deck.id,
 			studyOrder: allCompleted ? "random" : studyOrder,
 			direction,
 		});
-	}, [allCompleted, deck.id, direction, onStartSession, studyOrder]);
+	}, [allCompleted, deck.id, direction, isStartDisabled, onStartSession, studyOrder]);
+
+	useWindowKeyDown((e) => {
+		if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+			return;
+		}
+		if (e.code === "Space") {
+			e.preventDefault();
+			handleMainStart();
+		}
+	});
 
 	return (
 		<div className="flashcard-practice-setup fc-page fc-page--fill">
-			<FlashcardHeader
-				icon={Brain}
-				title={t("study.title")}
-				onBack={onBack}
-				stats={[
-					{
-						key: "new",
-						value: todayNewCount,
-						label: t("study.todayNew"),
-						tone: "green",
-					},
-					{
-						key: "due",
-						value: todayReviewCount,
-						label: t("study.dueReview"),
-						tone: "purple",
-					},
-				]}
-			/>
+			<FlashcardHeader icon={Brain} title={t("study.title")} onBack={onBack} />
 
 			<div className="flashcard-setup-content fc-page__body fc-page__body--narrow">
 				<div className={styles.studyHero}>
@@ -169,6 +166,23 @@ export const StudySetup = React.memo(function StudySetup({
 						<div className={styles.deckTag}>{deck.tag}</div>
 					</div>
 				</div>
+
+				<StatCards
+					items={[
+						{
+							key: "new",
+							value: todayNewCount,
+							label: t("study.todayNew"),
+							tone: "green",
+						},
+						{
+							key: "due",
+							value: todayReviewCount,
+							label: t("study.dueReview"),
+							tone: "purple",
+						},
+					]}
+				/>
 
 				{/* Study preferences */}
 				<div className={cls(styles.studyPanel, styles.setupControls)}>
@@ -260,7 +274,7 @@ export const StudySetup = React.memo(function StudySetup({
 						preset="show"
 						size="lg"
 						onClick={handleMainStart}
-						disabled={!hasAnythingToStudy && !allCompleted}
+						disabled={isStartDisabled}
 					>
 						{allCompleted
 							? t("study.startReview")
@@ -269,6 +283,9 @@ export const StudySetup = React.memo(function StudySetup({
 										count: todayTotal,
 									})
 								: t("study.tasksCompletedButton")}
+						{!isStartDisabled && (
+							<span className="flashcard-shortcut">({t("common.space")})</span>
+						)}
 					</FlashcardButton>
 				</div>
 			</div>

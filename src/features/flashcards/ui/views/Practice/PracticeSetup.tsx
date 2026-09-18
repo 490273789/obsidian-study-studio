@@ -9,6 +9,7 @@ import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
 import { FlashcardInput } from "../../../../../core/ui/primitives/Input";
 import { useFlashcardI18n } from "../../../strings/context";
 import { SetupControlGroup, SetupSelector } from "../../../../../core/ui/primitives/SetupSelector";
+import { useWindowKeyDown } from "../../../../../core/ui/hooks/hooks";
 import styles from "./Practice.module.scss";
 
 const QUICK_QUESTION_COUNTS = [20, 50, 100, 150, 200];
@@ -91,7 +92,10 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 		return { start, end };
 	};
 
+	const isStartDisabled = maxQuestions === 0 || currentQuestionCount < 1;
+
 	const handleStart = () => {
+		if (isStartDisabled) return;
 		if (selectionMode === "range") {
 			const { start, end } = getNormalizedRange();
 			syncRange(start, end);
@@ -123,6 +127,16 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 			});
 		}
 	};
+
+	useWindowKeyDown((e) => {
+		if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+			return;
+		}
+		if (e.code === "Space") {
+			e.preventDefault();
+			handleStart();
+		}
+	});
 
 	const handleQuickSelect = (count: number) => {
 		const actualCount = Math.min(count, maxQuestions);
@@ -299,11 +313,14 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 						preset="show"
 						size="lg"
 						onClick={handleStart}
-						disabled={maxQuestions === 0 || currentQuestionCount < 1}
+						disabled={isStartDisabled}
 					>
 						{t("practice.startQuestions", {
 							count: currentQuestionCount,
 						})}
+						{!isStartDisabled && (
+							<span className="flashcard-shortcut">({t("common.space")})</span>
+						)}
 					</FlashcardButton>
 				</div>
 			</div>

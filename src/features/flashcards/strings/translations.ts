@@ -166,7 +166,7 @@ export const flashcardTranslations = {
 		"settings.cardFormatExample":
 			"#示例标签\n\n## science\n??\nn. 科学；自然科学；理科\n::\n/ˈsaɪəns/\nroot: sci- = know 知道\n;;\n\n## apple\n??\nn. 苹果\n;;",
 		"settings.shortcutsTitle": "快捷键说明:",
-		"settings.shortcutSpace": "空格键: 显示答案 / 记得",
+		"settings.shortcutSpace": "空格键: 显示答案 / 困难",
 		"settings.shortcutAgain": "数字1: 忘记",
 		"settings.shortcutHard": "数字2: 困难",
 		"settings.shortcutGood": "数字3: 记得",
@@ -227,7 +227,7 @@ export const flashcardTranslations = {
 		"footprint.practiceAnswers": "练习",
 		"footprint.spellingAnswers": "拼写",
 		"footprint.totalDuration": "总时长",
-		"footprint.wordListDuration": "其中生词表 {duration}",
+		"footprint.wordListDuration": "生词表 {duration}",
 		"footprint.times": "次",
 		"footprint.pastYear": "过去一年",
 		"footprint.less": "少",
@@ -632,7 +632,7 @@ export const flashcardTranslations = {
 		"settings.cardFormatExample":
 			"#exampleTag\n\n## science\n??\nn. science\n::\n/ˈsaɪəns/\nroot: sci- = know\n;;\n\n## apple\n??\nn. apple\n;;",
 		"settings.shortcutsTitle": "Shortcuts:",
-		"settings.shortcutSpace": "Space: Show answer / Remembered",
+		"settings.shortcutSpace": "Space: Show answer / Hard",
 		"settings.shortcutAgain": "Number 1: Forgot",
 		"settings.shortcutHard": "Number 2: Hard",
 		"settings.shortcutGood": "Number 3: Remembered",

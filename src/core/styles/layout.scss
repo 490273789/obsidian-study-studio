@@ -157,10 +157,3 @@
 		gap: var(--fc-space-3);
 	}
 }
-
-@media (pointer: coarse) {
-	.fc-panel > header,
-	.fc-panel > footer {
-		min-height: var(--fc-control-touch);
-	}
-}

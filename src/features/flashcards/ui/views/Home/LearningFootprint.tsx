@@ -3,6 +3,7 @@ import { BookOpen, Clock3, Flame, Keyboard, Target, Trophy } from "lucide-react"
 import type {
 	LearningFootprintDay,
 	LearningFootprintSnapshot,
+	LearningFootprintWeek,
 } from "../../../domain/history/dailyLearningActivity";
 import { cls } from "../../../../../core/shared/classNames";
 import { formatCompactDuration } from "../../../strings";
@@ -71,33 +72,10 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 		},
 	];
 
-	const monthLabels = useMemo(() => {
-		let lastMonthKey = "";
-		let lastWeekWithLabel = -99;
-
-		return footprint.weeks.map((week, weekIndex) => {
-			const dayWithFirst = week.days.find((day) => day.date.slice(8, 10) === "01");
-			let anchorDay = dayWithFirst;
-			if (!anchorDay && weekIndex === 0) {
-				anchorDay = week.days[0];
-			}
-
-			if (!anchorDay) return "";
-
-			const monthKey = anchorDay.date.slice(0, 7);
-			if (monthKey === lastMonthKey || weekIndex - lastWeekWithLabel < 3) {
-				return "";
-			}
-
-			lastMonthKey = monthKey;
-			lastWeekWithLabel = weekIndex;
-
-			const date = new Date(`${anchorDay.date}T00:00:00`);
-			return new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", {
-				month: "short",
-			}).format(date);
-		});
-	}, [footprint.weeks, language]);
+	const monthLabels = useMemo(
+		() => calculateHeatmapMonthLabels(footprint.weeks, language),
+		[footprint.weeks, language],
+	);
 
 	return (
 		<section className={styles.panel} aria-labelledby={titleId}>
@@ -278,5 +256,40 @@ function getDayAriaLabel(
 	return t("footprint.dayLabel", {
 		date: formatActivityDate(day.date, language),
 		count: day.completedAnswerCount,
+	});
+}
+
+export function calculateHeatmapMonthLabels(
+	weeks: readonly LearningFootprintWeek[],
+	language: "zh" | "en",
+): string[] {
+	const first01WeekIndex = weeks.findIndex((w) =>
+		w.days.some((d) => d.date.slice(8, 10) === "01"),
+	);
+
+	let lastMonthKey = "";
+	let lastWeekWithLabel = -99;
+
+	return weeks.map((week, weekIndex) => {
+		const dayWithFirst = week.days.find((day) => day.date.slice(8, 10) === "01");
+		let anchorDay = dayWithFirst;
+		if (!anchorDay && weekIndex === 0 && first01WeekIndex >= 2) {
+			anchorDay = week.days[0];
+		}
+
+		if (!anchorDay) return "";
+
+		const monthKey = anchorDay.date.slice(0, 7);
+		if (monthKey === lastMonthKey || weekIndex - lastWeekWithLabel < 2 || weekIndex >= 52) {
+			return "";
+		}
+
+		lastMonthKey = monthKey;
+		lastWeekWithLabel = weekIndex;
+
+		const date = new Date(`${anchorDay.date}T00:00:00`);
+		return new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", {
+			month: "short",
+		}).format(date);
 	});
 }

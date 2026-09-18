@@ -7,8 +7,10 @@ import type { SpellingSetupPlan } from "../../../domain/sessions/sessionPlanner"
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
 import { FlashcardInput } from "../../../../../core/ui/primitives/Input";
+import { StatCards } from "../../../../../core/ui/primitives/StatCards";
 import { useFlashcardI18n } from "../../../strings/context";
 import { SetupControlGroup, SetupSelector } from "../../../../../core/ui/primitives/SetupSelector";
+import { useWindowKeyDown } from "../../../../../core/ui/hooks/hooks";
 import styles from "../Practice/Practice.module.scss";
 
 const QUICK_COUNTS = [10, 20, 50];
@@ -42,8 +44,10 @@ export const SpellingSetup = React.memo(function SpellingSetup({
 	const [rangeEnd, setRangeEnd] = useState(plan.initialRangeEnd);
 	const rangeCount = Math.max(0, rangeEnd - rangeStart + 1);
 	const currentCount = mode === "smart" ? questionCount : rangeCount;
+	const isStartDisabled = currentCount < 1;
 
 	const handleStart = () => {
+		if (isStartDisabled) return;
 		if (mode === "range") {
 			onStartSession({
 				mode: "spelling",
@@ -66,27 +70,19 @@ export const SpellingSetup = React.memo(function SpellingSetup({
 		});
 	};
 
+	useWindowKeyDown((e) => {
+		if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+			return;
+		}
+		if (e.code === "Space") {
+			e.preventDefault();
+			handleStart();
+		}
+	});
+
 	return (
 		<div className="flashcard-practice-setup flashcard-spelling-setup fc-page fc-page--fill">
-			<FlashcardHeader
-				icon={Keyboard}
-				title={t("spelling.title")}
-				onBack={onBack}
-				stats={[
-					{
-						key: "total",
-						value: stats.total,
-						label: t("spelling.totalWords"),
-						tone: "blue",
-					},
-					{
-						key: "unpracticed",
-						value: stats.unpracticed,
-						label: t("spelling.unpracticed"),
-						tone: "orange",
-					},
-				]}
-			/>
+			<FlashcardHeader icon={Keyboard} title={t("spelling.title")} onBack={onBack} />
 
 			<div className="flashcard-setup-content fc-page__body fc-page__body--narrow">
 				<div className={styles.hero}>
@@ -95,6 +91,23 @@ export const SpellingSetup = React.memo(function SpellingSetup({
 						<div className={styles.deckTag}>{deck.tag}</div>
 					</div>
 				</div>
+
+				<StatCards
+					items={[
+						{
+							key: "total",
+							value: stats.total,
+							label: t("spelling.totalWords"),
+							tone: "blue",
+						},
+						{
+							key: "unpracticed",
+							value: stats.unpracticed,
+							label: t("spelling.unpracticed"),
+							tone: "orange",
+						},
+					]}
+				/>
 
 				<div className={styles.setupPanel}>
 					<SetupControlGroup
@@ -209,9 +222,12 @@ export const SpellingSetup = React.memo(function SpellingSetup({
 						preset="show"
 						size="lg"
 						onClick={handleStart}
-						disabled={currentCount < 1}
+						disabled={isStartDisabled}
 					>
 						{t("spelling.start", { count: currentCount })}
+						{!isStartDisabled && (
+							<span className="flashcard-shortcut">({t("common.space")})</span>
+						)}
 					</FlashcardButton>
 				</div>
 			</div>

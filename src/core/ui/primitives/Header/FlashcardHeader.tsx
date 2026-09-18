@@ -4,16 +4,6 @@ import type { LucideIcon } from "lucide-react";
 import { FlashcardButton } from "../Button";
 import { useI18n } from "../../context/I18nContext";
 
-export type FlashcardHeaderStatTone = "blue" | "green" | "orange" | "purple" | "red";
-
-export interface FlashcardHeaderStat {
-	key: string;
-	value: React.ReactNode;
-	label: React.ReactNode;
-	tone: FlashcardHeaderStatTone;
-	icon?: LucideIcon;
-}
-
 export interface FlashcardHeaderProps {
 	/** Icon displayed next to the title (optional). */
 	icon?: LucideIcon;
@@ -31,8 +21,6 @@ export interface FlashcardHeaderProps {
 	backTitle?: string;
 	/** Extra CSS class names appended to the header. */
 	className?: string;
-	/** Optional statistics rendered directly below the title row. */
-	stats?: FlashcardHeaderStat[];
 }
 
 /**
@@ -55,7 +43,6 @@ export const FlashcardHeader: React.FC<FlashcardHeaderProps> = ({
 	onBack,
 	backTitle,
 	className = "",
-	stats,
 }) => {
 	const { t } = useI18n();
 	const navigationLabel = backTitle ?? t("common.back");
@@ -88,7 +75,7 @@ export const FlashcardHeader: React.FC<FlashcardHeaderProps> = ({
 		.filter(Boolean)
 		.join(" ");
 
-	const header = (
+	return (
 		<header className={classes}>
 			<div className="flashcard-header-left">
 				{onBack && <span className="flashcard-header-back-mobile">{mobileBackButton}</span>}
@@ -106,26 +93,5 @@ export const FlashcardHeader: React.FC<FlashcardHeaderProps> = ({
 				)}
 			</div>
 		</header>
-	);
-
-	if (!stats || stats.length === 0) return header;
-
-	return (
-		<div className="flashcard-page-header">
-			{header}
-			<div className="flashcard-header-overview">
-				<ul className={`flashcard-header-stats columns-${stats.length}`}>
-					{stats.map(({ key, value, label, tone, icon: StatIcon }) => (
-						<li className="flashcard-header-stat" key={key}>
-							{StatIcon && <StatIcon size={16} />}
-							<span className={`flashcard-header-stat-value tone-${tone}`}>
-								{value}
-							</span>
-							<span className="flashcard-header-stat-label">{label}</span>
-						</li>
-					))}
-				</ul>
-			</div>
-		</div>
 	);
 };

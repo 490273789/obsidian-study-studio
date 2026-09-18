@@ -2,24 +2,6 @@
 // Header Primitive Styles (SCSS)
 // =============================================================================
 
-.flashcard-page-header {
-	position: sticky;
-	top: 0;
-	z-index: 20;
-	flex: 0 0 auto;
-	display: flex;
-	flex-direction: column;
-	gap: 0;
-	backdrop-filter: blur(14px);
-	-webkit-backdrop-filter: blur(14px);
-
-	.flashcard-common-header {
-		position: relative;
-		top: auto;
-		z-index: auto;
-	}
-}
-
 .flashcard-common-header {
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr) auto;
@@ -97,83 +79,5 @@
 
 	.flashcard-header-back-mobile {
 		display: none;
-	}
-}
-
-.flashcard-header-overview {
-	width: 100%;
-	padding: var(--fc-space-1) 0;
-	border-radius: 0 0 var(--fc-radius-sm) var(--fc-radius-sm);
-	background: color-mix(in srgb, var(--background-secondary) 84%, var(--background-primary) 16%);
-	box-shadow: var(--fc-shadow-inset);
-
-	.flashcard-header-stats {
-		width: 100%;
-		display: grid;
-		gap: 0;
-		margin: 0;
-		padding: 0;
-		list-style: none;
-		border: 0;
-		border-radius: 0;
-		background: transparent;
-
-		&.columns-2 {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
-		}
-		&.columns-3 {
-			grid-template-columns: repeat(3, minmax(0, 1fr));
-		}
-		&.columns-4 {
-			grid-template-columns: repeat(4, minmax(0, 1fr));
-		}
-		&.columns-5 {
-			grid-template-columns: repeat(5, minmax(0, 1fr));
-		}
-
-		.flashcard-header-stat {
-			min-width: 0;
-			display: flex;
-			align-items: center;
-			justify-content: center;
-			min-height: 0;
-			gap: var(--fc-space-2);
-			padding: var(--fc-space-2) var(--fc-space-3);
-			border: 0;
-			border-radius: 0;
-			background: transparent;
-			color: var(--fc-muted);
-			font-size: var(--fc-font-xs);
-			font-weight: var(--fc-weight-semibold);
-			white-space: nowrap;
-
-			+ .flashcard-header-stat {
-				border-left: 1px solid var(--fc-line-soft);
-			}
-
-			> svg {
-				flex: 0 0 auto;
-				width: 13px;
-				height: 13px;
-				color: var(--fc-muted);
-				opacity: 0.85;
-				display: inline-block;
-			}
-
-			.flashcard-header-stat-value {
-				flex: 0 0 auto;
-				font-size: var(--fc-font-sm);
-				line-height: 1;
-				font-family: var(--fc-font-data);
-				color: var(--fc-text);
-			}
-
-			.flashcard-header-stat-label {
-				min-width: 0;
-				overflow: hidden;
-				text-overflow: ellipsis;
-				color: var(--fc-muted);
-			}
-		}
 	}
 }

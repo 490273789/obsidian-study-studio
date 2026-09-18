@@ -7,8 +7,9 @@
 	overscroll-behavior: contain;
 	-webkit-overflow-scrolling: touch;
 	box-sizing: border-box;
-	padding: var(--fc-space-1) var(--fc-space-2) var(--fc-control-touch);
+	padding: var(--fc-space-1) var(--fc-space-2) var(--fc-space-4);
 	flex: 1 1 auto;
+	border-top: 1px solid var(--fc-line-soft);
 }
 
 .day {

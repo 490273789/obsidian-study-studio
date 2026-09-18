@@ -1,8 +1,9 @@
 import React, { useMemo } from "react";
-import { ChartBar, Sprout } from "lucide-react";
+import { ChartBar, Clock3, Layers, Sprout } from "lucide-react";
 import { cls } from "../../../../../core/shared/classNames";
 import type { StudyHistoryEntry } from "../../../../../core/shared/types";
 import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
+import { StatCards } from "../../../../../core/ui/primitives/StatCards";
 import {
 	buildStudyHistoryPresentationModel,
 	STUDY_HISTORY_MODE_PRESENTATION,
@@ -33,19 +34,20 @@ export const StatsView = React.memo(function StatsView({ history, onBack }: Stat
 
 	return (
 		<div className="fc-page fc-page--fill">
-			<FlashcardHeader
-				icon={ChartBar}
-				title={t("stats.title")}
-				onBack={onBack}
-				stats={[
+			<FlashcardHeader icon={ChartBar} title={t("stats.title")} onBack={onBack} />
+
+			<StatCards
+				items={[
 					{
 						key: "duration",
+						icon: Clock3,
 						value: totals.durationLabel,
 						label: t("stats.totalDuration"),
 						tone: "purple",
 					},
 					{
 						key: "cards",
+						icon: Layers,
 						value: totals.cards,
 						label: t("stats.totalCards"),
 						tone: "green",

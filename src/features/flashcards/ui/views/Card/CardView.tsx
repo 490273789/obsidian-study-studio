@@ -142,12 +142,12 @@ export const CardView = React.memo(function CardView({
 				break;
 			case "Digit2":
 			case "Numpad2":
+			case "Space":
 				e.preventDefault();
 				void handleRating(2);
 				break;
 			case "Digit3":
 			case "Numpad3":
-			case "Space":
 				e.preventDefault();
 				void handleRating(3);
 				break;

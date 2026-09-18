@@ -76,7 +76,7 @@
 	}
 
 	&-lg {
-		min-height: var(--fc-control-touch);
+		min-height: var(--fc-control-lg);
 		padding: var(--fc-space-3) var(--fc-space-4);
 		font-size: var(--fc-font-md);
 	}
@@ -238,10 +238,10 @@
 		}
 
 		&.flashcard-btn-prev {
-			width: var(--fc-control-touch);
-			height: var(--fc-control-touch);
-			min-width: var(--fc-control-touch);
-			min-height: var(--fc-control-touch);
+			width: var(--fc-control-md);
+			height: var(--fc-control-md);
+			min-width: var(--fc-control-md);
+			min-height: var(--fc-control-md);
 			border-color: transparent;
 			background: transparent;
 			color: var(--fc-muted);

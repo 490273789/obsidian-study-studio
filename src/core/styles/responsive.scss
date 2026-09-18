@@ -106,7 +106,7 @@
 	}
 
 	.flashcard-navigation-header.has-back {
-		grid-template-columns: var(--fc-control-touch) minmax(0, 1fr) auto;
+		grid-template-columns: auto minmax(0, 1fr) auto;
 
 		.flashcard-header-center {
 			grid-column: 1 / -1;
@@ -137,18 +137,6 @@
 
 	.flashcard-header-back-desktop {
 		display: none;
-	}
-	.flashcard-btn {
-		min-height: var(--fc-control-touch);
-	}
-	.flashcard-btn-icon,
-	.flashcard-btn-prev {
-		width: var(--fc-control-touch);
-		height: var(--fc-control-touch);
-		min-width: var(--fc-control-touch);
-		min-height: var(--fc-control-touch);
-		padding: 0;
-		flex: 0 0 auto;
 	}
 
 	.flashcard-practice-answer-buttons,
@@ -202,23 +190,13 @@
 	}
 
 	.flashcard-deck-item .flashcard-deck-actions2 {
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--fc-control-touch);
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
 		gap: var(--fc-space-2);
 		width: 100%;
 	}
 
 	.flashcard-deck-item .flashcard-deck-actions2.has-spelling {
-		grid-template-columns: repeat(3, minmax(0, 1fr)) var(--fc-control-touch);
-	}
-
-	.flashcard-root .flashcard-deck-item .flashcard-deck-actions2 .flashcard-btn {
-		height: var(--fc-control-touch);
-		min-height: var(--fc-control-touch);
-	}
-
-	.flashcard-root .flashcard-deck-item button.flashcard-deck-action-more {
-		width: var(--fc-control-touch);
-		min-width: var(--fc-control-touch);
+		grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
 	}
 
 	/* On mobile the last deck card sits at the end of the scrollable list,
@@ -346,7 +324,7 @@
 
 	.flashcard-study .flashcard-response-controls {
 		display: grid;
-		grid-template-columns: var(--fc-control-touch) minmax(0, 1fr);
+		grid-template-columns: auto minmax(0, 1fr);
 		align-items: stretch;
 		gap: var(--fc-space-2);
 		width: 100%;
@@ -354,7 +332,7 @@
 	}
 
 	.flashcard-study .flashcard-practice-response-controls {
-		grid-template-columns: var(--fc-control-touch) minmax(0, 1fr);
+		grid-template-columns: auto minmax(0, 1fr);
 		align-items: stretch;
 		gap: var(--fc-space-2);
 		width: 100%;
@@ -367,7 +345,6 @@
 	}
 
 	.flashcard-study .flashcard-rating-btn {
-		min-height: var(--fc-control-touch);
 		padding: var(--fc-space-1);
 		justify-content: center;
 	}
@@ -401,14 +378,6 @@
 	.flashcard-footer .flashcard-shortcut,
 	.flashcard-footer .flashcard-rating-interval {
 		display: none;
-	}
-
-	.flashcard-study .flashcard-btn-prev {
-		width: var(--fc-control-touch);
-		min-width: var(--fc-control-touch);
-		height: var(--fc-control-touch);
-		min-height: var(--fc-control-touch);
-		padding: 0;
 	}
 
 	.flashcard-footer .flashcard-btn-show {
@@ -470,37 +439,8 @@
 		font-size: var(--fc-font-md);
 	}
 
-	.flashcard-settings-tab button,
-	.flashcard-settings-tab input,
-	.flashcard-settings-tab select {
-		min-height: var(--fc-control-touch);
-	}
-
 	.setting-item-info {
 		width: 100%;
-	}
-}
-
-@media (pointer: coarse) {
-	.flashcard-root button,
-	.flashcard-root input,
-	.flashcard-root textarea,
-	.flashcard-root select,
-	.flashcard-settings-tab button,
-	.flashcard-settings-tab input,
-	.flashcard-settings-tab textarea,
-	.flashcard-settings-tab select {
-		min-height: var(--fc-control-touch);
-		font-size: var(--fc-font-md);
-	}
-
-	.flashcard-root button.flashcard-btn-icon,
-	.flashcard-root button.flashcard-btn-prev,
-	.flashcard-root button.flashcard-modal-close {
-		width: var(--fc-control-touch);
-		height: var(--fc-control-touch);
-		min-width: var(--fc-control-touch);
-		min-height: var(--fc-control-touch);
 	}
 }
 
@@ -575,23 +515,13 @@
 	}
 
 	.flashcard-deck-item .flashcard-deck-actions2 {
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--fc-control-touch);
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
 		gap: var(--fc-space-2);
 		width: 100%;
 	}
 
 	.flashcard-deck-item .flashcard-deck-actions2.has-spelling {
-		grid-template-columns: repeat(3, minmax(0, 1fr)) var(--fc-control-touch);
-	}
-
-	.flashcard-root .flashcard-deck-item .flashcard-deck-actions2 .flashcard-btn {
-		height: var(--fc-control-touch);
-		min-height: var(--fc-control-touch);
-	}
-
-	.flashcard-root .flashcard-deck-item button.flashcard-deck-action-more {
-		width: var(--fc-control-touch);
-		min-width: var(--fc-control-touch);
+		grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
 	}
 
 	.flashcard-deck-list .flashcard-deck-item:last-child .flashcard-deck-more-actions {
@@ -653,48 +583,12 @@
 	}
 
 	.flashcard-deck-item .flashcard-deck-actions2 {
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--fc-control-touch);
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
 		gap: var(--fc-space-2);
 		width: 100%;
 	}
 
 	.flashcard-deck-item .flashcard-deck-actions2.has-spelling {
-		grid-template-columns: repeat(3, minmax(0, 1fr)) var(--fc-control-touch);
-	}
-
-	.flashcard-root .flashcard-deck-item .flashcard-deck-actions2 .flashcard-btn {
-		height: var(--fc-control-touch);
-		min-height: var(--fc-control-touch);
-	}
-
-	.flashcard-root .flashcard-deck-item button.flashcard-deck-action-more {
-		width: var(--fc-control-touch);
-		min-width: var(--fc-control-touch);
-	}
-}
-
-@media (pointer: coarse) {
-	.flashcard-root button.flashcard-deck-action-more,
-	.flashcard-root .flashcard-header-actions .flashcard-btn,
-	.flashcard-root .flashcard-session-actions .flashcard-btn {
-		min-width: var(--fc-control-touch);
-		min-height: var(--fc-control-touch);
-	}
-
-	.flashcard-deck-item .flashcard-deck-actions2 {
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--fc-control-touch);
-	}
-
-	.flashcard-deck-item .flashcard-deck-actions2.has-spelling {
-		grid-template-columns: repeat(3, minmax(0, 1fr)) var(--fc-control-touch);
-	}
-
-	.flashcard-root .flashcard-deck-item .flashcard-deck-actions2 .flashcard-btn {
-		min-height: var(--fc-control-touch);
-	}
-
-	.flashcard-root .flashcard-deck-item button.flashcard-deck-action-more {
-		width: var(--fc-control-touch);
-		min-width: var(--fc-control-touch);
+		grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
 	}
 }

@@ -48,7 +48,7 @@
 }
 
 .flashcard-textarea {
-	min-height: calc(var(--fc-control-touch) * 2);
+	min-height: 64px;
 	resize: vertical;
 }
 

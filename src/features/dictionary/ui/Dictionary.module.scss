@@ -658,15 +658,6 @@
 	}
 }
 
-@media (pointer: coarse) {
-	.tab,
-	.savedList .savedItem,
-	.suggestions .suggestionItem,
-	.detailTabs button {
-		min-height: var(--fc-control-touch);
-	}
-}
-
 @media (prefers-reduced-motion: reduce) {
 	.tab,
 	.detailTabs button {

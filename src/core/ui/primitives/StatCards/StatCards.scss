@@ -1,0 +1,129 @@
+// =============================================================================
+// StatCards Primitive Styles (SCSS)
+// =============================================================================
+
+.flashcard-stat-cards-container {
+	width: 100%;
+	box-sizing: border-box;
+	background: transparent;
+
+	.flashcard-stat-cards {
+		width: 100%;
+		display: grid;
+		gap: var(--fc-space-2);
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		box-sizing: border-box;
+
+		&.columns-2 {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+		&.columns-3 {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+		}
+		&.columns-4 {
+			grid-template-columns: repeat(4, minmax(0, 1fr));
+		}
+		&.columns-5 {
+			grid-template-columns: repeat(5, minmax(0, 1fr));
+		}
+
+		.flashcard-stat-card {
+			min-width: 0;
+			box-sizing: border-box;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			gap: var(--fc-space-2);
+			padding: var(--fc-space-4) var(--fc-space-3);
+			border: 1px solid var(--fc-line-soft);
+			border-radius: var(--fc-radius-md);
+			background: linear-gradient(
+				180deg,
+				color-mix(in srgb, var(--fc-surface-card) 96%, var(--text-normal) 4%) 0%,
+				var(--fc-surface-card) 100%
+			);
+			box-shadow: var(--fc-shadow-card);
+			transition: all 0.18s ease;
+
+			&:hover {
+				transform: translateY(-1px);
+				background: linear-gradient(
+					180deg,
+					color-mix(in srgb, var(--fc-surface-card) 92%, var(--text-normal) 8%) 0%,
+					color-mix(in srgb, var(--fc-surface-card) 96%, var(--text-normal) 4%) 100%
+				);
+				border-color: color-mix(
+					in srgb,
+					var(--interactive-accent) 35%,
+					var(--fc-line-soft)
+				);
+				box-shadow: var(--fc-shadow-card-hover);
+			}
+
+			.flashcard-stat-card-icon {
+				width: 26px;
+				height: 26px;
+				min-width: 26px;
+				border-radius: var(--fc-radius-xs);
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				flex-shrink: 0;
+				background: var(--fc-surface-section);
+				color: var(--fc-text);
+
+				&.tone-purple {
+					background: color-mix(in srgb, var(--fc-violet) 14%, var(--fc-surface-card));
+					color: var(--fc-violet);
+					border: 1px solid color-mix(in srgb, var(--fc-violet) 22%, transparent);
+				}
+				&.tone-green {
+					background: color-mix(in srgb, var(--fc-lime) 14%, var(--fc-surface-card));
+					color: var(--fc-lime);
+					border: 1px solid color-mix(in srgb, var(--fc-lime) 22%, transparent);
+				}
+				&.tone-blue {
+					background: color-mix(in srgb, var(--fc-blue) 14%, var(--fc-surface-card));
+					color: var(--fc-blue);
+					border: 1px solid color-mix(in srgb, var(--fc-blue) 22%, transparent);
+				}
+				&.tone-orange {
+					background: color-mix(in srgb, var(--fc-orange) 14%, var(--fc-surface-card));
+					color: var(--fc-orange);
+					border: 1px solid color-mix(in srgb, var(--fc-orange) 22%, transparent);
+				}
+				&.tone-red {
+					background: color-mix(in srgb, var(--fc-red) 14%, var(--fc-surface-card));
+					color: var(--fc-red);
+					border: 1px solid color-mix(in srgb, var(--fc-red) 22%, transparent);
+				}
+			}
+
+			.flashcard-stat-card-content {
+				display: flex;
+				align-items: baseline;
+				gap: var(--fc-space-1);
+				min-width: 0;
+			}
+
+			.flashcard-stat-card-value {
+				font-family: var(--fc-font-data);
+				font-size: var(--fc-font-md);
+				font-weight: var(--fc-weight-semibold);
+				font-variant-numeric: tabular-nums;
+				line-height: 1;
+				color: var(--fc-text);
+				white-space: nowrap;
+			}
+
+			.flashcard-stat-card-label {
+				font-size: var(--fc-font-xs);
+				color: var(--fc-muted);
+				line-height: 1;
+				white-space: nowrap;
+			}
+		}
+	}
+}
