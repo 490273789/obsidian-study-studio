@@ -5,6 +5,7 @@ import type { StudyRating } from "../../../../../core/shared/types";
 import type { StudyResultSnapshot } from "../../../domain/sessions/sessionLifecycle";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
+import { Confetti } from "../../../../../core/ui/primitives/Confetti";
 import { useFlashcardI18n } from "../../../strings/context";
 import { formatCompactDuration, getLocalizedRatingButtons } from "../../../strings/index";
 import styles from "./StudySummary.module.scss";
@@ -58,6 +59,7 @@ export const StudySummary = memo(function StudySummary({
 
 	return (
 		<div className={cls("flashcard-study-summary fc-page fc-page--fill", styles.summary)}>
+			<Confetti />
 			<FlashcardHeader icon={GraduationCap} title={t("study.title")} onBack={onHome} />
 
 			<div

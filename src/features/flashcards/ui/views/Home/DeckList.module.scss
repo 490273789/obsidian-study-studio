@@ -47,11 +47,11 @@
 	min-height: 0;
 	overscroll-behavior: contain;
 	box-sizing: border-box;
-	padding: var(--fc-space-1) 0;
+	padding: var(--fc-space-2) 0;
 	margin: 0;
 	overflow-y: auto;
 	width: 100%;
-	gap: var(--fc-space-1);
+	gap: var(--fc-space-2);
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);
 	align-content: start;
@@ -114,8 +114,13 @@
 			rgba(var(--fc-bg-elevated-rgb), 0.84);
 	}
 
-	&.isActionsOpen {
+	&.isActionsOpen,
+	&.isOverlayOpen {
 		z-index: 20;
+
+		&:hover {
+			transform: none;
+		}
 	}
 }
 
@@ -291,20 +296,63 @@
 	padding-inline: 0;
 }
 
-.moreActions {
+.deckOverlay {
 	position: absolute;
-	top: calc(100% + var(--fc-space-2));
-	right: 0;
-	z-index: 30;
-	width: min(230px, calc(100vw - 40px));
-	display: grid;
-	gap: var(--fc-space-1);
-	padding: var(--fc-space-2);
-	border: 1px solid var(--fc-line-strong);
-	border-radius: var(--fc-radius-sm);
-	background: var(--fc-surface-raised);
-	box-shadow: var(--fc-shadow-popover);
+	inset: -1px;
+	z-index: 25;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--fc-space-2);
+	padding: var(--fc-space-2) var(--fc-space-3);
+	border-radius: var(--fc-radius-md);
+	background: color-mix(in srgb, var(--fc-surface-card) 88%, transparent);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 45%, var(--fc-line-soft));
+	box-shadow: var(--fc-shadow-card-hover);
 	animation: var(--fc-motion-fade-in);
+	overflow: hidden;
+}
+
+.overlayActions {
+	display: flex;
+	align-items: center;
+	gap: var(--fc-space-2);
+	min-width: 0;
+	flex: 1;
+	overflow-x: auto;
+	scrollbar-width: none;
+
+	&::-webkit-scrollbar {
+		display: none;
+	}
+
+	:global(.flashcard-btn) {
+		font-size: var(--fc-font-xs);
+		height: var(--fc-control-md);
+		min-width: 0;
+		min-height: var(--fc-control-md);
+		padding: 0 var(--fc-space-3);
+		border-radius: var(--fc-radius-sm);
+		white-space: nowrap;
+		flex-shrink: 0;
+		transition: all 0.18s ease;
+
+		> span {
+			display: inline;
+		}
+	}
+}
+
+.overlayCloseBtn {
+	width: var(--fc-control-md);
+	min-width: var(--fc-control-md);
+	height: var(--fc-control-md);
+	min-height: var(--fc-control-md);
+	padding: 0;
+	flex-shrink: 0;
+	border-radius: var(--fc-radius-sm);
 }
 
 .addCardBtn {
@@ -413,6 +461,23 @@
 
 		:global(.flashcard-btn) {
 			width: 100%;
+		}
+	}
+
+	.deckOverlay {
+		padding: var(--fc-space-2);
+	}
+
+	.overlayActions {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: var(--fc-space-2);
+		overflow-x: visible;
+
+		:global(.flashcard-btn) {
+			width: 100%;
+			justify-content: center;
+			padding: 0 var(--fc-space-2);
 		}
 	}
 }

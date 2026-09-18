@@ -1,7 +1,7 @@
 /* Tablet and narrow panes */
 @media (max-width: 900px) {
 	.flashcard-root {
-		padding: var(--fc-space-3);
+		padding: 0 var(--fc-space-3) var(--fc-space-3);
 		padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--fc-mobile-bottom-padding));
 	}
 

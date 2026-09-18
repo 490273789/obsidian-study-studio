@@ -144,9 +144,80 @@
 	padding: 12px 16px 16px;
 	color: #f5f6f8;
 
-	button {
+	// 控制条内的按钮在深色背景（#08090b）上保持高对比度与清晰度，适配亮色与暗色主题
+	:global(button.flashcard-btn) {
 		min-width: 36px;
 		min-height: 36px;
+		color: #e6edf3 !important;
+		background: transparent !important;
+		border-color: transparent !important;
+		border-radius: var(--fc-radius-md, 6px);
+		box-shadow: none !important;
+		transition:
+			color 140ms ease,
+			background-color 140ms ease,
+			transform 100ms ease;
+
+		svg {
+			stroke: currentColor;
+		}
+
+		&:hover:not(:disabled) {
+			color: #ffffff !important;
+			background: rgba(255, 255, 255, 0.14) !important;
+			border-color: transparent !important;
+		}
+
+		&:active:not(:disabled) {
+			background: rgba(255, 255, 255, 0.22) !important;
+			transform: scale(0.96);
+		}
+
+		&:focus-visible {
+			outline: 2px solid var(--interactive-accent) !important;
+			outline-offset: 2px !important;
+		}
+
+		&:disabled {
+			color: rgba(255, 255, 255, 0.28) !important;
+			opacity: 0.55 !important;
+			background: transparent !important;
+			cursor: not-allowed;
+			transform: none;
+		}
+	}
+}
+
+.playBtn {
+	width: 40px !important;
+	height: 40px !important;
+	min-width: 40px !important;
+	min-height: 40px !important;
+	border-radius: 50% !important;
+	background: var(--interactive-accent) !important;
+	border-color: var(--interactive-accent) !important;
+	color: #ffffff !important;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35) !important;
+
+	svg {
+		stroke: #ffffff !important;
+	}
+
+	&:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--interactive-accent) 85%, #ffffff) !important;
+		border-color: color-mix(in srgb, var(--interactive-accent) 85%, #ffffff) !important;
+		color: #ffffff !important;
+		transform: scale(1.06) !important;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45) !important;
+	}
+
+	&:active:not(:disabled) {
+		transform: scale(0.94) !important;
+	}
+
+	&:focus-visible {
+		outline: 2px solid #ffffff !important;
+		outline-offset: 2px !important;
 	}
 }
 
@@ -156,9 +227,44 @@
 	gap: 6px;
 	margin-inline: 10px 4px;
 	font-size: var(--font-ui-smaller);
+	color: #c4c8d0;
+	user-select: none;
+
+	span {
+		color: #c4c8d0;
+		font-weight: 500;
+	}
 
 	select {
 		min-width: 68px;
+		height: 30px;
+		padding: 2px 8px;
+		border-radius: 6px;
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		background: rgba(255, 255, 255, 0.08);
+		color: #f5f6f8;
+		font-size: var(--font-ui-smaller);
+		font-weight: 500;
+		outline: none;
+		cursor: pointer;
+		transition:
+			background-color 140ms ease,
+			border-color 140ms ease;
+
+		&:hover {
+			background: rgba(255, 255, 255, 0.15);
+			border-color: rgba(255, 255, 255, 0.35);
+		}
+
+		&:focus-visible {
+			border-color: var(--interactive-accent);
+			box-shadow: 0 0 0 2px rgba(var(--fc-cyan-rgb, 0, 184, 196), 0.3);
+		}
+
+		option {
+			background: #18191c;
+			color: #f5f6f8;
+		}
 	}
 }
 

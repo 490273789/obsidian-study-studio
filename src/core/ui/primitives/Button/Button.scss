@@ -222,7 +222,9 @@
 			}
 		}
 
-		&.flashcard-btn-icon {
+		&.flashcard-btn-icon:not(.flashcard-btn-primary):not(.flashcard-btn-secondary):not(
+				.flashcard-btn-danger
+			) {
 			border: none;
 			background: transparent;
 			box-shadow: none;

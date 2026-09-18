@@ -6,6 +6,7 @@ import type {
 } from "../../../domain/sessions/sessionLifecycle";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
+import { Confetti } from "../../../../../core/ui/primitives/Confetti";
 import { MarkdownContent } from "../../primitives/Markdown";
 import { cls } from "../../../../../core/shared/classNames";
 import { useFlashcardI18n } from "../../../strings/context";
@@ -38,6 +39,7 @@ export const SpellingSummary = React.memo(function SpellingSummary({
 				practiceStyles.summary,
 			)}
 		>
+			<Confetti />
 			<FlashcardHeader icon={Keyboard} title={t("spelling.title")} onBack={onHome} />
 			<div className={cls("flashcard-practice-summary-scroll", practiceStyles.summaryScroll)}>
 				<div

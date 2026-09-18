@@ -580,6 +580,8 @@ function PlayerSurface({
 					preset="icon"
 					variant="primary"
 					icon={playing ? Pause : Play}
+					iconSize={18}
+					className={styles.playBtn}
 					aria-label={playing ? t.pause : t.play}
 					title={playing ? t.pause : t.play}
 					onClick={onToggle}

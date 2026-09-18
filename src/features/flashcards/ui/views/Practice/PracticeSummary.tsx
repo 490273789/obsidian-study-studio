@@ -7,6 +7,7 @@ import type {
 } from "../../../domain/sessions/sessionLifecycle";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
+import { Confetti } from "../../../../../core/ui/primitives/Confetti";
 import { MarkdownContent } from "../../primitives/Markdown";
 import { useFlashcardI18n } from "../../../strings/context";
 import { formatCompactDuration } from "../../../strings/index";
@@ -48,6 +49,7 @@ export const PracticeSummary = React.memo(function PracticeSummary({
 
 	return (
 		<div className={cls("flashcard-practice-summary fc-page fc-page--fill", styles.summary)}>
+			<Confetti />
 			<FlashcardHeader icon={CircleCheck} title={t("practice.title")} onBack={onHome} />
 
 			<div

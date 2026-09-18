@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useMemo, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
 	closestCenter,
 	DndContext,
@@ -23,6 +23,8 @@ import {
 	Brain,
 	Calculator,
 	ChartNoAxesColumn,
+	CirclePlay,
+	Ellipsis,
 	FileDown,
 	FileText,
 	Inbox,
@@ -30,13 +32,14 @@ import {
 	Languages,
 	List,
 	LoaderCircle,
-	CirclePlay,
 	Plus,
 	RefreshCcw,
 	Settings,
 	Sparkles,
 	Target,
 	TriangleAlert,
+	X,
+	type LucideIcon,
 } from "lucide-react";
 import type {
 	DeckHome,
@@ -46,17 +49,29 @@ import type {
 } from "../../../domain/decks/deckHome";
 import { cls } from "../../../../../core/shared/classNames";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
-import { FlashcardMenu, type FlashcardMenuItem } from "../../../../../core/ui/primitives/Menu";
 import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
 import { DeckSettingsModal } from "../DeckSettings";
 import { useFlashcardI18n } from "../../../strings/context";
 import styles from "./DeckList.module.scss";
 import { LearningFootprint } from "./LearningFootprint";
 
+interface DeckActionItem {
+	key: string;
+	label: string;
+	icon: LucideIcon;
+	iconClassName?: string;
+	onSelect: () => void;
+	disabled?: boolean;
+	title?: string;
+}
+
 interface DeckCardProps {
 	deck: DeckHomeDeckSnapshot;
 	isReorderDisabled: boolean;
 	isRecentlyDropped: boolean;
+	isOverlayOpen: boolean;
+	onToggleOverlay: (deckId: string) => void;
+	onCloseOverlay: () => void;
 	onNavigate: (destination: DeckHomeDestination, deckId: string) => void;
 	onExportDeck: (deckId: string) => Promise<void>;
 	onOpenSourceFile: (filePath: string) => void;
@@ -70,6 +85,9 @@ const DeckCard = memo(function DeckCard({
 	deck,
 	isReorderDisabled,
 	isRecentlyDropped,
+	isOverlayOpen,
+	onToggleOverlay,
+	onCloseOverlay,
 	onNavigate,
 	onExportDeck,
 	onOpenSourceFile,
@@ -87,7 +105,7 @@ const DeckCard = memo(function DeckCard({
 		setNodeRef,
 		transform,
 		transition,
-	} = useSortable({ id: deck.id, disabled: isReorderDisabled });
+	} = useSortable({ id: deck.id, disabled: isReorderDisabled || isOverlayOpen });
 	const setDragNodeRef = useCallback(
 		(node: HTMLElement | null) => {
 			setNodeRef(node);
@@ -97,9 +115,8 @@ const DeckCard = memo(function DeckCard({
 	);
 	const totalCards = deck.stats.totalCards;
 	const newCards = deck.stats.newCards;
-	const [showMoreActions, setShowMoreActions] = useState(false);
 	const spellingReady = deck.spelling.ready;
-	const moreActions: FlashcardMenuItem[] = [
+	const moreActions: DeckActionItem[] = [
 		{
 			key: "export",
 			label: t("home.exportPdfTitle"),
@@ -136,7 +153,7 @@ const DeckCard = memo(function DeckCard({
 			className={cls(
 				"flashcard-deck-item fc-lift",
 				styles.deckItem,
-				showMoreActions && styles.isActionsOpen,
+				isOverlayOpen && styles.isOverlayOpen,
 				isDragging && styles.isDragging,
 			)}
 			data-deck-id={deck.id}
@@ -272,18 +289,79 @@ const DeckCard = memo(function DeckCard({
 							<span>{t("home.spelling")}</span>
 						</FlashcardButton>
 					)}
-					<FlashcardMenu
-						items={moreActions}
-						triggerTitle={
-							showMoreActions ? t("home.hideMoreActions") : t("home.showMoreActions")
-						}
-						ariaLabel={t("home.moreActions")}
-						triggerClassName={cls("flashcard-deck-action-more", styles.actionMore)}
-						menuClassName={cls("flashcard-deck-more-actions", styles.moreActions)}
-						onOpenChange={setShowMoreActions}
+					<FlashcardButton
+						preset="icon"
+						variant="secondary"
+						className={cls("flashcard-deck-action-more", styles.actionMore)}
+						icon={Ellipsis}
+						onClick={(event) => {
+							event.stopPropagation();
+							onToggleOverlay(deck.id);
+						}}
+						title={t("home.showMoreActions")}
+						aria-label={t("home.moreActions")}
 					/>
 				</div>
 			</div>
+
+			{isOverlayOpen && (
+				<div
+					className={cls("flashcard-deck-overlay", styles.deckOverlay)}
+					role="region"
+					aria-label={t("home.moreActions")}
+					onMouseDown={(event) => event.stopPropagation()}
+					onTouchStart={(event) => event.stopPropagation()}
+					onPointerDown={(event) => event.stopPropagation()}
+					onClick={(event) => {
+						if (event.target === event.currentTarget) {
+							onCloseOverlay();
+						}
+					}}
+				>
+					<div
+						className={cls("flashcard-deck-overlay-actions", styles.overlayActions)}
+						onClick={(event) => {
+							if (event.target === event.currentTarget) {
+								onCloseOverlay();
+							}
+						}}
+					>
+						{moreActions.map((action) => (
+							<FlashcardButton
+								key={action.key}
+								variant="secondary"
+								className={cls(
+									"flashcard-deck-overlay-action",
+									styles.overlayActionBtn,
+								)}
+								icon={action.icon}
+								iconClassName={action.iconClassName}
+								disabled={action.disabled}
+								onClick={(event) => {
+									event.stopPropagation();
+									action.onSelect();
+									onCloseOverlay();
+								}}
+								title={action.title}
+							>
+								<span>{action.label}</span>
+							</FlashcardButton>
+						))}
+					</div>
+					<FlashcardButton
+						preset="icon"
+						variant="ghost"
+						className={cls("flashcard-deck-overlay-close", styles.overlayCloseBtn)}
+						icon={X}
+						onClick={(event) => {
+							event.stopPropagation();
+							onCloseOverlay();
+						}}
+						title={t("home.hideMoreActions")}
+						aria-label={t("home.hideMoreActions")}
+					/>
+				</div>
+			)}
 		</article>
 	);
 });
@@ -338,6 +416,41 @@ export const DeckList = React.memo(function DeckList({
 	const [previewDeckIds, setPreviewDeckIds] = useState<string[] | null>(null);
 	const [isOrderSaving, setIsOrderSaving] = useState(false);
 	const [recentlyDroppedDeckId, setRecentlyDroppedDeckId] = useState<string | null>(null);
+	const [activeOverlayDeckId, setActiveOverlayDeckId] = useState<string | null>(null);
+
+	const handleToggleOverlay = useCallback((deckId: string) => {
+		setActiveOverlayDeckId((current) => (current === deckId ? null : deckId));
+	}, []);
+
+	const handleCloseOverlay = useCallback(() => {
+		setActiveOverlayDeckId(null);
+	}, []);
+
+	useEffect(() => {
+		if (!activeOverlayDeckId) return;
+
+		const handleKeyDown = (event: KeyboardEvent) => {
+			if (event.key === "Escape") {
+				setActiveOverlayDeckId(null);
+			}
+		};
+
+		const handlePointerDown = (event: PointerEvent) => {
+			const target = event.target as HTMLElement | null;
+			if (!target?.closest(`[data-deck-id="${activeOverlayDeckId}"]`)) {
+				setActiveOverlayDeckId(null);
+			}
+		};
+
+		window.addEventListener("keydown", handleKeyDown);
+		window.addEventListener("pointerdown", handlePointerDown, true);
+
+		return () => {
+			window.removeEventListener("keydown", handleKeyDown);
+			window.removeEventListener("pointerdown", handlePointerDown, true);
+		};
+	}, [activeOverlayDeckId]);
+
 	const snapshotDeckIds = useMemo(() => snapshot.decks.map((deck) => deck.id), [snapshot.decks]);
 	const visibleDeckIds = previewDeckIds ?? snapshotDeckIds;
 	const visibleDecks = useMemo(
@@ -574,10 +687,15 @@ export const DeckList = React.memo(function DeckList({
 											<DeckCard
 												key={deck.id}
 												deck={deck}
-												isReorderDisabled={isOrderSaving}
+												isReorderDisabled={
+													isOrderSaving || activeOverlayDeckId !== null
+												}
 												isRecentlyDropped={
 													recentlyDroppedDeckId === deck.id
 												}
+												isOverlayOpen={activeOverlayDeckId === deck.id}
+												onToggleOverlay={handleToggleOverlay}
+												onCloseOverlay={handleCloseOverlay}
 												onNavigate={onNavigate}
 												onExportDeck={handleExportDeck}
 												onOpenSourceFile={onOpenSourceFile}
