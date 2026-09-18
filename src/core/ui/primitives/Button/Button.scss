@@ -12,10 +12,10 @@
 	justify-content: center;
 	gap: var(--fc-space-2);
 	padding: var(--fc-space-2) var(--fc-space-3);
-	border: 1px solid var(--fc-control-border);
+	// border: 1px solid var(--fc-control-border);
 	border-radius: var(--fc-radius-sm);
 	background: var(--fc-control-bg);
-	box-shadow: var(--fc-shadow-sm);
+	// box-shadow: var(--fc-shadow-sm);
 	color: var(--fc-text);
 	font: var(--fc-weight-medium) var(--fc-font-sm) / var(--fc-line-tight) var(--fc-font-ui);
 	text-align: center;
@@ -136,10 +136,17 @@
 	}
 
 	&-danger {
-		border-color: rgba(var(--fc-red-rgb), 0.36);
+		border: 1px solid rgba(var(--fc-red-rgb), 0.45);
 		background: rgba(var(--fc-red-rgb), 0.08);
 		color: var(--fc-red);
 		box-shadow: none;
+
+		&:hover:not(:disabled),
+		&:focus-visible {
+			border-color: var(--fc-red);
+			background: rgba(var(--fc-red-rgb), 0.16);
+			color: var(--fc-red);
+		}
 	}
 
 	&-ghost {
@@ -219,6 +226,31 @@
 			&:focus-visible {
 				background: var(--fc-surface-hover);
 				border-color: transparent;
+			}
+		}
+
+		&.flashcard-btn-danger {
+			border: 1px solid rgba(var(--fc-red-rgb), 0.45);
+			background: rgba(var(--fc-red-rgb), 0.08);
+			color: var(--fc-red);
+
+			&:hover:not(:disabled),
+			&:focus-visible {
+				border-color: var(--fc-red);
+				background: rgba(var(--fc-red-rgb), 0.16);
+				color: var(--fc-red);
+			}
+
+			&.flashcard-btn-icon {
+				border: none;
+				background: transparent;
+				color: var(--fc-danger);
+
+				&:hover:not(:disabled),
+				&:focus-visible {
+					background: rgba(var(--fc-red-rgb), 0.12);
+					color: var(--fc-danger);
+				}
 			}
 		}
 

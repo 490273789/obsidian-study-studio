@@ -14,7 +14,7 @@
 	border-color: rgba(var(--fc-confirm-rgb), 0.34);
 	background: var(--fc-surface-card);
 	box-shadow:
-		0 30px 90px rgba(var(--fc-black-rgb), 0.58),
+		var(--fc-shadow-overlay),
 		0 0 0 1px rgba(var(--fc-confirm-rgb), 0.08),
 		0 0 38px rgba(var(--fc-confirm-rgb), 0.13);
 
@@ -67,7 +67,7 @@
 	justify-content: center;
 	border: 1px solid rgba(var(--fc-confirm-rgb), 0.34);
 	border-radius: var(--fc-radius-md);
-	background: var(--fc-surface-control);
+	background: rgba(var(--fc-confirm-rgb), 0.08);
 	color: rgb(var(--fc-confirm-rgb));
 	box-shadow: 0 0 22px rgba(var(--fc-confirm-rgb), 0.12);
 }
@@ -103,17 +103,43 @@
 		border-width: 1px;
 		border-style: solid;
 
-		&-secondary {
-			border-color: var(--fc-control-border);
-			background: var(--fc-control-bg);
+		&.flashcard-confirm-cancel {
+			border-color: var(--fc-line);
+			background: var(--fc-surface-card);
+			color: var(--fc-text);
+
+			&:hover:not(:disabled),
+			&:focus-visible {
+				border-color: var(--fc-line-strong);
+				background: var(--fc-surface-hover);
+				color: var(--fc-text);
+			}
 		}
 
 		&-primary {
-			border-color: var(--interactive-accent);
+			border-color: var(--fc-primary);
+			background: var(--fc-primary);
+			color: var(--fc-primary-text);
+
+			&:hover:not(:disabled),
+			&:focus-visible {
+				border-color: var(--fc-primary-hover);
+				background: var(--fc-primary-hover);
+				color: var(--fc-primary-text);
+			}
 		}
 
 		&-danger {
-			border-color: color-mix(in srgb, var(--fc-danger) 58%, var(--fc-line));
+			border-color: rgba(var(--fc-red-rgb), 0.45);
+			background: rgba(var(--fc-red-rgb), 0.08);
+			color: var(--fc-red);
+
+			&:hover:not(:disabled),
+			&:focus-visible {
+				border-color: var(--fc-red);
+				background: rgba(var(--fc-red-rgb), 0.16);
+				color: var(--fc-red);
+			}
 		}
 	}
 }

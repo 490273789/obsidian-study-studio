@@ -34,7 +34,7 @@
 		border: 1px solid var(--fc-line-strong);
 		border-radius: var(--fc-radius-sm);
 		background: color-mix(in srgb, var(--background-secondary) 85%, var(--text-normal) 15%);
-		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+		box-shadow: var(--fc-shadow-popover);
 		animation: var(--fc-motion-fade-in);
 
 		.flashcard-menu-item {
@@ -48,7 +48,7 @@
 			border: 1px solid var(--fc-line-soft);
 			border-radius: var(--fc-radius-xs);
 			background: color-mix(in srgb, var(--background-primary) 85%, var(--text-normal) 15%);
-			box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+			box-shadow: var(--fc-shadow-sm);
 			color: var(--fc-text);
 			font: var(--fc-weight-medium) var(--fc-font-sm) / var(--fc-line-tight) var(--fc-font-ui);
 			text-align: left;
@@ -65,7 +65,7 @@
 					var(--interactive-accent) 25%,
 					var(--background-secondary) 75%
 				);
-				box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+				box-shadow: var(--fc-shadow-card);
 				outline: none;
 			}
 

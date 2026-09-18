@@ -4,7 +4,9 @@
  */
 
 .flashcard-root,
-.flashcard-settings-tab {
+.flashcard-settings-tab,
+.flashcard-modal-backdrop,
+.fc-selection-popup-container {
 	--fc-font-xs: 11px;
 	--fc-font-sm: 13px;
 	--fc-font-md: 14px;
@@ -201,6 +203,23 @@
 		0 8px 24px rgba(var(--fc-black-rgb), 0.12), 0 2px 6px rgba(var(--fc-black-rgb), 0.08);
 	--fc-shadow-overlay:
 		0 24px 64px rgba(var(--fc-black-rgb), 0.16), 0 8px 16px rgba(var(--fc-black-rgb), 0.1);
+
+	/* ── 亮色模式微调：降低阴影浓度，轻微通透不显脏重 ─────────────────── */
+	.theme-light &,
+	&.theme-light {
+		--fc-shadow-sm: 0 1px 2px rgba(var(--fc-black-rgb), 0.03);
+		--fc-shadow-card:
+			0 1px 3px rgba(var(--fc-black-rgb), 0.04), 0 1px 2px rgba(var(--fc-black-rgb), 0.02);
+		--fc-shadow-card-hover:
+			0 4px 12px rgba(var(--fc-black-rgb), 0.05), 0 1px 3px rgba(var(--fc-black-rgb), 0.03);
+		--fc-shadow-inset: inset 0 1px 2px rgba(var(--fc-black-rgb), 0.03);
+		--fc-shadow:
+			0 2px 6px rgba(var(--fc-black-rgb), 0.04), 0 1px 2px rgba(var(--fc-black-rgb), 0.02);
+		--fc-shadow-popover:
+			0 4px 14px rgba(var(--fc-black-rgb), 0.05), 0 1px 3px rgba(var(--fc-black-rgb), 0.03);
+		--fc-shadow-overlay:
+			0 12px 32px rgba(var(--fc-black-rgb), 0.08), 0 2px 8px rgba(var(--fc-black-rgb), 0.04);
+	}
 	--fc-focus-ring: 0 0 0 3px rgba(var(--fc-cyan-rgb), 0.22);
 	--fc-glow-cyan: none;
 	--fc-glow-magenta: none;

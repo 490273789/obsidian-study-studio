@@ -101,7 +101,7 @@
 	&:active {
 		transform: translateY(0);
 		box-shadow:
-			0 1px 2px rgba(var(--fc-black-rgb), 0.1),
+			var(--fc-shadow-sm),
 			inset 0 1px 0 0 rgba(var(--fc-white-rgb), 0.03);
 	}
 

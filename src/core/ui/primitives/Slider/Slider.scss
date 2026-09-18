@@ -86,7 +86,7 @@ input[type="range"].flashcard-slider {
 		border-radius: 50% !important;
 		background: #ffffff !important;
 		border: 2px solid var(--fc-cyan) !important;
-		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35) !important;
+		box-shadow: var(--fc-shadow-sm) !important;
 		cursor: pointer;
 		transition:
 			transform var(--fc-motion-quick) ease,
@@ -95,7 +95,7 @@ input[type="range"].flashcard-slider {
 
 	&:hover:not(:disabled)::-webkit-slider-thumb {
 		transform: scale(1.15);
-		box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45) !important;
+		box-shadow: var(--fc-shadow-card) !important;
 	}
 
 	&:active:not(:disabled)::-webkit-slider-thumb {
@@ -107,7 +107,7 @@ input[type="range"].flashcard-slider {
 	&:focus-visible::-webkit-slider-thumb {
 		box-shadow:
 			0 0 0 3px color-mix(in srgb, var(--interactive-accent) 40%, transparent),
-			0 2px 6px rgba(0, 0, 0, 0.45) !important;
+			var(--fc-shadow-card) !important;
 	}
 
 	// Firefox Track
@@ -134,7 +134,7 @@ input[type="range"].flashcard-slider {
 		border-radius: 50% !important;
 		background: #ffffff !important;
 		border: 2px solid var(--fc-cyan) !important;
-		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35) !important;
+		box-shadow: var(--fc-shadow-sm) !important;
 		cursor: pointer;
 		transition:
 			transform var(--fc-motion-quick) ease,
@@ -143,7 +143,7 @@ input[type="range"].flashcard-slider {
 
 	&:hover:not(:disabled)::-moz-range-thumb {
 		transform: scale(1.15);
-		box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45) !important;
+		box-shadow: var(--fc-shadow-card) !important;
 	}
 
 	&:active:not(:disabled)::-moz-range-thumb {
@@ -155,6 +155,6 @@ input[type="range"].flashcard-slider {
 	&:focus-visible::-moz-range-thumb {
 		box-shadow:
 			0 0 0 3px color-mix(in srgb, var(--interactive-accent) 40%, transparent),
-			0 2px 6px rgba(0, 0, 0, 0.45) !important;
+			var(--fc-shadow-card) !important;
 	}
 }

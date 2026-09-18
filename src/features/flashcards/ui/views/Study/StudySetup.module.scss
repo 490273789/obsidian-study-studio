@@ -90,7 +90,7 @@
 	&.current {
 		border-color: color-mix(in srgb, var(--interactive-accent) 45%, var(--fc-line-glow));
 		box-shadow:
-			0 2px 10px rgba(0, 0, 0, 0.18),
+			var(--fc-shadow-card),
 			0 0 10px color-mix(in srgb, var(--interactive-accent) 12%, transparent);
 
 		.dayName {
@@ -182,14 +182,14 @@
 		border-radius: var(--fc-radius-lg);
 		box-shadow:
 			0 0 16px color-mix(in srgb, var(--interactive-accent) 25%, transparent),
-			0 2px 8px rgba(0, 0, 0, 0.2);
+			var(--fc-shadow-sm);
 		transition: all 0.2s ease;
 
 		&:hover:not(:disabled) {
 			transform: translateY(-1px);
 			box-shadow:
 				0 0 24px color-mix(in srgb, var(--interactive-accent) 40%, transparent),
-				0 4px 12px rgba(0, 0, 0, 0.25);
+				var(--fc-shadow-card-hover);
 		}
 	}
 }
