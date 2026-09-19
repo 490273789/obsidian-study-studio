@@ -14,7 +14,10 @@ function runTest(inputMsg) {
 	let stdout = "";
 	let stderr = "";
 	try {
-		stdout = execFileSync(process.execPath, [scriptPath, file], { encoding: "utf8" });
+		stdout = execFileSync(process.execPath, [scriptPath, file], {
+			encoding: "utf8",
+			stdio: ["pipe", "pipe", "pipe"],
+		});
 	} catch (err) {
 		code = err.status ?? 1;
 		stdout = err.stdout?.toString() ?? "";

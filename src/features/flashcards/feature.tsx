@@ -655,7 +655,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 				icon: "layers",
 				title: (language) => createTranslator(language)("main.viewTitle"),
 				openCommandId: OPEN_COMMAND_ID,
-				openHotkeys: [{ modifiers: ["Alt"], key: "1" }],
+				openHotkeys: [{ modifiers: ["Alt"], key: "4" }],
 				settingsSectionId: FLASHCARD_SECTION_ID,
 				available: () => true,
 				open: () => {

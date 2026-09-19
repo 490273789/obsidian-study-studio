@@ -6,7 +6,7 @@ describe("mediaHost attachment behavior", () => {
 			parentElement: null as unknown,
 		};
 		const host = {
-			append: (child: unknown) => {
+			append: (_child: unknown) => {
 				media.parentElement = host;
 			},
 		};
@@ -31,12 +31,12 @@ describe("mediaHost attachment behavior", () => {
 			parentElement: null as unknown,
 		};
 		const dockedHost = {
-			append: (child: unknown) => {
+			append: (_child: unknown) => {
 				media.parentElement = dockedHost;
 			},
 		};
 		const floatingHost = {
-			append: (child: unknown) => {
+			append: (_child: unknown) => {
 				media.parentElement = floatingHost;
 			},
 		};

@@ -326,20 +326,10 @@ export function VideoPlayerView({
 														<span>{index + 1}</span>
 													)}
 												</div>
-												<div
-													role="button"
-													tabIndex={0}
+												<button
+													type="button"
 													className={styles.sourceContent}
 													onClick={() => runtime.selectSource(source.id)}
-													onKeyDown={(event) => {
-														if (
-															event.key === "Enter" ||
-															event.key === " "
-														) {
-															event.preventDefault();
-															runtime.selectSource(source.id);
-														}
-													}}
 													title={source.path}
 												>
 													<div className={styles.sourceName}>
@@ -358,7 +348,7 @@ export function VideoPlayerView({
 															</span>
 														</div>
 													)}
-												</div>
+												</button>
 												<div className={styles.itemActions}>
 													{snapshot.sources.length > 1 && (
 														<>
@@ -729,9 +719,11 @@ export function FloatingPlayer({
 	}, [rect]);
 
 	const normalRectRef = useRef(rect);
-	if (!isMaximized) {
-		normalRectRef.current = rect;
-	}
+	useEffect(() => {
+		if (!isMaximized) {
+			normalRectRef.current = rect;
+		}
+	}, [isMaximized, rect]);
 
 	const toggleMaximize = useCallback(() => {
 		setIsMaximized((prev) => {
@@ -824,22 +816,27 @@ export function FloatingPlayer({
 		win.addEventListener("pointerup", finish, { once: true });
 	};
 
+	useEffect(() => {
+		if (!isMaximized) return;
+		const handleKeyDown = (event: KeyboardEvent) => {
+			if (event.key === "Escape") {
+				event.preventDefault();
+				toggleMaximize();
+			}
+		};
+		window.addEventListener("keydown", handleKeyDown);
+		return () => window.removeEventListener("keydown", handleKeyDown);
+	}, [isMaximized, toggleMaximize]);
+
 	return (
 		<section
+			aria-label={title}
 			className={cls(styles.floatingPlayer, isMaximized && styles.maximized)}
-			tabIndex={-1}
 			style={{
 				left: isMaximized ? 0 : rect.x,
 				top: isMaximized ? 0 : rect.y,
 				width: isMaximized ? "100%" : rect.width,
 				height: isMaximized ? "100%" : rect.height,
-			}}
-			onKeyDown={(event) => {
-				if (event.key === "Escape" && isMaximized) {
-					event.preventDefault();
-					event.stopPropagation();
-					toggleMaximize();
-				}
 			}}
 		>
 			<header

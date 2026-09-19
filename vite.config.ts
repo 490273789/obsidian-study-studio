@@ -89,6 +89,12 @@ export default defineConfig(({ mode }) => {
 			outDir,
 			rolldownOptions: {
 				external: isExternal,
+				onLog(level, log, defaultHandler) {
+					if (log.code === "MODULE_LEVEL_DIRECTIVE") {
+						return;
+					}
+					defaultHandler(level, log);
+				},
 				output: {
 					banner,
 					codeSplitting: false,

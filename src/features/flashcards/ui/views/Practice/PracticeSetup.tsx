@@ -92,6 +92,13 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 		return { start, end };
 	};
 
+	const syncRange = (start: number, end: number) => {
+		setRangeStart(start);
+		setRangeEnd(end);
+		setRangeStartInput(start.toString());
+		setRangeEndInput(end.toString());
+	};
+
 	const isStartDisabled = maxQuestions === 0 || currentQuestionCount < 1;
 
 	const handleStart = () => {
@@ -142,13 +149,6 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 		const actualCount = Math.min(count, maxQuestions);
 		setQuestionCount(actualCount);
 		setInputValue(actualCount.toString());
-	};
-
-	const syncRange = (start: number, end: number) => {
-		setRangeStart(start);
-		setRangeEnd(end);
-		setRangeStartInput(start.toString());
-		setRangeEndInput(end.toString());
 	};
 
 	const handleRangeStartChange = (e: React.ChangeEvent<HTMLInputElement>) => {

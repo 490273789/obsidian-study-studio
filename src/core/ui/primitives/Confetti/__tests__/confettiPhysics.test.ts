@@ -96,9 +96,9 @@ describe("confetti physics", () => {
 			globalAlpha: 1,
 			fillRect: vi.fn(),
 			restore: vi.fn(),
-		} as unknown as CanvasRenderingContext2D;
+		};
 
-		renderConfettiParticle(mockCtx, particle);
+		renderConfettiParticle(mockCtx as unknown as CanvasRenderingContext2D, particle);
 
 		expect(mockCtx.save).toHaveBeenCalled();
 		expect(mockCtx.translate).toHaveBeenCalledWith(50, 50);

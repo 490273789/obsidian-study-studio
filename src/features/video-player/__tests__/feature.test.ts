@@ -33,7 +33,7 @@ describe("video player feature", () => {
 		const entry = fake.catalog.get("video-player")!;
 		expect(entry.title("zh")).toBe(videoPlayerStrings("zh").title);
 		expect(entry.openCommandId).toBe("open-local-video-player");
-		expect(entry.openHotkeys).toEqual([{ modifiers: ["Alt"], key: "4" }]);
+		expect(entry.openHotkeys).toEqual([{ modifiers: ["Alt"], key: "1" }]);
 		expect(entry.settingsSectionId).toBe(VIDEO_PLAYER_SECTION_ID);
 		expect(entry.available()).toBe(true);
 		expect(fake.ribbons).toEqual([]);

@@ -305,27 +305,8 @@ const DeckCard = memo(function DeckCard({
 			</div>
 
 			{isOverlayOpen && (
-				<div
-					className={cls("flashcard-deck-overlay", styles.deckOverlay)}
-					role="region"
-					aria-label={t("home.moreActions")}
-					onMouseDown={(event) => event.stopPropagation()}
-					onTouchStart={(event) => event.stopPropagation()}
-					onPointerDown={(event) => event.stopPropagation()}
-					onClick={(event) => {
-						if (event.target === event.currentTarget) {
-							onCloseOverlay();
-						}
-					}}
-				>
-					<div
-						className={cls("flashcard-deck-overlay-actions", styles.overlayActions)}
-						onClick={(event) => {
-							if (event.target === event.currentTarget) {
-								onCloseOverlay();
-							}
-						}}
-					>
+				<div className={cls("flashcard-deck-overlay", styles.deckOverlay)}>
+					<div className={cls("flashcard-deck-overlay-actions", styles.overlayActions)}>
 						{moreActions.map((action) => (
 							<FlashcardButton
 								key={action.key}
