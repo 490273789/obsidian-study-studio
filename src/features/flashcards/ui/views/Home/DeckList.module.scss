@@ -149,6 +149,7 @@
 
 .deckName {
 	min-width: 0;
+	max-width: 100%;
 	overflow: hidden;
 	color: var(--fc-text);
 	font-family: var(--fc-font-ui);
@@ -441,12 +442,22 @@
 	.deckItem {
 		flex-direction: column;
 		align-items: stretch;
-		gap: var(--fc-space-2);
+		min-height: auto;
+		gap: var(--fc-space-3);
+		padding: var(--fc-space-3);
+	}
+
+	.deckMain {
+		width: 100%;
+		min-height: auto;
+		flex: none;
 	}
 
 	.deckSide {
 		width: 100%;
 		align-self: stretch;
+		margin-top: 0;
+		flex: none;
 	}
 
 	.deckActions {

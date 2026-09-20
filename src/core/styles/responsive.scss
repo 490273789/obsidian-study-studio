@@ -9,11 +9,6 @@
 		padding-bottom: var(--fc-space-3);
 	}
 
-	.flashcard-deck-list .flashcard-deck-item {
-		flex-direction: column;
-		min-height: auto;
-	}
-
 	.flashcard-rating-grid {
 		grid-template-columns: repeat(3, minmax(0, 1fr));
 	}
@@ -181,22 +176,25 @@
 	.flashcard-deck-item .flashcard-deck-main {
 		width: 100%;
 		min-height: auto;
+		flex: none;
 	}
 
 	.flashcard-deck-item .flashcard-deck-side {
 		width: 100%;
 		align-self: stretch;
 		margin-top: 0;
+		flex: none;
 	}
 
 	.flashcard-deck-item .flashcard-deck-actions2 {
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--fc-control-md);
 		gap: var(--fc-space-2);
 		width: 100%;
 	}
 
 	.flashcard-deck-item .flashcard-deck-actions2.has-spelling {
-		grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+		grid-template-columns: repeat(3, minmax(0, 1fr)) var(--fc-control-md);
 	}
 
 	/* On mobile the last deck card sits at the end of the scrollable list,
@@ -506,22 +504,25 @@
 	.flashcard-deck-item .flashcard-deck-main {
 		width: 100%;
 		min-height: auto;
+		flex: none;
 	}
 
 	.flashcard-deck-item .flashcard-deck-side {
 		width: 100%;
 		align-self: stretch;
 		margin-top: 0;
+		flex: none;
 	}
 
 	.flashcard-deck-item .flashcard-deck-actions2 {
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--fc-control-md);
 		gap: var(--fc-space-2);
 		width: 100%;
 	}
 
 	.flashcard-deck-item .flashcard-deck-actions2.has-spelling {
-		grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+		grid-template-columns: repeat(3, minmax(0, 1fr)) var(--fc-control-md);
 	}
 
 	.flashcard-deck-list .flashcard-deck-item:last-child .flashcard-deck-more-actions {
@@ -574,21 +575,24 @@
 	.flashcard-deck-item .flashcard-deck-main {
 		width: 100%;
 		min-height: auto;
+		flex: none;
 	}
 
 	.flashcard-deck-item .flashcard-deck-side {
 		width: 100%;
 		align-self: stretch;
 		margin-top: 0;
+		flex: none;
 	}
 
 	.flashcard-deck-item .flashcard-deck-actions2 {
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--fc-control-md);
 		gap: var(--fc-space-2);
 		width: 100%;
 	}
 
 	.flashcard-deck-item .flashcard-deck-actions2.has-spelling {
-		grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+		grid-template-columns: repeat(3, minmax(0, 1fr)) var(--fc-control-md);
 	}
 }
