@@ -26,6 +26,21 @@ export interface DeviceVideoPlayerStateV1 {
 	readonly queueExpanded: boolean;
 }
 
+export type VideoPlayerPlaybackStateV1 = Pick<
+	DeviceVideoPlayerStateV1,
+	| "schemaVersion"
+	| "sources"
+	| "currentSourceId"
+	| "progressBySource"
+	| "completedSourceIds"
+	| "playbackRate"
+>;
+
+export type VideoPlayerPresentationStateV1 = Pick<
+	DeviceVideoPlayerStateV1,
+	"floatingRect" | "queueExpanded"
+>;
+
 export interface VideoPlayerSnapshot {
 	readonly sources: readonly LocalVideoSource[];
 	readonly completedSourceIds: readonly string[];
@@ -35,9 +50,6 @@ export interface VideoPlayerSnapshot {
 	readonly duration: number | null;
 	readonly playbackRate: VideoPlaybackRate;
 	readonly playing: boolean;
-	readonly floating: boolean;
-	readonly floatingRect: FloatingRect | null;
-	readonly queueExpanded: boolean;
 	readonly error: "media" | "playback" | null;
 }
 
@@ -56,7 +68,7 @@ export interface VideoMediaPort {
 }
 
 export interface VideoPlayerStateStore {
-	load(): DeviceVideoPlayerStateV1;
-	save(state: DeviceVideoPlayerStateV1): void;
+	load(): VideoPlayerPlaybackStateV1;
+	save(state: VideoPlayerPlaybackStateV1): void;
 	clear(): void;
 }

@@ -11,7 +11,7 @@ import type { WorkbenchItemView } from "./workbench";
  * the React root, the owner-scoped committed settings, and the theme, so a view
  * definition only describes what it renders.
  */
-export interface ReactViewContext<TSettings extends { readonly language: Language }> {
+export interface ReactViewAcquireContext<TSettings extends { readonly language: Language }> {
 	readonly app: App;
 	/** The owner-scoped committed settings snapshot, read at render time. */
 	readonly settings: Readonly<TSettings>;
@@ -21,7 +21,23 @@ export interface ReactViewContext<TSettings extends { readonly language: Languag
 	readonly rootEl: HTMLElement;
 }
 
-export interface ReactViewOptions<TSettings extends { readonly language: Language }> {
+export interface ReactViewContext<
+	TSettings extends { readonly language: Language },
+	TResource = undefined,
+> extends ReactViewAcquireContext<TSettings> {
+	/** Resource acquired once for this Obsidian view and reused across React renders. */
+	readonly resource: TResource;
+}
+
+export interface AcquiredReactView<TResource> {
+	readonly resource: TResource;
+	dispose(): void;
+}
+
+export interface ReactViewOptions<
+	TSettings extends { readonly language: Language },
+	TResource = undefined,
+> {
 	/** Obsidian view type; must equal the type passed to `WorkbenchHost.registerView`. */
 	type: string;
 	icon: string;
@@ -36,14 +52,16 @@ export interface ReactViewOptions<TSettings extends { readonly language: Languag
 	 * resolve inside the same i18n context.
 	 */
 	translator?(language: Language): Translator;
-	render(context: ReactViewContext<TSettings>): React.ReactNode;
+	/** Acquires one view-lifetime resource before the first React render. */
+	acquire?(context: ReactViewAcquireContext<TSettings>): AcquiredReactView<TResource>;
+	render(context: ReactViewContext<TSettings, TResource>): React.ReactNode;
 	/**
 	 * Re-render on Obsidian theme changes. Only views that render their own theme
 	 * state (such as the dictionary's sandbox document) need this.
 	 */
 	trackTheme?: boolean;
 	/** Runs after the first render of every open, with the view already mounted. */
-	onOpen?(context: ReactViewContext<TSettings>): void;
+	onOpen?(context: ReactViewContext<TSettings, TResource>): void;
 	onClose?(): void;
 }
 
@@ -80,12 +98,15 @@ export class ReactViewErrorBoundary extends React.Component<
  * tracking, and teardown. Features pass a definition instead of writing an
  * `ItemView` subclass, and `WorkbenchHost.registerView` accepts the result directly.
  */
-export function createReactItemView<TSettings extends { readonly language: Language }>(
-	options: ReactViewOptions<TSettings>,
-): (leaf: WorkspaceLeaf) => WorkbenchItemView {
+export function createReactItemView<
+	TSettings extends { readonly language: Language },
+	TResource = undefined,
+>(options: ReactViewOptions<TSettings, TResource>): (leaf: WorkspaceLeaf) => WorkbenchItemView {
 	class ReactWorkbenchView extends ItemView implements WorkbenchItemView {
 		private root: Root | null = null;
 		private rootEl: HTMLElement | null = null;
+		private acquired: AcquiredReactView<TResource> | null = null;
+		private acquisitionFailed = false;
 		private theme: "dark" | "light" = "light";
 
 		getViewType(): string {
@@ -107,6 +128,7 @@ export function createReactItemView<TSettings extends { readonly language: Langu
 			container.empty();
 			container.addClass("flashcard-container");
 
+			this.acquisitionFailed = false;
 			this.theme = this.currentTheme();
 			if (options.trackTheme) {
 				this.registerEvent(
@@ -121,6 +143,17 @@ export function createReactItemView<TSettings extends { readonly language: Langu
 
 			this.rootEl = container.createDiv({ cls: "flashcard-root" });
 			this.root = createRoot(this.rootEl);
+			try {
+				this.acquired = options.acquire?.(this.acquireContext()) ?? {
+					resource: undefined as TResource,
+					dispose: () => undefined,
+				};
+			} catch (error) {
+				this.acquisitionFailed = true;
+				console.error(`The ${options.type} view failed to acquire its resource:`, error);
+				this.renderAcquisitionFailure();
+				return;
+			}
 			this.renderReact();
 			options.onOpen?.(this.context());
 		}
@@ -135,6 +168,9 @@ export function createReactItemView<TSettings extends { readonly language: Langu
 				this.root.unmount();
 				this.root = null;
 			}
+			this.acquired?.dispose();
+			this.acquired = null;
+			this.acquisitionFailed = false;
 			this.rootEl = null;
 			options.onClose?.();
 		}
@@ -143,7 +179,7 @@ export function createReactItemView<TSettings extends { readonly language: Langu
 			return this.app.isDarkMode() ? "dark" : "light";
 		}
 
-		private context(): ReactViewContext<TSettings> {
+		private acquireContext(): ReactViewAcquireContext<TSettings> {
 			const settings = options.readSettings();
 			return {
 				app: this.app,
@@ -154,9 +190,20 @@ export function createReactItemView<TSettings extends { readonly language: Langu
 			};
 		}
 
+		private context(): ReactViewContext<TSettings, TResource> {
+			return {
+				...this.acquireContext(),
+				resource: this.acquired!.resource,
+			};
+		}
+
 		private renderReact(): void {
 			const root = this.root;
 			if (!root || !this.rootEl) return;
+			if (this.acquisitionFailed) {
+				this.renderAcquisitionFailure();
+				return;
+			}
 			const context = this.context();
 			root.render(
 				<React.StrictMode>
@@ -173,6 +220,24 @@ export function createReactItemView<TSettings extends { readonly language: Langu
 						>
 							{options.render(context)}
 						</ReactViewErrorBoundary>
+					</I18nProvider>
+				</React.StrictMode>,
+			);
+		}
+
+		private renderAcquisitionFailure(): void {
+			const root = this.root;
+			if (!root) return;
+			const language = options.readSettings().language;
+			root.render(
+				<React.StrictMode>
+					<I18nProvider
+						language={language}
+						translator={() =>
+							options.translator?.(language) ?? createSharedTranslator(language)
+						}
+					>
+						<p className="fc-kicker">{options.renderErrorMessage(language)}</p>
 					</I18nProvider>
 				</React.StrictMode>,
 			);

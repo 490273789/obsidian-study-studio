@@ -93,7 +93,15 @@ function buildView(options: {
 	trackTheme?: boolean;
 	onOpen?: () => void;
 	onClose?: () => void;
-	render?: (context: { language: string; theme: string }) => React.ReactNode;
+	acquire?: (context: { language: string; rootEl: unknown }) => {
+		resource: { readonly id: string };
+		dispose(): void;
+	};
+	render?: (context: {
+		language: string;
+		theme: string;
+		resource: { readonly id: string } | undefined;
+	}) => React.ReactNode;
 }): TestView {
 	return createReactItemView({
 		type: "test-view",
@@ -104,6 +112,7 @@ function buildView(options: {
 		renderErrorMessage: () => "渲染失败",
 		onOpen: options.onOpen,
 		onClose: options.onClose,
+		acquire: options.acquire,
 		render:
 			options.render ??
 			((context) =>
@@ -206,6 +215,60 @@ describe("react item view seam", () => {
 		// A late settings push after close must not render again.
 		view.updateSettings();
 		expect(env.roots[0]!.render).toHaveBeenCalledTimes(1);
+	});
+
+	it("acquires one view resource before rendering, reuses it, and disposes it after unmount", async () => {
+		const calls: string[] = [];
+		const dispose = vi.fn(() => calls.push("dispose"));
+		const acquire = vi.fn(() => ({ resource: { id: "player-view" }, dispose }));
+		const render = vi.fn((context: { resource: { readonly id: string } | undefined }) =>
+			React.createElement("p", null, context.resource?.id),
+		);
+		env.content.children.push(env.createFakeElement());
+		const view = buildView({ settings: () => settings(), acquire, render });
+
+		await view.onOpen();
+		view.updateSettings();
+		const root = env.roots[0]!;
+		root.unmount.mockImplementation(() => calls.push("unmount"));
+		await view.onClose();
+
+		expect(acquire).toHaveBeenCalledOnce();
+		expect(render).toHaveBeenCalledTimes(2);
+		expect(render.mock.calls.every(([context]) => context.resource?.id === "player-view")).toBe(
+			true,
+		);
+		expect(calls).toEqual(["unmount", "dispose"]);
+	});
+
+	it("keeps acquisition failures visible and remains safe to close", async () => {
+		const failure = new Error("cannot acquire player surface");
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		const view = buildView({
+			settings: () => settings(),
+			acquire: () => {
+				throw failure;
+			},
+		});
+
+		await expect(view.onOpen()).resolves.toBeUndefined();
+		const root = env.roots[0]!;
+		const tree = root.render.mock.calls[0]![0] as React.ReactElement<{
+			children: React.ReactNode;
+		}>;
+		const provider = tree.props.children as React.ReactElement<{ children: React.ReactNode }>;
+		const message = provider.props.children as React.ReactElement<{ children: string }>;
+		expect(message.props.children).toBe("渲染失败");
+		expect(consoleError).toHaveBeenCalledWith(
+			"The test-view view failed to acquire its resource:",
+			failure,
+		);
+		expect(() => view.updateSettings()).not.toThrow();
+		expect(root.render).toHaveBeenCalledTimes(2);
+
+		await expect(view.onClose()).resolves.toBeUndefined();
+		expect(root.unmount).toHaveBeenCalledOnce();
+		consoleError.mockRestore();
 	});
 
 	it("ignores theme changes unless the view opts in", async () => {

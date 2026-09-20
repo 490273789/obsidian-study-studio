@@ -1,11 +1,11 @@
 import {
 	VIDEO_PLAYBACK_RATES,
 	type DeviceVideoPlayerStateV1,
-	type FloatingRect,
 	type LocalVideoSource,
 	type VideoMediaPort,
 	type VideoPlaybackRate,
 	type VideoPlayerSnapshot,
+	type VideoPlayerPlaybackStateV1,
 	type VideoPlayerStateStore,
 } from "./types";
 
@@ -22,7 +22,7 @@ const PROGRESS_SAVE_INTERVAL_MS = 5_000;
  * the view may move its one bound media element between docked and floating UI.
  */
 export class VideoPlayerRuntime {
-	private state: DeviceVideoPlayerStateV1;
+	private state: VideoPlayerPlaybackStateV1;
 	private media: VideoMediaPort | null = null;
 	private snapshot!: VideoPlayerSnapshot;
 	private readonly listeners = new Set<() => void>();
@@ -206,25 +206,6 @@ export class VideoPlayerRuntime {
 		}
 	}
 
-	setFloating(floating: boolean): void {
-		if (this.disposed || this.snapshot.floating === floating) return;
-		this.publish({ floating });
-	}
-
-	setFloatingRect(rect: FloatingRect | null): void {
-		if (this.disposed) return;
-		this.state = { ...this.state, floatingRect: rect };
-		this.persist();
-		this.publish();
-	}
-
-	setQueueExpanded(queueExpanded: boolean): void {
-		if (this.disposed || this.state.queueExpanded === queueExpanded) return;
-		this.state = { ...this.state, queueExpanded };
-		this.persist();
-		this.publish();
-	}
-
 	pause(): void {
 		this.media?.pause();
 		this.saveProgress(true);
@@ -232,7 +213,7 @@ export class VideoPlayerRuntime {
 
 	clearLocalData(): void {
 		this.pause();
-		this.state = emptyState();
+		this.state = emptyPlaybackState();
 		this.options.state.clear();
 		this.loadCurrentMedia();
 		this.publish();
@@ -342,7 +323,7 @@ export class VideoPlayerRuntime {
 	private persist(): void {
 		this.options.state.save(this.state);
 	}
-	private publish(overrides: Partial<Pick<VideoPlayerSnapshot, "floating">> = {}): void {
+	private publish(): void {
 		const source = this.currentSource();
 		this.snapshot = {
 			sources: this.state.sources,
@@ -356,9 +337,6 @@ export class VideoPlayerRuntime {
 				this.media && Number.isFinite(this.media.duration) ? this.media.duration : null,
 			playbackRate: this.state.playbackRate,
 			playing: this.media ? !this.media.paused : false,
-			floating: overrides.floating ?? this.snapshot?.floating ?? false,
-			floatingRect: this.state.floatingRect,
-			queueExpanded: this.state.queueExpanded,
 			error: this.error,
 		};
 		for (const listener of this.listeners) listener();
@@ -380,14 +358,20 @@ export class VideoPlayerRuntime {
 
 export function emptyState(): DeviceVideoPlayerStateV1 {
 	return {
+		...emptyPlaybackState(),
+		floatingRect: null,
+		queueExpanded: true,
+	};
+}
+
+export function emptyPlaybackState(): VideoPlayerPlaybackStateV1 {
+	return {
 		schemaVersion: 1,
 		sources: [],
 		currentSourceId: null,
 		progressBySource: {},
 		completedSourceIds: [],
 		playbackRate: 1,
-		floatingRect: null,
-		queueExpanded: true,
 	};
 }
 

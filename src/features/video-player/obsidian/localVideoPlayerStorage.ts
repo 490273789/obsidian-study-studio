@@ -1,17 +1,17 @@
 import type { App } from "obsidian";
+import type { VideoPlayerDocumentStore } from "../domain/localVideoPlayerState";
 import { emptyState } from "../domain/videoPlayerRuntime";
 import {
 	VIDEO_PLAYBACK_RATES,
 	type DeviceVideoPlayerStateV1,
 	type FloatingRect,
 	type LocalVideoSource,
-	type VideoPlayerStateStore,
 } from "../domain/types";
 
 export const LOCAL_VIDEO_PLAYER_STORAGE_KEY = "study-studio.local-video-player.v1";
 
 /** Vault-scoped, device-local storage. Paths never reach plugin data.json. */
-export class ObsidianVideoPlayerStateStore implements VideoPlayerStateStore {
+export class ObsidianVideoPlayerStateStore implements VideoPlayerDocumentStore {
 	constructor(private readonly app: Pick<App, "loadLocalStorage" | "saveLocalStorage">) {}
 	load(): DeviceVideoPlayerStateV1 {
 		return parseDeviceVideoPlayerState(

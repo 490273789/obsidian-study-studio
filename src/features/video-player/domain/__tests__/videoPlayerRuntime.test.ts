@@ -1,17 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
-import { VideoPlayerRuntime, emptyState } from "../videoPlayerRuntime";
-import type { DeviceVideoPlayerStateV1, VideoMediaPort, VideoPlayerStateStore } from "../types";
+import { VideoPlayerRuntime, emptyPlaybackState } from "../videoPlayerRuntime";
+import type { VideoMediaPort, VideoPlayerPlaybackStateV1, VideoPlayerStateStore } from "../types";
 
 class MemoryStore implements VideoPlayerStateStore {
-	state: DeviceVideoPlayerStateV1 = emptyState();
+	state: VideoPlayerPlaybackStateV1 = emptyPlaybackState();
 	saves = 0;
 	load = () => this.state;
-	save = (state: DeviceVideoPlayerStateV1) => {
+	save = (state: VideoPlayerPlaybackStateV1) => {
 		this.state = state;
 		this.saves++;
 	};
 	clear = () => {
-		this.state = emptyState();
+		this.state = emptyPlaybackState();
 	};
 }
 
@@ -90,14 +90,6 @@ describe("VideoPlayerRuntime", () => {
 		expect(store.state.progressBySource.one).toBe(42);
 	});
 
-	it("persists the queue disclosure state on this device", () => {
-		const store = new MemoryStore();
-		const runtime = new VideoPlayerRuntime({ state: store, toMediaUrl: (path) => path });
-		runtime.setQueueExpanded(false);
-		expect(runtime.getSnapshot().queueExpanded).toBe(false);
-		expect(store.state.queueExpanded).toBe(false);
-	});
-
 	it("does not wrap queue navigation and auto-plays the next item after completion", async () => {
 		const runtime = new VideoPlayerRuntime({
 			state: new MemoryStore(),
@@ -137,7 +129,7 @@ describe("VideoPlayerRuntime", () => {
 	it("restores a completed video's saved end position until it is actively selected", () => {
 		const store = new MemoryStore();
 		store.state = {
-			...emptyState(),
+			...emptyPlaybackState(),
 			sources: [source("one")],
 			currentSourceId: "one",
 			progressBySource: { one: 100 },

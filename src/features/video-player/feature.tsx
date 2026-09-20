@@ -8,7 +8,7 @@ import type {
 	WorkbenchModule,
 	WorkbenchSettingsSection,
 } from "../../core/host/workbench";
-import { VideoPlayerRuntime } from "./domain";
+import { LocalVideoPlayerStateAuthority, VideoPlayerRuntime } from "./domain";
 import {
 	localVideoMediaUrl,
 	ObsidianVideoPlayerStateStore,
@@ -18,9 +18,9 @@ import { buildVideoPlayerSettingsViewModel } from "./settings/viewModel";
 import { hasDuplicateShortcuts, type VideoPlayerShortcuts } from "./settings/keyboardShortcut";
 import type { VideoPlayerSettings, VideoSkipInterval } from "./settings/slice";
 import { videoPlayerStrings } from "./strings/videoPlayer";
-import { PlayerFocusController } from "./ui/playerFocusController";
+import { BrowserPlayerViewDomAdapter } from "./ui/playerViewDomAdapter";
+import { PlayerViewInteraction } from "./ui/playerViewInteraction";
 import { VideoPlayerView } from "./ui/VideoPlayerView";
-import { VideoPlayerPresenterLease } from "./ui/presenterLease";
 
 export const VIDEO_PLAYER_SECTION_ID = "video-player";
 export const VIEW_TYPE_VIDEO_PLAYER = "study-studio-local-video-player";
@@ -33,22 +33,31 @@ export function createVideoPlayerFeature(): WorkbenchModule<"videoPlayer"> {
 	return defineFeatureLifetime({
 		id: "videoPlayer",
 		start(host, lifetime) {
-			const presenterLease = new VideoPlayerPresenterLease();
-			const focusController = new PlayerFocusController();
+			const localState = new LocalVideoPlayerStateAuthority(
+				new ObsidianVideoPlayerStateStore(host.app),
+				{
+					report: ({ error }) =>
+						console.error("Failed to save local video player presentation:", error),
+				},
+			);
 			const runtime = lifetime.own(
 				new VideoPlayerRuntime({
-					state: new ObsidianVideoPlayerStateStore(host.app),
+					state: localState.playback,
 					toMediaUrl: localVideoMediaUrl,
+				}),
+			);
+			const interaction = lifetime.own(
+				new PlayerViewInteraction({
+					runtime,
+					presentation: localState.presentation,
+					dom: new BrowserPlayerViewDomAdapter(),
 				}),
 			);
 			const open = async (): Promise<void> => {
 				try {
-					if (runtime.getSnapshot().floating) {
-						focusController.requestFocus();
-						return;
-					}
-					await host.activateView(VIEW_TYPE_VIDEO_PLAYER, { mainTab: true });
-					focusController.requestFocus();
+					await interaction.open(() =>
+						host.activateView(VIEW_TYPE_VIDEO_PLAYER, { mainTab: true }),
+					);
 				} catch (error) {
 					console.error("Failed to open the local video player:", error);
 					new Notice(videoPlayerStrings(host.settings.read().language).openFailed);
@@ -62,7 +71,11 @@ export function createVideoPlayerFeature(): WorkbenchModule<"videoPlayer"> {
 					title: (language) => videoPlayerStrings(language).title,
 					readSettings: () => host.settings.read(),
 					renderErrorMessage: (language) => videoPlayerStrings(language).openFailed,
-					render: ({ language, rootEl }) => {
+					acquire: ({ rootEl }) => {
+						const view = interaction.mount({ ownerDocument: rootEl.ownerDocument });
+						return { resource: view, dispose: () => view.dispose() };
+					},
+					render: ({ language, rootEl, resource: view }) => {
 						const strings = videoPlayerStrings(language);
 						if (!host.settings.read().videoPlayer.enabled) {
 							return (
@@ -82,10 +95,9 @@ export function createVideoPlayerFeature(): WorkbenchModule<"videoPlayer"> {
 						return (
 							<VideoPlayerView
 								runtime={runtime}
+								view={view}
 								language={language}
 								rootEl={rootEl}
-								presenterLease={presenterLease}
-								focusController={focusController}
 								settings={host.settings.read().videoPlayer}
 								onFocusExisting={() => void open()}
 								onOpenSettings={() =>
