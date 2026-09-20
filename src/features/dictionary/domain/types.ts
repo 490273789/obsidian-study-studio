@@ -148,7 +148,6 @@ export interface CompiledDictionarySettings {
 
 /**
  * Retained only so legacy catalog entries can still be reported as requiring a
- * re-import; see the migration design doc and ADR-0017.
  */
 export interface PortableDictionarySettings {
 	fileCount: number;

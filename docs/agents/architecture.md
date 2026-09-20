@@ -13,8 +13,8 @@ Read this guide for plugin lifecycle, dependency ownership, or changes spanning 
    the settings tab, and calls `workbench.refresh()`.
 
 The settings document itself is composed from the feature-owned slices registered in
-`src/core/host/settingsSlices.ts` (ADR-0019). The same registry groups slices by owner and
-projects owner-scoped settings capabilities at the workbench seam (ADR-0028), so the
+`src/core/host/settingsSlices.ts`. The same registry groups slices by owner and
+projects owner-scoped settings capabilities at the workbench seam, so the
 composition root never enumerates a slice and features never receive the global document.
 
 `Workbench.refresh()` performs the initial full render. After a local or externally synchronized
@@ -26,22 +26,22 @@ views, chrome, commands, or settings slice.
 
 Each feature owns everything else it needs. `src/core/host/featureLifetime.ts` adapts a feature's
 one-time synchronous acquisition, settings-driven refresh, and LIFO release into the existing
-`WorkbenchModule` seam (ADR-0031). `src/features/flashcards/feature.tsx` constructs
+`WorkbenchModule` seam. `src/features/flashcards/feature.tsx` constructs
 `SessionLifecycle`, `CardIdentityContinuity`, `DeckHome`, `FlashcardRepository`, and `PronunciationRuntime` during
 that acquisition; production-created resources are owned while injected dependencies remain borrowed. `FlashcardRepository`
 crosses persistence only through its feature-owned `FlashcardAuthority` adapter: it owns migration,
 learning-state choreography, external reload reconciliation, cache ordering, and its own revision;
-the production adapter alone knows WorkbenchStore's generic document mechanics (ADR-0029). `AI 翻译`
+the production adapter alone knows WorkbenchStore's generic document mechanics. `AI 翻译`
 and `词典` own their runtimes the same way. Shared services reach a feature through its factory in
 `features/index.ts`, never through the host.
 
-`src/core/selectionHelper/` is the 工作台-owned 选区助手 interaction module (ADR-0025), not a 工作台功能. It runs through the same `WorkbenchModule` lifecycle without contributing a catalog entry. 词典 and AI 翻译 each provide a narrow adapter; the composition module connects them without reading either feature's runtime.
+`src/core/selectionHelper/` is the 工作台-owned 选区助手 interaction module, not a 工作台功能. It runs through the same `WorkbenchModule` lifecycle without contributing a catalog entry. 词典 and AI 翻译 each provide a narrow adapter; the composition module connects them without reading either feature's runtime.
 
-`src/core/host/reactItemView.tsx` mounts every view's React tree (ADR-0020) and injects the flashcard services into `FlashcardApp`. Closing a view unmounts its React adapter and stops current pronunciation, but it does not itself end an active session. Plugin unload calls `workbench.dispose()`, which stops every feature before the shared `AiService` is disposed.
+`src/core/host/reactItemView.tsx` mounts every view's React tree and injects the flashcard services into `FlashcardApp`. Closing a view unmounts its React adapter and stops current pronunciation, but it does not itself end an active session. Plugin unload calls `workbench.dispose()`, which stops every feature before the shared `AiService` is disposed.
 
 ## Source layout
 
-The tree is sliced by 工作台功能, not by implementation layer (ADR-0021). A feature's domain, settings, strings, Obsidian adapters, and React views all live under one directory:
+The tree is sliced by 工作台功能, not by implementation layer. A feature's domain, settings, strings, Obsidian adapters, and React views all live under one directory:
 
 ```text
 src/
@@ -85,7 +85,7 @@ Read the layering inside a slice the same way as before: `domain/` and `settings
 | Card continuity     | `src/features/flashcards/domain/identity/cardIdentityContinuity.ts`                                                        | Synchronization, migration, repair, source changes, stable card identity continuity                                                                                                                                                                      |
 | Persistence         | `src/core/storage/workbenchStore.ts`, `src/features/flashcards/domain/storage/flashcardRepository.ts`                      | Atomic document serialization, opaque source tokens, and revision-checked writes in `data.json` via `WorkbenchStore`; migration, FSRS learning state, external reconciliation, local deck-index cache, and semantic transitions in `FlashcardRepository` |
 | Settings            | `src/core/host/settingsSlices.ts`, `src/core/settings/slice.ts`, `src/core/settings/presentation.ts`                       | The slice registry and composed settings document; the renderer-neutral settings presentation seam, immutable snapshots, interaction validation, and stale-generation rejection                                                                          |
-| Outbound port       | `src/core/net/`                                                                                                            | Request execution, status classification, deadline and cancellation, credential reads, and the single host-pinned exception (ADR-0024)                                                                                                                   |
+| Outbound port       | `src/core/net/`                                                                                                            | Request execution, status classification, deadline and cancellation, credential reads, and the single host-pinned exception                                                                                                                              |
 | AI engines          | `src/core/ai/`                                                                                                             | Named provider/model configurations, model discovery, text/image requests, credentials through an injected reader, and per-request timeout/cancellation                                                                                                  |
 | Pronunciation       | `src/features/flashcards/domain/pronunciation/`                                                                            | Shared configuration snapshot, playback, providers, cancellation, cache and management activity                                                                                                                                                          |
 | Pure card logic     | `src/features/flashcards/domain/cards/`                                                                                    | Parsing, formatting, source mutation, spelling extraction/comparison                                                                                                                                                                                     |
@@ -98,33 +98,22 @@ Read the layering inside a slice the same way as before: `domain/` and `settings
 
 - Register Obsidian-facing commands and services in `src/core/host/main.ts`; keep feature behavior in its domain module.
 - 工作台 modules run through the workbench seam (`WorkbenchModule.render(host)`). 工作台功能 reach Obsidian chrome only through `WorkbenchHost` and declare identity through the catalog; the 选区助手 uses the lifecycle without becoming a 工作台功能. `main.ts` and `settingsTab.ts` must not name a feature's views, ribbon, commands, or settings slice: add composition in `src/features/index.ts` instead.
-- New feature lifetimes use `defineFeatureLifetime`: `start(host, lifetime)` synchronously acquires owned resources and declares static workbench contributions, then returns an optional refresh function. Register every feature-created disposable with `lifetime.own()` and listeners, leases, notices, or other release-only resources with `lifetime.defer()`. Do not release injected dependencies, and do not add per-feature nullable runtime/hand-written `stop()` state machines (ADR-0031).
-- A feature declares its identity with `host.catalog(entry)` (title, icon, open command id, settings section, availability, how to open). The catalog generates commands and lets the flashcard landing page open sibling features. Flashcards owns the plugin ribbon because it is the plugin landing page; other features do not add ribbon icons (ADR-0033).
-- A feature reads settings through `host.settings.read()`, which returns only shared `language` plus the slices assigned to its owner in `SETTINGS_SLICES_BY_OWNER`. It writes only through `host.settings.update(patch)`; unauthorized own keys reject the whole patch before persistence. Only flashcards may change the shared language through `host.settings.setLanguage(language)` (ADR-0028).
+- New feature lifetimes use `defineFeatureLifetime`: `start(host, lifetime)` synchronously acquires owned resources and declares static workbench contributions, then returns an optional refresh function. Register every feature-created disposable with `lifetime.own()` and listeners, leases, notices, or other release-only resources with `lifetime.defer()`. Do not release injected dependencies, and do not add per-feature nullable runtime/hand-written `stop()` state machines.
+- A feature declares its identity with `host.catalog(entry)` (title, icon, open command id, settings section, availability, how to open). The catalog generates commands and lets the flashcard landing page open sibling features. Flashcards owns the plugin ribbon because it is the plugin landing page; other features do not add ribbon icons.
+- A feature reads settings through `host.settings.read()`, which returns only shared `language` plus the slices assigned to its owner in `SETTINGS_SLICES_BY_OWNER`. It writes only through `host.settings.update(patch)`; unauthorized own keys reject the whole patch before persistence. Only flashcards may change the shared language through `host.settings.setLanguage(language)`.
 - The host applies an authorized patch to the settings committed at write time, so a queued write never resurrects a stale slice. Owner changes notify only that module and its views; language changes notify all owners. A notification failure never rolls back a durable commit.
-- A settings slice is the single authority for the keys it owns (ADR-0019). To add or change a slice, edit its owner's `SettingsSlice` descriptor and register it in `src/core/host/settingsSlices.ts`; never add a branch to `WorkbenchStore`, and never read `DEFAULT_SETTINGS` from a normalizer. Slices must return exactly the keys they declare and must not overlap.
-- Every settings section crosses the settings presentation seam as one immutable snapshot plus one `invoke` interface (ADR-0030). Feature and host editors own drafts, persistence, notices, subscriptions, and lifecycle; the shared presentation module owns keyed composition, definition and interaction validation, visibility/disabled resolution, and stale-generation rejection.
-- 工作台功能 must not import one another. A primitive shared by two features belongs in `src/core/`, not inside one feature's directory (ADR-0021).
+- A settings slice is the single authority for the keys it owns. To add or change a slice, edit its owner's `SettingsSlice` descriptor and register it in `src/core/host/settingsSlices.ts`; never add a branch to `WorkbenchStore`, and never read `DEFAULT_SETTINGS` from a normalizer. Slices must return exactly the keys they declare and must not overlap.
+- Every settings section crosses the settings presentation seam as one immutable snapshot plus one `invoke` interface. Feature and host editors own drafts, persistence, notices, subscriptions, and lifecycle; the shared presentation module owns keyed composition, definition and interaction validation, visibility/disabled resolution, and stale-generation rejection.
+- 工作台功能 must not import one another. A primitive shared by two features belongs in `src/core/`, not inside one feature's directory.
 - Keep a feature's files inside its slice: domain, settings, strings, Obsidian adapters, and views all live under `src/features/<id>/`. Only cross-feature infrastructure belongs in `src/core/`.
-- Views are declared with `createReactItemView` (ADR-0020), never as hand-written `ItemView` subclasses: the seam owns the mount lifecycle and the error boundary, and always renders the committed settings. `updateSettings` is the host's push signal, not a settings source.
+- Views are declared with `createReactItemView`, never as hand-written `ItemView` subclasses: the seam owns the mount lifecycle and the error boundary, and always renders the committed settings. `updateSettings` is the host's push signal, not a settings source.
 - React renders immutable snapshots and calls semantic actions. It must not coordinate persistence ordering or reach into raw engine state.
 - `DeckHome`, `SessionLifecycle`, `CardIdentityContinuity`, and `PronunciationRuntime` are deep shared interfaces. Extend their semantic actions/snapshots instead of adding parallel state managers or pass-through wrappers.
 - Pure engines, planners, builders, and presentation models must not import React or perform Obsidian I/O.
 - `WorkbenchStore` publishes a monotonic revision after committed changes. Consumers subscribe rather than inventing manual refresh counters.
-- Flashcard learning state crosses a feature-owned `FlashcardAuthority` seam. `FlashcardRepository` must not read generic documents, partition keys, or global settings; it accepts only flashcard study settings and semantic session, continuity, or word-list transitions. A source-token revision echo is not a repository revision; external or flashcard-settings replacement atomically rebuilds its full snapshot (ADR-0029).
+- Flashcard learning state crosses a feature-owned `FlashcardAuthority` seam. `FlashcardRepository` must not read generic documents, partition keys, or global settings; it accepts only flashcard study settings and semantic session, continuity, or word-list transitions. A source-token revision echo is not a repository revision; external or flashcard-settings replacement atomically rebuilds its full snapshot.
 - `data.json` is the cross-device authority for settings and learner state. Markdown-derived card text belongs only in `cache/deck-index.json`; missing or corrupt cache data must be rebuilt rather than treated as user-data loss.
-- Outbound work goes through the outbound port: do not call `requestUrl`, `fetch`, or `secretStorage.getSecret` from a feature. A raw host-pinned fetch is the single sanctioned exception and lives behind `requestHostPinned` (ADR-0024).
+- Outbound work goes through the outbound port: do not call `requestUrl`, `fetch`, or `secretStorage.getSecret` from a feature. A raw host-pinned fetch is the single sanctioned exception and lives behind `requestHostPinned`.
 - Use `import type` for Obsidian-only or boundary-only types in pure modules and tests whenever runtime loading is unnecessary.
 
 For new features that call AI, read [the internal AI service guide](../design/ai-engine-usage.md) for configuration selection, image input, and cancellation semantics.
-
-## Architecture records
-
-Use ADR status, not filename order, to decide what is current. Notable current decisions:
-
-- ADR-0028: project owner-scoped settings capabilities at the workbench seam and route committed settings changes only to affected owners.
-- ADR-0029: deepen the flashcard persistence seam around a versioned authority adapter; `FlashcardRepository` owns learning-state choreography and cache reconciliation.
-- ADR-0030: deepen the settings presentation seam around renderer-neutral snapshots and opaque action references; keep persistence and lifecycle in each owning editor.
-- ADR-0031: deepen the feature lifetime seam around synchronous acquisition, refresh, and explicit owned-resource release.
-
-When implementation and an accepted ADR disagree, surface the conflict rather than silently introducing a third model.

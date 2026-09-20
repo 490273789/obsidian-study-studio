@@ -147,7 +147,7 @@ export function createOutboundPort(options: OutboundPortOptions): OutboundPort {
 	};
 
 	/**
-	 * ADR-0017's single exception: a host-pinned binary fetch. `requestUrl` follows
+	 * `requestUrl` follows
 	 * redirects and cannot refuse them, so this one path uses `fetch` with
 	 * credentials omitted and redirects rejected, plus MIME and size validation.
 	 */

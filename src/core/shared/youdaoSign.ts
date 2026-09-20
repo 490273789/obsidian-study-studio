@@ -1,8 +1,5 @@
 /**
  * Feature-independent Youdao openapi v3 signing and form building, shared by the
- * AI 翻译 and 词典 features (ADR-0017). It lives outside both features because
- * 工作台功能 must not import one another.
- *
  * The truncation rule counts code points, matching Youdao's documented
  * "characters" semantics, so surrogate-pair text (emoji, rare CJK) signs
  * identically across callers.

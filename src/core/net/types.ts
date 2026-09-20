@@ -88,7 +88,7 @@ export interface HostPinnedResponse {
  * The workbench's outbound seam: one place owns request execution, the deadline,
  * cancellation, status classification, and credential reads.
  *
- * `requestHostPinned` is the single sanctioned exception (ADR-0017): a raw fetch
+ * `requestHostPinned` is the single sanctioned exception: a raw fetch
  * to a fixed host with no credentials and redirects refused, used for the Eudic
  * remote image. Its constraints live here rather than at each call site.
  */

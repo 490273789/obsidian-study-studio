@@ -1,6 +1,6 @@
 # Dictionary Guide
 
-Read this guide before changing anything under `src/features/dictionary/domain/**`, the dictionary views/settings, or the compiled-v2 package contract. This is a security- and data-boundary-sensitive area; read [the migration design](../design/dictionary-migration.md) and [ADR-0017](../adr/0017-dictionary-engine-and-sources.md) when the change touches packages, sources, or sandboxing.
+Read this guide before changing anything under `src/features/dictionary/domain/**`, the dictionary views/settings, or the compiled-v2 package contract. This is a security- and data-boundary-sensitive area; when the change touches packages, sources, or sandboxing.
 
 ## Source and boundary invariants
 
@@ -19,7 +19,6 @@ Read this guide before changing anything under `src/features/dictionary/domain/*
 - The local dictionary catalog is authoritative for source identity, membership, order, and whole-dictionary transactions, and must agree with package facts. Never silently repair conflicts from disk; import, cancellation, failure, and settings-save rollback must leave existing sources intact and clean staging output.
 - `formatVersion` is `2` and `engineVersion` must equal `2.0.6` exactly; older packages are incompatible and the catalog requests a re-import. Never downgrade or best-effort read an unknown format.
 - Sandbox storage is a bounded compatibility object (`sandbox-storage.json`, at most 128 keys, 16,384 characters per value, 256 KiB of JSON). It is adjacent to, but not part of, the deterministic package.
-- The format specification is [dictionary-compiled-v2.md](../design/dictionary-compiled-v2.md); `engineVersion 2.0.6` and `formatVersion 2` are inherited from obsidian-tools, and any format or engine change requires an explicit version bump.
 
 ## Layering rules
 
