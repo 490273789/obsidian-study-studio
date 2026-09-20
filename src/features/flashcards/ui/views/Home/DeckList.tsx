@@ -291,7 +291,7 @@ const DeckCard = memo(function DeckCard({
 					)}
 					<FlashcardButton
 						preset="icon"
-						variant="secondary"
+						variant="ghost"
 						className={cls("flashcard-deck-action-more", styles.actionMore)}
 						icon={Ellipsis}
 						onClick={(event) => {

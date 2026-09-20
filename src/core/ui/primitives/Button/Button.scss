@@ -291,7 +291,7 @@
 		}
 	}
 
-	button:is(.flashcard-btn-prev, .flashcard-menu-trigger, .flashcard-deck-action-more) {
+	button:is(.flashcard-btn-prev, .flashcard-menu-trigger) {
 		border: 1px solid var(--fc-compact-control-border);
 		background: transparent;
 		box-shadow: none;
