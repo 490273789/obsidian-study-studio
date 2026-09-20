@@ -274,11 +274,21 @@ export function VideoPlayerView({
 														<span>{index + 1}</span>
 													)}
 												</div>
-												<button
-													type="button"
+												<div
+													role="button"
+													tabIndex={0}
 													className={styles.sourceContent}
 													onClick={() => runtime.selectSource(source.id)}
-													title={source.path}
+													onKeyDown={(event) => {
+														if (
+															event.key === "Enter" ||
+															event.key === " "
+														) {
+															event.preventDefault();
+															runtime.selectSource(source.id);
+														}
+													}}
+													title={`${source.name}\n${source.path}`}
 												>
 													<div className={styles.sourceName}>
 														{source.name}
@@ -296,7 +306,7 @@ export function VideoPlayerView({
 															</span>
 														</div>
 													)}
-												</button>
+												</div>
 												<div className={styles.itemActions}>
 													{snapshot.sources.length > 1 && (
 														<>
