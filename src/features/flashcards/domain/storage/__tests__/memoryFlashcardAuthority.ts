@@ -16,6 +16,7 @@ export class MemoryFlashcardAuthority implements FlashcardAuthority {
 		(change: FlashcardAuthorityChange) => void | Promise<void>
 	>();
 	failNextCommit = false;
+	conflictNextCommit = false;
 
 	constructor(
 		private settings: FlashcardStudySettings,
@@ -38,6 +39,11 @@ export class MemoryFlashcardAuthority implements FlashcardAuthority {
 		expectedVersion: number,
 		commit: FlashcardAuthorityCommit,
 	): Promise<{ readonly version: number }> {
+		if (this.conflictNextCommit) {
+			this.conflictNextCommit = false;
+			this.version++;
+			throw new FlashcardAuthorityConflictError(expectedVersion, this.version);
+		}
 		if (expectedVersion !== this.version) {
 			throw new FlashcardAuthorityConflictError(expectedVersion, this.version);
 		}

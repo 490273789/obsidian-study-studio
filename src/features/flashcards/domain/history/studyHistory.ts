@@ -87,15 +87,24 @@ export function appendStudyHistory(
 
 	const nextHistory = [...history];
 	for (const entry of newEntries) {
-		const entryRecord = entry as { date?: string; timestamp?: number };
+		const entryRecord = entry as {
+			date?: string;
+			timestamp?: number;
+			occurredAt?: number;
+		};
+		const occurredAt = Number.isFinite(entryRecord.occurredAt)
+			? entryRecord.occurredAt
+			: undefined;
 		nextHistory.push({
 			deckId: entry.deckId,
 			deckName: entry.deckName,
 			mode: entry.mode,
 			cardCount: entry.cardCount,
 			duration: entry.duration,
-			date: entryRecord.date ?? dateStr,
-			timestamp: entryRecord.timestamp ?? nowMs,
+			date:
+				entryRecord.date ??
+				(occurredAt === undefined ? dateStr : formatLocalDateKey(new Date(occurredAt))),
+			timestamp: entryRecord.timestamp ?? occurredAt ?? nowMs,
 		});
 	}
 	return pruneStudyHistory(nextHistory, maxDays);

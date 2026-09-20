@@ -2,7 +2,7 @@ import type { State } from "ts-fsrs";
 import type { SpellingCardProgress, StudyHistoryEntry } from "../../../../core/shared/types";
 import type { FlashcardStudySettings } from "../../settings/slice";
 import type { PersistedCardIdentityContinuityState } from "../identity/cardIdentityContinuity";
-import type { DailyLearningActivity } from "../history/dailyLearningActivity";
+import type { DailyLearningActivityDay } from "../history/dailyLearningActivity";
 
 export interface SerializedFSRSCard {
 	due: string;
@@ -51,7 +51,7 @@ export interface LearningStateDocument {
 	cards: Record<string, PersistedCardLearningState>;
 	decks: Record<string, PersistedDeckLearningState>;
 	studyHistory: StudyHistoryEntry[];
-	dailyLearningActivities?: DailyLearningActivity[];
+	dailyLearningActivities?: DailyLearningActivityDay[];
 	spellingProgress: Record<string, SpellingCardProgress>;
 	continuity: PersistedCardIdentityContinuityState;
 }

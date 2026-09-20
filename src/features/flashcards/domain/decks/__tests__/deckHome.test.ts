@@ -18,7 +18,10 @@ import {
 	type DeckHomeEvent,
 	type DeckHomeRepository,
 } from "../deckHome";
-import type { DailyLearningActivity } from "../../history/dailyLearningActivity";
+import {
+	restoreDailyLearningActivity,
+	type DailyLearningActivity,
+} from "../../history/dailyLearningActivity";
 
 const STABLE_ONE = "550e8400-e29b-41d4-a716-446655440000";
 const STABLE_TWO = "7d444840-9dc0-11d1-b245-5ffdce74fad2";
@@ -77,7 +80,7 @@ class MemoryRepository implements DeckHomeRepository {
 	getEffectiveStudySettings?: (deckId: string) => StudySettings;
 	getSpellingProgress?: () => Readonly<Record<string, SpellingCardProgress>>;
 	getStudyHistory?: () => StudyHistoryEntry[];
-	getDailyLearningActivities?: () => DailyLearningActivity[];
+	dailyLearningActivity: DailyLearningActivity = restoreDailyLearningActivity(undefined);
 	recordWordListVisit?: (
 		deckId: string,
 		deckName: string,
@@ -119,6 +122,10 @@ class MemoryRepository implements DeckHomeRepository {
 
 	getSettings(): FlashcardSettings {
 		return this.settings;
+	}
+
+	getLearningFootprint(now: Date) {
+		return this.dailyLearningActivity.footprint(now);
 	}
 
 	getNextDueTime(now = new Date()): number | null {
@@ -210,7 +217,7 @@ describe("DeckHome", () => {
 			[deck],
 			makeSettings({ wordLearningDecks: { [deck.id]: true } }),
 		);
-		repository.getDailyLearningActivities = () => [
+		repository.dailyLearningActivity = restoreDailyLearningActivity([
 			{
 				date: "2026-08-02",
 				answers: { study: 3, practice: 2, spelling: 1 },
@@ -218,7 +225,7 @@ describe("DeckHome", () => {
 				completedAnswers: { study: 3, practice: 0, spelling: 0 },
 				completedSessions: { study: 1, practice: 0, spelling: 0 },
 			},
-		];
+		]);
 		const home = createDeckHome({
 			repository,
 			identity: makeIdentity(),

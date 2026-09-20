@@ -187,7 +187,7 @@ describe("FlashcardRepository", () => {
 
 		expect(repo.getAllDecks()).toHaveLength(1);
 		expect(repo.getStudyHistory()).toHaveLength(1);
-		expect(repo.getDailyLearningActivities()).toEqual([]);
+		expect(repo.getLearningFootprint(new Date(2026, 0, 1)).todayTotalSeconds).toBe(0);
 
 		// Saved partition to store
 		const savedLearning = store.getPartition<any>("learning");
@@ -266,18 +266,26 @@ describe("FlashcardRepository", () => {
 					mode: "study",
 					cardCount: 1,
 					duration: 5000,
+					occurredAt: new Date(2026, 2, 1, 12).getTime(),
 				},
 			],
-			activityEntries: [{ mode: "study", answerCount: 3, duration: 5000, completed: true }],
+			learningActivity: {
+				kind: "session",
+				mode: "study",
+				completion: "completed",
+				answerCount: 3,
+				durationSeconds: 5000,
+				occurredAt: new Date(2026, 2, 1, 12).getTime(),
+			},
 		});
 
 		const updatedDeck = repo.getDeck("deck-1")!;
 		expect(updatedDeck.studyCount).toBe(1);
+		expect(updatedDeck.lastStudied).toBe(new Date(2026, 2, 1, 12).toISOString());
 		expect(updatedDeck.cards[0]?.fsrsCard.state).toBe(State.Review);
 		expect(repo.getSpellingProgress()["c1"]?.correctAttempts).toBe(1);
 		expect(repo.getStudyHistory()).toHaveLength(1);
-		expect(repo.getDailyLearningActivities()).toHaveLength(1);
-		expect(repo.getDailyLearningActivities()[0]).toMatchObject({
+		expect(repo.getLearningFootprint(new Date(2026, 2, 1, 13)).today).toMatchObject({
 			answers: { study: 3, practice: 0, spelling: 0 },
 			completedAnswers: { study: 3, practice: 0, spelling: 0 },
 		});
@@ -381,8 +389,7 @@ describe("FlashcardRepository", () => {
 		expect(repo.getStudyHistory()).toHaveLength(1);
 		expect(repo.getStudyHistory()[0]?.deckName).toBe("My Deck");
 		expect(repo.getStudyHistory()[0]?.duration).toBe(6);
-		expect(repo.getDailyLearningActivities()).toHaveLength(1);
-		expect(repo.getDailyLearningActivities()[0]?.seconds["word-list"]).toBe(6);
+		expect(repo.getLearningFootprint(new Date(7_000)).today.seconds["word-list"]).toBe(6);
 	});
 
 	it("rehydrates the complete learning snapshot after external Sync", async () => {
@@ -467,7 +474,9 @@ describe("FlashcardRepository", () => {
 			expect(repo.getSettings().dailyNewCards).toBe(31);
 			expect(repo.getDeck("notes/external.md")?.studyCount).toBe(9);
 			expect(repo.getStudyHistory()).toHaveLength(1);
-			expect(repo.getDailyLearningActivities()).toHaveLength(1);
+			expect(
+				repo.getLearningFootprint(new Date(2026, 3, 1, 12)).today.completedSessions.study,
+			).toBe(1);
 			expect(repo.getSpellingProgress().synced?.correctStreak).toBe(2);
 		});
 	});
@@ -485,7 +494,48 @@ describe("FlashcardRepository", () => {
 
 		expect(repo.getRevision()).toBe(revision);
 		expect(repo.getStudyHistory()).toEqual([]);
-		expect(repo.getDailyLearningActivities()).toEqual([]);
+		expect(repo.getLearningFootprint(new Date(6_000)).todayTotalSeconds).toBe(0);
+	});
+
+	it("keeps the occurrence day fixed while retrying an authority conflict", async () => {
+		const authority = new MemoryFlashcardAuthority(DEFAULT_SETTINGS);
+		const repo = new FlashcardRepository({ authority, deckIndexCache: null });
+		await repo.load();
+		authority.conflictNextCommit = true;
+		const occurredAt = new Date(2026, 2, 1, 23, 59).getTime();
+
+		await repo.commitSessionTransition({
+			cardUpdates: [],
+			spellingAttempts: [],
+			incrementStudyCountFor: [],
+			historyEntries: [
+				{
+					deckId: "deck",
+					deckName: "Deck",
+					mode: "practice",
+					cardCount: 2,
+					duration: 30,
+					occurredAt,
+				},
+			],
+			learningActivity: {
+				kind: "session",
+				mode: "practice",
+				completion: "completed",
+				answerCount: 2,
+				durationSeconds: 30,
+				occurredAt,
+			},
+		});
+
+		expect(repo.getLearningFootprint(new Date(2026, 2, 1, 23, 59)).today).toMatchObject({
+			date: "2026-03-01",
+			answers: { practice: 2 },
+			completedSessions: { practice: 1 },
+		});
+		expect(repo.getStudyHistory()).toMatchObject([
+			{ date: "2026-03-01", timestamp: occurredAt },
+		]);
 	});
 
 	it("does not roll back a durable continuity commit when the rebuildable cache fails", async () => {

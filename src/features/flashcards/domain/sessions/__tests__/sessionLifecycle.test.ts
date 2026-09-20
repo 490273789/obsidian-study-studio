@@ -13,7 +13,7 @@ import {
 	type SessionLifecycleRepository,
 	type SessionPersistenceTransition,
 } from "../sessionLifecycle";
-import type { LearningActivityDelta } from "../../history/dailyLearningActivity";
+import type { LearningActivityRecord } from "../../history/dailyLearningActivity";
 
 const DECK_ID = "notes/deck.md";
 
@@ -43,7 +43,7 @@ function makeDeck(cards: FlashCard[]): Deck {
 class MemoryLifecycleRepository implements SessionLifecycleRepository {
 	readonly decks = new Map<string, Deck>();
 	readonly history: SessionPersistenceTransition["historyEntries"][number][] = [];
-	readonly activity: LearningActivityDelta[] = [];
+	readonly activity: LearningActivityRecord[] = [];
 	readonly spellingProgress: Record<string, SpellingCardProgress> = {};
 	commits: SessionPersistenceTransition[] = [];
 	failNextCommit = false;
@@ -134,7 +134,7 @@ class MemoryLifecycleRepository implements SessionLifecycleRepository {
 			if (deck) deck.studyCount++;
 		}
 		this.history.push(...transition.historyEntries);
-		this.activity.push(...(transition.activityEntries ?? []));
+		if (transition.learningActivity) this.activity.push(transition.learningActivity);
 	}
 }
 
@@ -231,7 +231,14 @@ describe("SessionLifecycle", () => {
 			cardUpdates: [{ cardId: "one" }],
 			incrementStudyCountFor: [DECK_ID],
 			historyEntries: [{ mode: "study", cardCount: 1, duration: 60 }],
-			activityEntries: [{ mode: "study", answerCount: 1, duration: 60, completed: true }],
+			learningActivity: {
+				kind: "session",
+				mode: "study",
+				completion: "completed",
+				answerCount: 1,
+				durationSeconds: 60,
+				occurredAt: 61_000,
+			},
 		});
 	});
 
@@ -307,7 +314,14 @@ describe("SessionLifecycle", () => {
 		if (active.kind !== "active" || active.mode !== "study") throw new Error("active");
 		await subject.lifecycle.act(active.reference, { kind: "answer", rating: 3 });
 		expect(subject.repository.activity).toEqual([
-			{ mode: "study", answerCount: 3, duration: 0, completed: true },
+			{
+				kind: "session",
+				mode: "study",
+				completion: "completed",
+				answerCount: 3,
+				durationSeconds: 0,
+				occurredAt: 1_000,
+			},
 		]);
 	});
 
@@ -355,7 +369,12 @@ describe("SessionLifecycle", () => {
 		expect(subject.repository.commits[1]).toMatchObject({
 			spellingAttempts: [{ cardId: identity, correct: true }],
 			historyEntries: [{ mode: "spelling", cardCount: 1 }],
-			activityEntries: [{ mode: "spelling", answerCount: 4, completed: true }],
+			learningActivity: {
+				kind: "session",
+				mode: "spelling",
+				completion: "completed",
+				answerCount: 4,
+			},
 		});
 		expect(subject.repository.history).toMatchObject([{ mode: "spelling", cardCount: 1 }]);
 		if (result.kind !== "result" || result.mode !== "spelling") throw new Error("result");
@@ -387,7 +406,14 @@ describe("SessionLifecycle", () => {
 		await subject.lifecycle.act(active.reference, { kind: "answer", correct: true });
 
 		expect(subject.repository.activity).toEqual([
-			{ mode: "practice", answerCount: 3, duration: 0, completed: true },
+			{
+				kind: "session",
+				mode: "practice",
+				completion: "completed",
+				answerCount: 3,
+				durationSeconds: 0,
+				occurredAt: 1_000,
+			},
 		]);
 	});
 
@@ -452,7 +478,14 @@ describe("SessionLifecycle", () => {
 			{ mode: "practice", cardCount: 1, duration: 30 },
 		]);
 		expect(subject.repository.activity).toMatchObject([
-			{ mode: "practice", answerCount: 1, duration: 30, completed: false },
+			{
+				kind: "session",
+				mode: "practice",
+				completion: "partial",
+				answerCount: 1,
+				durationSeconds: 30,
+				occurredAt: 31_000,
+			},
 		]);
 
 		await subject.lifecycle.start({
@@ -495,6 +528,38 @@ describe("SessionLifecycle", () => {
 			{ mode: "practice", cardCount: 1 },
 			{ mode: "practice", cardCount: 1 },
 		]);
+	});
+
+	it("captures one occurrence time when a partial session ends across local midnight", async () => {
+		const repository = new MemoryLifecycleRepository([makeCard("one"), makeCard("two")]);
+		const beforeMidnight = new Date(2026, 8, 17, 23, 59, 59, 900).getTime();
+		const afterMidnight = new Date(2026, 8, 18, 0, 0, 0, 100).getTime();
+		const times = [
+			new Date(2026, 8, 17, 23, 0).getTime(),
+			new Date(2026, 8, 17, 23, 0).getTime(),
+			new Date(2026, 8, 17, 23, 30).getTime(),
+			beforeMidnight,
+			afterMidnight,
+		];
+		const { lifecycle } = createSessionLifecycle(repository, {
+			now: () => times.shift() ?? afterMidnight,
+			shuffle: (identities) => [...identities],
+		});
+		await lifecycle.start({
+			mode: "practice",
+			deckId: DECK_ID,
+			direction: "normal",
+			selection: { kind: "range", startIndex: 1, endIndex: 2 },
+		});
+		let active = lifecycle.getSnapshot();
+		if (active.kind !== "active" || active.mode !== "practice") throw new Error("active");
+		await lifecycle.act(active.reference, { kind: "answer", correct: true });
+		active = lifecycle.getSnapshot();
+		if (active.kind !== "active" || active.mode !== "practice") throw new Error("active");
+		await lifecycle.act(active.reference, { kind: "exit" });
+
+		expect(repository.history[0]?.occurredAt).toBe(beforeMidnight);
+		expect(repository.activity[0]?.occurredAt).toBe(beforeMidnight);
 	});
 
 	it("reconciles a long practice queue without repeated linear membership scans", async () => {

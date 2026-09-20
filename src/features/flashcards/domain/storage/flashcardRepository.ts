@@ -24,9 +24,9 @@ import type {
 import type { SessionPersistenceTransition } from "../sessions/sessionLifecycle";
 import { appendStudyHistory, createWordListHistoryEntry } from "../history/studyHistory";
 import {
-	appendLearningActivity,
-	normalizeDailyLearningActivities,
 	type DailyLearningActivity,
+	type LearningFootprintSnapshot,
+	restoreDailyLearningActivity,
 } from "../history/dailyLearningActivity";
 import type { DeckHomeRepository } from "../decks/deckHome";
 import {
@@ -83,7 +83,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 	private scheduler: FSRSScheduler;
 	private settings: FlashcardStudySettings;
 	private studyHistory: StudyHistoryEntry[] = [];
-	private dailyLearningActivities: DailyLearningActivity[] = [];
+	private dailyLearningActivity: DailyLearningActivity = restoreDailyLearningActivity(undefined);
 	private spellingProgress: Record<string, SpellingCardProgress> = {};
 	private availableTags: string[] = [];
 	private hasAvailableTagsSnapshotValue = false;
@@ -258,8 +258,8 @@ export class FlashcardRepository implements DeckHomeRepository {
 		return [...this.studyHistory];
 	}
 
-	getDailyLearningActivities(): DailyLearningActivity[] {
-		return normalizeDailyLearningActivities(this.dailyLearningActivities);
+	getLearningFootprint(now: Date): LearningFootprintSnapshot {
+		return this.dailyLearningActivity.footprint(now);
 	}
 
 	getSpellingProgress(): Record<string, SpellingCardProgress> {
@@ -303,29 +303,22 @@ export class FlashcardRepository implements DeckHomeRepository {
 		await this.enqueueOperation(async () => {
 			await this.commitAuthority(() => {
 				const nextHistory = appendStudyHistory(this.studyHistory, [entry]);
-				const nextActivities = appendLearningActivity(
-					this.dailyLearningActivities,
-					[
-						{
-							mode: "word-list",
-							answerCount: 0,
-							duration: entry.duration,
-							completed: false,
-						},
-					],
-					new Date(entry.timestamp),
-				);
+				const nextActivity = this.dailyLearningActivity.record({
+					kind: "word-list",
+					durationSeconds: entry.duration,
+					occurredAt: entry.timestamp,
+				});
 				return {
 					learning: this.buildLearningState(
 						this.decks,
 						nextHistory,
 						this.spellingProgress,
 						this.continuity,
-						nextActivities,
+						nextActivity,
 					),
 					install: () => {
 						this.studyHistory = nextHistory;
-						this.dailyLearningActivities = nextActivities;
+						this.dailyLearningActivity = nextActivity;
 					},
 				};
 			});
@@ -346,7 +339,10 @@ export class FlashcardRepository implements DeckHomeRepository {
 				const nextDecks = cloneDecksForTransition(this.decks, transition, this.cardIndex);
 				const nextSpellingProgress = cloneSpellingProgress(this.spellingProgress);
 				updatedDeckIds = new Set<string>();
-				const now = new Date();
+				const occurredAt =
+					transition.learningActivity?.occurredAt ??
+					transition.historyEntries[0]?.occurredAt;
+				const now = occurredAt === undefined ? new Date() : new Date(occurredAt);
 				for (const update of transition.cardUpdates) {
 					const location = findCardLocation(
 						nextDecks,
@@ -380,24 +376,22 @@ export class FlashcardRepository implements DeckHomeRepository {
 					transition.historyEntries,
 					now,
 				);
-				const nextActivities = appendLearningActivity(
-					this.dailyLearningActivities,
-					transition.activityEntries ?? [],
-					now,
-				);
+				const nextActivity = transition.learningActivity
+					? this.dailyLearningActivity.record(transition.learningActivity)
+					: this.dailyLearningActivity;
 				return {
 					learning: this.buildLearningState(
 						nextDecks,
 						nextHistory,
 						nextSpellingProgress,
 						this.continuity,
-						nextActivities,
+						nextActivity,
 					),
 					install: () => {
 						this.decks = nextDecks;
 						this.studyHistory = nextHistory;
 						this.spellingProgress = nextSpellingProgress;
-						this.dailyLearningActivities = nextActivities;
+						this.dailyLearningActivity = nextActivity;
 						for (const deckId of updatedDeckIds) {
 							this.refreshDeckDueTimes(deckId, nextDecks);
 						}
@@ -540,9 +534,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 		if (cache) this.restoreDeckIndexCache(cache, learning);
 		else this.restoreLearningPlaceholders(learning);
 		this.studyHistory = [...(learning.studyHistory ?? [])];
-		this.dailyLearningActivities = normalizeDailyLearningActivities(
-			learning.dailyLearningActivities,
-		);
+		this.dailyLearningActivity = restoreDailyLearningActivity(learning.dailyLearningActivities);
 		this.spellingProgress = normalizeSpellingProgress(learning.spellingProgress);
 		this.continuity = cloneContinuityState(learning.continuity);
 		this.refreshDerivedState();
@@ -553,7 +545,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 			Object.entries(legacy.decks).map(([id, deck]) => [id, this.deserializeDeck(deck)]),
 		);
 		this.studyHistory = [...(legacy.studyHistory ?? [])];
-		this.dailyLearningActivities = [];
+		this.dailyLearningActivity = restoreDailyLearningActivity(undefined);
 		this.spellingProgress = normalizeSpellingProgress(legacy.spellingProgress);
 		this.continuity = cloneContinuityState(legacy.continuity);
 		this.restoreAvailableTags(legacy.availableTags);
@@ -610,7 +602,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 		studyHistory: StudyHistoryEntry[],
 		spellingProgress: Record<string, SpellingCardProgress>,
 		continuity: PersistedCardIdentityContinuityState = this.continuity,
-		dailyLearningActivities: readonly DailyLearningActivity[] = this.dailyLearningActivities,
+		dailyLearningActivity: DailyLearningActivity = this.dailyLearningActivity,
 	): LearningStateDocument {
 		const cards: Record<string, PersistedCardLearningState> = {};
 		const persistedDecks: Record<string, PersistedDeckLearningState> = {};
@@ -629,7 +621,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 			cards,
 			decks: persistedDecks,
 			studyHistory: [...studyHistory],
-			dailyLearningActivities: normalizeDailyLearningActivities(dailyLearningActivities),
+			dailyLearningActivities: dailyLearningActivity.toDocument(),
 			spellingProgress: { ...spellingProgress },
 			continuity: cloneContinuityState(continuity),
 		};

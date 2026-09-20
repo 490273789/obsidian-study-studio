@@ -3,7 +3,7 @@ import { formatLocalDateKey } from "./studyHistory";
 export type LearningActivityMode = "study" | "practice" | "spelling";
 export type TimedLearningActivityMode = LearningActivityMode | "word-list";
 
-export interface DailyLearningActivity {
+export interface DailyLearningActivityDay {
 	readonly date: string;
 	readonly answers: Readonly<Record<LearningActivityMode, number>>;
 	readonly seconds: Readonly<Record<TimedLearningActivityMode, number>>;
@@ -11,11 +11,28 @@ export interface DailyLearningActivity {
 	readonly completedSessions: Readonly<Record<LearningActivityMode, number>>;
 }
 
-export interface LearningActivityDelta {
-	readonly mode: TimedLearningActivityMode;
-	readonly answerCount: number;
-	readonly duration: number;
-	readonly completed: boolean;
+export type LearningActivityRecord =
+	| {
+			readonly kind: "session";
+			readonly mode: LearningActivityMode;
+			readonly completion: "completed" | "partial";
+			readonly answerCount: number;
+			readonly durationSeconds: number;
+			readonly occurredAt: number;
+	  }
+	| {
+			readonly kind: "word-list";
+			readonly durationSeconds: number;
+			readonly occurredAt: number;
+	  };
+
+export interface DailyLearningActivity {
+	/** Returns an immutable candidate; the current value remains unchanged. */
+	record(entry: LearningActivityRecord): DailyLearningActivity;
+	/** Builds today's totals, Completion day streaks, and the 53-week footprint. */
+	footprint(now: Date): LearningFootprintSnapshot;
+	/** Returns a detached, persistence-compatible document sorted by local date. */
+	toDocument(): DailyLearningActivityDay[];
 }
 
 export interface LearningFootprintDay {
@@ -24,7 +41,7 @@ export interface LearningFootprintDay {
 	readonly level: 0 | 1 | 2 | 3 | 4;
 	readonly completedAnswerCount: number;
 	readonly hasActivity: boolean;
-	readonly activity: DailyLearningActivity;
+	readonly activity: DailyLearningActivityDay;
 }
 
 export interface LearningFootprintWeek {
@@ -32,7 +49,7 @@ export interface LearningFootprintWeek {
 }
 
 export interface LearningFootprintSnapshot {
-	readonly today: DailyLearningActivity;
+	readonly today: DailyLearningActivityDay;
 	readonly todayTotalSeconds: number;
 	readonly currentStreak: number;
 	readonly bestStreak: number;
@@ -48,7 +65,7 @@ const TIMED_MODES: readonly TimedLearningActivityMode[] = [
 ];
 const HEATMAP_WEEK_COUNT = 53;
 
-export function createEmptyDailyLearningActivity(date: string): DailyLearningActivity {
+function createEmptyDailyLearningActivity(date: string): DailyLearningActivityDay {
 	return {
 		date,
 		answers: { study: 0, practice: 0, spelling: 0 },
@@ -58,33 +75,31 @@ export function createEmptyDailyLearningActivity(date: string): DailyLearningAct
 	};
 }
 
-export function appendLearningActivity(
-	activities: readonly DailyLearningActivity[],
-	deltas: readonly LearningActivityDelta[],
-	now: Date = new Date(),
-): DailyLearningActivity[] {
-	if (deltas.length === 0) return activities.map(cloneDailyLearningActivity);
-	const date = formatLocalDateKey(now);
+function recordLearningActivity(
+	activities: readonly DailyLearningActivityDay[],
+	entry: LearningActivityRecord,
+): DailyLearningActivityDay[] {
+	const date = formatLocalDateKey(new Date(entry.occurredAt));
+	if (!isValidLocalDateKey(date)) throw new RangeError("Learning activity date is out of range");
 	const map = new Map(
 		activities.map((activity) => [activity.date, cloneDailyLearningActivity(activity)]),
 	);
 	let current = map.get(date) ?? createEmptyDailyLearningActivity(date);
-
-	for (const delta of deltas) {
-		const answerCount = normalizeCount(delta.answerCount);
-		const duration = normalizeCount(delta.duration);
+	const duration = normalizeCount(entry.durationSeconds);
+	const seconds = { ...current.seconds };
+	if (entry.kind === "word-list") {
+		seconds["word-list"] += duration;
+		current = { ...current, seconds };
+	} else {
+		const answerCount = normalizeCount(entry.answerCount);
 		const answers = { ...current.answers };
-		const seconds = { ...current.seconds };
 		const completedAnswers = { ...current.completedAnswers };
 		const completedSessions = { ...current.completedSessions };
-
-		seconds[delta.mode] += duration;
-		if (delta.mode !== "word-list") {
-			answers[delta.mode] += answerCount;
-			if (delta.completed) {
-				completedAnswers[delta.mode] += answerCount;
-				completedSessions[delta.mode] += 1;
-			}
+		seconds[entry.mode] += duration;
+		answers[entry.mode] += answerCount;
+		if (entry.completion === "completed") {
+			completedAnswers[entry.mode] += answerCount;
+			completedSessions[entry.mode] += 1;
 		}
 		current = { date, answers, seconds, completedAnswers, completedSessions };
 	}
@@ -93,9 +108,9 @@ export function appendLearningActivity(
 	return Array.from(map.values()).sort((left, right) => left.date.localeCompare(right.date));
 }
 
-export function normalizeDailyLearningActivities(value: unknown): DailyLearningActivity[] {
+function normalizeDailyLearningActivities(value: unknown): DailyLearningActivityDay[] {
 	if (!Array.isArray(value)) return [];
-	const normalized = new Map<string, DailyLearningActivity>();
+	const normalized = new Map<string, DailyLearningActivityDay>();
 	for (const item of value) {
 		if (
 			!item ||
@@ -106,8 +121,8 @@ export function normalizeDailyLearningActivities(value: unknown): DailyLearningA
 			continue;
 		}
 		const date = item.date;
-		if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-		const candidate = item as Partial<DailyLearningActivity>;
+		if (!isValidLocalDateKey(date)) continue;
+		const candidate = item as Partial<DailyLearningActivityDay>;
 		normalized.set(date, {
 			date,
 			answers: normalizeModeRecord(candidate.answers, SESSION_MODES),
@@ -121,8 +136,8 @@ export function normalizeDailyLearningActivities(value: unknown): DailyLearningA
 	);
 }
 
-export function buildLearningFootprint(
-	activities: readonly DailyLearningActivity[],
+function buildLearningFootprint(
+	activities: readonly DailyLearningActivityDay[],
 	now: Date = new Date(),
 ): LearningFootprintSnapshot {
 	const normalized = normalizeDailyLearningActivities(activities);
@@ -167,7 +182,7 @@ export function buildLearningFootprint(
 }
 
 function calculateCurrentStreak(
-	byDate: ReadonlyMap<string, DailyLearningActivity>,
+	byDate: ReadonlyMap<string, DailyLearningActivityDay>,
 	now: Date,
 ): number {
 	let cursor = startOfLocalDay(now);
@@ -182,7 +197,7 @@ function calculateCurrentStreak(
 	return streak;
 }
 
-function calculateBestStreak(activities: readonly DailyLearningActivity[]): number {
+function calculateBestStreak(activities: readonly DailyLearningActivityDay[]): number {
 	const completionDates = activities.filter(isCompletionDay).map((activity) => activity.date);
 	let best = 0;
 	let current = 0;
@@ -197,7 +212,7 @@ function calculateBestStreak(activities: readonly DailyLearningActivity[]): numb
 	return best;
 }
 
-function isCompletionDay(activity: DailyLearningActivity | undefined): boolean {
+function isCompletionDay(activity: DailyLearningActivityDay | undefined): boolean {
 	return Boolean(activity && sumModes(activity.completedSessions) > 0);
 }
 
@@ -218,6 +233,21 @@ function addLocalDays(date: Date, days: number): Date {
 function parseLocalDateKey(value: string): Date {
 	const [year, month, day] = value.split("-").map(Number);
 	return new Date(year ?? 0, (month ?? 1) - 1, day ?? 1);
+}
+
+function isValidLocalDateKey(value: string): boolean {
+	const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+	if (!match) return false;
+	const year = Number(match[1]);
+	const month = Number(match[2]);
+	const day = Number(match[3]);
+	if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+	const daysInMonth = [31, isLeapYear(year) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+	return day <= (daysInMonth[month - 1] ?? 0);
+}
+
+function isLeapYear(year: number): boolean {
+	return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
 }
 
 function percentile(values: readonly number[], quantile: number): number {
@@ -252,7 +282,7 @@ function sumModes(record: Readonly<Record<string, number>>): number {
 	return Object.values(record).reduce((sum, value) => sum + value, 0);
 }
 
-function cloneDailyLearningActivity(activity: DailyLearningActivity): DailyLearningActivity {
+function cloneDailyLearningActivity(activity: DailyLearningActivityDay): DailyLearningActivityDay {
 	return {
 		date: activity.date,
 		answers: { ...activity.answers },
@@ -260,4 +290,30 @@ function cloneDailyLearningActivity(activity: DailyLearningActivity): DailyLearn
 		completedAnswers: { ...activity.completedAnswers },
 		completedSessions: { ...activity.completedSessions },
 	};
+}
+
+export function restoreDailyLearningActivity(value: unknown): DailyLearningActivity {
+	return new ImmutableDailyLearningActivity(normalizeDailyLearningActivities(value));
+}
+
+class ImmutableDailyLearningActivity implements DailyLearningActivity {
+	constructor(private readonly days: readonly DailyLearningActivityDay[]) {}
+
+	record(entry: LearningActivityRecord): DailyLearningActivity {
+		assertValidTimestamp(entry.occurredAt);
+		return new ImmutableDailyLearningActivity(recordLearningActivity(this.days, entry));
+	}
+
+	footprint(now: Date): LearningFootprintSnapshot {
+		if (!Number.isFinite(now.getTime())) throw new RangeError("Invalid footprint date");
+		return buildLearningFootprint(this.days, now);
+	}
+
+	toDocument(): DailyLearningActivityDay[] {
+		return this.days.map(cloneDailyLearningActivity);
+	}
+}
+
+function assertValidTimestamp(value: number): void {
+	if (!Number.isFinite(value)) throw new RangeError("Invalid learning activity timestamp");
 }

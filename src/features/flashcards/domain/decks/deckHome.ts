@@ -22,11 +22,7 @@ import {
 	parseMaximumInterval,
 } from "../../settings/studyMeta";
 import type { DeckPdfExportProgress, DeckPdfExportResult } from "./deckPdfExporter";
-import {
-	buildLearningFootprint,
-	type DailyLearningActivity,
-	type LearningFootprintSnapshot,
-} from "../history/dailyLearningActivity";
+import { type LearningFootprintSnapshot } from "../history/dailyLearningActivity";
 
 export interface DeckHomeTotals {
 	readonly deckCount: number;
@@ -235,7 +231,7 @@ export interface DeckHomeRepository {
 	getEffectiveStudySettings?(deckId: string): StudySettings;
 	getSpellingProgress?(): Readonly<Record<string, SpellingCardProgress>>;
 	getStudyHistory?(): StudyHistoryEntry[];
-	getDailyLearningActivities?(): DailyLearningActivity[];
+	getLearningFootprint(now: Date): LearningFootprintSnapshot;
 	recordWordListVisit?(
 		deckId: string,
 		deckName: string,
@@ -869,10 +865,7 @@ class DefaultDeckHome implements DeckHome {
 			revision,
 			decks: deckSnapshots,
 			totals,
-			learningFootprint: buildLearningFootprint(
-				this.options.repository.getDailyLearningActivities?.() ?? [],
-				now,
-			),
+			learningFootprint: this.options.repository.getLearningFootprint(now),
 			migration: migration
 				? {
 						sourceCount: migration.sourceCount,
