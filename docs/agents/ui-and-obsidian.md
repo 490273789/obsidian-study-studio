@@ -6,7 +6,8 @@ Read this guide before changing React UI, deck home behavior, the Obsidian view/
 
 - Keep React components functional and organized by layer: UI primitives live under `src/core/ui/primitives/` (with colocated `.scss` styles), business feature views live under `src/core/ui/views/` (with colocated `.scss` styles). There is no barrel: import the leaf module (`../../primitives/Button`), because a maintained re-export list drifts as soon as a feature is added.
 - Obsidian views are declared through `createReactItemView` in the owning feature module (`src/features/*.tsx`). The seam owns container, React root, `I18nProvider`, the render error boundary, theme opt-in, settings-push re-render, and teardown; a view definition only supplies `type`, `icon`, `title`, `readSettings`, `renderErrorMessage`, `render`, optional classes, and open/close hooks. Do not add an `ItemView` subclass.
-- `FlashcardApp` (`src/features/flashcards/ui/FlashcardApp.tsx`) owns navigation/setup drafts and adapts shared service snapshots. It carries initial setup options directly in `ViewState` instead of managing separate `useState` default buckets. It must not become a second authority for deck, session, identity, or pronunciation state.
+- `FlashcardApp` (`src/features/flashcards/ui/FlashcardApp.tsx`) adapts shared service snapshots and renders one view-local `FlashcardNavigation` snapshot. `FlashcardNavigation` owns routes, initial setup options in `ViewState`, and root confirmations; React retains setup/card-editor drafts. Neither is a second authority for deck, session, identity, or pronunciation state.
+- Send exit/result actions with the reference of the presented lifecycle snapshot. Navigation cancels stale exit confirmations and ignores obsolete async UI results. Confirmation responses carry their rendered ID. Mount cleanup releases confirmations and deck-home ownership without ending the shared session.
 - `DeckHome` provides read and recording facades (such as `getDeck`, `getStudyHistory`, and `recordWordListVisit`) to prevent UI components from piercing through to the low-level `FlashcardRepository`.
 - `DeckSettingsModal` is isolated from `DeckList` to manage deck-level configuration, reusing pure definitions from `src/features/flashcards/settings/studyMeta.ts`.
 - Render card Markdown with Obsidian `MarkdownRenderer`, never raw HTML injection.
@@ -20,7 +21,7 @@ Read this guide before changing React UI, deck home behavior, the Obsidian view/
 `src/features/flashcards/domain/decks/deckHome.ts` is one shared plugin-lifetime module used by every open flashcard view.
 
 - It owns home totals, per-deck study/spelling readiness, migration summary, one settings draft, refresh/migration/save activity, reorder persistence, PDF export activity, word list visit recording, deck read facades, and navigation revalidation.
-- React owns rendering, menus, modal visibility, confirmations, drag interaction, and final navigation handoff.
+- React owns rendering, menus, settings-modal visibility, and drag interaction. `FlashcardNavigation` owns root confirmations and the final navigation handoff after deck-home revalidation.
 - Mutating operations are mutually exclusive; PDF export is a separate single-flight read-only activity.
 - Do not derive competing readiness rules or raw deck-home statistics inside components.
 - Reorder through the semantic `reorder` action so the saved `deckOrder` and shared snapshot stay aligned.

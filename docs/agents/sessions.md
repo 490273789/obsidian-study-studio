@@ -8,7 +8,7 @@ Read this guide before changing study, practice, spelling, FSRS scheduling, sess
 
 - Exactly one snapshot branch exists: `idle`, `active`, or `result`.
 - Only `active` counts as an active session. A retained practice/spelling result does not block source synchronization.
-- Setup drafts and navigation remain in React. The lifecycle begins only after validated `start()` succeeds.
+- Setup drafts remain in React; view-local routes and confirmations belong to `FlashcardNavigation`. The lifecycle begins only after validated `start()` succeeds.
 - React uses immutable snapshots and revision-bound typed references. Stale callbacks must be rejected rather than applied to a newer state.
 - Lifecycle transitions make their write set durable before publishing observable state. Failure keeps the prior lifecycle and persisted data unchanged.
 - Closing the Obsidian view does not end an active session. Normal completion, explicit exit, or source-change termination does.

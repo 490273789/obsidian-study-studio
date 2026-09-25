@@ -221,7 +221,7 @@ export type SpellingSelection =
 	| { readonly kind: "study-day"; readonly dayIndex: number };
 
 /**
- * React-owned setup and ordinary navigation state. Active sessions and retained
+ * View-local setup defaults and navigation state. Active sessions and retained
  * results are represented exclusively by SessionLifecycleSnapshot.
  */
 export type ViewState =

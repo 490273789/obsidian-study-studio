@@ -1,22 +1,16 @@
 import React, {
 	useState,
 	useCallback,
-	useRef,
+	useLayoutEffect,
 	useMemo,
 	useEffect,
 	useId,
 	useSyncExternalStore,
 } from "react";
 import { App, Component, MarkdownRenderer, Notice, TFile } from "obsidian";
-import { ViewState } from "../../../core/shared/types";
 import type { ScopedWorkbenchSettings } from "../../../core/host/settingsSlices";
-import type { DeckHome, DeckHomeDestination, DeckHomeOutcome } from "../domain/decks/deckHome";
-import {
-	getRestartViewState,
-	type LifecycleOutcome,
-	type SessionLifecycle,
-	type SessionStartRequest,
-} from "../domain/sessions/sessionLifecycle";
+import type { DeckHome, DeckHomeDestination } from "../domain/decks/deckHome";
+import { type SessionLifecycle } from "../domain/sessions/sessionLifecycle";
 import {
 	getStudySetupPlan,
 	getPracticeSetupPlan,
@@ -30,7 +24,7 @@ import { StudySetup, StudySummary } from "./views/Study";
 import { StatsView } from "./views/Stats";
 import { SpellingSetup, SpellingView, SpellingSummary } from "./views/Spelling";
 import { createTranslator } from "../strings/index";
-import { ConfirmDialog, type ConfirmDialogTone } from "../../../core/ui/primitives/ConfirmDialog";
+import { ConfirmDialog } from "../../../core/ui/primitives/ConfirmDialog";
 import type { CardIdentityContinuity } from "../domain/identity/cardIdentityContinuity";
 import {
 	executeCardMutationWorkflow,
@@ -39,6 +33,7 @@ import {
 import type { PronunciationRuntime } from "../domain/pronunciation";
 import { ModalProvider } from "../../../core/ui/primitives/Modal";
 import { createAnswerPresentationTransition } from "./answerPresentationTransition";
+import { FlashcardNavigation } from "./flashcardNavigation";
 
 interface FlashcardAppProps {
 	app: App;
@@ -68,14 +63,6 @@ type CardEditorState =
 			explanation: string;
 	  };
 
-interface ConfirmationState {
-	title: string;
-	message: string;
-	confirmText: string;
-	tone: ConfirmDialogTone;
-	resolve: (confirmed: boolean) => void;
-}
-
 export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 	app,
 	modalHost,
@@ -91,7 +78,33 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 }) => {
 	const deckHomeOwnerId = useId();
 	const t = useMemo(() => createTranslator(settings.language), [settings.language]);
-	const [viewState, setViewState] = useState<ViewState>({ type: "home" });
+
+	const navigation = useMemo(
+		() =>
+			new FlashcardNavigation({
+				lifecycle: sessionLifecycle,
+				home: deckHome,
+				ownerId: deckHomeOwnerId,
+				notify: (message) => {
+					new Notice(message);
+				},
+			}),
+		[sessionLifecycle, deckHome, deckHomeOwnerId],
+	);
+	useLayoutEffect(
+		() => navigation.setLanguage(settings.language),
+		[navigation, settings.language],
+	);
+	useLayoutEffect(() => navigation.mount(), [navigation]);
+	const { view: viewState, confirmation } = useSyncExternalStore(
+		navigation.subscribe,
+		navigation.getSnapshot,
+	);
+	const handleRequestHomeMigration = navigation.requestMigration;
+	const handleStartSession = navigation.start;
+	const handleBackHome = navigation.home;
+	const handleOpenStats = navigation.stats;
+	const handleSessionComplete = navigation.home;
 	const answerPresentationTransition = useMemo(
 		() =>
 			createAnswerPresentationTransition({
@@ -115,28 +128,6 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 	);
 	const presentedLifecycleSnapshot = answerPresentationSnapshot.lifecycle;
 	const isAnswerTransitioning = answerPresentationSnapshot.activity.kind === "transitioning";
-	const subscribeLifecycle = useCallback(
-		(listener: () => void) => sessionLifecycle.subscribe(listener),
-		[sessionLifecycle],
-	);
-	const readLifecycleSnapshot = useCallback(
-		() => sessionLifecycle.getSnapshot(),
-		[sessionLifecycle],
-	);
-	const lifecycleSnapshot = useSyncExternalStore(
-		subscribeLifecycle,
-		readLifecycleSnapshot,
-		readLifecycleSnapshot,
-	);
-	useEffect(() => {
-		if (lifecycleSnapshot.kind !== "idle" || !lifecycleSnapshot.lastEnd) return;
-		new Notice(t("identity.sessionEndedBySourceChange"));
-		queueMicrotask(() => setViewState({ type: "home" }));
-		void sessionLifecycle.act(lifecycleSnapshot.reference, {
-			kind: "acknowledge-end",
-			noticeId: lifecycleSnapshot.lastEnd.id,
-		});
-	}, [lifecycleSnapshot, sessionLifecycle, t]);
 	const subscribeDeckHome = useCallback(
 		(listener: () => void) => deckHome.subscribe(listener),
 		[deckHome],
@@ -201,8 +192,6 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 	}, [modalHost]);
 
 	const [cardEditor, setCardEditor] = useState<CardEditorState | null>(null);
-	const [confirmation, setConfirmation] = useState<ConfirmationState | null>(null);
-	const confirmationRef = useRef<ConfirmationState | null>(null);
 
 	const renderMarkdown = useCallback(
 		async (content: string, el: HTMLElement, component?: Component): Promise<void> => {
@@ -210,14 +199,6 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 		},
 		[app],
 	);
-
-	const handleBackHome = useCallback(() => {
-		setViewState({ type: "home" });
-	}, []);
-
-	const handleOpenStats = useCallback(() => {
-		setViewState({ type: "stats" });
-	}, []);
 
 	const handleRecordWordListVisit = useCallback(
 		(deckId: string, startTimeMs: number, endTimeMs: number) => {
@@ -242,100 +223,12 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 		setCardEditor(null);
 	}, []);
 
-	const resolveConfirmation = useCallback((confirmed: boolean) => {
-		const current = confirmationRef.current;
-		if (!current) return;
-		confirmationRef.current = null;
-		setConfirmation(null);
-		current.resolve(confirmed);
-	}, []);
-	const handleConfirmDialogConfirm = useCallback(
-		() => resolveConfirmation(true),
-		[resolveConfirmation],
-	);
-	const handleConfirmDialogCancel = useCallback(
-		() => resolveConfirmation(false),
-		[resolveConfirmation],
-	);
-
-	const confirmAction = useCallback(
-		(
-			title: string,
-			message: string,
-			confirmText: string,
-			tone: ConfirmDialogTone = "primary",
-		): Promise<boolean> => {
-			return new Promise((resolve) => {
-				confirmationRef.current?.resolve(false);
-				const nextConfirmation = {
-					title,
-					message,
-					confirmText,
-					tone,
-					resolve,
-				};
-				confirmationRef.current = nextConfirmation;
-				setConfirmation(nextConfirmation);
-			});
-		},
-		[],
-	);
-
-	useEffect(() => {
-		return () => {
-			confirmationRef.current?.resolve(false);
-			confirmationRef.current = null;
-		};
-	}, []);
-	useEffect(() => {
-		return () => {
-			void deckHome.act({
-				kind: "release-owner",
-				ownerId: deckHomeOwnerId,
-			});
-		};
-	}, [deckHome, deckHomeOwnerId]);
-
-	const handleRequestHomeMigration = useCallback(
-		async (deckId?: string): Promise<boolean> => {
-			const request = await deckHome.act({
-				kind: "request-migration",
-				ownerId: deckHomeOwnerId,
-				deckId,
-			});
-			if (request.kind !== "confirmation-required") {
-				if (request.kind === "rejected" && request.reason === "migration-unavailable") {
-					new Notice(t(deckId ? "identity.editNeedsMigration" : "identity.noMigration"));
-				} else if (request.kind === "rejected" && request.reason === "busy") {
-					new Notice(t("identity.sourceChanging"));
-				}
-				return false;
-			}
-			const confirmed = await confirmAction(
-				t("identity.migrationTitle"),
-				request.scope.kind === "all"
-					? t("identity.migrationDescription", {
-							sources: request.sourceCount,
-							cards: request.cardCount,
-						})
-					: t("identity.editMigrationDescription", {
-							deckName: request.deckName ?? request.scope.deckId,
-							cards: request.cardCount,
-						}),
-				request.scope.kind === "all"
-					? t("identity.migrateAllNow")
-					: t("identity.migrateNow"),
-			);
-			const outcome = await deckHome.act({
-				kind: "continue",
-				ownerId: deckHomeOwnerId,
-				continuation: request.continuation,
-				confirmed,
-			});
-			return outcome.kind === "applied";
-		},
-		[confirmAction, deckHome, deckHomeOwnerId, t],
-	);
+	const handleConfirmDialogConfirm = useCallback(() => {
+		if (confirmation) navigation.respond(confirmation.id, true);
+	}, [navigation, confirmation]);
+	const handleConfirmDialogCancel = useCallback(() => {
+		if (confirmation) navigation.respond(confirmation.id, false);
+	}, [navigation, confirmation]);
 
 	const handleOpenEditCard = useCallback(
 		(deckId: string, cardId: string) => {
@@ -401,159 +294,28 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 		[cardEditor, cardIdentityContinuity, handleRequestHomeMigration, settings.language, t],
 	);
 
-	const reportLifecycleOutcome = useCallback(
-		(outcome: LifecycleOutcome, noEligibleMessage?: string): boolean => {
-			if (outcome.kind === "applied") return true;
-			if (outcome.kind === "failed") {
-				new Notice(outcome.failure.message);
-				return false;
-			}
-			if (outcome.reason === "no-eligible-cards" && noEligibleMessage) {
-				new Notice(noEligibleMessage);
-			} else if (outcome.reason === "spelling-not-enabled") {
-				new Notice(t("spelling.deckNotEnabled"));
-			} else if (outcome.reason === "stable-card-identity-required") {
-				new Notice(t("spelling.identityRequired"));
-			} else if (outcome.reason === "no-retryable-cards") {
-				new Notice(t("session.noRetryCards"));
-			}
-			return false;
-		},
-		[t],
-	);
-
-	const reportDeckHomeOutcome = useCallback(
-		(outcome: DeckHomeOutcome): boolean => {
-			if (outcome.kind === "applied" || outcome.kind === "navigation") return true;
-			if (outcome.kind !== "rejected") return false;
-			if (outcome.reason === "deck-missing") {
-				new Notice(t("notice.deckMissing"));
-			} else if (outcome.reason === "deck-empty") {
-				new Notice(t("notice.deckEmpty"));
-			} else if (outcome.reason === "spelling-not-enabled") {
-				new Notice(t("spelling.deckNotEnabled"));
-			} else if (outcome.reason === "spelling-invalid") {
-				new Notice(t("spelling.deckInvalid"));
-			} else if (outcome.reason === "stable-card-identity-required") {
-				new Notice(t("spelling.identityRequired"));
-			}
-			return false;
-		},
-		[t],
-	);
-
 	const handleHomeNavigate = useCallback(
-		(destination: DeckHomeDestination, deckId: string): void => {
-			void (async () => {
-				const outcome = await deckHome.act({
-					kind: "navigate",
-					destination,
-					deckId,
-				});
-				if (outcome.kind !== "navigation") {
-					reportDeckHomeOutcome(outcome);
-					return;
-				}
-				if (destination === "study") {
-					setViewState({ type: "study-setup", deckId });
-				} else if (destination === "practice") {
-					setViewState({ type: "practice-setup", deckId });
-				} else if (destination === "spelling") {
-					setViewState({ type: "spelling-setup", deckId });
-				} else {
-					setViewState({ type: "word-list", deckId });
-				}
-			})();
+		(destination: DeckHomeDestination, deckId: string) => {
+			void navigation.navigate(destination, deckId);
 		},
-		[deckHome, reportDeckHomeOutcome],
+		[navigation],
 	);
-
-	const handleStartSession = useCallback(
-		async (request: SessionStartRequest) => {
-			const outcome = await sessionLifecycle.start(request);
-			const fallbackNotice =
-				request.mode === "study"
-					? t("notice.todayComplete")
-					: request.mode === "spelling" && request.selection.kind === "study-day"
-						? t("spelling.dayInvalid")
-						: t("notice.deckEmpty");
-			reportLifecycleOutcome(outcome, fallbackNotice);
-		},
-		[reportLifecycleOutcome, sessionLifecycle, t],
-	);
-
-	const handleExitActive = useCallback(
-		async (mode: "study" | "practice" | "spelling") => {
-			const active = sessionLifecycle.getSnapshot();
-			if (active.kind !== "active" || active.mode !== mode) return;
-			const confirmed = await confirmAction(
-				t(`${mode}.exitTitle`),
-				t(mode === "practice" ? "practice.exitConfirm" : `${mode}.exitConfirm`),
-				t("common.confirm"),
-				"danger",
-			);
-			if (!confirmed) return;
-			const outcome = await sessionLifecycle.act(active.reference, {
-				kind: "exit",
-			});
-			if (reportLifecycleOutcome(outcome)) setViewState({ type: "home" });
-		},
-		[confirmAction, reportLifecycleOutcome, sessionLifecycle, t],
-	);
-
-	// Stable callbacks for view components so React.memo can skip re-renders
-	// when unrelated state (card editor, dialogs) changes.
-	const handleSessionComplete = useCallback(() => {
-		setViewState({ type: "home" });
-	}, []);
-	const handleExitStudy = useCallback(() => void handleExitActive("study"), [handleExitActive]);
-	const handleExitPractice = useCallback(
-		() => void handleExitActive("practice"),
-		[handleExitActive],
-	);
-	const handleExitSpelling = useCallback(
-		() => void handleExitActive("spelling"),
-		[handleExitActive],
-	);
-
-	const handleRetryIncorrect = useCallback(async () => {
-		const result = sessionLifecycle.getSnapshot();
-		if (result.kind !== "result") return;
-		const outcome = await sessionLifecycle.act(result.reference, {
-			kind: "retry-incorrect",
-		});
-		reportLifecycleOutcome(outcome);
-	}, [reportLifecycleOutcome, sessionLifecycle]);
-
-	const handleResultRestart = useCallback(async () => {
-		const result = sessionLifecycle.getSnapshot();
-		if (result.kind !== "result") return;
-		const outcome = await sessionLifecycle.act(result.reference, {
-			kind: "dismiss",
-		});
-		if (reportLifecycleOutcome(outcome)) {
-			setViewState(getRestartViewState(result.setupDefaults));
-		}
-	}, [reportLifecycleOutcome, sessionLifecycle]);
-
-	const handleResultHome = useCallback(async () => {
-		const result = sessionLifecycle.getSnapshot();
-		if (result.kind !== "result") return;
-		const outcome = await sessionLifecycle.act(result.reference, {
-			kind: "dismiss",
-		});
-		if (reportLifecycleOutcome(outcome)) setViewState({ type: "home" });
-	}, [reportLifecycleOutcome, sessionLifecycle]);
-
-	const handlePracticeRestart = useCallback(
-		() => void handleResultRestart(),
-		[handleResultRestart],
-	);
-	const handlePracticeRetryIncorrect = useCallback(
-		() => void handleRetryIncorrect(),
-		[handleRetryIncorrect],
-	);
-	const handleResultHomeClick = useCallback(() => void handleResultHome(), [handleResultHome]);
+	const handleExitActive = useCallback(() => {
+		if (presentedLifecycleSnapshot.kind === "active")
+			void navigation.exit(presentedLifecycleSnapshot.reference);
+	}, [navigation, presentedLifecycleSnapshot]);
+	const handlePracticeRestart = useCallback(() => {
+		if (presentedLifecycleSnapshot.kind === "result")
+			void navigation.result(presentedLifecycleSnapshot.reference, "restart");
+	}, [navigation, presentedLifecycleSnapshot]);
+	const handlePracticeRetryIncorrect = useCallback(() => {
+		if (presentedLifecycleSnapshot.kind === "result")
+			void navigation.result(presentedLifecycleSnapshot.reference, "retry-incorrect");
+	}, [navigation, presentedLifecycleSnapshot]);
+	const handleResultHomeClick = useCallback(() => {
+		if (presentedLifecycleSnapshot.kind === "result")
+			void navigation.result(presentedLifecycleSnapshot.reference, "home");
+	}, [navigation, presentedLifecycleSnapshot]);
 
 	// Cached derived data keyed on the store revision.
 	const studyHistory = useMemo(() => {
@@ -582,30 +344,28 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 
 	const handleDeleteCard = useCallback(
 		async (deckId: string, cardId: string) => {
-			const confirmed = await confirmAction(
-				t("cardEditor.deleteCurrentTitle"),
-				t("cardEditor.deleteConfirm"),
-				t("settings.delete"),
-				"danger",
-			);
-			if (!confirmed) return;
-
-			await executeCardMutationWorkflow(
-				cardIdentityContinuity,
+			await navigation.confirm(
 				{
-					kind: "delete",
-					deckId,
-					cardId,
+					title: t("cardEditor.deleteCurrentTitle"),
+					message: t("cardEditor.deleteConfirm"),
+					confirmText: t("settings.delete"),
+					tone: "danger",
 				},
-				{
-					language: settings.language,
-					onRequestMigration: handleRequestHomeMigration,
-					notify: (msg) => new Notice(msg),
-					t,
+				async () => {
+					await executeCardMutationWorkflow(
+						cardIdentityContinuity,
+						{ kind: "delete", deckId, cardId },
+						{
+							language: settings.language,
+							onRequestMigration: handleRequestHomeMigration,
+							notify: (msg) => new Notice(msg),
+							t,
+						},
+					);
 				},
 			);
 		},
-		[cardIdentityContinuity, confirmAction, handleRequestHomeMigration, settings.language, t],
+		[cardIdentityContinuity, navigation, handleRequestHomeMigration, settings.language, t],
 	);
 
 	const handleDeleteCardRequest = useCallback(
@@ -655,7 +415,7 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 						onComplete={handleSessionComplete}
 						onEditCard={handleOpenEditCard}
 						onDeleteCard={handleDeleteCardRequest}
-						onClose={handleExitStudy}
+						onClose={handleExitActive}
 						markdownRenderer={renderMarkdown}
 						pronunciationRuntime={pronunciationRuntime}
 						pronunciationEnabled={Boolean(
@@ -674,7 +434,7 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 						isTransitioning={isAnswerTransitioning}
 						onEditCard={handleOpenEditCard}
 						onDeleteCard={handleDeleteCardRequest}
-						onClose={handleExitPractice}
+						onClose={handleExitActive}
 						markdownRenderer={renderMarkdown}
 						pronunciationRuntime={pronunciationRuntime}
 						pronunciationEnabled={Boolean(
@@ -693,7 +453,7 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 					feedback={answerPresentationSnapshot.spellingFeedback}
 					onEditCard={handleOpenEditCard}
 					onDeleteCard={handleDeleteCardRequest}
-					onClose={handleExitSpelling}
+					onClose={handleExitActive}
 					markdownRenderer={renderMarkdown}
 					pronunciationRuntime={pronunciationRuntime}
 				/>
@@ -839,6 +599,7 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 			)}
 			{confirmation && (
 				<ConfirmDialog
+					key={confirmation.id}
 					title={confirmation.title}
 					message={confirmation.message}
 					confirmText={confirmation.confirmText}
