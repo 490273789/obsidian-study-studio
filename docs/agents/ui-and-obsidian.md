@@ -38,11 +38,12 @@ releases all observers and frames and supports setup/cleanup/setup replay.
 
 ## Settings compatibility
 
-`src/core/settings/presentation.ts` is the shared renderer-neutral settings presentation seam. Each registered `WorkbenchSettingsSection` builds one immutable snapshot with the keyed composer and exposes actions only as opaque references. `src/core/host/settingsTab.ts` is the production Obsidian adapter; it renders the snapshot and sends interactions back through `invoke`.
+`src/core/settings/presentation.ts` is the shared renderer-neutral settings presentation seam. Each registered `WorkbenchSettingsSection` builds one immutable snapshot with the keyed composer and exposes actions only as opaque references. `src/core/host/settingsTab.ts` owns section navigation, scroll positions, and presentation generations. It delegates groups, rows, controls, and their `invoke` bindings to `renderSettingsControls` in `src/core/host/settingsControlRenderer.ts`.
 
 - The tab renders through the imperative `display()` → `renderSettings()` path only; keep that single path working.
 - `refreshDefinitions()` always creates a new presentation generation through `renderSettings()`, installs it atomically, and disposes the old generation so detached controls cannot mutate current state.
 - Feature and host settings editors retain drafts, persistence, notices, subscriptions, and activate/hide lifecycle. Do not move those effects into the presentation module.
+- Keep all control kinds in the renderer's exhaustive dispatch, including primitive controls nested in cards. Rich descriptions use the target container's document. Renderer tests exercise real presentation actions through Obsidian/DOM test doubles; tab tests cover generation replacement and page lifecycle.
 - Add common renderer-neutral recipes to the closed composer catalog only when multiple settings sections need them. Keep feature-specific shapes out of the shared module.
 - Preserve async tag discovery/refresh and runtime subscription cleanup; both live behind the section assembled in `src/features/flashcards/feature.tsx`.
 - Pronunciation controls derive values and busy/cache state from `PronunciationRuntime`; do not duplicate transient state in the settings adapter.
