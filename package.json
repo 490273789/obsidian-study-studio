@@ -41,13 +41,13 @@
 		"ts-fsrs": "^5.4.2"
 	},
 	"devDependencies": {
-		"@types/node": "^26.6.1",
+		"@types/node": "^26.6.2",
 		"@types/react": "^19.3.0",
 		"@types/react-dom": "^19.3.0",
-		"oxfmt": "^0.68.0",
-		"oxlint": "^1.83.0",
+		"oxfmt": "^0.70.0",
+		"oxlint": "^1.85.0",
 		"oxlint-tsgolint": "^7.0.2002",
-		"sass": "^1.104.1",
+		"sass": "^1.105.0",
 		"tslib": "2.8.1",
 		"typescript": "^7.0.2",
 		"vite": "^8.3.0",
