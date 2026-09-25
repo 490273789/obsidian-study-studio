@@ -6,7 +6,6 @@ import { FileSystemAdapter, Platform, type App, type Plugin } from "obsidian";
 import {
 	CompiledPackageError,
 	createCompiledPackagePublisher,
-	type CompiledPackagePublication,
 	type CompiledPackagePublisher,
 } from "./compiled-package";
 import type {
@@ -17,6 +16,7 @@ import type {
 	LocalDictionaryStorageRemoval,
 } from "./local-storage";
 import { LocalDictionaryStorageError } from "./local-storage";
+import { DictionaryImportRecovery } from "./import-recovery";
 
 function dictionaryStorageRoot(app: App, plugin: Plugin): string {
 	if (!Platform.isDesktopApp || !(app.vault.adapter instanceof FileSystemAdapter)) {
@@ -98,27 +98,27 @@ export class LocalDictionaryImporter implements LocalDictionaryStorageAdapter {
 		signal?.addEventListener("abort", cancel, { once: true });
 		if (signal?.aborted) controller.abort();
 		this.controllers.add(controller);
-		const completed: Array<{
-			directory: string;
-			publication: CompiledPackagePublication;
-		}> = [];
-		const packages: Array<LocalDictionaryStorageImportTransaction["packages"][number]> = [];
-		try {
-			for (const item of imports) {
-				controller.signal.throwIfAborted();
-				const destination = `${root}/${item.id}`;
+		const recovery = new DictionaryImportRecovery({
+			mkdir: async (directory) => {
 				try {
-					// oxlint-disable-next-line no-await-in-loop -- exclusive creation reserves the stable ID.
-					await mkdir(destination);
+					await mkdir(directory);
 				} catch (error) {
 					if (hasErrorCode(error, "EEXIST") || hasErrorCode(error, "ENOTEMPTY")) {
 						throw new LocalDictionaryStorageError("collision");
 					}
 					throw storageError(error);
 				}
-				try {
-					// oxlint-disable-next-line no-await-in-loop -- each package publication is isolated.
-					const publication = await this.packagePublisher.publish(
+			},
+			rm,
+		});
+		const packages: Array<LocalDictionaryStorageImportTransaction["packages"][number]> = [];
+		try {
+			for (const item of imports) {
+				controller.signal.throwIfAborted();
+				const destination = `${root}/${item.id}`;
+				// oxlint-disable-next-line no-await-in-loop -- reserve and publish each dictionary before advancing.
+				const publication = await recovery.stage(destination, () =>
+					this.packagePublisher.publish(
 						{
 							dictionaryDirectory: destination,
 							files: item.files,
@@ -126,59 +126,27 @@ export class LocalDictionaryImporter implements LocalDictionaryStorageAdapter {
 						},
 						onProgress,
 						controller.signal,
-					);
-					completed.push({ directory: destination, publication });
-					packages.push({ compiled: publication.metadata, id: item.id });
-				} catch (error) {
-					try {
-						// oxlint-disable-next-line no-await-in-loop -- staging cleanup completes before propagation.
-						await rm(destination, { force: true, recursive: true });
-					} catch {
-						throw new LocalDictionaryStorageError("recovery-incomplete");
-					}
-					throw error;
-				}
-			}
-		} catch (error) {
-			try {
-				await Promise.all(
-					completed.map(async ({ directory, publication }) => {
-						await publication.rollback();
-						await rm(directory, { force: true, recursive: true });
-					}),
+					),
 				);
-			} catch {
-				throw new LocalDictionaryStorageError("recovery-incomplete");
+				packages.push({ compiled: publication.metadata, id: item.id });
 			}
+			controller.signal.throwIfAborted();
+		} catch (error) {
+			await recovery.rollback();
+			const failure = storageError(error);
+			// An abort must never hide failed recovery, even when it originated in the publisher.
+			if (failure.code === "recovery-incomplete") throw failure;
 			if (controller.signal.aborted) throw new LocalDictionaryStorageError("cancelled");
-			throw storageError(error);
+			throw failure;
 		} finally {
 			signal?.removeEventListener("abort", cancel);
 			this.controllers.delete(controller);
 		}
 
-		let state: "staged" | "committed" | "rolled-back" = "staged";
 		return {
-			commit: () => {
-				if (state !== "staged") return;
-				for (const { publication } of completed) publication.commit();
-				state = "committed";
-			},
+			commit: () => recovery.commit(),
 			packages,
-			rollback: async () => {
-				if (state !== "staged") return;
-				try {
-					await Promise.all(
-						completed.map(async ({ directory, publication }) => {
-							await publication.rollback();
-							await rm(directory, { force: true, recursive: true });
-						}),
-					);
-					state = "rolled-back";
-				} catch {
-					throw new LocalDictionaryStorageError("recovery-incomplete");
-				}
-			},
+			rollback: () => recovery.rollback(),
 		};
 	}
 
