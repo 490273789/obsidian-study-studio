@@ -361,12 +361,27 @@
 	border-radius: var(--fc-radius-sm);
 }
 
+button.addCardBtn,
 .addCardBtn {
-	border-style: dashed;
+	border: 1px dashed color-mix(in srgb, var(--fc-primary) 60%, transparent);
 	width: 100%;
 	min-height: var(--fc-control-md);
 	margin: 0 auto;
 	flex: 0 0 auto;
+
+	&:hover:not(:disabled),
+	&:focus-visible {
+		border-color: var(--fc-primary);
+	}
+
+	:global(.theme-light) & {
+		border-color: var(--fc-primary);
+
+		&:hover:not(:disabled),
+		&:focus-visible {
+			border-color: var(--fc-primary-hover);
+		}
+	}
 }
 
 /* ── Migration Card ──────────────────────────────────────────────────────── */

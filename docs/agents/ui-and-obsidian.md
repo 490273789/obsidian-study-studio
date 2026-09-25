@@ -25,6 +25,16 @@ Read this guide before changing React UI, deck home behavior, the Obsidian view/
 - Do not derive competing readiness rules or raw deck-home statistics inside components.
 - Reorder through the semantic `reorder` action so the saved `deckOrder` and shared snapshot stay aligned.
 
+## Word list
+
+`WordListViewport` in `src/features/flashcards/ui/views/WordList/` owns one view's
+measurements, frame batching, width/content invalidation, and visible-row snapshot.
+React connects elements, supplies the displayed items, and renders the snapshot;
+masking, shuffling, explanations, and visit recording remain view interactions.
+Keep geometry internal to this module and test observable snapshots through its
+interface. Its internal DOM adapter uses the element's owning window; mount cleanup
+releases all observers and frames and supports setup/cleanup/setup replay.
+
 ## Settings compatibility
 
 `src/core/settings/presentation.ts` is the shared renderer-neutral settings presentation seam. Each registered `WorkbenchSettingsSection` builds one immutable snapshot with the keyed composer and exposes actions only as opaque references. `src/core/host/settingsTab.ts` is the production Obsidian adapter; it renders the snapshot and sends interactions back through `invoke`.

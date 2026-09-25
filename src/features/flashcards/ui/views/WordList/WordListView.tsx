@@ -7,16 +7,13 @@ import React, {
 	useMemo,
 	useRef,
 	useState,
+	useSyncExternalStore,
 } from "react";
 import { BookOpenText, X } from "lucide-react";
 import type { Deck } from "../../../../../core/shared/types";
 import { shuffleArray } from "../../../../../core/shared/utils";
 import {
-	buildVirtualWordRows,
 	buildWordListItems,
-	DEFAULT_WORD_ROW_GAP,
-	DEFAULT_WORD_ROW_HEIGHT,
-	selectVisibleWordRows,
 	type VisibleWordColumnKey,
 	VISIBLE_WORD_COLUMNS,
 	type WordListItem,
@@ -27,6 +24,7 @@ import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
 import { ModalSurface } from "../../../../../core/ui/primitives/Modal";
 import { useFlashcardI18n } from "../../../strings/context";
 import styles from "./WordList.module.scss";
+import { WordListViewport } from "./wordListViewport";
 
 const COLUMN_STYLES = {
 	front: {
@@ -202,8 +200,6 @@ export const WordListView = React.memo(function WordListView({
 			onRecordVisitRef.current?.(startTime, Date.now());
 		};
 	}, []);
-	const scrollRef = useRef<HTMLDivElement | null>(null);
-	const listRef = useRef<HTMLDivElement | null>(null);
 	const sourceItems = useMemo(() => buildWordListItems(deck.cards), [deck.cards]);
 	const [maskedColumns, setMaskedColumns] = useState<Set<VisibleWordColumnKey>>(new Set());
 	const [shuffledItems, setShuffledItems] = useState<WordListItem[] | null>(null);
@@ -214,35 +210,12 @@ export const WordListView = React.memo(function WordListView({
 		back: new Set(),
 	});
 	const [activeExplanationItem, setActiveExplanationItem] = useState<WordListItem | null>(null);
-	const [rowHeights, setRowHeights] = useState<Map<string, number>>(new Map());
-	const [rowGap, setRowGap] = useState(DEFAULT_WORD_ROW_GAP);
-	const [viewport, setViewport] = useState({
-		scrollTop: 0,
-		height: DEFAULT_WORD_ROW_HEIGHT * 10,
-		width: 0,
-	});
-	// Batched row-height measurements: refs accumulate per-frame measurements
-	// and a single requestAnimationFrame applies them together.
-	const pendingRowHeightsRef = useRef<Map<string, number> | null>(null);
-	const rowHeightsFrameRef = useRef<number | null>(null);
-	const rowResizeObserverRef = useRef<ResizeObserver | null>(null);
-	const rowElementsRef = useRef<Map<string, HTMLDivElement>>(new Map());
-	const rowIdsByElementRef = useRef<WeakMap<Element, string>>(new WeakMap());
-
 	const isShuffled = shuffledItems !== null;
 	const items = shuffledItems ?? sourceItems;
-	const virtualRows = useMemo(
-		() => buildVirtualWordRows(items, rowHeights, rowGap),
-		[items, rowGap, rowHeights],
-	);
-	const visibleRows = useMemo(() => {
-		return selectVisibleWordRows({
-			rows: virtualRows.rows,
-			scrollTop: viewport.scrollTop,
-			viewportHeight: viewport.height,
-			rowGap,
-		});
-	}, [rowGap, viewport.height, viewport.scrollTop, virtualRows.rows]);
+	const [viewport] = useState(() => new WordListViewport(items));
+	useLayoutEffect(() => viewport.setItems(items), [items, viewport]);
+	useLayoutEffect(() => viewport.mount(), [viewport]);
+	const virtualRows = useSyncExternalStore(viewport.subscribe, viewport.getSnapshot);
 
 	useEffect(() => {
 		queueMicrotask(() => {
@@ -251,7 +224,6 @@ export const WordListView = React.memo(function WordListView({
 				front: new Set(),
 				back: new Set(),
 			});
-			setRowHeights(new Map());
 			setActiveExplanationItem(null);
 		});
 	}, [sourceItems]);
@@ -303,136 +275,6 @@ export const WordListView = React.memo(function WordListView({
 		setActiveExplanationItem(null);
 	}, []);
 
-	const queueRowHeight = useCallback((itemId: string, measuredHeight: number) => {
-		if (measuredHeight <= 0) return;
-
-		// Batch measurements made within one animation frame into a single
-		// setState, so scrolling through a large list does not trigger an
-		// O(N) virtual-rows recompute per measured row.
-		if (!pendingRowHeightsRef.current) {
-			pendingRowHeightsRef.current = new Map();
-		}
-		pendingRowHeightsRef.current.set(itemId, measuredHeight);
-		if (rowHeightsFrameRef.current !== null) return;
-		rowHeightsFrameRef.current = window.requestAnimationFrame(() => {
-			rowHeightsFrameRef.current = null;
-			const pending = pendingRowHeightsRef.current;
-			pendingRowHeightsRef.current = null;
-			if (!pending || pending.size === 0) return;
-			setRowHeights((prev) => {
-				let next: Map<string, number> | null = null;
-				for (const [pendingId, pendingHeight] of pending) {
-					const currentHeight = prev.get(pendingId);
-					if (
-						currentHeight !== undefined &&
-						Math.abs(currentHeight - pendingHeight) <= 1
-					) {
-						continue;
-					}
-					if (!next) next = new Map(prev);
-					next.set(pendingId, pendingHeight);
-				}
-				return next ?? prev;
-			});
-		});
-	}, []);
-
-	const handleMeasureRow = useCallback(
-		(itemId: string, element: HTMLDivElement | null) => {
-			const previousElement = rowElementsRef.current.get(itemId);
-			if (previousElement && previousElement !== element) {
-				rowResizeObserverRef.current?.unobserve(previousElement);
-			}
-			if (!element) {
-				rowElementsRef.current.delete(itemId);
-				return;
-			}
-
-			rowElementsRef.current.set(itemId, element);
-			rowIdsByElementRef.current.set(element, itemId);
-			rowResizeObserverRef.current?.observe(element);
-			queueRowHeight(itemId, element.getBoundingClientRect().height);
-		},
-		[queueRowHeight],
-	);
-
-	useLayoutEffect(() => {
-		const scrollEl = scrollRef.current;
-		if (!scrollEl) return;
-
-		let frameId = 0;
-		const updateViewport = () => {
-			if (frameId !== 0) return;
-			frameId = window.requestAnimationFrame(() => {
-				frameId = 0;
-				setViewport((prev) => {
-					const next = {
-						scrollTop: scrollEl.scrollTop,
-						height: scrollEl.clientHeight,
-						width: scrollEl.clientWidth,
-					};
-					if (
-						prev.scrollTop === next.scrollTop &&
-						prev.height === next.height &&
-						prev.width === next.width
-					) {
-						return prev;
-					}
-					return next;
-				});
-
-				const listEl = listRef.current;
-				if (!listEl) return;
-				const parsedGap = Number.parseFloat(window.getComputedStyle(listEl).gap);
-				if (!Number.isFinite(parsedGap)) return;
-				setRowGap((prev) => (Math.abs(prev - parsedGap) > 0.5 ? parsedGap : prev));
-			});
-		};
-
-		updateViewport();
-		scrollEl.addEventListener("scroll", updateViewport, { passive: true });
-
-		const viewportResizeObserver = new ResizeObserver(updateViewport);
-		viewportResizeObserver.observe(scrollEl);
-
-		const rowResizeObserver = new ResizeObserver((entries) => {
-			for (const entry of entries) {
-				const itemId = rowIdsByElementRef.current.get(entry.target);
-				if (itemId) {
-					queueRowHeight(itemId, entry.target.getBoundingClientRect().height);
-				}
-			}
-		});
-		rowResizeObserverRef.current = rowResizeObserver;
-		for (const element of rowElementsRef.current.values()) {
-			rowResizeObserver.observe(element);
-		}
-
-		return () => {
-			if (frameId !== 0) {
-				window.cancelAnimationFrame(frameId);
-			}
-			scrollEl.removeEventListener("scroll", updateViewport);
-			viewportResizeObserver.disconnect();
-			rowResizeObserver.disconnect();
-			rowResizeObserverRef.current = null;
-		};
-	}, [queueRowHeight]);
-
-	useEffect(() => {
-		queueMicrotask(() => setRowHeights(new Map()));
-	}, [viewport.width]);
-
-	useEffect(() => {
-		return () => {
-			if (rowHeightsFrameRef.current !== null) {
-				window.cancelAnimationFrame(rowHeightsFrameRef.current);
-				rowHeightsFrameRef.current = null;
-			}
-			pendingRowHeightsRef.current = null;
-		};
-	}, []);
-
 	return (
 		<div className="fc-page fc-page--fill">
 			<FlashcardHeader
@@ -477,16 +319,16 @@ export const WordListView = React.memo(function WordListView({
 				})}
 			</div>
 
-			<div className={styles.scroll} ref={scrollRef}>
+			<div className={styles.scroll} ref={viewport.refs.scroll}>
 				<div
-					ref={listRef}
+					ref={viewport.refs.list}
 					className={styles.virtual}
 					style={{ height: virtualRows.totalHeight }}
 				>
-					{visibleRows.map((row) => (
+					{virtualRows.rows.map((row) => (
 						<div
 							key={row.item.id}
-							ref={(element) => handleMeasureRow(row.item.id, element)}
+							ref={viewport.refs.row(row.item.id)}
 							className={styles.rowFrame}
 							style={{
 								transform: `translateY(${row.top}px)`,
