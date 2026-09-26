@@ -5,11 +5,16 @@ import type {
 } from "./types";
 import { PRONUNCIATION_CACHE_LIMIT_BYTES } from "./types";
 
-interface AudioCacheRecord extends CachedPronunciationAudio {
+interface AudioCacheMetadata {
 	key: string;
 	size: number;
 	lastAccess: number;
 }
+
+interface AudioCacheRecord extends CachedPronunciationAudio, AudioCacheMetadata {}
+
+const AUDIO_CACHE_DATABASE_VERSION = 2;
+const AUDIO_CACHE_METADATA_INDEX = "lastAccessAndSize";
 
 export class MemoryPronunciationAudioCache implements PronunciationAudioCache {
 	private records = new Map<string, AudioCacheRecord>();
@@ -176,13 +181,36 @@ export class IndexedDbPronunciationAudioCache implements PronunciationAudioCache
 		if (this.databasePromise) return this.databasePromise;
 		if (!this.indexedDb) return Promise.reject(new Error("IndexedDB is unavailable"));
 		this.databasePromise = new Promise((resolve, reject) => {
-			const request = this.indexedDb!.open(this.databaseName, 1);
+			const request = this.indexedDb!.open(this.databaseName, AUDIO_CACHE_DATABASE_VERSION);
+			let blocked = false;
 			request.onupgradeneeded = () => {
 				const database = request.result;
-				if (database.objectStoreNames.contains("audio")) return;
-				database.createObjectStore("audio", { keyPath: "key" });
+				const store = database.objectStoreNames.contains("audio")
+					? request.transaction!.objectStore("audio")
+					: database.createObjectStore("audio", { keyPath: "key" });
+				// IndexedDB populates the index for existing records without sending
+				// their audio buffers to JavaScript. Preserve v1 offline audio.
+				if (!store.indexNames.contains(AUDIO_CACHE_METADATA_INDEX)) {
+					store.createIndex(AUDIO_CACHE_METADATA_INDEX, ["lastAccess", "size"]);
+				}
 			};
-			request.onsuccess = () => resolve(request.result);
+			request.onblocked = () => {
+				blocked = true;
+				reject(new Error("Audio cache upgrade is blocked"));
+			};
+			request.onsuccess = () => {
+				const database = request.result;
+				if (blocked) {
+					database.close();
+					return;
+				}
+				database.onversionchange = () => {
+					database.close();
+					this.databasePromise = null;
+					this.usageSynced = false;
+				};
+				resolve(database);
+			};
 			request.onerror = () =>
 				reject(request.error ?? new Error("Failed to open audio cache"));
 		});
@@ -212,7 +240,7 @@ export class IndexedDbPronunciationAudioCache implements PronunciationAudioCache
 
 	private async ensureUsageSynced(database: IDBDatabase): Promise<void> {
 		if (this.usageSynced) return;
-		const records = await getAllRecords(database);
+		const records = await getAllMetadata(database);
 		this.memoryUsageBytes = records.reduce((total, record) => total + record.size, 0);
 		this.memoryRecordSizes = new Map(records.map((record) => [record.key, record.size]));
 		this.usageSynced = true;
@@ -221,7 +249,7 @@ export class IndexedDbPronunciationAudioCache implements PronunciationAudioCache
 	private async evict(database: IDBDatabase): Promise<void> {
 		// Re-sync usage from the store so eviction matches what is really
 		// persisted even if the in-memory accounting drifted.
-		const records = await getAllRecords(database);
+		const records = await getAllMetadata(database);
 		let usage = records.reduce((total, record) => total + record.size, 0);
 		this.memoryRecordSizes = new Map(records.map((record) => [record.key, record.size]));
 		if (usage <= this.limitBytes) {
@@ -277,11 +305,27 @@ function getRecord(database: IDBDatabase, key: string): Promise<AudioCacheRecord
 	});
 }
 
-function getAllRecords(database: IDBDatabase): Promise<AudioCacheRecord[]> {
+function getAllMetadata(database: IDBDatabase): Promise<AudioCacheMetadata[]> {
 	return new Promise((resolve, reject) => {
-		const request = database.transaction("audio", "readonly").objectStore("audio").getAll();
-		request.onsuccess = () => resolve(request.result as AudioCacheRecord[]);
+		const records: AudioCacheMetadata[] = [];
+		const transaction = database.transaction("audio", "readonly");
+		const request = transaction
+			.objectStore("audio")
+			.index(AUDIO_CACHE_METADATA_INDEX)
+			.openKeyCursor();
+		request.onsuccess = () => {
+			const cursor = request.result;
+			if (!cursor) {
+				resolve(records);
+				return;
+			}
+			const [lastAccess, size] = cursor.key as [number, number];
+			records.push({ key: cursor.primaryKey as string, size, lastAccess });
+			cursor.continue();
+		};
 		request.onerror = () => reject(request.error ?? new Error("Failed to list audio cache"));
+		transaction.onabort = () =>
+			reject(transaction.error ?? new Error("Failed to list audio cache"));
 	});
 }
 
