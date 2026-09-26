@@ -12,6 +12,7 @@ Read this guide before changing anything under `src/features/dictionary/domain/*
 - Every untrusted definition, HTML, CSS, script, URL, audio, image, resource path, and `dic://`/`eures://` navigation goes through `sandbox-document/`. Keep the opaque-origin iframe without `allow-same-origin`, the versioned postMessage protocol, the random document identity, and the `event.source` checks.
 - The sandbox host owns navigation and seeds the current theme plus `color-scheme` into `srcdoc` before each entry loads. Theme changes update the existing document over the validated message channel; do not rely on a post-load message for the initial theme (it causes a white flash in dark mode).
 - Keep lazy worker/WASM initialization, bounded response and memory sizes, checksum verification, path containment, decompression limits, concurrent-read coalescing, and LRU budgets.
+- `CompiledDictionaryResources` owns a compiled source's resource requests, URL/text cache, bounded local-miss cache, and URL release. Share in-flight reads across consumers; remote results remain in-flight only and failures remain retryable. Closing the source closes this module, rejects pending consumers, and prevents late reads from creating resources or posting back to the terminated worker. Keep sandbox validation and compiled-package verification in their existing modules.
 
 ## Compiled package architecture
 
