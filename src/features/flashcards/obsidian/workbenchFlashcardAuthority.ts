@@ -72,15 +72,26 @@ export class WorkbenchFlashcardAuthority implements FlashcardAuthority {
 	): Promise<{ readonly version: number }> {
 		if (commit.discardLegacy) await this.backupLegacyDocument();
 		try {
-			await this.options.store.mutateDocument(
-				(document) => {
-					document.learning = structuredClone(commit.learning);
-					if (commit.discardLegacy) {
+			if (commit.discardLegacy) {
+				await this.options.store.mutateDocument(
+					(document) => {
+						document.learning = structuredClone(commit.learning);
 						for (const key of LEGACY_FLASHCARD_KEYS) delete document[key];
-					}
-				},
-				{ expectedRevision: expectedVersion, source: this.source },
-			);
+					},
+					{ expectedRevision: expectedVersion, source: this.source },
+				);
+			} else {
+				// Replace only learning: cloning the old document would copy the
+				// learning state we are about to discard. Keep the new state isolated.
+				await this.options.store.savePartition(
+					"learning",
+					structuredClone(commit.learning),
+					{
+						expectedRevision: expectedVersion,
+						source: this.source,
+					},
+				);
+			}
 		} catch (error) {
 			if (error instanceof WorkbenchStoreConflictError) {
 				throw new FlashcardAuthorityConflictError(

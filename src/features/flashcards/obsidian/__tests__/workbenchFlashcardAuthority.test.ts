@@ -4,7 +4,10 @@ vi.mock("obsidian", () => ({ normalizePath: (value: string) => value }));
 
 import { DEFAULT_SETTINGS } from "../../../../core/host/settingsSlices";
 import { WorkbenchStore, type StorageBackend } from "../../../../core/storage/workbenchStore";
-import type { LearningStateDocument } from "../../domain/storage/persistenceTypes";
+import {
+	FlashcardAuthorityConflictError,
+	type LearningStateDocument,
+} from "../../domain/storage/persistenceTypes";
 import { WorkbenchFlashcardAuthority } from "../workbenchFlashcardAuthority";
 
 function createBackend(data: unknown): StorageBackend & { data: unknown } {
@@ -30,6 +33,103 @@ function emptyLearning(): LearningStateDocument {
 }
 
 describe("WorkbenchFlashcardAuthority", () => {
+	it("isolates replacement learning and preserves other partitions while notifying peer authorities", async () => {
+		const backend = createBackend({
+			schemaVersion: 2,
+			settings: { ...DEFAULT_SETTINGS, dailyNewCards: 27 },
+			learning: emptyLearning(),
+			other: { nested: ["preserved"] },
+		});
+		const store = new WorkbenchStore(backend);
+		const authority = new WorkbenchFlashcardAuthority({ store });
+		const peer = new WorkbenchFlashcardAuthority({ store });
+		const ownChange = vi.fn();
+		const peerChange = vi.fn();
+		authority.subscribe(ownChange);
+		peer.subscribe(peerChange);
+		const initial = await authority.read();
+		const learning = emptyLearning();
+		learning.decks["deck-1"] = { studyCount: 1, lastStudied: null };
+		const expected = structuredClone(learning);
+
+		const result = await authority.commit(initial.version, { learning });
+		learning.decks["deck-1"]!.studyCount = 99;
+		learning.continuity.issues.length = 10;
+
+		expect(store.getPartition("learning")).toEqual(expected);
+		expect(store.getPartition("other")).toEqual({ nested: ["preserved"] });
+		expect(store.getSettings().dailyNewCards).toBe(27);
+		expect(backend.data).toMatchObject({
+			learning: expected,
+			other: { nested: ["preserved"] },
+		});
+		expect(result.version).toBe(initial.version + 1);
+		expect(ownChange).not.toHaveBeenCalled();
+		expect(peerChange).toHaveBeenCalledExactlyOnceWith({
+			kind: "learning",
+			version: result.version,
+		});
+		authority.dispose();
+		peer.dispose();
+	});
+
+	it.each([false, true])(
+		"preserves committed data and revisions after write failure (migration: %s)",
+		async (discardLegacy) => {
+			const backend = createBackend({
+				schemaVersion: 2,
+				settings: DEFAULT_SETTINGS,
+				learning: emptyLearning(),
+				decks: { legacy: { name: "Retained on failure" } },
+			});
+			const store = new WorkbenchStore(backend);
+			const authority = new WorkbenchFlashcardAuthority({ store });
+			const initial = await authority.read();
+			const before = structuredClone(store.getRawDocument());
+			const changed = vi.fn();
+			store.subscribe(changed);
+			vi.spyOn(backend, "saveData").mockRejectedValueOnce(new Error("disk full"));
+			const learning = emptyLearning();
+			learning.decks["deck-1"] = { studyCount: 1, lastStudied: null };
+
+			await expect(
+				authority.commit(initial.version, { learning, discardLegacy }),
+			).rejects.toThrow("disk full");
+			expect(store.getRawDocument()).toEqual(before);
+			expect(backend.data).toEqual(before);
+			expect(store.getRevision()).toBe(initial.version);
+			expect(changed).not.toHaveBeenCalled();
+			await expect(
+				authority.commit(initial.version, { learning, discardLegacy }),
+			).resolves.toEqual({ version: initial.version + 1 });
+			authority.dispose();
+		},
+	);
+
+	it("rejects a learning replacement queued behind a newer settings commit", async () => {
+		const backend = createBackend({
+			schemaVersion: 2,
+			settings: DEFAULT_SETTINGS,
+			learning: emptyLearning(),
+		});
+		const store = new WorkbenchStore(backend);
+		const authority = new WorkbenchFlashcardAuthority({ store });
+		const initial = await authority.read();
+		const save = vi.spyOn(backend, "saveData");
+		const settingsWrite = store.saveSettings({ ...store.getSettings(), dailyNewCards: 42 });
+		const learning = emptyLearning();
+		learning.decks["deck-1"] = { studyCount: 1, lastStudied: null };
+		const result = authority.commit(initial.version, { learning });
+
+		await expect(result).rejects.toBeInstanceOf(FlashcardAuthorityConflictError);
+		await settingsWrite;
+		expect(store.getSettings().dailyNewCards).toBe(42);
+		expect(store.getPartition("learning")).toEqual(emptyLearning());
+		expect(store.getRevision()).toBe(initial.version + 1);
+		expect(save).toHaveBeenCalledTimes(1);
+		authority.dispose();
+	});
+
 	it("hides its own commit echo but forwards external learning replacements", async () => {
 		const backend = createBackend({
 			schemaVersion: 2,
