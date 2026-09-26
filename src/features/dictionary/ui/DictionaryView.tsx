@@ -625,7 +625,9 @@ export function DictionaryView({
 													],
 												)}
 											>
-												<h4>{section.title}</h4>
+												{source.kind !== "local" && (
+													<h4>{section.title}</h4>
+												)}
 												<SectionContent
 													content={section.content}
 													word={word}
