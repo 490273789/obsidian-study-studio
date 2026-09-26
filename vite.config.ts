@@ -29,7 +29,7 @@ function isExternal(id: string): boolean {
 function copyBundleToPluginRoot() {
 	return {
 		name: "copy-bundle-to-plugin-root",
-		closeBundle: async () => {
+		writeBundle: async () => {
 			await Promise.all([
 				copyFile(resolve(outDir, bundledFileName), resolve(projectRoot, bundledFileName)),
 				copyFile(

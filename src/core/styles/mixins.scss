@@ -84,3 +84,13 @@
 		}
 	}
 }
+
+// 隐藏滚动条但保留滚动
+@mixin fc-hide-scrollbar {
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+
+	&::-webkit-scrollbar {
+		display: none;
+	}
+}

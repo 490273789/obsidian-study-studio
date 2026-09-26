@@ -1,3 +1,5 @@
+@use "../../../../../core/styles/mixins.scss" as *;
+
 /* DeckList (Home View) Styles */
 
 .workspace {
@@ -328,11 +330,7 @@
 	min-width: 0;
 	flex: 1;
 	overflow-x: auto;
-	scrollbar-width: none;
-
-	&::-webkit-scrollbar {
-		display: none;
-	}
+	@include fc-hide-scrollbar;
 
 	:global(.flashcard-btn) {
 		font-size: var(--fc-font-xs);
