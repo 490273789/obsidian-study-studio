@@ -1,0 +1,484 @@
+{
+	"summary": {
+		"binarySha256": {
+			"baseline": "7858addba95a75dfc135172e35b902bff63c1172af741c37ff8ac749bf011b08",
+			"candidate": "f615a6cf723424d4e27e5fa7d381a649d98b36d24e8ea1cc90e56bc9c641b189"
+		},
+		"summary": [
+			{
+				"mode": "html",
+				"entries": 10000,
+				"definitionTargetBytes": 1024,
+				"baselineMs": 53.1015625,
+				"candidateMs": 41.586417,
+				"reductionPercent": 21.68513497131088
+			},
+			{
+				"mode": "html",
+				"entries": 100000,
+				"definitionTargetBytes": 1024,
+				"baselineMs": 530.6956459999999,
+				"candidateMs": 410.91087500000003,
+				"reductionPercent": 22.57127449656896
+			},
+			{
+				"mode": "html",
+				"entries": 500000,
+				"definitionTargetBytes": 256,
+				"baselineMs": 1170.5359795,
+				"candidateMs": 981.289542,
+				"reductionPercent": 16.167502820446188
+			},
+			{
+				"mode": "html",
+				"entries": 40000,
+				"definitionTargetBytes": 4096,
+				"baselineMs": 666.367771,
+				"candidateMs": 494.3696255,
+				"reductionPercent": 25.811294150959164
+			},
+			{
+				"mode": "varied",
+				"entries": 30000,
+				"definitionTargetBytes": 1024,
+				"baselineMs": 500.7565625,
+				"candidateMs": 490.8375625,
+				"reductionPercent": 1.9808027977666232
+			},
+			{
+				"mode": "duplicates",
+				"entries": 100000,
+				"definitionTargetBytes": 1024,
+				"baselineMs": 484.139729,
+				"candidateMs": 365.812854,
+				"reductionPercent": 24.440645522813508
+			}
+		],
+		"boundaryFilesByteIdentical": true
+	},
+	"samples": [
+		{
+			"definitionTargetBytes": 1024,
+			"entries": 10000,
+			"inputBytes": 10988890,
+			"medianMs": 53.313625,
+			"mode": "html",
+			"outputBytes": 410494,
+			"packageSha256": "61911d1be9f425c12e7b9426e3e1e709cbcf1034848221af1c76c6038c7aa2e2",
+			"recordFrames": 189,
+			"samplesMs": [
+				53.00275, 53.099958, 53.103167, 53.313625, 53.355958, 53.686499999999995, 53.843792
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 21331968,
+			"variant": "baseline",
+			"round": 0
+		},
+		{
+			"definitionTargetBytes": 1024,
+			"entries": 10000,
+			"inputBytes": 10988890,
+			"medianMs": 41.415375,
+			"mode": "html",
+			"outputBytes": 410494,
+			"packageSha256": "61911d1be9f425c12e7b9426e3e1e709cbcf1034848221af1c76c6038c7aa2e2",
+			"recordFrames": 189,
+			"samplesMs": [
+				41.264, 41.321041, 41.37425, 41.415375, 41.579709, 41.654333, 49.477416000000005
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 23085056,
+			"variant": "candidate",
+			"round": 0
+		},
+		{
+			"definitionTargetBytes": 1024,
+			"entries": 10000,
+			"inputBytes": 10988890,
+			"medianMs": 41.678167,
+			"mode": "html",
+			"outputBytes": 410494,
+			"packageSha256": "61911d1be9f425c12e7b9426e3e1e709cbcf1034848221af1c76c6038c7aa2e2",
+			"recordFrames": 189,
+			"samplesMs": [
+				41.242333, 41.377666, 41.593125, 41.678167, 42.011624999999995, 42.12525, 42.856625
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 23691264,
+			"variant": "candidate",
+			"round": 1
+		},
+		{
+			"definitionTargetBytes": 1024,
+			"entries": 10000,
+			"inputBytes": 10988890,
+			"medianMs": 53.023041,
+			"mode": "html",
+			"outputBytes": 410494,
+			"packageSha256": "61911d1be9f425c12e7b9426e3e1e709cbcf1034848221af1c76c6038c7aa2e2",
+			"recordFrames": 189,
+			"samplesMs": [
+				52.9345, 52.958959, 52.978291, 53.023041, 53.038583, 53.267917, 53.682916999999996
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 21037056,
+			"variant": "baseline",
+			"round": 1
+		},
+		{
+			"definitionTargetBytes": 1024,
+			"entries": 100000,
+			"inputBytes": 109988890,
+			"medianMs": 537.309292,
+			"mode": "html",
+			"outputBytes": 4203662,
+			"packageSha256": "f03dd53d5a3c561b6dd1ef5711ed5321519b5cfdd476ed80e354d6797bf98e96",
+			"recordFrames": 1887,
+			"samplesMs": [
+				534.635667, 535.518416, 537.255583, 537.309292, 537.438417, 539.612708,
+				541.7782500000001
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 184516608,
+			"variant": "baseline",
+			"round": 0
+		},
+		{
+			"definitionTargetBytes": 1024,
+			"entries": 100000,
+			"inputBytes": 109988890,
+			"medianMs": 409.608208,
+			"mode": "html",
+			"outputBytes": 4203662,
+			"packageSha256": "f03dd53d5a3c561b6dd1ef5711ed5321519b5cfdd476ed80e354d6797bf98e96",
+			"recordFrames": 1887,
+			"samplesMs": [
+				409.186416, 409.341167, 409.450916, 409.608208, 409.630333, 410.13275, 411.689
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 183287808,
+			"variant": "candidate",
+			"round": 0
+		},
+		{
+			"definitionTargetBytes": 1024,
+			"entries": 100000,
+			"inputBytes": 109988890,
+			"medianMs": 416.40575,
+			"mode": "html",
+			"outputBytes": 4203662,
+			"packageSha256": "f03dd53d5a3c561b6dd1ef5711ed5321519b5cfdd476ed80e354d6797bf98e96",
+			"recordFrames": 1887,
+			"samplesMs": [
+				408.67079099999995, 415.450208, 415.508875, 416.40575, 417.124792, 422.146,
+				426.424667
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 183074816,
+			"variant": "candidate",
+			"round": 1
+		},
+		{
+			"definitionTargetBytes": 1024,
+			"entries": 100000,
+			"inputBytes": 109988890,
+			"medianMs": 525.656166,
+			"mode": "html",
+			"outputBytes": 4203662,
+			"packageSha256": "f03dd53d5a3c561b6dd1ef5711ed5321519b5cfdd476ed80e354d6797bf98e96",
+			"recordFrames": 1887,
+			"samplesMs": [
+				525.177791, 525.2755420000001, 525.3895, 525.656166, 525.8406669999999, 525.961709,
+				526.7556249999999
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 175751168,
+			"variant": "baseline",
+			"round": 1
+		},
+		{
+			"definitionTargetBytes": 256,
+			"entries": 500000,
+			"inputBytes": 160388890,
+			"medianMs": 1171.5645000000002,
+			"mode": "html",
+			"outputBytes": 17550432,
+			"packageSha256": "e6016af4d38bedb95f67a22dfd28f5a10a3567f3324138d2a781b68c9b4bdd20",
+			"recordFrames": 2887,
+			"samplesMs": [
+				1166.727375, 1168.436541, 1171.20675, 1171.5645000000002, 1176.675166, 1177.134542,
+				1178.711458
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 357564416,
+			"variant": "baseline",
+			"round": 0
+		},
+		{
+			"definitionTargetBytes": 256,
+			"entries": 500000,
+			"inputBytes": 160388890,
+			"medianMs": 984.145292,
+			"mode": "html",
+			"outputBytes": 17550432,
+			"packageSha256": "e6016af4d38bedb95f67a22dfd28f5a10a3567f3324138d2a781b68c9b4bdd20",
+			"recordFrames": 2887,
+			"samplesMs": [
+				980.8756669999999, 981.703417, 982.449791, 984.145292, 984.3485, 987.936166,
+				999.368416
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 359350272,
+			"variant": "candidate",
+			"round": 0
+		},
+		{
+			"definitionTargetBytes": 256,
+			"entries": 500000,
+			"inputBytes": 160388890,
+			"medianMs": 972.570333,
+			"mode": "html",
+			"outputBytes": 17550432,
+			"packageSha256": "e6016af4d38bedb95f67a22dfd28f5a10a3567f3324138d2a781b68c9b4bdd20",
+			"recordFrames": 2887,
+			"samplesMs": [
+				970.8211249999999, 970.850583, 971.308709, 972.570333, 975.7554590000001,
+				977.099458, 987.131125
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 359694336,
+			"variant": "candidate",
+			"round": 1
+		},
+		{
+			"definitionTargetBytes": 256,
+			"entries": 500000,
+			"inputBytes": 160388890,
+			"medianMs": 1169.249833,
+			"mode": "html",
+			"outputBytes": 17550432,
+			"packageSha256": "e6016af4d38bedb95f67a22dfd28f5a10a3567f3324138d2a781b68c9b4bdd20",
+			"recordFrames": 2887,
+			"samplesMs": [
+				1164.68875, 1167.098667, 1167.426166, 1169.249833, 1169.8652089999998, 1172.954917,
+				1175.0700410000002
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 359579648,
+			"variant": "baseline",
+			"round": 1
+		},
+		{
+			"definitionTargetBytes": 4096,
+			"entries": 40000,
+			"inputBytes": 166388890,
+			"medianMs": 666.877417,
+			"mode": "html",
+			"outputBytes": 2767343,
+			"packageSha256": "28aecddb868d845ede4044208d4665862beda9c02a3691357c70c000f46de10c",
+			"recordFrames": 2858,
+			"samplesMs": [
+				663.8265829999999, 664.944208, 666.027542, 666.877417, 669.90225, 673.697125,
+				674.89625
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 235798528,
+			"variant": "baseline",
+			"round": 0
+		},
+		{
+			"definitionTargetBytes": 4096,
+			"entries": 40000,
+			"inputBytes": 166388890,
+			"medianMs": 494.406959,
+			"mode": "html",
+			"outputBytes": 2767343,
+			"packageSha256": "28aecddb868d845ede4044208d4665862beda9c02a3691357c70c000f46de10c",
+			"recordFrames": 2858,
+			"samplesMs": [
+				493.068584, 493.693917, 494.332292, 494.406959, 494.662417, 495.757, 498.031666
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 231424000,
+			"variant": "candidate",
+			"round": 0
+		},
+		{
+			"definitionTargetBytes": 4096,
+			"entries": 40000,
+			"inputBytes": 166388890,
+			"medianMs": 494.025709,
+			"mode": "html",
+			"outputBytes": 2767343,
+			"packageSha256": "28aecddb868d845ede4044208d4665862beda9c02a3691357c70c000f46de10c",
+			"recordFrames": 2858,
+			"samplesMs": [
+				493.151084, 493.354083, 493.369583, 494.025709, 495.736125, 498.459666, 506.922458
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 232734720,
+			"variant": "candidate",
+			"round": 1
+		},
+		{
+			"definitionTargetBytes": 4096,
+			"entries": 40000,
+			"inputBytes": 166388890,
+			"medianMs": 664.765208,
+			"mode": "html",
+			"outputBytes": 2767343,
+			"packageSha256": "28aecddb868d845ede4044208d4665862beda9c02a3691357c70c000f46de10c",
+			"recordFrames": 2858,
+			"samplesMs": [
+				662.0087500000001, 662.301958, 663.459041, 664.765208, 666.708, 669.819666,
+				670.991584
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 234061824,
+			"variant": "baseline",
+			"round": 1
+		},
+		{
+			"definitionTargetBytes": 1024,
+			"entries": 30000,
+			"inputBytes": 31398890,
+			"medianMs": 500.8845830000001,
+			"mode": "varied",
+			"outputBytes": 18820111,
+			"packageSha256": "180295706957fe696d9572108640f8b1a933e51f582d46879fe3b04cb6faa690",
+			"recordFrames": 500,
+			"samplesMs": [
+				500.24133299999994, 500.720917, 500.792208, 500.8845830000001, 501.39812500000005,
+				501.48024999999996, 502.130541
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 76742656,
+			"variant": "baseline",
+			"round": 0
+		},
+		{
+			"definitionTargetBytes": 1024,
+			"entries": 30000,
+			"inputBytes": 31398890,
+			"medianMs": 492.96708299999995,
+			"mode": "varied",
+			"outputBytes": 18820111,
+			"packageSha256": "180295706957fe696d9572108640f8b1a933e51f582d46879fe3b04cb6faa690",
+			"recordFrames": 500,
+			"samplesMs": [
+				490.222917, 490.307416, 490.87762499999997, 492.96708299999995, 493.21016699999996,
+				493.80379200000004, 494.210416
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 76480512,
+			"variant": "candidate",
+			"round": 0
+		},
+		{
+			"definitionTargetBytes": 1024,
+			"entries": 30000,
+			"inputBytes": 31398890,
+			"medianMs": 490.6335,
+			"mode": "varied",
+			"outputBytes": 18820111,
+			"packageSha256": "180295706957fe696d9572108640f8b1a933e51f582d46879fe3b04cb6faa690",
+			"recordFrames": 500,
+			"samplesMs": [
+				490.075084, 490.536625, 490.55045800000005, 490.6335, 490.7975, 492.159041,
+				495.838292
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 73416704,
+			"variant": "candidate",
+			"round": 1
+		},
+		{
+			"definitionTargetBytes": 1024,
+			"entries": 30000,
+			"inputBytes": 31398890,
+			"medianMs": 500.195708,
+			"mode": "varied",
+			"outputBytes": 18820111,
+			"packageSha256": "180295706957fe696d9572108640f8b1a933e51f582d46879fe3b04cb6faa690",
+			"recordFrames": 500,
+			"samplesMs": [
+				498.89375, 498.91645800000003, 499.579208, 500.195708, 500.623041,
+				500.91991599999994, 501.70020800000003
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 76939264,
+			"variant": "baseline",
+			"round": 1
+		},
+		{
+			"definitionTargetBytes": 1024,
+			"entries": 100000,
+			"inputBytes": 109988890,
+			"medianMs": 484.821167,
+			"mode": "duplicates",
+			"outputBytes": 1715488,
+			"packageSha256": "e427aedeb65e0f4c54507870378216b5f06560b889d913b5504aedad0fc15ff9",
+			"recordFrames": 1887,
+			"samplesMs": [
+				483.880833, 483.914958, 484.287167, 484.821167, 486.199375, 486.304166, 487.108416
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 154271744,
+			"variant": "baseline",
+			"round": 0
+		},
+		{
+			"definitionTargetBytes": 1024,
+			"entries": 100000,
+			"inputBytes": 109988890,
+			"medianMs": 366.09583299999997,
+			"mode": "duplicates",
+			"outputBytes": 1715488,
+			"packageSha256": "e427aedeb65e0f4c54507870378216b5f06560b889d913b5504aedad0fc15ff9",
+			"recordFrames": 1887,
+			"samplesMs": [
+				365.397334, 365.69800000000004, 365.865625, 366.09583299999997, 366.16345900000005,
+				366.524833, 366.80370800000003
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 151552000,
+			"variant": "candidate",
+			"round": 0
+		},
+		{
+			"definitionTargetBytes": 1024,
+			"entries": 100000,
+			"inputBytes": 109988890,
+			"medianMs": 365.617666,
+			"mode": "duplicates",
+			"outputBytes": 1715488,
+			"packageSha256": "e427aedeb65e0f4c54507870378216b5f06560b889d913b5504aedad0fc15ff9",
+			"recordFrames": 1887,
+			"samplesMs": [
+				364.877791, 365.314125, 365.405792, 365.617666, 365.760083, 369.348666, 370.223833
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 154288128,
+			"variant": "candidate",
+			"round": 1
+		},
+		{
+			"definitionTargetBytes": 1024,
+			"entries": 100000,
+			"inputBytes": 109988890,
+			"medianMs": 483.143166,
+			"mode": "duplicates",
+			"outputBytes": 1715488,
+			"packageSha256": "e427aedeb65e0f4c54507870378216b5f06560b889d913b5504aedad0fc15ff9",
+			"recordFrames": 1887,
+			"samplesMs": [
+				482.458125, 482.68983399999996, 483.109542, 483.143166, 483.992291, 491.780375,
+				496.144959
+			],
+			"scope": "native package compilation; excludes fixture generation, MDX/MDD/EUDIC parsing, worker transfer and disk I/O",
+			"peakRssBytes": 152944640,
+			"variant": "baseline",
+			"round": 1
+		}
+	]
+}

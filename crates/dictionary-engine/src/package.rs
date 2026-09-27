@@ -295,9 +295,9 @@ struct PackageWriter {
 }
 
 type DefinitionEntries = (
-	u64,
-	Vec<FrameDescriptor>,
-	BTreeMap<String, Vec<RecordLocator>>,
+    u64,
+    Vec<FrameDescriptor>,
+    BTreeMap<String, Vec<RecordLocator>>,
 );
 
 impl PackageWriter {
@@ -321,16 +321,14 @@ impl PackageWriter {
     }
 }
 
-fn write_definition_entries<I>(
-    package: &mut PackageWriter,
-    entries: I,
-) -> Result<DefinitionEntries>
+fn write_definition_entries<I>(package: &mut PackageWriter, entries: I) -> Result<DefinitionEntries>
 where
     I: IntoIterator<Item = Result<DictionaryEntry>>,
 {
     let mut writer = FramePackWriter::new("records");
     let mut exact = BTreeMap::<String, Vec<RecordLocator>>::new();
-    let mut frame = Vec::<RecordValue>::new();
+    let mut frame = Vec::<String>::new();
+    let mut raw = vec![b'['];
     let mut estimated = 2_usize;
     let mut entry_count = 0_u64;
     for entry in entries {
@@ -340,19 +338,26 @@ where
                 .map_err(|_| EngineError::corrupt("definition is not UTF-8"))?,
             key_text: entry.key,
         };
-        let bytes = deterministic_json(&value)?.len() + usize::from(!frame.is_empty());
+        let encoded = deterministic_json(&value)?;
+        // Preserve the existing delimiter estimate across frame boundaries so
+        // compiled-v2 frames, offsets and checksums remain byte-identical.
+        let bytes = encoded.len() + usize::from(!frame.is_empty());
         if !frame.is_empty() && estimated + bytes > FRAME_TARGET_BYTES {
-            flush_definition_frame(package, &mut writer, &mut frame, &mut exact)?;
+            flush_definition_frame(package, &mut writer, &mut frame, &mut raw, &mut exact)?;
             estimated = 2;
         }
         estimated += bytes;
-        frame.push(value);
+        if !frame.is_empty() {
+            raw.push(b',');
+        }
+        raw.extend_from_slice(&encoded);
+        frame.push(value.key_text);
         entry_count = entry_count
             .checked_add(1)
             .ok_or_else(|| EngineError::limit("too many dictionary entries"))?;
     }
     if !frame.is_empty() {
-        flush_definition_frame(package, &mut writer, &mut frame, &mut exact)?;
+        flush_definition_frame(package, &mut writer, &mut frame, &mut raw, &mut exact)?;
     }
     let frames = writer.finish(package)?;
     Ok((entry_count, frames, exact))
@@ -361,12 +366,14 @@ where
 fn flush_definition_frame(
     package: &mut PackageWriter,
     writer: &mut FramePackWriter,
-    frame: &mut Vec<RecordValue>,
+    frame: &mut Vec<String>,
+    raw: &mut Vec<u8>,
     exact: &mut BTreeMap<String, Vec<RecordLocator>>,
 ) -> Result<()> {
-    let frame_index = writer.add_json(package, frame)?;
+    raw.push(b']');
+    let frame_index = writer.add_bytes(package, raw)?;
     for (item, entry) in frame.iter().enumerate() {
-        let key = normalize_lookup_key(&entry.key_text);
+        let key = normalize_lookup_key(entry);
         if key.is_empty() {
             continue;
         }
@@ -380,6 +387,14 @@ fn flush_definition_frame(
         });
     }
     frame.clear();
+    if raw.capacity() > FRAME_TARGET_BYTES * 2 {
+        // A single large definition may exceed the normal frame target. Do not
+        // retain its encoded allocation for the rest of the dictionary import.
+        *raw = vec![b'['];
+    } else {
+        raw.clear();
+        raw.push(b'[');
+    }
     Ok(())
 }
 
@@ -492,11 +507,6 @@ impl FramePackWriter {
             pack: Vec::new(),
             pack_index: 0,
         }
-    }
-
-    fn add_json<T: Serialize>(&mut self, package: &mut PackageWriter, value: &T) -> Result<u32> {
-        let raw = deterministic_json(value)?;
-        self.add_bytes(package, &raw)
     }
 
     fn add_bytes(&mut self, package: &mut PackageWriter, raw: &[u8]) -> Result<u32> {
@@ -837,3 +847,7 @@ mod tests {
             .all(|index| package.files[&index.file].len() <= INDEX_FILE_BYTES));
     }
 }
+
+#[cfg(test)]
+#[path = "package_serialization_tests.rs"]
+mod serialization_tests;
