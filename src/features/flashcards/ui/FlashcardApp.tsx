@@ -33,6 +33,7 @@ import {
 import type { PronunciationRuntime } from "../domain/pronunciation";
 import { ModalProvider } from "../../../core/ui/primitives/Modal";
 import { createAnswerPresentationTransition } from "./answerPresentationTransition";
+import { ChallengeSetupModal, ChallengeView, ChallengeSummary } from "./views/Challenge";
 import { FlashcardNavigation } from "./flashcardNavigation";
 
 interface FlashcardAppProps {
@@ -96,10 +97,11 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 		[navigation, settings.language],
 	);
 	useLayoutEffect(() => navigation.mount(), [navigation]);
-	const { view: viewState, confirmation } = useSyncExternalStore(
-		navigation.subscribe,
-		navigation.getSnapshot,
-	);
+	const {
+		view: viewState,
+		confirmation,
+		busy: navigationBusy,
+	} = useSyncExternalStore(navigation.subscribe, navigation.getSnapshot);
 	const handleRequestHomeMigration = navigation.requestMigration;
 	const handleStartSession = navigation.start;
 	const handleBackHome = navigation.home;
@@ -398,6 +400,7 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 			onOpenStats={handleOpenStats}
 			onOpenSettings={onOpenSettings}
 			onOpenAddCard={handleOpenAddCard}
+			onOpenChallenge={navigation.challenge}
 			onOpenTranslation={onOpenTranslation}
 			onOpenDictionary={onOpenDictionary}
 			onOpenVideoPlayer={onOpenVideoPlayer}
@@ -406,6 +409,16 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 
 	const renderContent = (): React.ReactNode => {
 		if (presentedLifecycleSnapshot.kind === "active") {
+			if (presentedLifecycleSnapshot.mode === "challenge")
+				return (
+					<ChallengeView
+						session={presentedLifecycleSnapshot}
+						transition={answerPresentationTransition}
+						isTransitioning={isAnswerTransitioning}
+						onClose={handleExitActive}
+						markdownRenderer={renderMarkdown}
+					/>
+				);
 			if (presentedLifecycleSnapshot.mode === "study") {
 				return (
 					<CardView
@@ -461,6 +474,21 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 		}
 
 		if (presentedLifecycleSnapshot.kind === "result") {
+			if (presentedLifecycleSnapshot.mode === "challenge")
+				return (
+					<ChallengeSummary
+						result={presentedLifecycleSnapshot}
+						onNextLevel={() =>
+							void navigation.result(
+								presentedLifecycleSnapshot.reference,
+								"next-level",
+							)
+						}
+						onRestart={handlePracticeRestart}
+						onEnd={handleResultHomeClick}
+						markdownRenderer={renderMarkdown}
+					/>
+				);
 			if (presentedLifecycleSnapshot.mode === "study") {
 				return (
 					<StudySummary
@@ -585,6 +613,24 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 	return (
 		<ModalProvider host={modalHost}>
 			{renderContent()}
+			{viewState.type === "challenge-setup" && presentedLifecycleSnapshot.kind === "idle" && (
+				<ChallengeSetupModal
+					readiness={deckHomeSnapshot.challenge}
+					isStarting={navigationBusy}
+					onStart={(challengeMode, intent) =>
+						void navigation.startChallenge(
+							{
+								mode: "challenge",
+								challengeMode,
+								intent,
+								expectedRoundId: deckHomeSnapshot.challenge.savedRoundId,
+							},
+							deckHomeSnapshot.challenge.round !== null,
+						)
+					}
+					onClose={handleBackHome}
+				/>
+			)}
 			{cardEditor && (
 				<CardEditorModal
 					mode={cardEditor.mode}

@@ -1,3 +1,8 @@
+import {
+	selectEligibleChallengeCards,
+	type ChallengeMode,
+	type ChallengeProgress,
+} from "../sessions/challengeSessionEngine";
 import type {
 	CardIdentityContinuity,
 	MigrationPreview,
@@ -104,7 +109,22 @@ export type DeckHomeExportActivity =
 			readonly total: number;
 	  };
 
+export interface ChallengeReadiness {
+	readonly savedRoundId: string | null;
+	readonly eligibleCount: number;
+	readonly lastMode: ChallengeMode;
+	readonly round: {
+		readonly id: string;
+		readonly mode: ChallengeMode;
+		readonly completedLevelCount: number;
+		readonly totalLevels: number;
+		readonly completedCardCount: number;
+		readonly totalCards: number;
+	} | null;
+}
+
 export interface DeckHomeSnapshot {
+	readonly challenge: ChallengeReadiness;
 	readonly revision: number;
 	readonly decks: ReadonlyArray<DeckHomeDeckSnapshot>;
 	readonly totals: Readonly<DeckHomeTotals>;
@@ -225,6 +245,7 @@ export interface DeckHomeRepository {
 	getRevision(): number;
 	subscribe(listener: () => void): () => void;
 	getAllDecks(): Deck[];
+	getChallengeProgress?(): ChallengeProgress | null;
 	getDeck?(deckId: string): Deck | undefined;
 	getDeckStats(deck: Deck, now?: Date): DeckStats;
 	getSettings(): FlashcardStudySettings;
@@ -861,7 +882,29 @@ class DefaultDeckHome implements DeckHome {
 			},
 		);
 		const migration = this.options.identity.inspect().migration;
+		const challengeProgress = this.options.repository.getChallengeProgress?.();
+		const round = challengeProgress?.round;
+		const resumable = round && round.completedLevelCount < round.levels.length;
+		const challenge: ChallengeReadiness = Object.freeze({
+			savedRoundId: round?.id ?? null,
+			eligibleCount: selectEligibleChallengeCards(decks, settings.wordLearningDecks).length,
+			lastMode: challengeProgress?.lastMode ?? "random",
+			round: resumable
+				? Object.freeze({
+						id: round.id,
+						mode: round.mode,
+						completedLevelCount: round.completedLevelCount,
+						totalLevels: round.levels.length,
+						completedCardCount: round.completedLevels.reduce(
+							(sum, level) => sum + level.totalQuestions,
+							0,
+						),
+						totalCards: round.levels.reduce((sum, level) => sum + level.length, 0),
+					})
+				: null,
+		});
 		return freezeDeckHomeSnapshot({
+			challenge,
 			revision,
 			decks: deckSnapshots,
 			totals,

@@ -13,6 +13,7 @@ import type {
 import { FlashcardNavigation } from "../flashcardNavigation";
 
 class ScriptedLifecycle implements SessionLifecycle {
+	async revalidateChallenge(): Promise<void> {}
 	readonly listeners = new Set<() => void>();
 	readonly actions: Array<{ reference: LifecycleReference; action: unknown }> = [];
 	startImpl: (request: SessionStartRequest) => Promise<LifecycleOutcome> = async () =>
@@ -476,5 +477,40 @@ describe("FlashcardNavigation", () => {
 		navigation.respond(oldId, true);
 		await pending;
 		expect(execute).not.toHaveBeenCalled();
+	});
+});
+
+describe("challenge navigation", () => {
+	it("cancels replacement without starting or changing the setup route", async () => {
+		const { navigation, lifecycle } = mounted();
+		const start = vi.fn(lifecycle.startImpl);
+		lifecycle.startImpl = start;
+		navigation.challenge();
+		const pending = navigation.startChallenge(
+			{ mode: "challenge", challengeMode: "random", intent: "new", expectedRoundId: "saved" },
+			true,
+		);
+		const confirmation = navigation.getSnapshot().confirmation!;
+		expect(confirmation.message).toContain("替换");
+		navigation.respond(confirmation.id, false);
+		await pending;
+		expect(start).not.toHaveBeenCalled();
+		expect(navigation.getSnapshot().view.type).toBe("challenge-setup");
+	});
+	it("only replaces after confirmation and forwards the saved-round guard", async () => {
+		const { navigation, lifecycle } = mounted();
+		const start = vi.fn(lifecycle.startImpl);
+		lifecycle.startImpl = start;
+		const request = {
+			mode: "challenge",
+			challengeMode: "spelling",
+			intent: "new",
+			expectedRoundId: "saved",
+		} as const;
+		const pending = navigation.startChallenge(request, true);
+		expect(start).not.toHaveBeenCalled();
+		navigation.respond(navigation.getSnapshot().confirmation!.id, true);
+		await pending;
+		expect(start).toHaveBeenCalledExactlyOnceWith(request);
 	});
 });

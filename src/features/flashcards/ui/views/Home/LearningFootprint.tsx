@@ -62,6 +62,12 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 			label: t("footprint.spellingAnswers"),
 		},
 		{
+			key: "challenge",
+			icon: Target,
+			value: footprint.today.answers.challenge,
+			label: t("challenge.title"),
+		},
+		{
 			key: "duration",
 			icon: Clock3,
 			value: formatCompactDuration(language, footprint.todayTotalSeconds),
@@ -220,6 +226,7 @@ function DayDetails({ day }: { day: LearningFootprintDay }) {
 							study: day.activity.completedAnswers.study,
 							practice: day.activity.completedAnswers.practice,
 							spelling: day.activity.completedAnswers.spelling,
+							challenge: day.activity.completedAnswers.challenge,
 						})
 					: day.hasActivity
 						? t("footprint.activeNotCompleted")

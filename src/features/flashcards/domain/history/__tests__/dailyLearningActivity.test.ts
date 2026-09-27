@@ -10,11 +10,13 @@ function activity(
 		study?: number;
 		practice?: number;
 		spelling?: number;
+		challenge?: number;
 		seconds?: number;
 		wordListSeconds?: number;
 		completedStudy?: number;
 		completedPractice?: number;
 		completedSpelling?: number;
+		completedChallenge?: number;
 		completedSessions?: number;
 	} = {},
 ): DailyLearningActivityDay {
@@ -24,22 +26,26 @@ function activity(
 			study: options.study ?? 0,
 			practice: options.practice ?? 0,
 			spelling: options.spelling ?? 0,
+			challenge: options.challenge ?? 0,
 		},
 		seconds: {
 			study: options.seconds ?? 0,
 			practice: 0,
 			spelling: 0,
+			challenge: 0,
 			"word-list": options.wordListSeconds ?? 0,
 		},
 		completedAnswers: {
 			study: options.completedStudy ?? 0,
 			practice: options.completedPractice ?? 0,
 			spelling: options.completedSpelling ?? 0,
+			challenge: options.completedChallenge ?? 0,
 		},
 		completedSessions: {
 			study: options.completedSessions ?? 0,
 			practice: 0,
 			spelling: 0,
+			challenge: 0,
 		},
 	};
 }
@@ -60,10 +66,10 @@ describe("daily learning activity", () => {
 		expect(next.toDocument()).toEqual([
 			{
 				date: "2026-09-17",
-				answers: { study: 3, practice: 0, spelling: 0 },
-				seconds: { study: 120, practice: 0, spelling: 0, "word-list": 0 },
-				completedAnswers: { study: 3, practice: 0, spelling: 0 },
-				completedSessions: { study: 1, practice: 0, spelling: 0 },
+				answers: { study: 3, practice: 0, spelling: 0, challenge: 0 },
+				seconds: { study: 120, practice: 0, spelling: 0, challenge: 0, "word-list": 0 },
+				completedAnswers: { study: 3, practice: 0, spelling: 0, challenge: 0 },
+				completedSessions: { study: 1, practice: 0, spelling: 0, challenge: 0 },
 			},
 		]);
 	});
@@ -120,12 +126,52 @@ describe("daily learning activity", () => {
 		expect(result).toEqual([
 			{
 				date: "2026-09-17",
-				answers: { study: 3, practice: 0, spelling: 4 },
-				seconds: { study: 120, practice: 0, spelling: 90, "word-list": 30 },
-				completedAnswers: { study: 3, practice: 0, spelling: 0 },
-				completedSessions: { study: 1, practice: 0, spelling: 0 },
+				answers: { study: 3, practice: 0, spelling: 4, challenge: 0 },
+				seconds: { study: 120, practice: 0, spelling: 90, challenge: 0, "word-list": 30 },
+				completedAnswers: { study: 3, practice: 0, spelling: 0, challenge: 0 },
+				completedSessions: { study: 1, practice: 0, spelling: 0, challenge: 0 },
 			},
 		]);
+	});
+
+	it("tracks challenge answers and only makes completed levels count toward the streak", () => {
+		const occurredAt = new Date(2026, 8, 17, 0, 5).getTime();
+		const partial = restoreDailyLearningActivity([]).record({
+			kind: "session",
+			mode: "challenge",
+			completion: "partial",
+			answerCount: 4,
+			durationSeconds: 30,
+			occurredAt,
+		});
+
+		expect(partial.footprint(new Date(2026, 8, 17, 12))).toMatchObject({
+			currentStreak: 0,
+			today: {
+				answers: { challenge: 4 },
+				seconds: { challenge: 30 },
+				completedAnswers: { challenge: 0 },
+				completedSessions: { challenge: 0 },
+			},
+		});
+
+		const completed = partial.record({
+			kind: "session",
+			mode: "challenge",
+			completion: "completed",
+			answerCount: 3,
+			durationSeconds: 20,
+			occurredAt,
+		});
+		expect(completed.footprint(new Date(2026, 8, 17, 12))).toMatchObject({
+			currentStreak: 1,
+			today: {
+				answers: { challenge: 7 },
+				seconds: { challenge: 50 },
+				completedAnswers: { challenge: 3 },
+				completedSessions: { challenge: 1 },
+			},
+		});
 	});
 
 	it("normalizes malformed persisted values without backfilling history", () => {
@@ -141,7 +187,7 @@ describe("daily learning activity", () => {
 		).toEqual([
 			{
 				...activity("2026-09-17"),
-				answers: { study: 0, practice: 2, spelling: 0 },
+				answers: { study: 0, practice: 2, spelling: 0, challenge: 0 },
 			},
 		]);
 	});

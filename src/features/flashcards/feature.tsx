@@ -560,6 +560,15 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 				void repo.load();
 			}
 			const sessionLifecycleWiring = createSessionLifecycle(repo);
+			lifetime.defer(
+				repo.subscribe(() => {
+					void sessionLifecycleWiring.lifecycle
+						.revalidateChallenge()
+						.catch((error: unknown) => {
+							console.error("Failed to reconcile challenge state", error);
+						});
+				}),
+			);
 			const cardIdentityContinuity = createCardIdentityContinuity({
 				sources: createObsidianContinuitySourceStore(host.app),
 				state: repo.createContinuityStateStore(),

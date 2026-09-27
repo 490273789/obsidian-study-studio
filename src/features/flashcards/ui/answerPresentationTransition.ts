@@ -1,4 +1,5 @@
 import type {
+	ActiveChallengeReference,
 	ActivePracticeReference,
 	ActiveSpellingReference,
 	ActiveStudyReference,
@@ -12,6 +13,14 @@ import type { StudyRating } from "../../../core/shared/types";
 import type { PronunciationOutcome, PronunciationRuntime } from "../domain/pronunciation/types";
 
 export type AnswerPresentationAction =
+	| {
+			readonly kind: "challenge-answer";
+			readonly reference: ActiveChallengeReference;
+			readonly correct?: boolean;
+			readonly input?: string;
+	  }
+	| { readonly kind: "challenge-reveal"; readonly reference: ActiveChallengeReference }
+	| { readonly kind: "challenge-continue"; readonly reference: ActiveChallengeReference }
 	| {
 			readonly kind: "study-answer";
 			readonly reference: ActiveStudyReference;
@@ -222,6 +231,17 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 
 	private applyLifecycleAction(action: AnswerPresentationAction): Promise<LifecycleOutcome> {
 		switch (action.kind) {
+			case "challenge-answer":
+				return this.options.lifecycle.act(
+					action.reference,
+					action.input !== undefined
+						? { kind: "answer", input: action.input }
+						: { kind: "answer", correct: action.correct === true },
+				);
+			case "challenge-reveal":
+				return this.options.lifecycle.act(action.reference, { kind: "reveal" });
+			case "challenge-continue":
+				return this.options.lifecycle.act(action.reference, { kind: "continue" });
 			case "study-answer":
 				return this.options.lifecycle.act(action.reference, {
 					kind: "answer",

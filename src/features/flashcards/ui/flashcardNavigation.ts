@@ -21,6 +21,7 @@ export interface FlashcardConfirmation {
 
 export interface FlashcardNavigationSnapshot {
 	readonly view: Readonly<ViewState>;
+	readonly busy: boolean;
 	readonly confirmation: (FlashcardConfirmation & { readonly id: number }) | null;
 }
 
@@ -58,6 +59,7 @@ export class FlashcardNavigation {
 	private snapshot: FlashcardNavigationSnapshot = Object.freeze({
 		view: Object.freeze({ type: "home" as const }),
 		confirmation: null,
+		busy: false,
 	});
 
 	constructor(private readonly options: FlashcardNavigationOptions) {
@@ -88,6 +90,7 @@ export class FlashcardNavigation {
 
 	home = (): void => this.show({ type: "home" });
 	stats = (): void => this.show({ type: "stats" });
+	challenge = (): void => this.show({ type: "challenge-setup" });
 
 	async navigate(destination: DeckHomeDestination, deckId: string): Promise<void> {
 		const lease = this.lease;
@@ -119,9 +122,34 @@ export class FlashcardNavigation {
 				? this.t("notice.todayComplete")
 				: request.mode === "spelling" && request.selection.kind === "study-day"
 					? this.t("spelling.dayInvalid")
-					: this.t("notice.deckEmpty");
-		this.reportLifecycleOutcome(outcome, fallback);
+					: request.mode === "challenge"
+						? this.t("challenge.noEligible")
+						: this.t("notice.deckEmpty");
+		if (this.reportLifecycleOutcome(outcome, fallback) && request.mode === "challenge")
+			this.publishView({ type: "home" });
 	};
+
+	async startChallenge(
+		request: Extract<SessionStartRequest, { mode: "challenge" }>,
+		replaceExisting: boolean,
+	): Promise<void> {
+		const reference = this.options.lifecycle.getSnapshot().reference;
+		const execute = async () => {
+			if (!this.matches(reference)) return;
+			await this.start(request);
+		};
+		if (replaceExisting && request.intent === "new") {
+			await this.confirm(
+				{
+					title: this.t("challenge.restartTitle"),
+					message: this.t("challenge.restartConfirm"),
+					confirmText: this.t("common.confirm"),
+					tone: "danger",
+				},
+				execute,
+			);
+		} else await execute();
+	}
 
 	async exit(reference: ActiveReference): Promise<void> {
 		if (this.lifecycleOperation || !this.matches(reference)) return;
@@ -158,7 +186,7 @@ export class FlashcardNavigation {
 
 	async result(
 		reference: ResultReference,
-		action: "home" | "restart" | "retry-incorrect",
+		action: "home" | "restart" | "retry-incorrect" | "next-level",
 	): Promise<void> {
 		const lease = this.lease;
 		const result = this.options.lifecycle.getSnapshot();
@@ -172,12 +200,22 @@ export class FlashcardNavigation {
 		const version = ++this.navigationVersion;
 		const outcome = await this.runLifecycle(() =>
 			this.options.lifecycle.act(reference, {
-				kind: action === "retry-incorrect" ? "retry-incorrect" : "dismiss",
+				kind:
+					action === "next-level"
+						? "next-level"
+						: action === "retry-incorrect"
+							? "retry-incorrect"
+							: "dismiss",
 			}),
 		);
 		if (!this.isNavigationCurrent(lease, version) || !this.matches(outcome.snapshot.reference))
 			return;
-		if (!this.reportLifecycleOutcome(outcome) || action === "retry-incorrect") return;
+		if (
+			!this.reportLifecycleOutcome(outcome) ||
+			action === "retry-incorrect" ||
+			action === "next-level"
+		)
+			return;
 		this.publishView(
 			action === "restart" ? getRestartViewState(result.setupDefaults) : { type: "home" },
 		);
@@ -287,7 +325,13 @@ export class FlashcardNavigation {
 		if (this.lastEndNotice !== noticeId) {
 			this.lastEndNotice = noticeId;
 			this.show({ type: "home" });
-			this.options.notify(this.t("identity.sessionEndedBySourceChange"));
+			this.options.notify(
+				this.t(
+					snapshot.lastEnd.mode === "challenge"
+						? "challenge.sourceEnded"
+						: "identity.sessionEndedBySourceChange",
+				),
+			);
 		}
 		const lease = this.lease;
 		// Let all mounted views see the termination before consuming the shared notice.
@@ -318,10 +362,16 @@ export class FlashcardNavigation {
 	): Promise<LifecycleOutcome> {
 		const token = {};
 		this.lifecycleOperation = token;
+		this.snapshot = Object.freeze({ ...this.snapshot, busy: true });
+		this.publish();
 		try {
 			return await operation();
 		} finally {
-			if (this.lifecycleOperation === token) this.lifecycleOperation = null;
+			if (this.lifecycleOperation === token) {
+				this.lifecycleOperation = null;
+				this.snapshot = Object.freeze({ ...this.snapshot, busy: false });
+				this.publish();
+			}
 		}
 	}
 

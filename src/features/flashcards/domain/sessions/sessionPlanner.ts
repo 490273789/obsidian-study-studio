@@ -503,7 +503,7 @@ export function planRetryIncorrectSession(params: {
 }
 
 export function planSessionQueue(
-	request: SessionStartRequest,
+	request: Exclude<SessionStartRequest, { mode: "challenge" }>,
 	deck: Deck,
 	context: SessionPlanningContext,
 ): SessionQueuePlanResult {

@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createTranslator } from "../../../strings/index";
 import type { StudyHistoryEntry } from "../../../../../core/shared/types";
-import { buildStudyHistoryPresentationModel } from "../studyHistoryPresentationModel";
+import {
+	buildStudyHistoryPresentationModel,
+	STUDY_HISTORY_MODE_PRESENTATION,
+} from "../studyHistoryPresentationModel";
 
 function makeEntry(overrides: Partial<StudyHistoryEntry>): StudyHistoryEntry {
 	return {
@@ -17,6 +20,13 @@ function makeEntry(overrides: Partial<StudyHistoryEntry>): StudyHistoryEntry {
 }
 
 describe("buildStudyHistoryPresentationModel", () => {
+	it("presents challenge history as its own mode", () => {
+		expect(STUDY_HISTORY_MODE_PRESENTATION.challenge).toEqual({
+			labelKey: "challenge.title",
+			cls: "stats-mode-challenge",
+		});
+	});
+
 	it("groups entries by date, sorts days descending, and sorts entries by timestamp", () => {
 		const t = createTranslator("zh");
 		const model = buildStudyHistoryPresentationModel(

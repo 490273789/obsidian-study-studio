@@ -1,6 +1,6 @@
 import { formatLocalDateKey } from "./studyHistory";
 
-export type LearningActivityMode = "study" | "practice" | "spelling";
+export type LearningActivityMode = "study" | "practice" | "spelling" | "challenge";
 export type TimedLearningActivityMode = LearningActivityMode | "word-list";
 
 export interface DailyLearningActivityDay {
@@ -17,6 +17,7 @@ export type LearningActivityRecord =
 			readonly mode: LearningActivityMode;
 			readonly completion: "completed" | "partial";
 			readonly answerCount: number;
+			readonly completedAnswerCount?: number;
 			readonly durationSeconds: number;
 			readonly occurredAt: number;
 	  }
@@ -56,11 +57,17 @@ export interface LearningFootprintSnapshot {
 	readonly weeks: readonly LearningFootprintWeek[];
 }
 
-const SESSION_MODES: readonly LearningActivityMode[] = ["study", "practice", "spelling"];
+const SESSION_MODES: readonly LearningActivityMode[] = [
+	"study",
+	"practice",
+	"spelling",
+	"challenge",
+];
 const TIMED_MODES: readonly TimedLearningActivityMode[] = [
 	"study",
 	"practice",
 	"spelling",
+	"challenge",
 	"word-list",
 ];
 const HEATMAP_WEEK_COUNT = 53;
@@ -68,10 +75,10 @@ const HEATMAP_WEEK_COUNT = 53;
 function createEmptyDailyLearningActivity(date: string): DailyLearningActivityDay {
 	return {
 		date,
-		answers: { study: 0, practice: 0, spelling: 0 },
-		seconds: { study: 0, practice: 0, spelling: 0, "word-list": 0 },
-		completedAnswers: { study: 0, practice: 0, spelling: 0 },
-		completedSessions: { study: 0, practice: 0, spelling: 0 },
+		answers: { study: 0, practice: 0, spelling: 0, challenge: 0 },
+		seconds: { study: 0, practice: 0, spelling: 0, challenge: 0, "word-list": 0 },
+		completedAnswers: { study: 0, practice: 0, spelling: 0, challenge: 0 },
+		completedSessions: { study: 0, practice: 0, spelling: 0, challenge: 0 },
 	};
 }
 
@@ -98,7 +105,9 @@ function recordLearningActivity(
 		seconds[entry.mode] += duration;
 		answers[entry.mode] += answerCount;
 		if (entry.completion === "completed") {
-			completedAnswers[entry.mode] += answerCount;
+			completedAnswers[entry.mode] += normalizeCount(
+				entry.completedAnswerCount ?? answerCount,
+			);
 			completedSessions[entry.mode] += 1;
 		}
 		current = { date, answers, seconds, completedAnswers, completedSessions };

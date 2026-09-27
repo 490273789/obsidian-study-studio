@@ -555,3 +555,14 @@ button.addCardBtn,
 		flex: 0 0 auto;
 	}
 }
+
+.homeActions {
+	display: flex;
+	gap: var(--fc-space-3);
+	flex-shrink: 0;
+	button.addCardBtn {
+		width: auto;
+		flex: 1;
+		margin: 0;
+	}
+}

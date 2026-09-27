@@ -45,10 +45,28 @@ import {
 	getCurrentSpellingCardId,
 } from "./spellingSessionEngine";
 import { planRetryIncorrectSession, planSessionQueue } from "./sessionPlanner";
+import {
+	answerChallengeQuestion,
+	completeChallengeLevel,
+	continueChallengeAfterError,
+	createChallengeProgress,
+	createChallengeSession,
+	getCurrentChallengeQuestion,
+	reconcileChallengeSession,
+	removeChallengeQuestions,
+	selectEligibleChallengeCards,
+	type ChallengeFeedback,
+	type ChallengeLevelResult,
+	type ChallengeMode,
+	type ChallengeProgress,
+	type ChallengeQuestionMode,
+	type ChallengeSession,
+} from "./challengeSessionEngine";
 
 export interface SessionCardSnapshot {
 	readonly identity: string;
 	readonly currentDeckId: string;
+	readonly currentDeckName?: string;
 	readonly front: string;
 	readonly back: string;
 	readonly explanation?: string;
@@ -88,6 +106,11 @@ export interface ActiveSpellingReference extends ReferenceBase {
 	readonly mode: "spelling";
 }
 
+export interface ActiveChallengeReference extends ReferenceBase {
+	readonly kind: "active";
+	readonly mode: "challenge";
+}
+
 export interface StudyResultReference extends ReferenceBase {
 	readonly kind: "result";
 	readonly mode: "study";
@@ -103,20 +126,27 @@ export interface SpellingResultReference extends ReferenceBase {
 	readonly mode: "spelling";
 }
 
+export interface ChallengeResultReference extends ReferenceBase {
+	readonly kind: "result";
+	readonly mode: "challenge";
+}
+
 export type LifecycleReference =
 	| IdleLifecycleReference
 	| ActiveStudyReference
 	| ActivePracticeReference
 	| ActiveSpellingReference
+	| ActiveChallengeReference
 	| StudyResultReference
 	| PracticeResultReference
-	| SpellingResultReference;
+	| SpellingResultReference
+	| ChallengeResultReference;
 
 export interface SourceChangeEndSnapshot {
 	readonly id: string;
 	readonly reason: "source-change";
-	readonly mode: "study" | "practice" | "spelling";
-	readonly originDeck: Readonly<SessionOriginDeckSnapshot>;
+	readonly mode: "study" | "practice" | "spelling" | "challenge";
+	readonly originDeck?: Readonly<SessionOriginDeckSnapshot>;
 	readonly answerEventCount: number;
 }
 
@@ -157,10 +187,37 @@ export interface ActiveSpellingSnapshot extends ActiveSnapshotBase {
 	readonly phase: "retrieval" | "correction";
 }
 
+export interface ChallengeRoundProgressSnapshot {
+	readonly level: number;
+	readonly totalLevels: number;
+	readonly passedInLevel: number;
+	readonly currentLevelTotal: number;
+	readonly completedAcrossRound: number;
+	readonly totalAcrossRound: number;
+}
+
+export interface ActiveChallengeSnapshot {
+	readonly kind: "active";
+	readonly mode: "challenge";
+	readonly revision: number;
+	readonly reference: ActiveChallengeReference;
+	readonly startTime: number;
+	readonly currentCard: Readonly<SessionCardSnapshot>;
+	readonly sourceDeck: Readonly<SessionOriginDeckSnapshot>;
+	readonly questionMode: ChallengeQuestionMode;
+	readonly phase: "question" | "feedback";
+	readonly feedback: ChallengeFeedback | null;
+	readonly progress: Readonly<SessionProgressSnapshot>;
+	readonly roundProgress: Readonly<ChallengeRoundProgressSnapshot>;
+	readonly answerEventCount: number;
+	readonly removedCardCount: number;
+}
+
 export type ActiveLifecycleSnapshot =
 	| ActiveStudySnapshot
 	| ActivePracticeSnapshot
-	| ActiveSpellingSnapshot;
+	| ActiveSpellingSnapshot
+	| ActiveChallengeSnapshot;
 
 export type { PracticeSelection, SpellingSelection };
 
@@ -181,6 +238,12 @@ export type SessionStartRequest =
 			readonly mode: "spelling";
 			readonly deckId: string;
 			readonly selection: SpellingSelection;
+	  }
+	| {
+			readonly mode: "challenge";
+			readonly challengeMode: ChallengeMode;
+			readonly intent: "new" | "continue";
+			readonly expectedRoundId?: string | null;
 	  };
 
 export interface StudyResultSnapshot {
@@ -236,17 +299,45 @@ export interface SpellingResultSnapshot {
 	readonly setupDefaults: Readonly<Extract<SessionStartRequest, { mode: "spelling" }>>;
 }
 
+export interface ChallengeRoundSummarySnapshot {
+	readonly completedLevels: number;
+	readonly totalLevels: number;
+	readonly totalQuestions: number;
+	readonly firstTryCorrectCount: number;
+	readonly retryCount: number;
+	readonly timeSpent: number;
+}
+
+export interface ChallengeResultSnapshot {
+	readonly kind: "result";
+	readonly mode: "challenge";
+	readonly revision: number;
+	readonly reference: ChallengeResultReference;
+	readonly completedAt: number;
+	readonly levelResult: Readonly<ChallengeLevelResult>;
+	readonly roundSummary: Readonly<ChallengeRoundSummarySnapshot>;
+	readonly incorrectCards: readonly Readonly<SessionCardSnapshot>[];
+	readonly roundComplete: boolean;
+	readonly canContinue: boolean;
+	readonly removedCardCount: number;
+	readonly sourceChanged: boolean;
+	readonly setupDefaults: Readonly<Extract<SessionStartRequest, { mode: "challenge" }>>;
+}
+
 export type ResultLifecycleSnapshot =
 	| StudyResultSnapshot
 	| PracticeResultSnapshot
-	| SpellingResultSnapshot;
+	| SpellingResultSnapshot
+	| ChallengeResultSnapshot;
 
 export function getRestartViewState(
 	setupDefaults:
 		| Readonly<Extract<SessionStartRequest, { mode: "study" }>>
 		| Readonly<Extract<SessionStartRequest, { mode: "practice" }>>
-		| Readonly<Extract<SessionStartRequest, { mode: "spelling" }>>,
+		| Readonly<Extract<SessionStartRequest, { mode: "spelling" }>>
+		| Readonly<Extract<SessionStartRequest, { mode: "challenge" }>>,
 ): ViewState {
+	if (setupDefaults.mode === "challenge") return { type: "challenge-setup" };
 	if (setupDefaults.mode === "study") {
 		return {
 			type: "study-setup",
@@ -306,8 +397,17 @@ export type SpellingLifecycleAction =
 	| { readonly kind: "answer"; readonly input: string }
 	| { readonly kind: "exit" };
 
+export type ChallengeLifecycleAction =
+	| { readonly kind: "answer"; readonly correct: boolean }
+	| { readonly kind: "answer"; readonly input: string }
+	| { readonly kind: "reveal" }
+	| { readonly kind: "continue" }
+	| { readonly kind: "exit" };
+
 export type ResultLifecycleAction =
 	| { readonly kind: "retry-incorrect" }
+	| { readonly kind: "next-level" }
+	| { readonly kind: "restart-challenge" }
 	| { readonly kind: "dismiss" };
 
 export type IdleLifecycleAction = {
@@ -321,11 +421,17 @@ export type ActionFor<R extends LifecycleReference> = R extends ActiveStudyRefer
 		? PracticeLifecycleAction
 		: R extends ActiveSpellingReference
 			? SpellingLifecycleAction
-			: R extends StudyResultReference | PracticeResultReference | SpellingResultReference
-				? ResultLifecycleAction
-				: R extends IdleLifecycleReference
-					? IdleLifecycleAction
-					: never;
+			: R extends ActiveChallengeReference
+				? ChallengeLifecycleAction
+				: R extends
+							| StudyResultReference
+							| PracticeResultReference
+							| SpellingResultReference
+							| ChallengeResultReference
+					? ResultLifecycleAction
+					: R extends IdleLifecycleReference
+						? IdleLifecycleAction
+						: never;
 
 export interface SpellingLifecycleFeedback {
 	readonly kind:
@@ -349,6 +455,8 @@ export type LifecycleRejection =
 	| "spelling-not-enabled"
 	| "stable-card-identity-required"
 	| "current-card-unavailable"
+	| "no-challenge-progress"
+	| "challenge-progress-changed"
 	| "notice-mismatch";
 
 export type LifecycleOutcome =
@@ -376,7 +484,7 @@ export type LifecycleOutcome =
 export interface PendingSessionHistoryEntry {
 	readonly deckId: string;
 	readonly deckName: string;
-	readonly mode: "study" | "practice" | "spelling";
+	readonly mode: "study" | "practice" | "spelling" | "challenge";
 	readonly cardCount: number;
 	readonly duration: number;
 	readonly occurredAt: number;
@@ -396,14 +504,18 @@ export interface SessionPersistenceTransition {
 	readonly incrementStudyCountFor: readonly string[];
 	readonly historyEntries: readonly PendingSessionHistoryEntry[];
 	readonly learningActivity?: LearningActivityRecord;
+	readonly challengeProgress?: ChallengeProgress;
+	readonly expectedChallengeProgress?: ChallengeProgress | null;
 }
 
 export interface SessionLifecycleRepository extends StudyCardScheduler {
 	getDeck(id: string): Deck | undefined;
+	getAllDecks(): readonly Deck[];
 	getCard(deckId: string, cardId: string): FlashCard | undefined;
 	getEffectiveStudySettings(deckId: string): StudySettings;
 	getSettings(): Pick<FlashcardStudySettings, "wordLearningDecks">;
 	getSpellingProgress(): Record<string, SpellingCardProgress>;
+	getChallengeProgress(): ChallengeProgress | null;
 	commitSessionTransition(transition: SessionPersistenceTransition): Promise<void>;
 }
 
@@ -411,6 +523,7 @@ export interface SessionLifecycle {
 	getSnapshot(): SessionLifecycleSnapshot;
 	subscribe(listener: () => void): () => void;
 	start(request: SessionStartRequest): Promise<LifecycleOutcome>;
+	revalidateChallenge(): Promise<void>;
 	act<R extends LifecycleReference>(
 		reference: R,
 		action: ActionFor<R>,
@@ -425,6 +538,7 @@ export interface SessionLifecycleWiring {
 export interface CreateSessionLifecycleOptions {
 	now?: () => number;
 	shuffle?: (identities: string[]) => string[];
+	random?: () => number;
 }
 
 type InternalActiveState =
@@ -448,6 +562,14 @@ type InternalActiveState =
 			key: string;
 			session: SpellingSession;
 			setupDefaults: Extract<SessionStartRequest, { mode: "spelling" }>;
+	  }
+	| {
+			kind: "active";
+			mode: "challenge";
+			key: string;
+			session: ChallengeSession;
+			progress: ChallengeProgress;
+			setupDefaults: Extract<SessionStartRequest, { mode: "challenge" }>;
 	  };
 
 type InternalResultState =
@@ -482,6 +604,17 @@ type InternalResultState =
 			result: SpellingResult;
 			incorrectCards: SpellingIncorrectCardSnapshot[];
 			setupDefaults: Extract<SessionStartRequest, { mode: "spelling" }>;
+	  }
+	| {
+			kind: "result";
+			mode: "challenge";
+			key: string;
+			completedAt: number;
+			levelResult: ChallengeLevelResult;
+			progress: ChallengeProgress;
+			incorrectCards: SessionCardSnapshot[];
+			sourceChanged: boolean;
+			setupDefaults: Extract<SessionStartRequest, { mode: "challenge" }>;
 	  };
 
 type InternalState =
@@ -493,6 +626,7 @@ type AnyLifecycleAction =
 	| StudyLifecycleAction
 	| PracticeLifecycleAction
 	| SpellingLifecycleAction
+	| ChallengeLifecycleAction
 	| ResultLifecycleAction
 	| IdleLifecycleAction;
 
@@ -519,6 +653,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 	private releaseBusy: (() => void) | null = null;
 	private readonly now: () => number;
 	private readonly shuffle: (identities: string[]) => string[];
+	private readonly random: () => number;
 
 	constructor(
 		private readonly repository: SessionLifecycleRepository,
@@ -526,6 +661,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 	) {
 		this.now = options.now ?? Date.now;
 		this.shuffle = options.shuffle ?? shuffleArray;
+		this.random = options.random ?? Math.random;
 	}
 
 	getSnapshot(): SessionLifecycleSnapshot {
@@ -541,6 +677,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		if (!this.tryAcquire()) return this.rejected("busy");
 		try {
 			if (this.state.kind !== "idle") return this.rejected("invalid-state");
+			if (request.mode === "challenge") return await this.startChallenge(request);
 			const deck = this.repository.getDeck(request.deckId);
 			if (!deck) return this.rejected("deck-not-found");
 			const active = this.createActiveState(request, deck);
@@ -549,6 +686,16 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			return this.applied();
 		} catch (error) {
 			return this.failed("read-failed", error, true);
+		} finally {
+			this.unlock();
+		}
+	}
+
+	async revalidateChallenge(): Promise<void> {
+		await this.acquireWhenAvailable();
+		try {
+			if (this.state.kind !== "active" || this.state.mode !== "challenge") return;
+			await this.revalidateActiveChallenge(this.state);
 		} finally {
 			this.unlock();
 		}
@@ -580,6 +727,10 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		try {
 			if (this.state.kind !== "active") return;
 			const current = this.state;
+			if (current.mode === "challenge") {
+				await this.revalidateActiveChallenge(current);
+				return;
+			}
 			const reconciled = reconcileActiveState(current, change);
 			if (reconciled) {
 				this.publish(reconciled);
@@ -616,8 +767,381 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		}
 	}
 
+	private challengeCards(): Map<string, { card: FlashCard; deck: Deck }> {
+		const decks = this.repository.getAllDecks();
+		const eligible = new Set(
+			selectEligibleChallengeCards(
+				decks,
+				this.repository.getSettings().wordLearningDecks,
+			).map((ref) => ref.identity),
+		);
+		return new Map(
+			decks.flatMap((deck) =>
+				deck.cards
+					.filter((card) => eligible.has(card.id))
+					.map((card) => [card.id, { card, deck }] as const),
+			),
+		);
+	}
+
+	private cleanChallenge(
+		progress: ChallengeProgress,
+		cards: ReadonlyMap<string, unknown>,
+	): ChallengeProgress {
+		const round = progress.round;
+		if (!round) return progress;
+		const removed = new Set(
+			round.levels
+				.slice(round.completedLevelCount)
+				.flat()
+				.filter((question) => !cards.has(question.identity))
+				.map((question) => question.identity),
+		);
+		return removeChallengeQuestions(progress, removed);
+	}
+
+	private async startChallenge(
+		request: Extract<SessionStartRequest, { mode: "challenge" }>,
+	): Promise<LifecycleOutcome> {
+		const saved = this.repository.getChallengeProgress();
+		if (
+			request.expectedRoundId !== undefined &&
+			request.expectedRoundId !== (saved?.round?.id ?? null)
+		)
+			return this.rejected("stale-reference");
+		const now = this.now();
+		const cards = this.challengeCards();
+		let progress =
+			request.intent === "new"
+				? createChallengeProgress({
+						mode: request.challengeMode,
+						cards: [...cards].map(([identity, { deck }]) => ({
+							identity,
+							originDeckId: deck.id,
+						})),
+						now,
+						roundId: `challenge-${now}-${this.makeKey("round")}-${this.random()}`,
+						shuffle: this.shuffle,
+						random: this.random,
+					})
+				: saved;
+		if (!progress?.round) return this.rejected("no-eligible-cards");
+		if (request.intent === "continue" && progress.round.mode !== request.challengeMode)
+			return this.rejected("invalid-state");
+		progress = this.cleanChallenge(progress, cards);
+		const round = progress.round!;
+		// Empty future levels are omitted, never recorded as completed sessions.
+		progress = {
+			...progress,
+			round: {
+				...round,
+				levels: [
+					...round.levels.slice(0, round.completedLevelCount),
+					...round.levels
+						.slice(round.completedLevelCount)
+						.filter((level) => level.length > 0),
+				],
+			},
+		};
+		const currentRound = progress.round!;
+		const questions = currentRound.levels[currentRound.completedLevelCount] ?? [];
+		const session = createChallengeSession({ round: currentRound, questions, startTime: now });
+		if (!session) {
+			if (request.intent === "new") return this.rejected("no-eligible-cards");
+			await this.commit({
+				...emptyTransition(),
+				challengeProgress: { ...progress, round: null },
+				expectedChallengeProgress: saved,
+			});
+			this.endChallengeBySourceChange(0);
+			return this.applied();
+		}
+		await this.commit({
+			...emptyTransition(),
+			challengeProgress: progress,
+			expectedChallengeProgress: saved,
+		});
+		this.publish({
+			kind: "active",
+			mode: "challenge",
+			key: this.makeKey("challenge"),
+			session,
+			progress,
+			setupDefaults: { ...request, expectedRoundId: currentRound.id },
+		});
+		return this.applied();
+	}
+
+	private endChallengeBySourceChange(answerEventCount: number): void {
+		this.publish({
+			kind: "idle",
+			key: this.makeKey("idle"),
+			lastEnd: {
+				id: this.makeKey("source-change"),
+				reason: "source-change",
+				mode: "challenge",
+				answerEventCount,
+			},
+		});
+	}
+
+	private async revalidateActiveChallenge(
+		state: Extract<InternalActiveState, { mode: "challenge" }>,
+	): Promise<boolean> {
+		const persisted = this.repository.getChallengeProgress();
+		if (JSON.stringify(persisted) !== JSON.stringify(state.progress)) {
+			this.endChallengeBySourceChange(state.session.attempts.length);
+			return true;
+		}
+		const cards = this.challengeCards();
+		const progress = this.cleanChallenge(state.progress, cards);
+		const session = reconcileChallengeSession(state.session, new Set(cards.keys()));
+		const changed =
+			progress.round!.removedIdentities.length !==
+			state.progress.round!.removedIdentities.length;
+		if (!session) {
+			await this.commit({
+				...emptyTransition(),
+				challengeProgress: { ...progress, round: null },
+				expectedChallengeProgress: state.progress,
+			});
+			this.endChallengeBySourceChange(state.session.attempts.length);
+			return true;
+		}
+		if (changed)
+			await this.commit({
+				...emptyTransition(),
+				challengeProgress: progress,
+				expectedChallengeProgress: state.progress,
+			});
+		const oldCard = this.snapshot.kind === "active" ? this.snapshot.currentCard : null;
+		const current = cards.get(session.queue[0]!.identity)!;
+		const contentChanged =
+			!oldCard ||
+			oldCard.front !== current.card.front ||
+			oldCard.back !== current.card.back ||
+			(oldCard.explanation ?? "") !== (current.card.explanation ?? "") ||
+			oldCard.currentDeckId !== current.deck.id;
+		if (changed || contentChanged) {
+			this.publish({
+				...state,
+				progress,
+				session: contentChanged ? { ...session, feedback: null } : session,
+			});
+			return true;
+		}
+		return false;
+	}
+
+	private async applyChallengeAction(
+		state: Extract<InternalActiveState, { mode: "challenge" }>,
+		action: AnyLifecycleAction,
+	): Promise<LifecycleOutcome> {
+		if (await this.revalidateActiveChallenge(state)) return this.rejected("stale-reference");
+		if (action.kind === "continue") {
+			if (!state.session.feedback) return this.rejected("action-not-available");
+			this.publish({ ...state, session: continueChallengeAfterError(state.session) });
+			return this.applied();
+		}
+		if (state.session.feedback || (action.kind !== "answer" && action.kind !== "reveal"))
+			return this.rejected("action-not-available");
+		const question = getCurrentChallengeQuestion(state.session)!;
+		const found = this.challengeCards().get(question.identity);
+		if (!found) return this.rejected("current-card-unavailable");
+		const expectedAnswer = extractSpellingWord(found.card.front)!;
+		let correct: boolean;
+		let submittedInput: string | undefined;
+		if (question.questionMode === "spelling") {
+			if (action.kind === "reveal") correct = false;
+			else if ("input" in action) {
+				submittedInput = action.input;
+				correct = isSpellingAnswerCorrect(action.input, expectedAnswer);
+			} else return this.rejected("action-not-available");
+		} else {
+			if (action.kind !== "answer" || !("correct" in action))
+				return this.rejected("action-not-available");
+			correct = action.correct;
+		}
+		const now = this.now();
+		const step = answerChallengeQuestion({
+			session: state.session,
+			correct,
+			now,
+			submittedInput,
+			expectedAnswer,
+		});
+		const lastAttempt =
+			state.session.attempts[state.session.attempts.length - 1]?.answeredAt ??
+			state.session.startTime;
+		const duration = Math.max(
+			0,
+			Math.floor((now - state.session.startTime) / 1000) -
+				Math.floor((lastAttempt - state.session.startTime) / 1000),
+		);
+		const complete = step.type === "complete";
+		let progress = complete
+			? completeChallengeLevel(state.progress, step.result)
+			: state.progress;
+		if (complete && progress.round) {
+			const round = progress.round;
+			progress = {
+				...progress,
+				round: {
+					...round,
+					levels: [
+						...round.levels.slice(0, round.completedLevelCount),
+						...round.levels
+							.slice(round.completedLevelCount)
+							.filter((level) => level.length),
+					],
+				},
+			};
+		}
+		await this.commit({
+			...emptyTransition(),
+			challengeProgress: progress,
+			expectedChallengeProgress: state.progress,
+			learningActivity: {
+				kind: "session",
+				mode: "challenge",
+				completion: complete ? "completed" : "partial",
+				answerCount: 1,
+				completedAnswerCount: complete ? step.session.attempts.length : undefined,
+				durationSeconds: duration,
+				occurredAt: now,
+			},
+			historyEntries: complete
+				? [
+						{
+							deckId: state.session.roundId,
+							deckName: "",
+							mode: "challenge",
+							cardCount: step.result.totalQuestions,
+							duration: step.result.durationSeconds,
+							occurredAt: now,
+						},
+					]
+				: [],
+		});
+		if (step.type === "complete") {
+			this.publish({
+				kind: "result",
+				mode: "challenge",
+				key: this.makeKey("challenge-result"),
+				completedAt: now,
+				levelResult: step.result,
+				progress,
+				incorrectCards: step.result.incorrectIdentities.flatMap((identity) => {
+					const entry = this.challengeCards().get(identity);
+					return entry
+						? [
+								{
+									...snapshotCard(entry.card),
+									currentDeckId: entry.deck.id,
+									currentDeckName: entry.deck.name,
+								},
+							]
+						: [];
+				}),
+				sourceChanged: false,
+				setupDefaults: state.setupDefaults,
+			});
+		} else this.publish({ ...state, progress, session: step.session });
+		return this.applied();
+	}
+
+	private buildChallengeSnapshot(
+		state: Extract<InternalActiveState, { mode: "challenge" }>,
+	): ActiveChallengeSnapshot {
+		const question = getCurrentChallengeQuestion(state.session)!;
+		const entry = this.challengeCards().get(question.identity);
+		if (!entry) throw new Error("Challenge current card is unavailable");
+		const round = state.progress.round!;
+		const completed = state.session.completedIdentities.length;
+		const total = state.session.initialQuestions.length;
+		return {
+			kind: "active",
+			mode: "challenge",
+			revision: this.revision,
+			reference: {
+				kind: "active",
+				mode: "challenge",
+				revision: this.revision,
+				key: state.key,
+			},
+			startTime: state.session.startTime,
+			currentCard: {
+				...snapshotCard(entry.card),
+				currentDeckId: entry.deck.id,
+				currentDeckName: entry.deck.name,
+			},
+			sourceDeck: { id: entry.deck.id, name: entry.deck.name },
+			questionMode: question.questionMode,
+			phase: state.session.feedback ? "feedback" : "question",
+			feedback: state.session.feedback,
+			progress: {
+				current: completed + 1,
+				completed,
+				total,
+				percent: total ? (completed / total) * 100 : 0,
+				label: `${completed}/${total}`,
+			},
+			roundProgress: {
+				level: state.session.levelIndex + 1,
+				totalLevels: round.levels.length,
+				passedInLevel: completed,
+				currentLevelTotal: total,
+				completedAcrossRound:
+					round.completedLevels.reduce((sum, level) => sum + level.totalQuestions, 0) +
+					completed,
+				totalAcrossRound: round.levels.reduce((sum, level) => sum + level.length, 0),
+			},
+			answerEventCount: state.session.attempts.length,
+			removedCardCount: round.removedIdentities.length,
+		};
+	}
+
+	private buildChallengeResultSnapshot(
+		state: Extract<InternalResultState, { mode: "challenge" }>,
+	): ChallengeResultSnapshot {
+		const round = state.progress.round!;
+		const totals = round.completedLevels.reduce(
+			(sum, level) => ({
+				totalQuestions: sum.totalQuestions + level.totalQuestions,
+				firstTryCorrectCount: sum.firstTryCorrectCount + level.firstTryCorrectCount,
+				retryCount: sum.retryCount + level.retryCount,
+				timeSpent: sum.timeSpent + level.durationSeconds,
+			}),
+			{ totalQuestions: 0, firstTryCorrectCount: 0, retryCount: 0, timeSpent: 0 },
+		);
+		return {
+			kind: "result",
+			mode: "challenge",
+			revision: this.revision,
+			reference: {
+				kind: "result",
+				mode: "challenge",
+				revision: this.revision,
+				key: state.key,
+			},
+			completedAt: state.completedAt,
+			levelResult: state.levelResult,
+			roundSummary: {
+				...totals,
+				completedLevels: round.completedLevels.length,
+				totalLevels: round.levels.length,
+			},
+			incorrectCards: state.incorrectCards,
+			roundComplete: round.completedLevelCount >= round.levels.length,
+			canContinue: round.completedLevelCount < round.levels.length,
+			removedCardCount: round.removedIdentities.length,
+			sourceChanged: state.sourceChanged,
+			setupDefaults: state.setupDefaults,
+		};
+	}
+
 	private createActiveState(
-		request: SessionStartRequest,
+		request: Exclude<SessionStartRequest, { mode: "challenge" }>,
 		deck: Deck,
 	): InternalActiveState | null {
 		const originDeck = { id: deck.id, name: deck.name };
@@ -693,6 +1217,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		if (this.state.kind === "idle") return this.applyIdleAction(action);
 		if (this.state.kind === "result") return this.applyResultAction(action);
 		if (action.kind === "exit") return this.exitActive(this.state);
+		if (this.state.mode === "challenge") return this.applyChallengeAction(this.state, action);
 		if (this.state.mode === "study") return this.applyStudyAction(this.state, action);
 		if (this.state.mode === "practice") return this.applyPracticeAction(this.state, action);
 		return this.applySpellingAction(this.state, action);
@@ -911,6 +1436,16 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			this.publish({ kind: "idle", key: this.makeKey("idle"), lastEnd: null });
 			return this.applied();
 		}
+		if (state.mode === "challenge") {
+			if (action.kind !== "next-level" && action.kind !== "restart-challenge")
+				return this.rejected("action-not-available");
+			return this.startChallenge({
+				mode: "challenge",
+				challengeMode: state.setupDefaults.challengeMode,
+				intent: action.kind === "next-level" ? "continue" : "new",
+				expectedRoundId: state.progress.round?.id ?? null,
+			});
+		}
 		if (state.mode === "study" || action.kind !== "retry-incorrect") {
 			return this.rejected("action-not-available");
 		}
@@ -961,6 +1496,10 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 	}
 
 	private async exitActive(state: InternalActiveState): Promise<LifecycleOutcome> {
+		if (state.mode === "challenge") {
+			this.publish({ kind: "idle", key: this.makeKey("idle"), lastEnd: null });
+			return this.applied();
+		}
 		const answerEventCount = getAnswerEventCount(state);
 		const activityAnswerCount = getActivityAnswerCount(state);
 		if (activityAnswerCount > 0) {
@@ -979,7 +1518,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 	}
 
 	private buildPartialHistory(
-		state: InternalActiveState,
+		state: Exclude<InternalActiveState, { mode: "challenge" }>,
 		answerEventCount: number,
 		occurredAt = this.now(),
 	): PendingSessionHistoryEntry {
@@ -992,7 +1531,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 	}
 
 	private buildHistory(
-		state: InternalActiveState,
+		state: Exclude<InternalActiveState, { mode: "challenge" }>,
 		cardCount: number,
 		duration: number,
 		occurredAt = this.now(),
@@ -1071,6 +1610,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			return makeIdleSnapshot(this.revision, this.state.key, this.state.lastEnd);
 		}
 		if (this.state.kind === "result") return this.buildResultSnapshot(this.state);
+		if (this.state.mode === "challenge") return this.buildChallengeSnapshot(this.state);
 		const cardId =
 			this.state.mode === "study"
 				? getCurrentStudyCardId(this.state.session)
@@ -1154,6 +1694,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 	}
 
 	private buildResultSnapshot(state: InternalResultState): ResultLifecycleSnapshot {
+		if (state.mode === "challenge") return this.buildChallengeResultSnapshot(state);
 		if (state.mode === "study") {
 			return {
 				kind: "result",
@@ -1367,7 +1908,7 @@ function errorMessage(error: unknown): string {
 }
 
 function reconcileActiveState(
-	state: InternalActiveState,
+	state: Exclude<InternalActiveState, { mode: "challenge" }>,
 	change: ContinuitySessionChange,
 ): InternalActiveState | null {
 	if (state.mode === "study") {

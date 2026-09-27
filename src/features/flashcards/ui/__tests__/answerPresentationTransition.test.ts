@@ -19,6 +19,7 @@ import {
 import type { PronunciationRuntime } from "../../domain/pronunciation";
 
 class ScriptedLifecycle implements SessionLifecycle {
+	async revalidateChallenge(): Promise<void> {}
 	readonly listeners = new Set<() => void>();
 	readonly actions: Array<{ reference: LifecycleReference; action: unknown }> = [];
 	onAct: (reference: LifecycleReference, action: unknown) => Promise<LifecycleOutcome> =
@@ -733,5 +734,71 @@ describe("AnswerPresentationTransition", () => {
 			expect(stopMock).toHaveBeenCalled();
 			expect(await pending).toEqual({ kind: "cancelled" });
 		});
+	});
+});
+
+describe("challenge answer presentation", () => {
+	it("serializes challenge answers and retains error feedback until the shared continue action", async () => {
+		const initial = {
+			...activeStudy("one", 1),
+			mode: "challenge" as const,
+			reference: {
+				kind: "active" as const,
+				mode: "challenge" as const,
+				revision: 1,
+				key: "challenge",
+			},
+			sourceDeck: { id: "deck", name: "Deck" },
+			questionMode: "spelling" as const,
+			phase: "question" as const,
+			feedback: null,
+			roundProgress: {
+				level: 1,
+				totalLevels: 1,
+				passedInLevel: 0,
+				currentLevelTotal: 1,
+				completedAcrossRound: 0,
+				totalAcrossRound: 1,
+			},
+			removedCardCount: 0,
+		};
+		const feedback = {
+			...initial,
+			revision: 2,
+			reference: { ...initial.reference, revision: 2 },
+			phase: "feedback" as const,
+			feedback: { correct: false as const, expectedAnswer: "one", submittedInput: "wrong" },
+		};
+		const lifecycle = new ScriptedLifecycle(initial);
+		lifecycle.onAct = async () => {
+			lifecycle.publish(feedback);
+			return { kind: "applied", snapshot: feedback };
+		};
+		const clock = new FakeClock();
+		const transition = createAnswerPresentationTransition({ lifecycle, clock });
+		const unsubscribe = transition.subscribe(() => {});
+		const pending = transition.act({
+			kind: "challenge-answer",
+			reference: initial.reference,
+			input: "wrong",
+		});
+		await flushPromises();
+		expect(transition.getSnapshot().lifecycle).toBe(initial);
+		expect(lifecycle.actions[0]?.action).toEqual({ kind: "answer", input: "wrong" });
+		expect(
+			(
+				await transition.act({
+					kind: "challenge-answer",
+					reference: initial.reference,
+					input: "one",
+				})
+			).kind,
+		).toBe("rejected");
+		clock.runNext();
+		await pending;
+		expect(transition.getSnapshot().lifecycle).toEqual(feedback);
+		expect(clock.pendingCount).toBe(0);
+		unsubscribe();
+		expect(lifecycle.getSnapshot()).toEqual(feedback);
 	});
 });

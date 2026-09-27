@@ -9,6 +9,7 @@ import { MemoryFlashcardAuthority } from "./memoryFlashcardAuthority";
 import { WorkbenchStore, type StorageBackend } from "../../../../../core/storage/workbenchStore";
 import type { Deck, FlashCard } from "../../../../../core/shared/types";
 import { DEFAULT_SETTINGS } from "../../../../../core/host/settingsSlices";
+import type { ChallengeProgress } from "../../sessions/challengeSessionEngine";
 
 function createMockBackend(initialData: unknown = null): StorageBackend & {
 	data: unknown;
@@ -74,6 +75,30 @@ function serializeDeck(deck: Deck): SerializedDeck {
 				learning_steps: card.fsrsCard.learning_steps ?? 0,
 			},
 		})),
+	};
+}
+
+function challengeProgress(id = "challenge-1"): ChallengeProgress {
+	return {
+		version: 1,
+		lastMode: "random",
+		round: {
+			id,
+			mode: "random",
+			startedAt: 1_000,
+			levels: [
+				[
+					{
+						identity: "c1",
+						originDeckId: "deck-1",
+						questionMode: "normal",
+					},
+				],
+			],
+			completedLevelCount: 0,
+			completedLevels: [],
+			removedIdentities: [],
+		},
 	};
 }
 
@@ -297,6 +322,85 @@ describe("FlashcardRepository", () => {
 		expect(learning.cards["c1"].fsrsCard.state).toBe(State.Review);
 	});
 
+	it("persists challenge progress, activity, and history atomically without changing FSRS", async () => {
+		const card = makeCard("c1", State.Review, new Date("2026-03-05T00:00:00.000Z"), 0);
+		const authority = new MemoryFlashcardAuthority(DEFAULT_SETTINGS, {
+			cards: {
+				c1: { fsrsCard: serializeDeck(makeDeck("deck-1", [card])).cards[0]!.fsrsCard },
+			},
+			decks: { "deck-1": { studyCount: 0, lastStudied: null } },
+			studyHistory: [],
+			dailyLearningActivities: [],
+			spellingProgress: {},
+			continuity: { sources: {}, issues: [], journal: null },
+		});
+		const repo = new FlashcardRepository({ authority, deckIndexCache: null });
+		await repo.load();
+		const originalFsrs = repo.getCard("deck-1", "c1")?.fsrsCard;
+		const occurredAt = new Date(2026, 2, 5, 12).getTime();
+		const progress = challengeProgress();
+
+		await repo.commitSessionTransition({
+			cardUpdates: [],
+			incrementStudyCountFor: [],
+			spellingAttempts: [],
+			historyEntries: [
+				{
+					deckId: "challenge",
+					deckName: "Challenge",
+					mode: "challenge",
+					cardCount: 1,
+					duration: 20,
+					occurredAt,
+				},
+			],
+			learningActivity: {
+				kind: "session",
+				mode: "challenge",
+				completion: "completed",
+				answerCount: 2,
+				durationSeconds: 20,
+				occurredAt,
+			},
+			challengeProgress: progress,
+		});
+
+		expect(repo.getChallengeProgress()).toEqual(progress);
+		expect(repo.getChallengeProgress()).not.toBe(progress);
+		expect(repo.getStudyHistory()).toMatchObject([{ mode: "challenge", cardCount: 1 }]);
+		expect(repo.getLearningFootprint(new Date(2026, 2, 5, 13)).today).toMatchObject({
+			answers: { challenge: 2 },
+			seconds: { challenge: 20 },
+			completedSessions: { challenge: 1 },
+		});
+		expect(repo.getCard("deck-1", "c1")?.fsrsCard).toEqual(originalFsrs);
+		expect((await authority.read()).content).toMatchObject({
+			kind: "current",
+			learning: { challengeProgress: progress },
+		});
+	});
+
+	it("does not expose or persist a challenge candidate when the atomic commit fails", async () => {
+		const authority = new MemoryFlashcardAuthority(DEFAULT_SETTINGS);
+		const repo = new FlashcardRepository({ authority, deckIndexCache: null });
+		await repo.load();
+		const revision = repo.getRevision();
+		authority.failNextCommit = true;
+
+		await expect(
+			repo.commitSessionTransition({
+				cardUpdates: [],
+				incrementStudyCountFor: [],
+				spellingAttempts: [],
+				historyEntries: [],
+				challengeProgress: challengeProgress(),
+			}),
+		).rejects.toMatchObject({ code: "authority-write-failed" });
+
+		expect(repo.getChallengeProgress()).toBeNull();
+		expect(repo.getRevision()).toBe(revision);
+	});
+
 	it("computes deck stats accurately", async () => {
 		const now = new Date("2026-03-01T12:00:00.000Z");
 		const deck = makeDeck("deck-1", [
@@ -392,6 +496,24 @@ describe("FlashcardRepository", () => {
 		expect(repo.getLearningFootprint(new Date(7_000)).today.seconds["word-list"]).toBe(6);
 	});
 
+	it("ignores malformed persisted challenge progress without losing other learning data", async () => {
+		const authority = new MemoryFlashcardAuthority(DEFAULT_SETTINGS, {
+			cards: {},
+			decks: {},
+			studyHistory: [],
+			dailyLearningActivities: [],
+			spellingProgress: {},
+			challengeProgress: { version: 99 } as never,
+			continuity: { sources: {}, issues: [], journal: null },
+		});
+		const repo = new FlashcardRepository({ authority, deckIndexCache: null });
+
+		await repo.load();
+
+		expect(repo.getChallengeProgress()).toBeNull();
+		expect(repo.getStudyHistory()).toEqual([]);
+	});
+
 	it("rehydrates the complete learning snapshot after external Sync", async () => {
 		const backend = createMockBackend({
 			schemaVersion: 2,
@@ -461,6 +583,7 @@ describe("FlashcardRepository", () => {
 						lastAttemptAt: 1,
 					},
 				},
+				challengeProgress: challengeProgress("synced-challenge"),
 				continuity: {
 					sources: { "notes/external.md": { type: "current" } },
 					issues: [],
@@ -478,6 +601,7 @@ describe("FlashcardRepository", () => {
 				repo.getLearningFootprint(new Date(2026, 3, 1, 12)).today.completedSessions.study,
 			).toBe(1);
 			expect(repo.getSpellingProgress().synced?.correctStreak).toBe(2);
+			expect(repo.getChallengeProgress()?.round?.id).toBe("synced-challenge");
 		});
 	});
 

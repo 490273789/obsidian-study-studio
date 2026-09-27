@@ -367,6 +367,7 @@ interface DeckListProps {
 	onOpenStats: () => void;
 	onOpenSettings: () => void;
 	onOpenAddCard: () => void;
+	onOpenChallenge?: () => void;
 	onOpenTranslation?: () => void;
 	onOpenDictionary?: () => void;
 	onOpenVideoPlayer?: () => void;
@@ -382,6 +383,7 @@ export const DeckList = React.memo(function DeckList({
 	onOpenStats,
 	onOpenSettings,
 	onOpenAddCard,
+	onOpenChallenge,
 	onOpenTranslation,
 	onOpenDictionary,
 	onOpenVideoPlayer,
@@ -621,9 +623,18 @@ export const DeckList = React.memo(function DeckList({
 						<p className={cls("flashcard-empty-hint", styles.emptyHint)}>
 							{t("home.emptyHint", { tag: "#wordTag" })}
 						</p>
-						<FlashcardButton variant="primary" icon={Plus} onClick={onOpenAddCard}>
-							{t("cardEditor.addCardTitle")}
-						</FlashcardButton>
+						<div className={styles.homeActions}>
+							<FlashcardButton variant="primary" icon={Plus} onClick={onOpenAddCard}>
+								{t("cardEditor.addCardTitle")}
+							</FlashcardButton>
+							<FlashcardButton
+								variant="secondary"
+								icon={Target}
+								onClick={onOpenChallenge}
+							>
+								{t("challenge.title")}
+							</FlashcardButton>
+						</div>
 					</div>
 				) : (
 					<div className={cls("flashcard-home-workspace", styles.workspace)}>
@@ -698,14 +709,23 @@ export const DeckList = React.memo(function DeckList({
 								</SortableContext>
 							</DndContext>
 						</section>
-						<FlashcardButton
-							variant="secondary"
-							className={cls("flashcard-home-add-card", styles.addCardBtn)}
-							icon={Plus}
-							onClick={onOpenAddCard}
-						>
-							{t("cardEditor.addCardTitle")}
-						</FlashcardButton>
+						<div className={styles.homeActions}>
+							<FlashcardButton
+								variant="secondary"
+								className={cls("flashcard-home-add-card", styles.addCardBtn)}
+								icon={Plus}
+								onClick={onOpenAddCard}
+							>
+								{t("cardEditor.addCardTitle")}
+							</FlashcardButton>
+							<FlashcardButton
+								variant="secondary"
+								icon={Target}
+								onClick={onOpenChallenge}
+							>
+								{t("challenge.title")}
+							</FlashcardButton>
+						</div>
 					</div>
 				)}
 			</div>

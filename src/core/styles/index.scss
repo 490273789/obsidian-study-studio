@@ -28,6 +28,7 @@
 @use "../ui/primitives/SetupSelector/SetupSelector.scss";
 @use "../../features/flashcards/ui/primitives/Markdown/Markdown.scss";
 @use "../../features/flashcards/ui/primitives/PronunciationButton/PronunciationButton.scss";
+@use "../../features/flashcards/ui/views/Challenge/Challenge.module.scss";
 
 // 3. 全局动效与小屏/移动端响应式覆盖 (最后加载)
 @use "./motion.scss";

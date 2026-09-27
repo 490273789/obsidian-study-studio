@@ -41,6 +41,12 @@ function makeDeck(cards: FlashCard[]): Deck {
 }
 
 class MemoryLifecycleRepository implements SessionLifecycleRepository {
+	getAllDecks() {
+		return [...this.decks.values()];
+	}
+	getChallengeProgress() {
+		return null;
+	}
 	readonly decks = new Map<string, Deck>();
 	readonly history: SessionPersistenceTransition["historyEntries"][number][] = [];
 	readonly activity: LearningActivityRecord[] = [];

@@ -9,7 +9,12 @@ export type StudyHistoryTranslator = (
 ) => string;
 
 export interface StudyHistoryModePresentation {
-	labelKey: "stats.modeStudy" | "stats.modePractice" | "stats.modeSpelling" | "stats.modeList";
+	labelKey:
+		| "stats.modeStudy"
+		| "stats.modePractice"
+		| "stats.modeSpelling"
+		| "challenge.title"
+		| "stats.modeList";
 	cls: string;
 }
 
@@ -46,6 +51,7 @@ export const STUDY_HISTORY_MODE_PRESENTATION: Record<
 	study: { labelKey: "stats.modeStudy", cls: "stats-mode-study" },
 	practice: { labelKey: "stats.modePractice", cls: "stats-mode-practice" },
 	spelling: { labelKey: "stats.modeSpelling", cls: "stats-mode-spelling" },
+	challenge: { labelKey: "challenge.title", cls: "stats-mode-challenge" },
 	"word-list": { labelKey: "stats.modeList", cls: "stats-mode-list" },
 };
 

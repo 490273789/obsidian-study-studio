@@ -16,6 +16,7 @@ const MODE_CLASSES: Record<StudyHistoryEntry["mode"], string> = {
 	study: styles.modeStudy,
 	practice: styles.modePractice,
 	spelling: styles.modeSpelling,
+	challenge: styles.modePractice,
 	"word-list": styles.modeList,
 };
 
@@ -101,7 +102,9 @@ export const StatsView = React.memo(function StatsView({ history, onBack }: Stat
 													)}
 												</span>
 												<span className={styles.sessionDeck}>
-													{entry.deckName}
+													{entry.mode === "challenge"
+														? t("challenge.title")
+														: entry.deckName}
 												</span>
 												<div className={styles.sessionRight}>
 													{entry.cardCount > 0 && (

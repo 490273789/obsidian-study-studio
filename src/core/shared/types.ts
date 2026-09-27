@@ -244,6 +244,7 @@ export type ViewState =
 			deckId: string;
 			initialSelection?: SpellingSelection;
 	  }
+	| { type: "challenge-setup" }
 	| { type: "stats" };
 
 /**
@@ -257,7 +258,7 @@ export interface StudyHistoryEntry {
 	/** Deck name at time of session */
 	deckName: string;
 	/** Session mode */
-	mode: "study" | "practice" | "spelling" | "word-list";
+	mode: "study" | "practice" | "spelling" | "challenge" | "word-list";
 	/** Cards reviewed (0 for word-list) */
 	cardCount: number;
 	/** Session duration in seconds */

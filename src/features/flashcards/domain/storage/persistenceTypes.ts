@@ -3,6 +3,7 @@ import type { SpellingCardProgress, StudyHistoryEntry } from "../../../../core/s
 import type { FlashcardStudySettings } from "../../settings/slice";
 import type { PersistedCardIdentityContinuityState } from "../identity/cardIdentityContinuity";
 import type { DailyLearningActivityDay } from "../history/dailyLearningActivity";
+import type { ChallengeProgress } from "../sessions/challengeSessionEngine";
 
 export interface SerializedFSRSCard {
 	due: string;
@@ -53,6 +54,7 @@ export interface LearningStateDocument {
 	studyHistory: StudyHistoryEntry[];
 	dailyLearningActivities?: DailyLearningActivityDay[];
 	spellingProgress: Record<string, SpellingCardProgress>;
+	challengeProgress?: ChallengeProgress;
 	continuity: PersistedCardIdentityContinuityState;
 }
 

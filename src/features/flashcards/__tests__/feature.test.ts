@@ -18,6 +18,7 @@ const deep = vi.hoisted(() => ({
 vi.mock("../domain/storage/flashcardRepository", () => ({
 	FlashcardRepository: class {
 		dispose = vi.fn();
+		subscribe = vi.fn(() => () => {});
 		load = vi.fn().mockResolvedValue(undefined);
 		hasAvailableTagsSnapshot = () => true;
 		getAvailableTags = () => ["#wordTag"];
@@ -79,7 +80,12 @@ vi.mock("../domain/pronunciation", () => ({
 
 vi.mock("../domain/sessions/sessionLifecycle", () => ({
 	createSessionLifecycle: vi.fn(() => ({
-		lifecycle: { act: vi.fn(), subscribe: vi.fn(), getSnapshot: vi.fn() },
+		lifecycle: {
+			act: vi.fn(),
+			subscribe: vi.fn(),
+			getSnapshot: vi.fn(),
+			revalidateChallenge: vi.fn().mockResolvedValue(undefined),
+		},
 		continuitySessions: {},
 	})),
 	// The feature only passes the lifecycle through, so a stub type surface is enough.
@@ -113,6 +119,7 @@ vi.mock("../obsidian/continuityModals", () => ({
 function createRepository() {
 	return {
 		dispose: vi.fn(),
+		subscribe: vi.fn(() => () => {}),
 		load: vi.fn().mockResolvedValue(undefined),
 		hasAvailableTagsSnapshot: () => true,
 		getAvailableTags: () => ["#wordTag"],

@@ -16,6 +16,11 @@ import {
 import type { FlashcardStudySettings } from "../../settings/slice";
 import { FSRSScheduler, toFSRSRating } from "../sessions/scheduler";
 import type { StudyCardSchedule } from "../sessions/sessionEngine";
+import {
+	cloneChallengeProgress,
+	normalizeChallengeProgress,
+	type ChallengeProgress,
+} from "../sessions/challengeSessionEngine";
 import type {
 	CardIdentityContinuityState,
 	ContinuityStateStore,
@@ -85,6 +90,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 	private studyHistory: StudyHistoryEntry[] = [];
 	private dailyLearningActivity: DailyLearningActivity = restoreDailyLearningActivity(undefined);
 	private spellingProgress: Record<string, SpellingCardProgress> = {};
+	private challengeProgress: ChallengeProgress | null = null;
 	private availableTags: string[] = [];
 	private hasAvailableTagsSnapshotValue = false;
 	private continuity: PersistedCardIdentityContinuityState = createEmptyContinuityState();
@@ -271,6 +277,10 @@ export class FlashcardRepository implements DeckHomeRepository {
 		);
 	}
 
+	getChallengeProgress(): ChallengeProgress | null {
+		return this.challengeProgress ? cloneChallengeProgress(this.challengeProgress) : null;
+	}
+
 	getScheduler(): FSRSScheduler {
 		return this.scheduler;
 	}
@@ -336,8 +346,25 @@ export class FlashcardRepository implements DeckHomeRepository {
 		await this.enqueueOperation(async () => {
 			let updatedDeckIds = new Set<string>();
 			await this.commitAuthority(() => {
+				if (
+					transition.expectedChallengeProgress !== undefined &&
+					JSON.stringify(this.challengeProgress) !==
+						JSON.stringify(transition.expectedChallengeProgress)
+				) {
+					throw new FlashcardPersistenceError(
+						"invariant-violated",
+						"Challenge progress changed; reopen the challenge to continue.",
+						true,
+					);
+				}
 				const nextDecks = cloneDecksForTransition(this.decks, transition, this.cardIndex);
 				const nextSpellingProgress = cloneSpellingProgress(this.spellingProgress);
+				const nextChallengeProgress =
+					transition.challengeProgress === undefined
+						? this.challengeProgress
+							? cloneChallengeProgress(this.challengeProgress)
+							: null
+						: cloneChallengeProgress(transition.challengeProgress);
 				updatedDeckIds = new Set<string>();
 				const occurredAt =
 					transition.learningActivity?.occurredAt ??
@@ -386,12 +413,14 @@ export class FlashcardRepository implements DeckHomeRepository {
 						nextSpellingProgress,
 						this.continuity,
 						nextActivity,
+						nextChallengeProgress,
 					),
 					install: () => {
 						this.decks = nextDecks;
 						this.studyHistory = nextHistory;
 						this.spellingProgress = nextSpellingProgress;
 						this.dailyLearningActivity = nextActivity;
+						this.challengeProgress = nextChallengeProgress;
 						for (const deckId of updatedDeckIds) {
 							this.refreshDeckDueTimes(deckId, nextDecks);
 						}
@@ -536,6 +565,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 		this.studyHistory = [...(learning.studyHistory ?? [])];
 		this.dailyLearningActivity = restoreDailyLearningActivity(learning.dailyLearningActivities);
 		this.spellingProgress = normalizeSpellingProgress(learning.spellingProgress);
+		this.challengeProgress = normalizeChallengeProgress(learning.challengeProgress);
 		this.continuity = cloneContinuityState(learning.continuity);
 		this.refreshDerivedState();
 	}
@@ -547,6 +577,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 		this.studyHistory = [...(legacy.studyHistory ?? [])];
 		this.dailyLearningActivity = restoreDailyLearningActivity(undefined);
 		this.spellingProgress = normalizeSpellingProgress(legacy.spellingProgress);
+		this.challengeProgress = null;
 		this.continuity = cloneContinuityState(legacy.continuity);
 		this.restoreAvailableTags(legacy.availableTags);
 		this.refreshDerivedState();
@@ -603,6 +634,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 		spellingProgress: Record<string, SpellingCardProgress>,
 		continuity: PersistedCardIdentityContinuityState = this.continuity,
 		dailyLearningActivity: DailyLearningActivity = this.dailyLearningActivity,
+		challengeProgress: ChallengeProgress | null = this.challengeProgress,
 	): LearningStateDocument {
 		const cards: Record<string, PersistedCardLearningState> = {};
 		const persistedDecks: Record<string, PersistedDeckLearningState> = {};
@@ -623,6 +655,9 @@ export class FlashcardRepository implements DeckHomeRepository {
 			studyHistory: [...studyHistory],
 			dailyLearningActivities: dailyLearningActivity.toDocument(),
 			spellingProgress: { ...spellingProgress },
+			...(challengeProgress
+				? { challengeProgress: cloneChallengeProgress(challengeProgress) }
+				: {}),
 			continuity: cloneContinuityState(continuity),
 		};
 	}
