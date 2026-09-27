@@ -24,6 +24,8 @@ Read this guide before changing Markdown card syntax, parsing, indexing, card so
 
 Vault scanning reads file snapshots in the Obsidian adapter and delegates synchronization, tag discovery, and deck index construction to `src/features/flashcards/domain/identity/cardIdentityContinuity.ts`. Keep file I/O out of the pure parser. Per-file failures must not prevent unaffected sources from being indexed.
 
+Synchronization may reuse in-memory syntax only when both source path and full content match. The bounded source cache contains no FSRS state; every synchronization combines syntax with the currently loaded learning state and still performs global identity checks. Keep authoritative reads, fresh-content write checks, and journal recovery intact. Deleted source paths are removed from the cache; eviction or a new runtime must safely fall back to parsing.
+
 ## Stable identity and source edits
 
 - A vault-wide UUID carries card identity and learning state across content edits, reorder, and moves between decks.

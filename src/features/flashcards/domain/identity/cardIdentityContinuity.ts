@@ -1,4 +1,5 @@
 import { hasFlashcardSyntax } from "../cards/cardFormat";
+import { createEmptyCard } from "ts-fsrs";
 import {
 	editDeckSource,
 	registerMissingCardIdentities,
@@ -223,6 +224,17 @@ interface PreparedSource {
 	sourceContent: string;
 }
 
+interface CachedSourceSyntax {
+	content: string;
+	tag: string | null;
+	hasCards: boolean;
+	cards?: Omit<FlashCard, "fsrsCard">[];
+	bytes: number;
+}
+
+const SOURCE_SYNTAX_CACHE_BYTES = 32 * 1_048_576;
+const SOURCE_SYNTAX_CACHE_ENTRIES = 2048;
+
 export function createCardIdentityContinuity(
 	options: CreateCardIdentityContinuityOptions,
 ): CardIdentityContinuity {
@@ -236,6 +248,10 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 		journal: null,
 	};
 	private operationTail: Promise<void> = Promise.resolve();
+	// Only source-derived syntax is reusable. Learning state always comes from
+	// the state loaded for this operation, including after external Sync reloads.
+	private readonly sourceSyntax = new Map<string, CachedSourceSyntax>();
+	private sourceSyntaxBytes = 0;
 
 	constructor(private readonly options: CreateCardIdentityContinuityOptions) {}
 
@@ -265,6 +281,13 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 			const configuredTags = new Set(
 				currentState.configuredTags.map((tag) => tag.toLowerCase()),
 			);
+			const sourcePaths = new Set(documents.map((document) => document.path));
+			for (const [path, cached] of this.sourceSyntax) {
+				if (!sourcePaths.has(path)) {
+					this.sourceSyntax.delete(path);
+					this.sourceSyntaxBytes -= cached.bytes;
+				}
+			}
 			const existingCards = buildExistingCardMap(currentState.decks);
 			const nextDecks = new Map<string, Deck>();
 			const nextSources: Record<string, ContinuitySourceCondition> = {};
@@ -273,8 +296,7 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 			let attentionRequired = false;
 
 			for (const document of documents) {
-				const tag = extractFirstTag(document.content);
-				const hasCards = hasFlashcardSyntax(document.content);
+				const { tag, hasCards } = this.inspectSource(document.path, document.content);
 				if (tag && hasCards) availableTags.add(tag);
 				if (document.discoveryOnly) continue;
 				if (!tag || !configuredTags.has(tag.toLowerCase()) || !hasCards) {
@@ -317,7 +339,7 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 					}
 				}
 
-				const cards = parseFlashcards(sourceContent, document.path, existingCards);
+				const cards = this.parseSource(sourceContent, document.path, existingCards);
 				if (cards.length === 0) continue;
 				preparedSources.push({
 					document,
@@ -378,7 +400,7 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 					};
 				}
 				source.sourceContent = registration.nextContent;
-				source.cards = parseFlashcards(
+				source.cards = this.parseSource(
 					registration.nextContent,
 					source.document.path,
 					existingCards,
@@ -457,6 +479,81 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 				message: error instanceof Error ? error.message : "Card identity sync failed",
 			};
 		}
+	}
+
+	private inspectSource(path: string, content: string): CachedSourceSyntax {
+		const cached = this.sourceSyntax.get(path);
+		if (cached?.content === content) {
+			return cached;
+		}
+		const next: CachedSourceSyntax = {
+			content,
+			tag: extractFirstTag(content),
+			hasCards: hasFlashcardSyntax(content),
+			bytes: 2 * (path.length + content.length),
+		};
+		this.cacheSource(path, next);
+		return next;
+	}
+
+	private parseSource(
+		content: string,
+		path: string,
+		existingCards: Map<string, FlashCard>,
+	): FlashCard[] {
+		const syntax = this.inspectSource(path, content);
+		if (syntax.cards) {
+			return syntax.cards.map((card) => ({
+				...card,
+				fsrsCard: existingCards.get(card.id)?.fsrsCard ?? createEmptyCard(),
+			}));
+		}
+		const cards = parseFlashcards(content, path, existingCards);
+		// Never retain FSRS objects in the cache, even for a failed commit or a
+		// source that currently requires identity repair.
+		const templates = cards.map((card) => ({
+			id: card.id,
+			front: card.front,
+			back: card.back,
+			explanation: card.explanation,
+			sourceFile: card.sourceFile,
+			indexInFile: card.indexInFile,
+		}));
+		this.cacheSource(path, {
+			...syntax,
+			cards: templates,
+			// Bound retained strings plus an allowance for each template object.
+			bytes:
+				syntax.bytes +
+				templates.reduce(
+					(bytes, card) =>
+						bytes +
+						128 +
+						2 *
+							(card.id.length +
+								card.front.length +
+								card.back.length +
+								(card.explanation?.length ?? 0) +
+								card.sourceFile.length),
+					0,
+				),
+		});
+		return cards;
+	}
+
+	private cacheSource(path: string, syntax: CachedSourceSyntax): void {
+		const previous = this.sourceSyntax.get(path);
+		if (previous) this.sourceSyntaxBytes -= previous.bytes;
+		this.sourceSyntax.delete(path);
+		// Full scans revisit sources in order. Reject excess admissions instead
+		// of evicting useful entries and thrashing the entire cache every scan.
+		if (
+			this.sourceSyntaxBytes + syntax.bytes > SOURCE_SYNTAX_CACHE_BYTES ||
+			this.sourceSyntax.size >= SOURCE_SYNTAX_CACHE_ENTRIES
+		)
+			return;
+		this.sourceSyntax.set(path, syntax);
+		this.sourceSyntaxBytes += syntax.bytes;
 	}
 
 	prepareEdit(deckId: string, cardId: string): Promise<CardEditPreparation> {
