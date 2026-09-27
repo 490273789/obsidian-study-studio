@@ -624,15 +624,20 @@ export const DeckList = React.memo(function DeckList({
 							{t("home.emptyHint", { tag: "#wordTag" })}
 						</p>
 						<div className={styles.homeActions}>
-							<FlashcardButton variant="primary" icon={Plus} onClick={onOpenAddCard}>
-								{t("cardEditor.addCardTitle")}
-							</FlashcardButton>
 							<FlashcardButton
-								variant="secondary"
+								variant="primary"
 								icon={Target}
 								onClick={onOpenChallenge}
 							>
 								{t("challenge.title")}
+							</FlashcardButton>
+							<FlashcardButton
+								variant="secondary"
+								className={cls("flashcard-home-add-card", styles.addCardBtn)}
+								icon={Plus}
+								onClick={onOpenAddCard}
+							>
+								{t("cardEditor.addCardTitle")}
 							</FlashcardButton>
 						</div>
 					</div>
@@ -711,19 +716,19 @@ export const DeckList = React.memo(function DeckList({
 						</section>
 						<div className={styles.homeActions}>
 							<FlashcardButton
+								variant="primary"
+								icon={Target}
+								onClick={onOpenChallenge}
+							>
+								{t("challenge.title")}
+							</FlashcardButton>
+							<FlashcardButton
 								variant="secondary"
 								className={cls("flashcard-home-add-card", styles.addCardBtn)}
 								icon={Plus}
 								onClick={onOpenAddCard}
 							>
 								{t("cardEditor.addCardTitle")}
-							</FlashcardButton>
-							<FlashcardButton
-								variant="secondary"
-								icon={Target}
-								onClick={onOpenChallenge}
-							>
-								{t("challenge.title")}
 							</FlashcardButton>
 						</div>
 					</div>
