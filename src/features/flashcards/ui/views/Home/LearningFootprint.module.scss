@@ -313,10 +313,6 @@ button.cell:not(:disabled) {
 }
 
 @container flashcard-page (max-width: 640px) {
-	.header {
-		flex-direction: column;
-	}
-
 	.streaks {
 		justify-content: flex-start;
 	}
@@ -327,10 +323,6 @@ button.cell:not(:disabled) {
 }
 
 @media (max-width: 640px) {
-	.header {
-		flex-direction: column;
-	}
-
 	.streaks {
 		justify-content: flex-start;
 	}

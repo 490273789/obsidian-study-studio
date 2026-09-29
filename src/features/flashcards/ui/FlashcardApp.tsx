@@ -1,5 +1,4 @@
 import React, {
-	useState,
 	useCallback,
 	useLayoutEffect,
 	useMemo,
@@ -17,7 +16,7 @@ import {
 	getSpellingSetupPlan,
 } from "../domain/sessions/sessionPlanner";
 import { DeckList } from "./views/Home";
-import { CardView, CardEditorModal, type CardEditorSavePayload } from "./views/Card";
+import { CardView, CardEditorModal } from "./views/Card";
 import { PracticeSetup, PracticeView, PracticeSummary } from "./views/Practice";
 import { WordListView } from "./views/WordList";
 import { StudySetup, StudySummary } from "./views/Study";
@@ -26,10 +25,7 @@ import { SpellingSetup, SpellingView, SpellingSummary } from "./views/Spelling";
 import { createTranslator } from "../strings/index";
 import { ConfirmDialog } from "../../../core/ui/primitives/ConfirmDialog";
 import type { CardIdentityContinuity } from "../domain/identity/cardIdentityContinuity";
-import {
-	executeCardMutationWorkflow,
-	type CardMutationRequest,
-} from "../domain/identity/cardMutationWorkflow";
+import { CardEditingInteraction } from "./cardEditingInteraction";
 import type { PronunciationRuntime } from "../domain/pronunciation";
 import { ModalProvider } from "../../../core/ui/primitives/Modal";
 import { createAnswerPresentationTransition } from "./answerPresentationTransition";
@@ -49,20 +45,6 @@ interface FlashcardAppProps {
 	onOpenDictionary?: () => void;
 	onOpenVideoPlayer?: () => void;
 }
-
-type CardEditorState =
-	| {
-			mode: "create";
-			deckId: string | null;
-	  }
-	| {
-			mode: "edit";
-			deckId: string;
-			cardId: string;
-			front: string;
-			back: string;
-			explanation: string;
-	  };
 
 export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 	app,
@@ -193,7 +175,26 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 		};
 	}, [modalHost]);
 
-	const [cardEditor, setCardEditor] = useState<CardEditorState | null>(null);
+	const cardEditing = useMemo(
+		() =>
+			new CardEditingInteraction({
+				continuity: cardIdentityContinuity,
+				navigation,
+				notify: (message) => {
+					new Notice(message);
+				},
+			}),
+		[cardIdentityContinuity, navigation],
+	);
+	useLayoutEffect(
+		() => cardEditing.setLanguage(settings.language),
+		[cardEditing, settings.language],
+	);
+	useLayoutEffect(() => cardEditing.mount(), [cardEditing]);
+	const { editor: cardEditor } = useSyncExternalStore(
+		cardEditing.subscribe,
+		cardEditing.getSnapshot,
+	);
 
 	const renderMarkdown = useCallback(
 		async (content: string, el: HTMLElement, component?: Component): Promise<void> => {
@@ -210,20 +211,8 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 	);
 
 	const handleOpenAddCard = useCallback(() => {
-		const firstDeck = deckHomeSnapshot.decks[0];
-		if (!firstDeck) {
-			new Notice(t("notice.noDecks"));
-			return;
-		}
-		setCardEditor({
-			mode: "create",
-			deckId: firstDeck.id,
-		});
-	}, [deckHomeSnapshot.decks, t]);
-
-	const handleCloseCardEditor = useCallback(() => {
-		setCardEditor(null);
-	}, []);
+		cardEditing.openCreate(deckHomeSnapshot.decks[0]?.id ?? null);
+	}, [cardEditing, deckHomeSnapshot.decks]);
 
 	const handleConfirmDialogConfirm = useCallback(() => {
 		if (confirmation) navigation.respond(confirmation.id, true);
@@ -234,66 +223,9 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 
 	const handleOpenEditCard = useCallback(
 		(deckId: string, cardId: string) => {
-			void (async () => {
-				const preparation = await cardIdentityContinuity.prepareEdit(deckId, cardId);
-				if (preparation.kind === "not-found") {
-					new Notice(t("notice.cardMissing"));
-					return;
-				}
-				if (preparation.kind === "blocked") {
-					if (preparation.reason === "migration-required") {
-						await handleRequestHomeMigration(deckId);
-					} else {
-						new Notice(t("identity.editNeedsRepair"));
-					}
-					return;
-				}
-
-				setCardEditor({
-					mode: "edit",
-					deckId,
-					cardId: preparation.card.id,
-					front: preparation.card.front,
-					back: preparation.card.back,
-					explanation: preparation.card.explanation ?? "",
-				});
-			})();
+			void cardEditing.openEdit(deckId, cardId);
 		},
-		[cardIdentityContinuity, handleRequestHomeMigration, t],
-	);
-
-	const handleSaveCardEditor = useCallback(
-		async ({ deckId, front, back, explanation }: CardEditorSavePayload) => {
-			if (!cardEditor) return;
-
-			const request: CardMutationRequest =
-				cardEditor.mode === "edit"
-					? {
-							kind: "edit",
-							deckId: cardEditor.deckId,
-							cardId: cardEditor.cardId,
-							content: { front, back, explanation },
-						}
-					: {
-							kind: "create",
-							deckId,
-							content: { front, back, explanation },
-						};
-
-			const outcome = await executeCardMutationWorkflow(cardIdentityContinuity, request, {
-				language: settings.language,
-				onRequestMigration: handleRequestHomeMigration,
-				notify: (msg) => new Notice(msg),
-				t,
-			});
-
-			if (outcome.kind === "applied") {
-				setCardEditor(null);
-			} else if (outcome.kind === "failed") {
-				throw new Error(outcome.message);
-			}
-		},
-		[cardEditor, cardIdentityContinuity, handleRequestHomeMigration, settings.language, t],
+		[cardEditing],
 	);
 
 	const handleHomeNavigate = useCallback(
@@ -344,37 +276,11 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 		);
 	}, [deckHome, deckHomeSnapshot.revision, viewState]);
 
-	const handleDeleteCard = useCallback(
-		async (deckId: string, cardId: string) => {
-			await navigation.confirm(
-				{
-					title: t("cardEditor.deleteCurrentTitle"),
-					message: t("cardEditor.deleteConfirm"),
-					confirmText: t("settings.delete"),
-					tone: "danger",
-				},
-				async () => {
-					await executeCardMutationWorkflow(
-						cardIdentityContinuity,
-						{ kind: "delete", deckId, cardId },
-						{
-							language: settings.language,
-							onRequestMigration: handleRequestHomeMigration,
-							notify: (msg) => new Notice(msg),
-							t,
-						},
-					);
-				},
-			);
-		},
-		[cardIdentityContinuity, navigation, handleRequestHomeMigration, settings.language, t],
-	);
-
 	const handleDeleteCardRequest = useCallback(
 		(deckId: string, cardId: string) => {
-			void handleDeleteCard(deckId, cardId);
+			void cardEditing.delete(deckId, cardId);
 		},
-		[handleDeleteCard],
+		[cardEditing],
 	);
 
 	const handleOpenSourceFile = useCallback(
@@ -633,14 +539,17 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 			)}
 			{cardEditor && (
 				<CardEditorModal
+					key={cardEditor.id}
 					mode={cardEditor.mode}
 					decks={deckHomeSnapshot.decks}
 					initialDeckId={cardEditor.deckId}
-					initialFront={cardEditor.mode === "edit" ? cardEditor.front : ""}
-					initialBack={cardEditor.mode === "edit" ? cardEditor.back : ""}
-					initialExplanation={cardEditor.mode === "edit" ? cardEditor.explanation : ""}
-					onSave={handleSaveCardEditor}
-					onClose={handleCloseCardEditor}
+					initialFront={cardEditor.front}
+					initialBack={cardEditor.back}
+					initialExplanation={cardEditor.explanation}
+					isSaving={cardEditor.saving}
+					error={cardEditor.error}
+					onSave={(draft) => cardEditing.save(cardEditor.id, draft)}
+					onClose={() => cardEditing.close(cardEditor.id)}
 				/>
 			)}
 			{confirmation && (

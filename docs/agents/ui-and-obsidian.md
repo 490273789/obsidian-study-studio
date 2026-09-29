@@ -16,6 +16,18 @@ Read this guide before changing React UI, deck home behavior, the Obsidian view/
 - Push a catalog entry with `host.catalog(...)` so the host generates the feature's open command. Flashcards is the plugin landing page and owns the single plugin ribbon; its header exposes sibling feature shortcuts through `host.openFeature(...)`. Other features do not add ribbon icons.
 - Keep copy Chinese-first and route user-visible strings through `src/core/i18n/`.
 
+## Card editing
+
+`CardEditingInteraction` in `src/features/flashcards/ui/cardEditingInteraction.ts`
+owns one view's preparation, migration prompts, save/delete outcomes, busy/error
+snapshot, and interaction lifetime. React retains draft text and keys the editor
+by its interaction ID; save and close callbacks carry that rendered ID.
+Replacement, route changes, and unmount invalidate old presentation results while
+accepted source writes finish through `CardIdentityContinuity`. Migration prompts
+use `FlashcardNavigation` with the interaction's cancellation signal; navigation
+releases the exact pending continuation. Migration completion leaves retry to the
+learner. Test these sequences through the interaction interface.
+
 ## Deck home
 
 `src/features/flashcards/domain/decks/deckHome.ts` is one shared plugin-lifetime module used by every open flashcard view.

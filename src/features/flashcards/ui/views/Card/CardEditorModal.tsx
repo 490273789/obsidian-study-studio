@@ -7,6 +7,7 @@ import { FlashcardSelect } from "../../../../../core/ui/primitives/Select";
 import { useFlashcardI18n } from "../../../strings/context";
 import { ModalSurface } from "../../../../../core/ui/primitives/Modal";
 import styles from "./CardEditorModal.module.scss";
+import type { CardEditorDraft } from "../../cardEditingInteraction";
 
 export type CardEditorMode = "create" | "edit";
 
@@ -16,12 +17,7 @@ export interface CardEditorDeckOption {
 	readonly tag: string;
 }
 
-export interface CardEditorSavePayload {
-	deckId: string;
-	front: string;
-	back: string;
-	explanation?: string;
-}
+export type CardEditorSavePayload = CardEditorDraft;
 
 interface CardEditorModalProps {
 	mode: CardEditorMode;
@@ -30,6 +26,8 @@ interface CardEditorModalProps {
 	initialFront: string;
 	initialBack: string;
 	initialExplanation: string;
+	isSaving: boolean;
+	error: string | null;
 	onSave: (payload: CardEditorSavePayload) => Promise<void>;
 	onClose: () => void;
 }
@@ -41,6 +39,8 @@ export const CardEditorModal = memo(function CardEditorModal({
 	initialFront,
 	initialBack,
 	initialExplanation,
+	isSaving,
+	error,
 	onSave,
 	onClose,
 }: CardEditorModalProps) {
@@ -50,8 +50,6 @@ export const CardEditorModal = memo(function CardEditorModal({
 	const [front, setFront] = useState(initialFront);
 	const [back, setBack] = useState(initialBack);
 	const [explanation, setExplanation] = useState(initialExplanation);
-	const [error, setError] = useState<string | null>(null);
-	const [isSaving, setIsSaving] = useState(false);
 	const titleId = useId();
 	const subtitleId = useId();
 
@@ -60,32 +58,10 @@ export const CardEditorModal = memo(function CardEditorModal({
 	const title = mode === "edit" ? t("cardEditor.editTitle") : t("cardEditor.createTitle");
 	const Icon = mode === "edit" ? Pencil : FilePlus2;
 
-	const handleSave = useCallback(async () => {
-		const trimmedDeckId = deckId.trim();
-		const trimmedFront = front.trim();
-		const trimmedBack = back.trim();
-		const trimmedExplanation = explanation.trim();
-
-		if (!trimmedDeckId) {
-			setError(t("cardEditor.deckRequired"));
-			return;
-		}
-
-		setError(null);
-		setIsSaving(true);
-		try {
-			await onSave({
-				deckId: trimmedDeckId,
-				front: trimmedFront,
-				back: trimmedBack,
-				explanation: trimmedExplanation || undefined,
-			});
-		} catch (saveError) {
-			setError(saveError instanceof Error ? saveError.message : t("cardEditor.saveFailed"));
-		} finally {
-			setIsSaving(false);
-		}
-	}, [back, deckId, explanation, front, onSave, t]);
+	const handleSave = useCallback(
+		() => onSave({ deckId, front, back, explanation }),
+		[back, deckId, explanation, front, onSave],
+	);
 
 	return (
 		<ModalSurface

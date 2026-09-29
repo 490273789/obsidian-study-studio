@@ -253,6 +253,92 @@ describe("challenge lifecycle", () => {
 		).toBe(0);
 	});
 
+	it("ends for source changes when the active level is emptied despite a later level surviving", async () => {
+		const h = await harness(16);
+		await h.start();
+		h.tick();
+		await act(h.lifecycle, { kind: "answer", correct: true });
+		const state = await h.store.load();
+		await h.store.commit({
+			...state,
+			decks: new Map([["a", deck("a", [card(15)])]]),
+		});
+		await h.lifecycle.revalidateChallenge();
+		expect(h.lifecycle.getSnapshot()).toMatchObject({
+			kind: "idle",
+			lastEnd: { mode: "challenge", reason: "source-change", answerEventCount: 1 },
+		});
+		expect(h.repo.getChallengeProgress()?.round).toBeNull();
+		expect(h.repo.getStudyHistory()).toHaveLength(0);
+		const today = h.repo.getLearningFootprint(new Date(h.options.now())).today;
+		expect(today.answers.challenge).toBe(1);
+		expect(today.completedSessions.challenge).toBe(0);
+	});
+
+	it("omits deleted future levels before advancing to the surviving next level", async () => {
+		const h = await harness(46);
+		await h.start();
+		const state = await h.store.load();
+		await h.store.commit({
+			...state,
+			decks: new Map([
+				["a", deck("a", [...Array.from({ length: 15 }, (_, i) => card(i)), card(45)])],
+			]),
+		});
+		await h.lifecycle.revalidateChallenge();
+		for (let index = 0; index < 15; index++) {
+			h.tick();
+			await act(h.lifecycle, { kind: "answer", correct: true });
+		}
+		const completed = result(h.lifecycle);
+		expect(completed.levelResult).toMatchObject({
+			levelIndex: 0,
+			totalQuestions: 15,
+			firstTryCorrectCount: 15,
+		});
+		expect(completed.roundSummary).toMatchObject({ completedLevels: 1, totalLevels: 2 });
+		await h.lifecycle.act(completed.reference, { kind: "next-level" });
+		expect(active(h.lifecycle)).toMatchObject({
+			currentCard: { identity: card(45).id },
+			roundProgress: { level: 2, totalLevels: 2 },
+		});
+		const round = h.repo.getChallengeProgress()!.round!;
+		expect(round.completedLevelCount).toBe(1);
+		expect(round.completedLevels).toMatchObject([{ levelIndex: 0, totalQuestions: 15 }]);
+	});
+
+	it("continues past deleted current and future levels without inflating completed levels", async () => {
+		const h = await harness(46);
+		await h.start();
+		for (let index = 0; index < 15; index++) {
+			h.tick();
+			await act(h.lifecycle, { kind: "answer", correct: true });
+		}
+		const completed = result(h.lifecycle);
+		await h.lifecycle.act(completed.reference, { kind: "next-level" });
+		await act(h.lifecycle, { kind: "exit" });
+		const state = await h.store.load();
+		await h.store.commit({
+			...state,
+			decks: new Map([
+				["a", deck("a", [...Array.from({ length: 15 }, (_, i) => card(i)), card(45)])],
+			]),
+		});
+		const restored = createSessionLifecycle(h.repo, h.options).lifecycle;
+		await restored.start({ mode: "challenge", challengeMode: "normal", intent: "continue" });
+		expect(active(restored)).toMatchObject({
+			currentCard: { identity: card(45).id },
+			roundProgress: { level: 2, totalLevels: 2 },
+		});
+		const round = h.repo.getChallengeProgress()!.round!;
+		expect(round.completedLevelCount).toBe(1);
+		expect(round.completedLevels).toMatchObject([{ levelIndex: 0, totalQuestions: 15 }]);
+		expect(
+			h.repo.getLearningFootprint(new Date(h.options.now())).today.completedSessions
+				.challenge,
+		).toBe(1);
+	});
+
 	it("normalizes old or corrupt challenge records independently", () => {
 		expect(normalizeChallengeProgress(undefined)).toBeNull();
 		expect(

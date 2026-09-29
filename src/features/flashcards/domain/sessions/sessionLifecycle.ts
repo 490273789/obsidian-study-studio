@@ -50,10 +50,9 @@ import {
 	completeChallengeLevel,
 	continueChallengeAfterError,
 	createChallengeProgress,
-	createChallengeSession,
 	getCurrentChallengeQuestion,
-	reconcileChallengeSession,
-	removeChallengeQuestions,
+	prepareChallengeLevel,
+	reconcileChallengeRound,
 	selectEligibleChallengeCards,
 	type ChallengeFeedback,
 	type ChallengeLevelResult,
@@ -784,22 +783,6 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		);
 	}
 
-	private cleanChallenge(
-		progress: ChallengeProgress,
-		cards: ReadonlyMap<string, unknown>,
-	): ChallengeProgress {
-		const round = progress.round;
-		if (!round) return progress;
-		const removed = new Set(
-			round.levels
-				.slice(round.completedLevelCount)
-				.flat()
-				.filter((question) => !cards.has(question.identity))
-				.map((question) => question.identity),
-		);
-		return removeChallengeQuestions(progress, removed);
-	}
-
 	private async startChallenge(
 		request: Extract<SessionStartRequest, { mode: "challenge" }>,
 	): Promise<LifecycleOutcome> {
@@ -811,7 +794,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			return this.rejected("stale-reference");
 		const now = this.now();
 		const cards = this.challengeCards();
-		let progress =
+		const initialProgress =
 			request.intent === "new"
 				? createChallengeProgress({
 						mode: request.challengeMode,
@@ -825,27 +808,14 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 						random: this.random,
 					})
 				: saved;
-		if (!progress?.round) return this.rejected("no-eligible-cards");
-		if (request.intent === "continue" && progress.round.mode !== request.challengeMode)
+		if (!initialProgress?.round) return this.rejected("no-eligible-cards");
+		if (request.intent === "continue" && initialProgress.round.mode !== request.challengeMode)
 			return this.rejected("invalid-state");
-		progress = this.cleanChallenge(progress, cards);
-		const round = progress.round!;
-		// Empty future levels are omitted, never recorded as completed sessions.
-		progress = {
-			...progress,
-			round: {
-				...round,
-				levels: [
-					...round.levels.slice(0, round.completedLevelCount),
-					...round.levels
-						.slice(round.completedLevelCount)
-						.filter((level) => level.length > 0),
-				],
-			},
-		};
-		const currentRound = progress.round!;
-		const questions = currentRound.levels[currentRound.completedLevelCount] ?? [];
-		const session = createChallengeSession({ round: currentRound, questions, startTime: now });
+		const { progress, session } = prepareChallengeLevel({
+			progress: initialProgress,
+			eligibleIdentities: new Set(cards.keys()),
+			startTime: now,
+		});
 		if (!session) {
 			if (request.intent === "new") return this.rejected("no-eligible-cards");
 			await this.commit({
@@ -867,7 +837,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			key: this.makeKey("challenge"),
 			session,
 			progress,
-			setupDefaults: { ...request, expectedRoundId: currentRound.id },
+			setupDefaults: { ...request, expectedRoundId: session.roundId },
 		});
 		return this.applied();
 	}
@@ -894,8 +864,11 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			return true;
 		}
 		const cards = this.challengeCards();
-		const progress = this.cleanChallenge(state.progress, cards);
-		const session = reconcileChallengeSession(state.session, new Set(cards.keys()));
+		const { progress, session } = reconcileChallengeRound(
+			state.progress,
+			state.session,
+			new Set(cards.keys()),
+		);
 		const changed =
 			progress.round!.removedIdentities.length !==
 			state.progress.round!.removedIdentities.length;
@@ -979,24 +952,9 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 				Math.floor((lastAttempt - state.session.startTime) / 1000),
 		);
 		const complete = step.type === "complete";
-		let progress = complete
+		const progress = complete
 			? completeChallengeLevel(state.progress, step.result)
 			: state.progress;
-		if (complete && progress.round) {
-			const round = progress.round;
-			progress = {
-				...progress,
-				round: {
-					...round,
-					levels: [
-						...round.levels.slice(0, round.completedLevelCount),
-						...round.levels
-							.slice(round.completedLevelCount)
-							.filter((level) => level.length),
-					],
-				},
-			};
-		}
 		await this.commit({
 			...emptyTransition(),
 			challengeProgress: progress,

@@ -136,17 +136,48 @@ export function createChallengeProgress(params: {
 	};
 }
 
-export function createChallengeSession(params: {
+/** Prepare the next checkpoint without counting omitted empty levels as completions. */
+export function prepareChallengeLevel(params: {
+	progress: ChallengeProgress;
+	eligibleIdentities: ReadonlySet<string>;
+	startTime: number;
+}): { readonly progress: ChallengeProgress; readonly session: ChallengeSession | null } {
+	const cleaned = cleanChallengeProgress(params.progress, params.eligibleIdentities);
+	const round = cleaned.round ? omitEmptyFutureLevels(cleaned.round) : null;
+	const progress = { ...cleaned, round };
+	return {
+		progress,
+		session: round
+			? createChallengeSession({
+					round,
+					questions: round.levels[round.completedLevelCount] ?? [],
+					startTime: params.startTime,
+				})
+			: null,
+	};
+}
+
+/** Reconcile an active level without advancing it when its remaining questions disappear. */
+export function reconcileChallengeRound(
+	progress: ChallengeProgress,
+	session: ChallengeSession,
+	eligibleIdentities: ReadonlySet<string>,
+): { readonly progress: ChallengeProgress; readonly session: ChallengeSession | null } {
+	return {
+		progress: cleanChallengeProgress(progress, eligibleIdentities),
+		session: reconcileChallengeSession(session, eligibleIdentities),
+	};
+}
+
+function createChallengeSession(params: {
 	round: ChallengeRoundProgress;
 	questions: readonly ChallengePersistedQuestion[];
-	levelIndex?: number;
 	startTime: number;
-	removedIdentities?: readonly string[];
 }): ChallengeSession | null {
 	if (params.questions.length === 0) return null;
 	return {
 		roundId: params.round.id,
-		levelIndex: params.levelIndex ?? params.round.completedLevelCount,
+		levelIndex: params.round.completedLevelCount,
 		startTime: params.startTime,
 		initialQuestions: params.questions.map(cloneQuestion),
 		queue: params.questions.map(cloneQuestion),
@@ -154,7 +185,7 @@ export function createChallengeSession(params: {
 		firstAttempts: {},
 		attempts: [],
 		incorrectIdentities: [],
-		removedIdentities: [...(params.removedIdentities ?? [])],
+		removedIdentities: [],
 		feedback: null,
 	};
 }
@@ -235,7 +266,7 @@ export function continueChallengeAfterError(session: ChallengeSession): Challeng
 	};
 }
 
-export function reconcileChallengeSession(
+function reconcileChallengeSession(
 	session: ChallengeSession,
 	eligibleIdentities: ReadonlySet<string>,
 ): ChallengeSession | null {
@@ -277,16 +308,41 @@ export function completeChallengeLevel(
 	}
 	return {
 		...progress,
-		round: {
+		round: omitEmptyFutureLevels({
 			...progress.round,
 			completedLevelCount: progress.round.completedLevelCount + 1,
 			completedLevels: [...progress.round.completedLevels, cloneLevelResult(result)],
 			removedIdentities: [...progress.round.removedIdentities],
-		},
+		}),
 	};
 }
 
-export function removeChallengeQuestions(
+function omitEmptyFutureLevels(round: ChallengeRoundProgress): ChallengeRoundProgress {
+	return {
+		...round,
+		levels: [
+			...round.levels.slice(0, round.completedLevelCount),
+			...round.levels.slice(round.completedLevelCount).filter((level) => level.length > 0),
+		],
+	};
+}
+
+function cleanChallengeProgress(
+	progress: ChallengeProgress,
+	eligibleIdentities: ReadonlySet<string>,
+): ChallengeProgress {
+	if (!progress.round) return progress;
+	const removed = new Set(
+		progress.round.levels
+			.slice(progress.round.completedLevelCount)
+			.flat()
+			.filter((question) => !eligibleIdentities.has(question.identity))
+			.map((question) => question.identity),
+	);
+	return removeChallengeQuestions(progress, removed);
+}
+
+function removeChallengeQuestions(
 	progress: ChallengeProgress,
 	identities: ReadonlySet<string>,
 ): ChallengeProgress {

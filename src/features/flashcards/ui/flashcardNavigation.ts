@@ -36,6 +36,7 @@ export interface FlashcardNavigationOptions {
 interface ConfirmationRequest {
 	readonly lease: object;
 	readonly id: number;
+	cancelled: boolean;
 }
 
 interface PendingConfirmation {
@@ -221,12 +222,22 @@ export class FlashcardNavigation {
 		);
 	}
 
-	/** Card mutation stays with its existing workflow; only the confirmation lease is owned here. */
-	async confirm(content: FlashcardConfirmation, execute: () => Promise<void>): Promise<void> {
+	/** The caller owns the interaction; navigation owns its cancellable confirmation lease. */
+	async confirm(
+		content: FlashcardConfirmation,
+		execute: () => Promise<void>,
+		signal?: AbortSignal,
+	): Promise<void> {
+		if (signal?.aborted) return;
 		const request = this.beginConfirmation();
 		if (!request) return;
-		if ((await this.ask(request, content)) && this.isConfirmationCurrent(request))
-			await execute();
+		const removeAbortListener = this.watchAbort(request, signal);
+		try {
+			if ((await this.ask(request, content)) && this.isConfirmationCurrent(request))
+				await execute();
+		} finally {
+			removeAbortListener();
+		}
 	}
 
 	respond(id: number, confirmed: boolean): void {
@@ -237,61 +248,79 @@ export class FlashcardNavigation {
 		);
 	}
 
-	requestMigration = async (deckId?: string): Promise<boolean> => {
+	requestMigration = async (deckId?: string, signal?: AbortSignal): Promise<boolean> => {
+		if (signal?.aborted) return false;
 		const request = this.beginConfirmation();
 		if (!request) return false;
-		const prepared = await this.options.home.act({
-			kind: "request-migration",
-			ownerId: this.options.ownerId,
-			deckId,
-		});
-		if (prepared.kind !== "confirmation-required") {
-			if (this.isConfirmationCurrent(request) && prepared.kind === "rejected") {
-				if (prepared.reason === "migration-unavailable") {
-					this.options.notify(
-						this.t(deckId ? "identity.editNeedsMigration" : "identity.noMigration"),
-					);
-				} else if (prepared.reason === "busy")
-					this.options.notify(this.t("identity.sourceChanging"));
+		const removeAbortListener = this.watchAbort(request, signal);
+		try {
+			const prepared = await this.options.home.act({
+				kind: "request-migration",
+				ownerId: this.options.ownerId,
+				deckId,
+			});
+			if (prepared.kind !== "confirmation-required") {
+				if (this.isConfirmationCurrent(request) && prepared.kind === "rejected") {
+					if (prepared.reason === "migration-unavailable") {
+						this.options.notify(
+							this.t(deckId ? "identity.editNeedsMigration" : "identity.noMigration"),
+						);
+					} else if (prepared.reason === "busy")
+						this.options.notify(this.t("identity.sourceChanging"));
+				}
+				return false;
 			}
-			return false;
+			const confirmed =
+				this.isConfirmationCurrent(request) &&
+				(await this.ask(request, {
+					title: this.t("identity.migrationTitle"),
+					message:
+						prepared.scope.kind === "all"
+							? this.t("identity.migrationDescription", {
+									sources: prepared.sourceCount,
+									cards: prepared.cardCount,
+								})
+							: this.t("identity.editMigrationDescription", {
+									deckName: prepared.deckName ?? prepared.scope.deckId,
+									cards: prepared.cardCount,
+								}),
+					confirmText: this.t(
+						prepared.scope.kind === "all"
+							? "identity.migrateAllNow"
+							: "identity.migrateNow",
+					),
+					tone: "primary",
+				}));
+			// Even a late preparation must release its exact continuation, not a newer owner's work.
+			const outcome = await this.options.home.act({
+				kind: "continue",
+				ownerId: this.options.ownerId,
+				continuation: prepared.continuation,
+				confirmed: confirmed && this.isConfirmationCurrent(request),
+			});
+			return this.isConfirmationCurrent(request) && outcome.kind === "applied";
+		} finally {
+			removeAbortListener();
 		}
-		const confirmed =
-			this.isConfirmationCurrent(request) &&
-			(await this.ask(request, {
-				title: this.t("identity.migrationTitle"),
-				message:
-					prepared.scope.kind === "all"
-						? this.t("identity.migrationDescription", {
-								sources: prepared.sourceCount,
-								cards: prepared.cardCount,
-							})
-						: this.t("identity.editMigrationDescription", {
-								deckName: prepared.deckName ?? prepared.scope.deckId,
-								cards: prepared.cardCount,
-							}),
-				confirmText: this.t(
-					prepared.scope.kind === "all"
-						? "identity.migrateAllNow"
-						: "identity.migrateNow",
-				),
-				tone: "primary",
-			}));
-		// Even a late preparation must release its exact continuation, not a newer owner's work.
-		const outcome = await this.options.home.act({
-			kind: "continue",
-			ownerId: this.options.ownerId,
-			continuation: prepared.continuation,
-			confirmed: confirmed && this.isConfirmationCurrent(request),
-		});
-		return this.isConfirmationCurrent(request) && outcome.kind === "applied";
 	};
 
 	private beginConfirmation(): ConfirmationRequest | null {
 		if (!this.lease) return null;
-		const request = { lease: this.lease, id: ++this.confirmationVersion };
+		const request = { lease: this.lease, id: ++this.confirmationVersion, cancelled: false };
 		this.finishConfirmation(false);
 		return request;
+	}
+
+	private watchAbort(request: ConfirmationRequest, signal?: AbortSignal): () => void {
+		if (!signal) return () => undefined;
+		const abort = () => {
+			request.cancelled = true;
+			if (this.pending?.request === request) this.finishConfirmation(false);
+		};
+		signal.addEventListener("abort", abort, { once: true });
+		// Replacing the previous confirmation can notify a caller that aborts synchronously.
+		if (signal.aborted) abort();
+		return () => signal.removeEventListener("abort", abort);
 	}
 
 	private ask(
@@ -376,7 +405,11 @@ export class FlashcardNavigation {
 	}
 
 	private isConfirmationCurrent(request: ConfirmationRequest): boolean {
-		return this.lease === request.lease && this.confirmationVersion === request.id;
+		return (
+			!request.cancelled &&
+			this.lease === request.lease &&
+			this.confirmationVersion === request.id
+		);
 	}
 
 	private isNavigationCurrent(lease: object, version: number): boolean {

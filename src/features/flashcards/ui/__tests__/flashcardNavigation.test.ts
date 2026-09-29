@@ -303,6 +303,92 @@ describe("FlashcardNavigation", () => {
 		expect(secondExecute).toHaveBeenCalledOnce();
 	});
 
+	it("aborts only its own pending confirmation without clearing a newer one", async () => {
+		const { navigation } = mounted(active());
+		const controller = new AbortController();
+		const firstExecute = vi.fn(async () => undefined);
+		const secondExecute = vi.fn(async () => undefined);
+		const first = navigation.confirm(
+			{ title: "first", message: "first", confirmText: "ok", tone: "primary" },
+			firstExecute,
+			controller.signal,
+		);
+		const second = navigation.confirm(
+			{ title: "second", message: "second", confirmText: "ok", tone: "primary" },
+			secondExecute,
+		);
+		const secondId = navigation.getSnapshot().confirmation!.id;
+		controller.abort();
+		expect(navigation.getSnapshot().confirmation?.id).toBe(secondId);
+		navigation.respond(secondId, true);
+		await Promise.all([first, second]);
+		expect(firstExecute).not.toHaveBeenCalled();
+		expect(secondExecute).toHaveBeenCalledOnce();
+	});
+
+	it("observes abort triggered while replacing the previous confirmation", async () => {
+		const { navigation } = mounted(active());
+		const controller = new AbortController();
+		const execute = vi.fn(async () => undefined);
+		const first = navigation.confirm(
+			{ title: "first", message: "first", confirmText: "ok", tone: "primary" },
+			execute,
+		);
+		const unsubscribe = navigation.subscribe(() => {
+			if (!navigation.getSnapshot().confirmation) controller.abort();
+		});
+		const second = navigation.confirm(
+			{ title: "second", message: "second", confirmText: "ok", tone: "primary" },
+			execute,
+			controller.signal,
+		);
+		await Promise.all([first, second]);
+		expect(navigation.getSnapshot().confirmation).toBeNull();
+		expect(execute).not.toHaveBeenCalled();
+		unsubscribe();
+	});
+
+	it("ignores pre-aborted requests without replacing an unrelated confirmation", async () => {
+		const { navigation, home } = mounted();
+		const execute = vi.fn(async () => undefined);
+		const content = {
+			title: "delete",
+			message: "delete",
+			confirmText: "ok",
+			tone: "danger",
+		} as const;
+		const pending = navigation.confirm(content, execute);
+		const confirmation = navigation.getSnapshot().confirmation!;
+		const controller = new AbortController();
+		controller.abort();
+		await navigation.confirm(content, execute, controller.signal);
+		expect(await navigation.requestMigration(undefined, controller.signal)).toBe(false);
+		expect(navigation.getSnapshot().confirmation).toBe(confirmation);
+		expect(home.actions).toEqual([]);
+		navigation.respond(confirmation.id, false);
+		await pending;
+		expect(execute).not.toHaveBeenCalled();
+	});
+
+	it("does not cancel an execute that has already begun", async () => {
+		const { navigation } = mounted(active());
+		const controller = new AbortController();
+		const executing = deferred<void>();
+		const execute = vi.fn(async () => executing.promise);
+		const pending = navigation.confirm(
+			{ title: "save", message: "save", confirmText: "ok", tone: "primary" },
+			execute,
+			controller.signal,
+		);
+		navigation.respond(navigation.getSnapshot().confirmation!.id, true);
+		await flush();
+		expect(execute).toHaveBeenCalledOnce();
+		controller.abort();
+		executing.resolve();
+		await pending;
+		expect(execute).toHaveBeenCalledOnce();
+	});
+
 	it("uses the reference at result click time and does not route a later lifecycle", async () => {
 		const initial = result(1, "result-a");
 		const { navigation, lifecycle } = mounted(initial);
@@ -436,6 +522,88 @@ describe("FlashcardNavigation", () => {
 			continuation: "old",
 			confirmed: false,
 		});
+	});
+
+	it("releases an aborted migration preparation through its exact continuation", async () => {
+		const { navigation, home, notify } = mounted();
+		const controller = new AbortController();
+		const prepared = deferred<DeckHomeOutcome>();
+		home.actImpl = async (action) =>
+			action.kind === "request-migration" ? prepared.promise : { kind: "applied" };
+		const pending = navigation.requestMigration(undefined, controller.signal);
+		controller.abort();
+		prepared.resolve({
+			kind: "confirmation-required",
+			continuation: "aborted-preparation",
+			scope: { kind: "all" },
+			sourceCount: 1,
+			cardCount: 1,
+		});
+		await expect(pending).resolves.toBe(false);
+		expect(home.actions).toContainEqual({
+			kind: "continue",
+			ownerId: "view-a",
+			continuation: "aborted-preparation",
+			confirmed: false,
+		});
+		expect(notify).not.toHaveBeenCalled();
+	});
+
+	it("aborts a pending migration confirmation and releases its continuation", async () => {
+		const { navigation, home } = mounted();
+		const controller = new AbortController();
+		home.actImpl = async (action) =>
+			action.kind === "request-migration"
+				? {
+						kind: "confirmation-required",
+						continuation: "pending-confirmation",
+						scope: { kind: "all" },
+						sourceCount: 1,
+						cardCount: 1,
+					}
+				: { kind: "applied" };
+		const pending = navigation.requestMigration(undefined, controller.signal);
+		await flush();
+		expect(navigation.getSnapshot().confirmation).not.toBeNull();
+		controller.abort();
+		await expect(pending).resolves.toBe(false);
+		expect(navigation.getSnapshot().confirmation).toBeNull();
+		expect(home.actions).toContainEqual({
+			kind: "continue",
+			ownerId: "view-a",
+			continuation: "pending-confirmation",
+			confirmed: false,
+		});
+	});
+
+	it("lets an accepted migration finish after its editing interaction is aborted", async () => {
+		const { navigation, home } = mounted();
+		const committed = deferred<DeckHomeOutcome>();
+		const controller = new AbortController();
+		home.actImpl = async (action) =>
+			action.kind === "request-migration"
+				? {
+						kind: "confirmation-required",
+						continuation: "accepted",
+						scope: { kind: "all" },
+						sourceCount: 1,
+						cardCount: 1,
+					}
+				: committed.promise;
+		const pending = navigation.requestMigration(undefined, controller.signal);
+		await flush();
+		navigation.respond(navigation.getSnapshot().confirmation!.id, true);
+		await flush();
+		expect(home.actions).toContainEqual({
+			kind: "continue",
+			ownerId: "view-a",
+			continuation: "accepted",
+			confirmed: true,
+		});
+		controller.abort();
+		committed.resolve({ kind: "applied" });
+		expect(await pending).toBe(false);
+		expect(home.actions.filter((action) => action.kind === "continue")).toHaveLength(1);
 	});
 
 	it("keeps the first result navigation when a duplicate action arrives during its commit", async () => {
