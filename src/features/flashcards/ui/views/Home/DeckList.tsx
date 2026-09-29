@@ -625,19 +625,19 @@ export const DeckList = React.memo(function DeckList({
 						</p>
 						<div className={styles.homeActions}>
 							<FlashcardButton
-								variant="primary"
-								icon={Target}
-								onClick={onOpenChallenge}
-							>
-								{t("challenge.title")}
-							</FlashcardButton>
-							<FlashcardButton
 								variant="secondary"
 								className={cls("flashcard-home-add-card", styles.addCardBtn)}
 								icon={Plus}
 								onClick={onOpenAddCard}
 							>
 								{t("cardEditor.addCardTitle")}
+							</FlashcardButton>
+							<FlashcardButton
+								variant="primary"
+								icon={Target}
+								onClick={onOpenChallenge}
+							>
+								{t("challenge.title")}
 							</FlashcardButton>
 						</div>
 					</div>
