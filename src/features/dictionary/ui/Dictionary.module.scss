@@ -233,7 +233,7 @@
 	padding: 0 var(--fc-space-2);
 	border: 1px solid var(--fc-line-soft);
 	border-radius: var(--fc-radius-sm);
-	background: var(--fc-surface-selected);
+	background: transparent;
 	color: var(--fc-text);
 	font-size: var(--fc-font-sm);
 	cursor: pointer;
@@ -242,7 +242,7 @@
 		color var(--fc-motion-quick) ease;
 
 	&:hover {
-		background: var(--fc-surface-hover);
+		background: transparent;
 		color: var(--fc-text);
 	}
 
@@ -252,7 +252,7 @@
 
 	&.isActive {
 		border-color: var(--fc-control-border-selected);
-		background: var(--fc-surface-control);
+		background: var(--fc-surface-selected);
 		color: var(--fc-text);
 		font-weight: var(--fc-weight-medium);
 	}

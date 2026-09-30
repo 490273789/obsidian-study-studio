@@ -22,7 +22,7 @@
 	align-items: center;
 	gap: var(--fc-space-2);
 	padding: var(--fc-space-1);
-	border: 1px solid var(--fc-line);
+	border: 1px solid var(--fc-cyan);
 	border-radius: var(--fc-radius-sm);
 	background: var(--fc-surface-section);
 	text-align: center;
@@ -77,14 +77,16 @@
 	min-height: 0;
 	grid-template-rows: auto minmax(0, 1fr) auto;
 	overflow: hidden;
-	border: 1px solid var(--fc-line-strong) !important;
+	border: 1px solid var(--fc-cyan) !important;
 	box-shadow: var(--fc-shadow-sm) !important;
 
 	&:focus-within {
-		border-color: var(--fc-line-strong) !important;
+		border-color: var(--fc-cyan) !important;
 	}
 
 	> header {
+		border-bottom-color: var(--fc-cyan);
+
 		label,
 		strong {
 			font-weight: var(--fc-weight-semibold);
@@ -120,6 +122,7 @@
 
 	> footer {
 		align-items: flex-start;
+		border-top-color: var(--fc-cyan);
 
 		p {
 			margin: 0;
