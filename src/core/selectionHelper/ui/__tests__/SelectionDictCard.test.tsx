@@ -91,7 +91,7 @@ describe("lookup assistant content", () => {
 		expect(html).not.toContain("请在词典主标签查看");
 	});
 
-	it("uses one outer reader for nine stacked documents and internal scrolling for a single document", () => {
+	it("fits both stacked and single documents to their content in the outer reader", () => {
 		const render = vi.fn((p: SelectionEmbeddedContentProps) => <iframe title={p.title} />);
 		const documents = Array.from({ length: 9 }, (_, index) =>
 			embedded(`Entry ${index}`, "stack"),
@@ -103,15 +103,15 @@ describe("lookup assistant content", () => {
 		);
 		expect(render).toHaveBeenCalledTimes(9);
 		expect(render.mock.calls.every(([p]) => p.fitContent)).toBe(true);
-		expect(html).toContain(styles.bodyMultiple);
+		expect(html).toContain(styles.bodyRich);
 		render.mockClear();
 		const single = renderToStaticMarkup(
 			<SelectionDictCard
 				{...props([source([documents[0]!])], { renderEmbeddedContent: render })}
 			/>,
 		);
-		expect(render.mock.calls[0]?.[0].fitContent).toBe(false);
-		expect(single).not.toContain(styles.bodyMultiple);
+		expect(render.mock.calls[0]?.[0].fitContent).toBe(true);
+		expect(single).toContain(styles.bodyRich);
 	});
 
 	it.each(["loading", "empty", "error"] as const)(

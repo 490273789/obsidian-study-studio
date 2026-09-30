@@ -6,7 +6,7 @@ export interface SelectionEmbeddedContentProps {
 	title: string;
 	theme: "dark" | "light";
 	className?: string;
-	/** Multiple documents fit their content so the surrounding reader owns scrolling. */
+	/** Documents fit their content so the popup grows and the surrounding reader owns scrolling. */
 	fitContent?: boolean;
 	onLookup: (word: string) => void;
 	onClose: () => void;

@@ -13,7 +13,7 @@ export function popupPosition(
 ): { left: number; top: number; maxWidth: number; maxHeight: number } {
 	const margin = 16;
 	const maxWidth = Math.max(0, viewport.width - margin * 2);
-	const maxHeight = Math.max(0, viewport.height - margin * 2);
+	const maxHeight = Math.max(0, Math.min(viewport.height * 0.7, viewport.height - margin * 2));
 	const width = Math.min(size.width, maxWidth);
 	const height = Math.min(size.height, maxHeight);
 	const minLeft = viewport.left + margin;

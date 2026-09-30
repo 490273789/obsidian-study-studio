@@ -132,8 +132,6 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 				section.presentation === "stack" || index === activeSource?.activeSectionIndex,
 		);
 	const rich = visible.some(({ section }) => section.kind === "embedded");
-	const multipleDocuments =
-		visible.filter(({ section }) => section.kind === "embedded").length > 1;
 	const retry = () =>
 		activeSource && (activeSource.kind === "ai" ? onGenerateAi() : onRetry(activeSource.id));
 
@@ -214,7 +212,6 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 				className={cls(
 					styles.body,
 					rich && activeSource?.status === "success" && styles.bodyRich,
-					multipleDocuments && activeSource?.status === "success" && styles.bodyMultiple,
 				)}
 			>
 				{activeSource?.kind === "ai" && activeSource.status === "idle" ? (
@@ -289,7 +286,7 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 									section={section}
 									props={props}
 									title={`${activeSource?.label} · ${section.title}`}
-									fitContent={multipleDocuments}
+									fitContent
 								/>
 							</section>
 						))}

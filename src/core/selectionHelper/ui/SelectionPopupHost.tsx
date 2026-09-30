@@ -27,7 +27,7 @@ export const SelectionPopupHost: React.FC<SelectionPopupHostProps> = ({
 	const mode = state.mode;
 
 	const rootRef = useRef<HTMLDivElement>(null);
-	const [position, setPosition] = useState({ left: 0, top: 0, maxWidth: 380, maxHeight: 420 });
+	const [position, setPosition] = useState({ left: 0, top: 0, maxWidth: 570, maxHeight: 420 });
 
 	useLayoutEffect(() => {
 		const element = rootRef.current;

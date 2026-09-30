@@ -591,6 +591,22 @@
 
 /* Favourites */
 
+:global(.modal).favoriteModal {
+	width: min(600px, 90vw);
+	max-height: 85vh;
+	background: var(--background-primary);
+	opacity: 1;
+
+	:global(.modal-content) {
+		min-height: 0;
+		overflow-y: auto;
+	}
+
+	.page.favorite {
+		min-height: 0;
+	}
+}
+
 .favoriteHeader {
 	display: flex;
 	flex-direction: column;

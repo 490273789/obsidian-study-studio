@@ -3,6 +3,9 @@ import { DEFAULT_SETTINGS } from "../../../core/host/settingsSlices";
 import { dictionaryStrings } from "../strings/dictionary";
 import { createDictionaryFeature } from "../feature";
 import { createFakeWorkbenchHost } from "../../../core/host/__tests__/fakeWorkbenchHost";
+import type { ReactViewOptions } from "../../../core/host/reactItemView";
+import type { DictionaryViewProps } from "../ui/DictionaryView";
+import type React from "react";
 
 vi.mock("obsidian", () => ({
 	ItemView: class {},
@@ -13,6 +16,39 @@ vi.mock("obsidian", () => ({
 
 const runtimeSpies = vi.hoisted(() => ({ instances: [] as unknown[] }));
 const editorSpies = vi.hoisted(() => ({ instances: [] as unknown[] }));
+const favoriteModalSpies = vi.hoisted(() => ({
+	instances: [] as {
+		open: ReturnType<typeof vi.fn>;
+		close: ReturnType<typeof vi.fn<() => void>>;
+		updateSettings: ReturnType<typeof vi.fn>;
+	}[],
+}));
+const viewSpies = vi.hoisted(() => ({
+	definitions: new Map<string, ReactViewOptions<{ language: "zh" | "en" }>>(),
+}));
+
+vi.mock("../../../core/host/reactItemView", () => ({
+	createReactItemView: (options: ReactViewOptions<{ language: "zh" | "en" }>) => {
+		viewSpies.definitions.set(options.type, options);
+		return vi.fn();
+	},
+}));
+
+vi.mock("../obsidian/favoriteModal", () => ({
+	DictionaryFavoriteModal: class {
+		readonly open = vi.fn();
+		readonly close = vi.fn(() => this.onClosed());
+		readonly updateSettings = vi.fn();
+		constructor(
+			_app: unknown,
+			_controller: unknown,
+			_language: unknown,
+			private onClosed: () => void,
+		) {
+			favoriteModalSpies.instances.push(this);
+		}
+	},
+}));
 
 vi.mock("../domain/dictionaryRuntime", () => ({
 	DictionaryRuntime: class {
@@ -58,6 +94,45 @@ describe("dictionary feature", () => {
 	beforeEach(() => {
 		runtimeSpies.instances.length = 0;
 		editorSpies.instances.length = 0;
+		favoriteModalSpies.instances.length = 0;
+		viewSpies.definitions.clear();
+	});
+
+	it("opens favorites in one modal without activating a sidebar and closes it on stop", async () => {
+		const feature = createDictionaryFeature({
+			ai: {} as never,
+			net: {} as never,
+			plugin: {} as never,
+		});
+		const fake = createFakeWorkbenchHost("dictionary", enabledSettings);
+		feature.render(fake.host);
+		const definition = viewSpies.definitions.get("flashcard-dictionary-view")!;
+		const view = definition.render({
+			language: "zh",
+			theme: "dark",
+		} as never) as React.ReactElement<DictionaryViewProps>;
+		const runtime = runtimeSpies.instances[0] as {
+			favoriteController: {
+				prefill: ReturnType<typeof vi.fn>;
+				resetSession: ReturnType<typeof vi.fn>;
+			};
+		};
+
+		await view.props.onOpenFavorite("overlap");
+		await view.props.onOpenFavorite("word");
+		expect(runtime.favoriteController.prefill.mock.calls).toEqual([["overlap"], ["word"]]);
+		expect(fake.activateView).not.toHaveBeenCalled();
+		expect(favoriteModalSpies.instances).toHaveLength(1);
+		expect(favoriteModalSpies.instances[0]!.open).toHaveBeenCalledOnce();
+		feature.render(fake.host);
+		expect(favoriteModalSpies.instances[0]!.updateSettings).toHaveBeenCalledOnce();
+
+		favoriteModalSpies.instances[0]!.close();
+		expect(runtime.favoriteController.resetSession).toHaveBeenCalledOnce();
+		await view.props.onOpenFavorite("again");
+		expect(favoriteModalSpies.instances).toHaveLength(2);
+		feature.stop();
+		expect(favoriteModalSpies.instances[1]!.close).toHaveBeenCalledOnce();
 	});
 
 	it("keeps its selection adapter inert before the feature lifetime starts", async () => {

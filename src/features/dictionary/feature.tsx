@@ -10,6 +10,7 @@ import { FlashcardButton } from "../../core/ui/primitives/Button";
 import { DictionaryFavoriteView, DictionaryView } from "./ui";
 import { playDictionaryAudio, stopDictionaryAudio } from "./ui/audio";
 import { DictionaryLookupModal } from "./obsidian/modals";
+import { DictionaryFavoriteModal } from "./obsidian/favoriteModal";
 import { DictionarySettingsEditor } from "./obsidian/settingsEditor";
 import { createDictionarySettingsStore } from "./obsidian/settingsStore";
 import { createDictionarySelectionAdapter } from "./selectionAdapter";
@@ -54,6 +55,7 @@ type DictionaryWorkbenchHost = WorkbenchHost<"dictionary">;
 export function createDictionaryFeature(deps: DictionaryFeatureDeps): DictionaryFeature {
 	let active: { host: DictionaryWorkbenchHost; runtime: DictionaryRuntime } | null = null;
 	let modal: DictionaryLookupModal | null = null;
+	let favoriteModal: DictionaryFavoriteModal | null = null;
 
 	const openSettings = (host: DictionaryWorkbenchHost): void => {
 		host.settingsTab.open(DICTIONARY_SECTION_ID);
@@ -179,6 +181,10 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 				stopDictionaryAudio();
 				active = null;
 			});
+			lifetime.defer(() => {
+				favoriteModal?.close();
+				favoriteModal = null;
+			});
 
 			host.registerView(
 				VIEW_TYPE_DICTIONARY,
@@ -202,10 +208,19 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 								query={dictionary.query}
 								language={language}
 								onOpenFavorite={async (word) => {
+									if (!favoriteModal) {
+										favoriteModal = new DictionaryFavoriteModal(
+											host.app,
+											dictionary.favoriteController,
+											() => host.settings.read().language,
+											() => {
+												favoriteModal = null;
+												dictionary.favoriteController.resetSession();
+											},
+										);
+										favoriteModal.open();
+									}
 									await dictionary.favoriteController.prefill(word);
-									await host.activateView(VIEW_TYPE_DICTIONARY_FAVORITE, {
-										rightSidebar: true,
-									});
 								}}
 								onOpenSettings={() => openSettings(host)}
 								onPlayAudio={async (url) => {
@@ -228,9 +243,9 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 					renderErrorMessage: (language) =>
 						dictionaryStrings(language).favoriteRenderFailed,
 					onClose: () =>
-						resetWhenClosed(host, VIEW_TYPE_DICTIONARY_FAVORITE, () =>
-							dictionary.favoriteController.resetSession(),
-						),
+						resetWhenClosed(host, VIEW_TYPE_DICTIONARY_FAVORITE, () => {
+							if (!favoriteModal) dictionary.favoriteController.resetSession();
+						}),
 					render: ({ language }) =>
 						renderDictionaryBody(host, language, () => (
 							<DictionaryFavoriteView
@@ -255,6 +270,7 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 
 			return () => {
 				dictionary.applySettings();
+				favoriteModal?.updateSettings();
 				const strings = dictionaryStrings(host.settings.read().language);
 				host.chrome((chrome) => {
 					if (!host.settings.read().dictionary.enabled) return;
