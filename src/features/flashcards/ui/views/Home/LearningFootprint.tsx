@@ -104,13 +104,23 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 			</header>
 
 			<div className={styles.metrics}>
-				{todayMetrics.map(({ key, icon: Icon, value, label, subtitle }) => (
-					<div key={key} className={styles.metric}>
-						<Icon size={15} className={styles.metricIcon} aria-hidden="true" />
-						<div className={styles.metricBody}>
-							<div className={styles.metricValue}>
-								{value}
-								{key !== "duration" && <span>{t("footprint.times")}</span>}
+				{todayMetrics.map(({ key, icon: Icon, value, label, subtitle }) => {
+					const isDuration = key === "duration";
+					return (
+						<div
+							key={key}
+							className={cls(
+								styles.metric,
+								isDuration ? styles.metricDuration : styles.metricCount,
+								styles[`metric_${key}`],
+							)}
+						>
+							<div className={styles.metricHeader}>
+								<Icon size={14} className={styles.metricIcon} aria-hidden="true" />
+								<div className={styles.metricValue}>
+									{value}
+									{!isDuration && <span>{t("footprint.times")}</span>}
+								</div>
 							</div>
 							<div className={styles.metricLabelRow}>
 								<span className={styles.metricLabel}>{label}</span>
@@ -119,8 +129,8 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 								)}
 							</div>
 						</div>
-					</div>
-				))}
+					);
+				})}
 			</div>
 
 			<div className={styles.heatmapSection}>

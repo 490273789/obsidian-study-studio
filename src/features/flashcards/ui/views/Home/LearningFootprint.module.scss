@@ -93,11 +93,12 @@
 	opacity: 0.9;
 }
 
-.metricBody {
+.metricHeader {
 	min-width: 0;
 	display: flex;
-	align-items: flex-end;
+	align-items: center;
 	gap: var(--fc-space-2);
+	flex-shrink: 0;
 }
 
 .metricValue {
@@ -312,23 +313,116 @@ button.cell:not(:disabled) {
 	}
 }
 
-@container flashcard-page (max-width: 640px) {
+@mixin mobile-metrics-layout {
+	padding: var(--fc-space-3);
+	gap: var(--fc-space-2);
+
 	.streaks {
 		justify-content: flex-start;
 	}
 
 	.metrics {
+		grid-template-columns: repeat(6, minmax(0, 1fr));
+		gap: var(--fc-space-2);
+	}
+
+	.metric {
+		padding: var(--fc-space-2) var(--fc-space-1);
+		flex-direction: row;
+		justify-content: center;
+		align-items: center;
+		gap: var(--fc-space-1);
+		text-align: center;
+
+		.metricHeader {
+			gap: var(--fc-space-1);
+			justify-content: center;
+		}
+
+		.metricIcon {
+			width: 13px;
+			height: 13px;
+		}
+
+		.metricValue {
+			font-size: var(--fc-font-sm);
+
+			span {
+				font-size: 10px;
+				margin-left: 2px;
+			}
+		}
+
+		.metricLabelRow {
+			justify-content: center;
+			min-width: 0;
+			gap: var(--fc-space-2);
+		}
+
+		.metricLabel {
+			font-size: 11px;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.metricSubtitle {
+			font-size: 10px;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+	}
+
+	.metricCount {
+		grid-column: span 2;
+	}
+
+	.metric_challenge,
+	.metricDuration {
+		grid-column: span 3;
+	}
+}
+
+@mixin narrow-metrics-layout {
+	.metrics {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.metricCount {
+		grid-column: auto;
+	}
+
+	.metric_challenge {
+		grid-column: auto;
+	}
+
+	.metricDuration {
+		grid-column: 1 / -1;
+	}
+}
+
+@container flashcard-page (max-width: 640px) {
+	.panel {
+		@include mobile-metrics-layout;
+	}
+}
+
+@container flashcard-page (max-width: 340px) {
+	.panel {
+		@include narrow-metrics-layout;
 	}
 }
 
 @media (max-width: 640px) {
-	.streaks {
-		justify-content: flex-start;
+	.panel {
+		@include mobile-metrics-layout;
 	}
+}
 
-	.metrics {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (max-width: 340px) {
+	.panel {
+		@include narrow-metrics-layout;
 	}
 }
 
