@@ -1,4 +1,4 @@
-import { App, Modal, Setting } from "obsidian";
+import { App, Modal, Setting, setIcon } from "obsidian";
 import { normalizeDictionaryQuery } from "../domain/configuration";
 import type { DictionaryStrings } from "../strings/dictionary";
 
@@ -23,7 +23,6 @@ export class DictionaryLookupModal extends Modal {
 	override onOpen(): void {
 		// Use Obsidian's built-in prompt classes to mimic the command palette style
 		this.modalEl.addClass("prompt");
-		// Add a custom class to override the transparent background on some themes
 		this.modalEl.addClass("study-studio-dictionary-prompt");
 
 		// Clean up default Modal DOM to mimic SuggestModal
@@ -34,8 +33,25 @@ export class DictionaryLookupModal extends Modal {
 			this.contentEl.hide();
 		}
 
-		// Create prompt input container directly inside modalEl so .prompt > .prompt-input-container CSS applies
+		// 1. Header: Brand title on left, close button on right
+		const header = this.modalEl.createDiv("study-studio-prompt-header");
+		const brandLabel = header.createDiv("study-studio-prompt-brand");
+		const brandIcon = brandLabel.createSpan("study-studio-prompt-brand-icon");
+		setIcon(brandIcon, "book-open");
+		brandLabel.createSpan({ text: this.strings.displayName });
+
+		const closeButton =
+			(this as unknown as { closeButtonEl?: HTMLElement }).closeButtonEl ??
+			this.modalEl.querySelector<HTMLElement>(".modal-close-button");
+		if (closeButton) {
+			header.appendChild(closeButton);
+		}
+
+		// 2. Compact Search Input Box
 		const inputContainer = this.modalEl.createDiv("prompt-input-container");
+		const searchIcon = inputContainer.createSpan("prompt-input-icon");
+		setIcon(searchIcon, "search");
+
 		this.input = inputContainer.createEl("input", {
 			cls: "prompt-input",
 			type: "text",
@@ -58,8 +74,9 @@ export class DictionaryLookupModal extends Modal {
 			this.submit(value);
 		});
 
-		// Add instructions at the bottom directly inside modalEl
-		const instructions = this.modalEl.createDiv("prompt-instructions");
+		// 3. Footer with shortcut instructions
+		const footer = this.modalEl.createDiv("study-studio-prompt-footer");
+		const instructions = footer.createDiv("prompt-instructions");
 
 		const enterInstruction = instructions.createDiv("prompt-instruction");
 		enterInstruction.createSpan({ cls: "prompt-instruction-command", text: "↵" });

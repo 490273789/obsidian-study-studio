@@ -124,9 +124,231 @@
 // Dictionary Prompt Overrides
 // =============================================================================
 
-.study-studio-dictionary-prompt.prompt {
-	// Overrides transparent backgrounds on prompt modals (like Quick Switcher style)
+.study-studio-dictionary-prompt.prompt,
+.modal.prompt.study-studio-dictionary-prompt {
 	background-color: var(--background-primary) !important;
 	backdrop-filter: none !important;
-	border: 1px solid var(--background-modifier-border);
+	border: 1px solid var(--background-modifier-border) !important;
+	border-radius: var(--fc-radius-lg, 12px) !important;
+	box-shadow:
+		0 20px 48px rgba(0, 0, 0, 0.18),
+		0 4px 12px rgba(0, 0, 0, 0.08),
+		0 0 0 1px rgba(0, 0, 0, 0.04) !important;
+	display: block !important;
+	box-sizing: border-box;
+	padding: 16px 20px !important;
+	max-width: 480px !important;
+	width: min(480px, calc(100vw - 32px)) !important;
+	height: auto !important;
+	min-height: auto !important;
+	max-height: calc(100dvh - 32px) !important;
+	overflow-y: auto !important;
+
+	.study-studio-prompt-header {
+		display: flex !important;
+		align-items: center !important;
+		justify-content: space-between !important;
+		min-height: 32px;
+		gap: 12px;
+		margin-bottom: 12px !important;
+		width: 100% !important;
+
+		.study-studio-prompt-brand {
+			display: inline-flex !important;
+			align-items: center !important;
+			min-width: 0;
+			gap: 8px !important;
+			font-size: var(--fc-font-md) !important;
+			font-weight: var(--fc-weight-semibold) !important;
+			color: var(--text-normal) !important;
+
+			.study-studio-prompt-brand-icon {
+				display: inline-flex !important;
+				align-items: center !important;
+				justify-content: center !important;
+				color: var(--interactive-accent) !important;
+
+				svg {
+					width: 18px !important;
+					height: 18px !important;
+					display: block !important;
+				}
+			}
+		}
+
+		.modal-close-button {
+			position: static !important;
+			flex: 0 0 32px !important;
+			min-width: 32px !important;
+			max-width: 32px !important;
+			min-height: 32px !important;
+			box-sizing: border-box;
+			border: none !important;
+			background: transparent !important;
+			box-shadow: none !important;
+			display: inline-flex !important;
+			align-items: center !important;
+			justify-content: center !important;
+			width: 32px !important;
+			height: 32px !important;
+			padding: 0 !important;
+			margin: 0 !important;
+			cursor: pointer !important;
+			opacity: 0.55 !important;
+			border-radius: var(--fc-radius-xs, 4px) !important;
+			color: var(--text-muted) !important;
+			transition:
+				opacity var(--fc-motion-quick, 0.15s) ease,
+				color var(--fc-motion-quick, 0.15s) ease,
+				background var(--fc-motion-quick, 0.15s) ease !important;
+
+			svg {
+				width: 14px !important;
+				height: 14px !important;
+				display: block !important;
+			}
+
+			&:focus-visible {
+				outline: 2px solid var(--interactive-accent);
+				outline-offset: 2px;
+			}
+
+			&:hover {
+				opacity: 1 !important;
+				color: var(--text-normal) !important;
+				background: var(--background-modifier-hover) !important;
+			}
+		}
+	}
+
+	.prompt-input-container {
+		display: flex !important;
+		align-items: center !important;
+		gap: 8px !important;
+		box-sizing: border-box;
+		padding: 0 12px !important;
+		height: 44px !important;
+		min-height: 44px !important;
+		max-height: 44px !important;
+		border-radius: var(--fc-radius-sm, 6px) !important;
+		border: 1px solid var(--background-modifier-border) !important;
+		background: color-mix(
+			in srgb,
+			var(--background-secondary) 75%,
+			var(--background-primary) 25%
+		) !important;
+		box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+		margin: 0 !important;
+		width: 100% !important;
+		transition:
+			border-color var(--fc-motion-quick, 0.15s) ease,
+			background var(--fc-motion-quick, 0.15s) ease,
+			box-shadow var(--fc-motion-quick, 0.15s) ease !important;
+
+		.prompt-input-icon {
+			display: inline-flex !important;
+			align-items: center !important;
+			justify-content: center !important;
+			width: 15px !important;
+			height: 15px !important;
+			flex: 0 0 15px !important;
+			color: var(--text-muted) !important;
+			transition: color var(--fc-motion-quick, 0.15s) ease !important;
+
+			svg {
+				width: 15px !important;
+				height: 15px !important;
+				display: block !important;
+			}
+		}
+
+		input.prompt-input {
+			flex: 1 1 auto !important;
+			min-width: 0 !important;
+			height: 24px !important;
+			line-height: 24px !important;
+			padding: 0 !important;
+			border: none !important;
+			background: transparent !important;
+			box-shadow: none !important;
+			color: var(--text-normal) !important;
+			font-size: 16px !important;
+			font-weight: 500 !important;
+			caret-color: var(--interactive-accent) !important;
+
+			&::placeholder {
+				color: var(--text-muted) !important;
+				font-size: 16px !important;
+				font-weight: normal !important;
+			}
+
+			&:focus {
+				outline: none !important;
+				border: none !important;
+				box-shadow: none !important;
+			}
+		}
+
+		&:focus-within {
+			border-color: var(--interactive-accent) !important;
+			background: var(--background-primary) !important;
+			box-shadow:
+				0 0 0 2px color-mix(in srgb, var(--interactive-accent) 22%, transparent),
+				inset 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+
+			.prompt-input-icon {
+				color: var(--interactive-accent) !important;
+			}
+		}
+	}
+
+	.study-studio-prompt-footer {
+		display: flex !important;
+		align-items: center !important;
+		justify-content: flex-end !important;
+		margin-top: 12px !important;
+		padding: 0 2px !important;
+		width: 100% !important;
+
+		.prompt-instructions {
+			display: inline-flex !important;
+			align-items: center !important;
+			justify-content: flex-end !important;
+			gap: 16px !important;
+			flex-wrap: wrap;
+			background: transparent !important;
+			margin: 0 !important;
+			padding: 0 !important;
+			border: none !important;
+
+			.prompt-instruction {
+				display: inline-flex !important;
+				align-items: center !important;
+				gap: 5px !important;
+				font-size: var(--fc-font-xs) !important;
+				color: var(--text-muted) !important;
+
+				.prompt-instruction-command {
+					display: inline-flex !important;
+					align-items: center !important;
+					justify-content: center !important;
+					min-width: 17px !important;
+					padding: 1px 5px !important;
+					border-radius: 3px !important;
+					background: color-mix(
+						in srgb,
+						var(--background-secondary) 85%,
+						var(--background-primary) 15%
+					) !important;
+					border: 1px solid var(--background-modifier-border) !important;
+					box-shadow: 0 1px 0 rgba(0, 0, 0, 0.07) !important;
+					font-family: var(--fc-font-data, monospace) !important;
+					font-size: 10px !important;
+					font-weight: 600 !important;
+					color: var(--text-normal) !important;
+					line-height: 1.3 !important;
+				}
+			}
+		}
+	}
 }

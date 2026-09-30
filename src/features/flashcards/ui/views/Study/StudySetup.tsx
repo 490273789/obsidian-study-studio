@@ -89,12 +89,13 @@ const StudyDayRow = memo(function StudyDayRow({
 			<div className={styles.dayProgress}>
 				{day.isCompleted && (
 					<>
-						<FlashcardButton variant="secondary" onClick={handleReview}>
+						<FlashcardButton variant="secondary" size="sm" onClick={handleReview}>
 							{t("study.review")}
 						</FlashcardButton>
 						{spellingEnabled && (
 							<FlashcardButton
 								variant="secondary"
+								size="sm"
 								onClick={handleSpelling}
 								title={t("home.spellingModeTitle")}
 							>

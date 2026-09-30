@@ -116,8 +116,12 @@
 	}
 
 	&.completed {
-		opacity: 0.8;
-		border-color: color-mix(in srgb, var(--fc-lime) 30%, var(--fc-line-soft));
+		border-color: color-mix(in srgb, var(--fc-lime) 35%, var(--fc-line-soft));
+		background: color-mix(in srgb, var(--fc-lime) 4%, var(--fc-surface-card));
+
+		.dayBadge {
+			color: var(--fc-lime);
+		}
 	}
 }
 
@@ -146,24 +150,57 @@
 	display: flex;
 	align-items: center;
 	gap: var(--fc-space-2);
+
+	:global(.flashcard-btn) {
+		min-height: 26px;
+		height: 26px;
+		padding: 0 var(--fc-space-3);
+		font-size: var(--fc-font-xs);
+		font-weight: var(--fc-weight-medium);
+		border-radius: var(--fc-radius-sm);
+		border: 1px solid color-mix(in srgb, var(--fc-cyan) 35%, var(--fc-line-soft));
+		background: color-mix(in srgb, var(--fc-cyan) 10%, var(--fc-surface-card));
+		color: var(--fc-cyan);
+		box-shadow: 0 1px 2px rgba(var(--fc-black-rgb), 0.03);
+		transition: all 0.15s ease;
+
+		&:hover:not(:disabled) {
+			background: color-mix(in srgb, var(--fc-cyan) 18%, var(--fc-surface-card));
+			border-color: color-mix(in srgb, var(--fc-cyan) 55%, transparent);
+			color: var(--fc-cyan);
+			transform: translateY(-1px);
+			box-shadow: 0 2px 5px rgba(var(--fc-black-rgb), 0.06);
+		}
+
+		&:active:not(:disabled) {
+			transform: translateY(0);
+		}
+	}
+}
+
+:global(.theme-light) .dayProgress :global(.flashcard-btn) {
+	background: color-mix(in srgb, var(--fc-surface-card) 86%, var(--fc-cyan) 14%);
+	border-color: color-mix(in srgb, var(--fc-cyan) 42%, transparent);
+	color: var(--fc-cyan);
+
+	&:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--fc-surface-card) 78%, var(--fc-cyan) 22%);
+		border-color: color-mix(in srgb, var(--fc-cyan) 60%, transparent);
+		color: var(--fc-cyan);
+	}
 }
 
 .dayCount {
 	font-family: var(--fc-font-data);
 	font-size: var(--fc-font-xs);
-	min-width: 52px;
-	min-height: 28px;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	padding: 2px var(--fc-space-3);
-	border-radius: var(--fc-radius-sm);
-	background: color-mix(in srgb, var(--background-secondary) 90%, transparent);
-	border: 1px solid var(--fc-line-glow);
 	color: var(--fc-muted);
-	font-weight: var(--fc-weight-semibold);
+	font-weight: var(--fc-weight-medium);
+	padding: 2px var(--fc-space-2);
+	border-radius: var(--fc-radius-pill);
+	background: color-mix(in srgb, var(--text-normal) 6%, transparent);
 	line-height: var(--fc-line-tight);
 	text-align: center;
+	white-space: nowrap;
 }
 
 .actionBar {
