@@ -74,6 +74,7 @@ class FakeSettingsStore implements DictionarySettingsStore {
 			ai: { configId: null },
 			enabled: true,
 			favoritePath: "",
+			favoriteAiConfigId: null,
 			history: [],
 			localDictionaries: this.state.localDictionaries,
 			sources: this.state.sources,

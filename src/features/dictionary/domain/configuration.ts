@@ -307,6 +307,7 @@ export const DEFAULT_DICTIONARY_SETTINGS: DictionarySettings = {
 	ai: { configId: null },
 	enabled: false,
 	favoritePath: DEFAULT_DICTIONARY_FAVORITE_PATH,
+	favoriteAiConfigId: null,
 	history: [],
 	localDictionaries: [],
 	sources: [
@@ -343,6 +344,10 @@ export function normalizeDictionarySettings(value: unknown): DictionarySettings 
 					? ai.configId.trim().slice(0, 200)
 					: null,
 		},
+		favoriteAiConfigId:
+			typeof candidate.favoriteAiConfigId === "string" && candidate.favoriteAiConfigId.trim()
+				? candidate.favoriteAiConfigId.trim().slice(0, 200)
+				: null,
 		enabled: candidate.enabled === true,
 		favoritePath: normalizeDictionaryFavoritePath(
 			candidate.favoritePath,

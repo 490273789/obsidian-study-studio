@@ -26,6 +26,7 @@ export interface DictionarySettingsEditorState {
 export interface DictionarySettingsEditorActions {
 	setEnabled: (enabled: boolean) => SettingsActionResult;
 	setFavoritePath: (path: string) => SettingsActionResult;
+	setFavoriteAiConfigId: (configId: string | null) => SettingsActionResult;
 	setYoudaoAccessMode: (mode: YoudaoAccessMode) => SettingsActionResult;
 	setYoudaoDictionary: (dictionary: "ec" | "ee") => SettingsActionResult;
 	setYoudaoSecretId: (secret: "appKey" | "appSecret", secretId: string) => SettingsActionResult;
@@ -101,6 +102,29 @@ export function buildDictionarySettingsViewModel(
 					placeholder: t.favoritePathPlaceholder,
 					disabled: state.saving,
 					onChange: actions.setFavoritePath,
+				},
+			);
+			const favoriteAiConfigId = settings.favoriteAiConfigId ?? "";
+			group.select(
+				"favorite-ai-engine",
+				{ name: t.favoriteAiEngine, description: t.favoriteAiEngineDescription },
+				{
+					value: favoriteAiConfigId,
+					disabled: state.saving,
+					options: [
+						{ value: "", label: t.favoriteAiNotConfigured },
+						...(favoriteAiConfigId &&
+						!aiConfigs.some((config) => config.id === favoriteAiConfigId)
+							? [
+									{
+										value: favoriteAiConfigId,
+										label: t.favoriteAiConfigMissing(favoriteAiConfigId),
+									},
+								]
+							: []),
+						...aiConfigs.map((config) => ({ value: config.id, label: config.name })),
+					],
+					onChange: (value) => actions.setFavoriteAiConfigId(value || null),
 				},
 			);
 			group.select(

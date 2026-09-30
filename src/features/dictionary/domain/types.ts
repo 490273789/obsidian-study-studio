@@ -195,6 +195,8 @@ export interface DictionarySettings {
 	ai: AiDictionarySettings;
 	enabled: boolean;
 	favoritePath: string;
+	/** Independent shared engine selection for favorite draft generation. */
+	favoriteAiConfigId: string | null;
 	history: string[];
 	localDictionaries: LocalDictionarySettings[];
 	sources: DictionarySourceSettings[];
@@ -254,11 +256,12 @@ export interface DictionaryFavoriteViewState {
 	path: string;
 	pathSuggestions: string[];
 	savedPath: string;
-	status: "idle" | "saving" | "success" | "error";
+	status: "idle" | "generating" | "saving" | "success" | "error";
 	word: string;
 }
 
 export interface DictionaryFavoriteViewModel {
+	generateAi(): Promise<void>;
 	clear(): void;
 	getSnapshot(): DictionaryFavoriteViewState;
 	openSavedFile(): Promise<void>;

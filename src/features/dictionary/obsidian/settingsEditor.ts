@@ -135,6 +135,10 @@ export class DictionarySettingsEditor {
 					const source = draft.sources.find((candidate) => candidate.id === id);
 					if (source) source.enabled = enabled;
 				}),
+			setFavoriteAiConfigId: (configId) =>
+				this.patch((draft) => {
+					draft.favoriteAiConfigId = configId;
+				}),
 			setAiConfigId: (configId) =>
 				this.patch((draft) => {
 					draft.ai.configId = configId;

@@ -6,6 +6,7 @@ import { AiDictionarySource } from "./ai";
 import { CambridgeDictionarySource } from "./cambridge";
 import { CompiledDictionarySource } from "./compiled-source";
 import { createDictionaryQuerySession, type DictionaryQuerySession } from "./querySession";
+import { createFavoriteDraftGenerator } from "./favorite-ai";
 import { DictionaryFavoriteController } from "./favorite-controller";
 import { DictionaryFavoriteFile } from "./favorite-file";
 import { HujiangDictionarySource } from "./hujiang";
@@ -50,6 +51,7 @@ export class DictionaryRuntime {
 	private readonly options: DictionaryRuntimeOptions;
 	private readonly localSources = new Map<string, CompiledDictionarySource>();
 	private disposed = false;
+	private readonly unsubscribeFavoriteAi: () => void;
 
 	constructor(options: DictionaryRuntimeOptions) {
 		this.options = options;
@@ -60,6 +62,20 @@ export class DictionaryRuntime {
 			options.settings,
 			new DictionaryFavoriteFile(options.app),
 			options.notify,
+			{
+				generator: createFavoriteDraftGenerator(options.ai),
+				language: options.language,
+				engineKey: () => {
+					const id = options.settings.getDictionarySettings().favoriteAiConfigId;
+					const config = options.ai
+						.getSnapshot()
+						.settings.configs.find((item) => item.id === id);
+					return config ? JSON.stringify(config) : null;
+				},
+			},
+		);
+		this.unsubscribeFavoriteAi = options.ai.subscribe(() =>
+			this.favoriteController.refreshSettings(),
 		);
 		this.query = createDictionaryQuerySession({
 			settings: options.settings,
@@ -175,6 +191,7 @@ export class DictionaryRuntime {
 		this.closeLocalSources();
 		this.administration.cancelActiveOperations();
 		this.query.dispose();
+		this.unsubscribeFavoriteAi();
 		this.favoriteController.dispose();
 	}
 

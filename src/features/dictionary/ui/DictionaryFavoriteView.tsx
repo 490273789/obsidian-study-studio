@@ -1,5 +1,5 @@
 import React, { useCallback, useSyncExternalStore } from "react";
-import { Eraser, Save } from "lucide-react";
+import { Eraser, Save, Sparkles } from "lucide-react";
 import type { DictionaryFavoriteController } from "../domain/favorite-controller";
 import { dictionaryStrings } from "../strings/dictionary";
 import type { Language } from "../../../core/shared/types";
@@ -25,7 +25,10 @@ export function DictionaryFavoriteView({
 	const state = useSyncExternalStore(subscribe, getSnapshot);
 	const strings = dictionaryStrings(language);
 	const saving = state.status === "saving";
-	const canSave = Boolean(state.word.trim() && state.path.trim()) && !saving;
+	const generating = state.status === "generating";
+	const busy = saving || generating;
+	const canSave = Boolean(state.word.trim() && state.path.trim()) && !busy;
+	const canGenerate = Boolean(state.word.trim()) && !busy;
 
 	return (
 		<main
@@ -34,7 +37,7 @@ export function DictionaryFavoriteView({
 				styles.page,
 				styles.favorite,
 			)}
-			aria-busy={saving}
+			aria-busy={busy}
 		>
 			<header className={cls("flashcard-dictionary-favorite-header", styles.favoriteHeader)}>
 				<p className="fc-kicker">{strings.favoriteSidebarEyebrow}</p>
@@ -53,6 +56,7 @@ export function DictionaryFavoriteView({
 					variant="ghost"
 					size="sm"
 					title={state.savedPath}
+					disabled={busy}
 					onClick={() => void controller.openSavedFile()}
 				>
 					{state.savedPath}
@@ -75,6 +79,7 @@ export function DictionaryFavoriteView({
 						maxLength={128}
 						autoComplete="off"
 						spellCheck={false}
+						disabled={busy}
 						onChange={(event) => controller.setWord(event.target.value)}
 					/>
 				</label>
@@ -89,6 +94,7 @@ export function DictionaryFavoriteView({
 						maxLength={500}
 						autoComplete="off"
 						spellCheck={false}
+						disabled={busy}
 						onChange={(event) => controller.setPath(event.target.value)}
 					/>
 				</label>
@@ -108,6 +114,7 @@ export function DictionaryFavoriteView({
 						placeholder={strings.favoriteMeaningPlaceholder}
 						maxLength={8000}
 						rows={3}
+						disabled={busy}
 						onChange={(event) => controller.setMeaning(event.target.value)}
 					/>
 				</label>
@@ -120,6 +127,7 @@ export function DictionaryFavoriteView({
 						placeholder={strings.favoriteNotePlaceholder}
 						maxLength={16000}
 						rows={5}
+						disabled={busy}
 						onChange={(event) => controller.setNote(event.target.value)}
 					/>
 				</label>
@@ -136,8 +144,17 @@ export function DictionaryFavoriteView({
 						{saving ? strings.favoriteSaving : strings.favoriteSave}
 					</FlashcardButton>
 					<FlashcardButton
+						type="button"
+						icon={Sparkles}
+						disabled={!canGenerate}
+						onClick={() => void controller.generateAi()}
+					>
+						{generating ? strings.favoriteAiGenerating : strings.favoriteAiGenerate}
+					</FlashcardButton>
+					<FlashcardButton
+						type="button"
 						icon={Eraser}
-						disabled={saving}
+						disabled={busy}
 						onClick={() => controller.clear()}
 					>
 						{strings.favoriteClear}

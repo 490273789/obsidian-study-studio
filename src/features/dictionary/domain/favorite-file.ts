@@ -15,10 +15,12 @@ export interface StoredDictionaryFavorite {
 	word: string;
 }
 
-export const DICTIONARY_FAVORITE_MEANING_MAX_LENGTH = 8_000;
-export const DICTIONARY_FAVORITE_NOTE_MAX_LENGTH = 16_000;
-export const DICTIONARY_FAVORITE_PATH_MAX_LENGTH = 500;
-export const DICTIONARY_FAVORITE_SUGGESTION_LIMIT = 300;
+import {
+	DICTIONARY_FAVORITE_MEANING_MAX_LENGTH,
+	DICTIONARY_FAVORITE_NOTE_MAX_LENGTH,
+	DICTIONARY_FAVORITE_SUGGESTION_LIMIT,
+} from "./favorite-limits";
+export * from "./favorite-limits";
 
 /** Matches one `## word / ?? / meaning / :: / note / ;;` favorite block. */
 export const DICTIONARY_FAVORITE_BLOCK_PATTERN =

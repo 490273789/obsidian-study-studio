@@ -558,3 +558,20 @@ describe("DEFAULT_DICTIONARY_SETTINGS", () => {
 		expect(normalizeDictionarySettings(null)).toEqual(DEFAULT_DICTIONARY_SETTINGS);
 	});
 });
+
+describe("favorite AI engine selection", () => {
+	it("defaults legacy data to no selection without copying the dictionary engine", () => {
+		expect(
+			normalizeDictionarySettings({ ai: { configId: "dictionary-engine" } })
+				.favoriteAiConfigId,
+		).toBeNull();
+	});
+	it("normalizes an independent id and retains missing ids for explicit re-selection", () => {
+		expect(
+			normalizeDictionarySettings({ favoriteAiConfigId: "  missing  " }).favoriteAiConfigId,
+		).toBe("missing");
+		expect(
+			normalizeDictionarySettings({ favoriteAiConfigId: 42 }).favoriteAiConfigId,
+		).toBeNull();
+	});
+});
