@@ -47,7 +47,6 @@ import {
 import { planRetryIncorrectSession, planSessionQueue } from "./sessionPlanner";
 import {
 	answerChallengeQuestion,
-	completeChallengeLevel,
 	continueChallengeAfterError,
 	createChallengeProgress,
 	getCurrentChallengeQuestion,
@@ -938,48 +937,18 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		const now = this.now();
 		const step = answerChallengeQuestion({
 			session: state.session,
+			progress: state.progress,
 			correct,
 			now,
 			submittedInput,
 			expectedAnswer,
 		});
-		const lastAttempt =
-			state.session.attempts[state.session.attempts.length - 1]?.answeredAt ??
-			state.session.startTime;
-		const duration = Math.max(
-			0,
-			Math.floor((now - state.session.startTime) / 1000) -
-				Math.floor((lastAttempt - state.session.startTime) / 1000),
-		);
-		const complete = step.type === "complete";
-		const progress = complete
-			? completeChallengeLevel(state.progress, step.result)
-			: state.progress;
 		await this.commit({
 			...emptyTransition(),
-			challengeProgress: progress,
+			challengeProgress: step.progress,
 			expectedChallengeProgress: state.progress,
-			learningActivity: {
-				kind: "session",
-				mode: "challenge",
-				completion: complete ? "completed" : "partial",
-				answerCount: 1,
-				completedAnswerCount: complete ? step.session.attempts.length : undefined,
-				durationSeconds: duration,
-				occurredAt: now,
-			},
-			historyEntries: complete
-				? [
-						{
-							deckId: state.session.roundId,
-							deckName: "",
-							mode: "challenge",
-							cardCount: step.result.totalQuestions,
-							duration: step.result.durationSeconds,
-							occurredAt: now,
-						},
-					]
-				: [],
+			learningActivity: step.learningActivity,
+			historyEntries: step.historyEntries,
 		});
 		if (step.type === "complete") {
 			this.publish({
@@ -988,7 +957,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 				key: this.makeKey("challenge-result"),
 				completedAt: now,
 				levelResult: step.result,
-				progress,
+				progress: step.progress,
 				incorrectCards: step.result.incorrectIdentities.flatMap((identity) => {
 					const entry = this.challengeCards().get(identity);
 					return entry
@@ -1004,7 +973,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 				sourceChanged: false,
 				setupDefaults: state.setupDefaults,
 			});
-		} else this.publish({ ...state, progress, session: step.session });
+		} else this.publish({ ...state, progress: step.progress, session: step.session });
 		return this.applied();
 	}
 

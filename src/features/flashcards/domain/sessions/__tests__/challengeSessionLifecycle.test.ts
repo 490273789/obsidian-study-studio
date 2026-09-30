@@ -196,21 +196,79 @@ describe("challenge lifecycle", () => {
 		const h = await harness(1);
 		await h.start();
 		const before = active(h.lifecycle);
+		const persistedBefore = await h.authority.read();
+		const progressBefore = h.repo.getChallengeProgress();
+		const activityBefore = h.repo.getLearningFootprint(new Date(h.options.now())).today;
+		const listener = vi.fn();
+		const unsubscribe = h.lifecycle.subscribe(listener);
+		h.tick();
 		h.authority.failNextCommit = true;
 		expect(
 			(await h.lifecycle.act(before.reference, { kind: "answer", correct: true })).kind,
 		).toBe("failed");
 		expect(h.lifecycle.getSnapshot()).toBe(before);
+		expect(await h.authority.read()).toEqual(persistedBefore);
+		expect(h.repo.getChallengeProgress()).toEqual(progressBefore);
+		expect(h.repo.getLearningFootprint(new Date(h.options.now())).today).toEqual(
+			activityBefore,
+		);
+		expect(h.repo.getStudyHistory()).toHaveLength(0);
+		expect(listener).not.toHaveBeenCalled();
 		await act(h.lifecycle, { kind: "answer", correct: true });
 		expect(
 			(await h.lifecycle.act(before.reference, { kind: "answer", correct: true })).kind,
 		).toBe("rejected");
 		expect(h.repo.getStudyHistory()).toHaveLength(1);
+		expect(h.repo.getChallengeProgress()!.round!.completedLevelCount).toBe(1);
+		const activity = h.repo.getLearningFootprint(new Date(h.options.now())).today;
+		expect(activity.answers.challenge).toBe(1);
+		expect(activity.seconds.challenge).toBe(1);
+		expect(activity.completedAnswers.challenge).toBe(1);
+		expect(activity.completedSessions.challenge).toBe(1);
+		expect(listener).toHaveBeenCalledTimes(1);
+		unsubscribe();
 		await h.lifecycle.act(result(h.lifecycle).reference, { kind: "dismiss" });
 		const saved = h.repo.getChallengeProgress();
 		h.authority.failNextCommit = true;
 		expect((await h.start("spelling")).kind).toBe("failed");
 		expect(h.repo.getChallengeProgress()).toEqual(saved);
+	});
+
+	it("rolls back a failed partial answer, and records a retry and completion only once", async () => {
+		const h = await harness(1);
+		await h.start("spelling");
+		const before = active(h.lifecycle);
+		const persistedBefore = await h.authority.read();
+		h.tick();
+		h.authority.failNextCommit = true;
+		expect((await h.lifecycle.act(before.reference, { kind: "reveal" })).kind).toBe("failed");
+		expect(h.lifecycle.getSnapshot()).toBe(before);
+		expect(await h.authority.read()).toEqual(persistedBefore);
+		await act(h.lifecycle, { kind: "reveal" });
+		const partial = h.repo.getLearningFootprint(new Date(h.options.now())).today;
+		expect(partial.answers.challenge).toBe(1);
+		expect(partial.seconds.challenge).toBe(1);
+		expect(partial.completedAnswers.challenge).toBe(0);
+		expect(partial.completedSessions.challenge).toBe(0);
+		expect(h.repo.getStudyHistory()).toHaveLength(0);
+		const feedbackPersistence = await h.authority.read();
+		h.tick();
+		await act(h.lifecycle, { kind: "continue" });
+		expect(await h.authority.read()).toEqual(feedbackPersistence);
+		h.tick();
+		await act(h.lifecycle, { kind: "answer", input: "apple" });
+		expect(result(h.lifecycle).levelResult).toMatchObject({
+			firstTryCorrectCount: 0,
+			retryCount: 1,
+			durationSeconds: 3,
+		});
+		const completed = h.repo.getLearningFootprint(new Date(h.options.now())).today;
+		expect(completed.answers.challenge).toBe(2);
+		expect(completed.seconds.challenge).toBe(3);
+		expect(completed.completedAnswers.challenge).toBe(2);
+		expect(completed.completedSessions.challenge).toBe(1);
+		expect(h.repo.getStudyHistory()).toHaveLength(1);
+		expect(h.repo.getChallengeProgress()!.round!.completedLevelCount).toBe(1);
 	});
 
 	it("uses edited/moved cards, removes deleted cards, and ignores newly learned cards", async () => {

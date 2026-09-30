@@ -82,13 +82,31 @@ export interface ChallengeSession {
 	readonly feedback: ChallengeFeedback | null;
 }
 
-export type ChallengeSessionStep =
+type ChallengeSessionStep =
 	| { readonly type: "continue"; readonly session: ChallengeSession }
 	| {
 			readonly type: "complete";
 			readonly session: ChallengeSession;
 			readonly result: ChallengeLevelResult;
 	  };
+
+interface ChallengeHistoryEntry {
+	readonly deckId: string;
+	readonly deckName: "";
+	readonly mode: "challenge";
+	readonly cardCount: number;
+	readonly duration: number;
+	readonly occurredAt: number;
+}
+
+/** The paired pure effects of one real submission, ready for an atomic commit. */
+export type ChallengeAnswerUpdate = ChallengeSessionStep & {
+	readonly progress: ChallengeProgress;
+	readonly learningActivity: Extract<LearningActivityRecord, { kind: "session" }> & {
+		readonly mode: "challenge";
+	};
+	readonly historyEntries: readonly ChallengeHistoryEntry[];
+};
 
 const CHALLENGE_LEVEL_SIZE = 15;
 const QUESTION_MODES: readonly ChallengeQuestionMode[] = ["normal", "reversed", "spelling"];
@@ -198,6 +216,56 @@ export function getCurrentChallengeQuestion(
 
 export function answerChallengeQuestion(params: {
 	session: ChallengeSession;
+	progress: ChallengeProgress;
+	correct: boolean;
+	now: number;
+	submittedInput?: string;
+	expectedAnswer?: string;
+}): ChallengeAnswerUpdate {
+	const step = stepChallengeQuestion(params);
+	const lastAttempt =
+		params.session.attempts[params.session.attempts.length - 1]?.answeredAt ??
+		params.session.startTime;
+	// Subtract floored cumulative time so consecutive sub-second answers retain their time.
+	const durationSeconds = Math.max(
+		0,
+		Math.floor((params.now - params.session.startTime) / 1000) -
+			Math.floor((lastAttempt - params.session.startTime) / 1000),
+	);
+	return {
+		...step,
+		progress:
+			step.type === "complete"
+				? completeChallengeLevel(params.progress, step.result)
+				: params.progress,
+		learningActivity: {
+			kind: "session",
+			mode: "challenge",
+			completion: step.type === "complete" ? "completed" : "partial",
+			answerCount: 1,
+			completedAnswerCount:
+				step.type === "complete" ? step.session.attempts.length : undefined,
+			durationSeconds,
+			occurredAt: params.now,
+		},
+		historyEntries:
+			step.type === "complete"
+				? [
+						{
+							deckId: params.session.roundId,
+							deckName: "",
+							mode: "challenge",
+							cardCount: step.result.totalQuestions,
+							duration: step.result.durationSeconds,
+							occurredAt: params.now,
+						},
+					]
+				: [],
+	};
+}
+
+function stepChallengeQuestion(params: {
+	session: ChallengeSession;
 	correct: boolean;
 	now: number;
 	submittedInput?: string;
@@ -298,7 +366,7 @@ function reconcileChallengeSession(
 	};
 }
 
-export function completeChallengeLevel(
+function completeChallengeLevel(
 	progress: ChallengeProgress,
 	result: ChallengeLevelResult,
 ): ChallengeProgress {
@@ -545,3 +613,4 @@ import { State } from "ts-fsrs";
 import type { Deck } from "../../../../core/shared/types";
 import { extractSpellingWord } from "../cards/spellingWord";
 import { isStableCardIdentity } from "../identity/cardIdentity";
+import type { LearningActivityRecord } from "../history/dailyLearningActivity";
