@@ -60,6 +60,14 @@ class DictionarySelectionLookupSession implements SelectionLookupSession {
 		void this.session.send({ type: "select-source", sourceId });
 	}
 
+	selectSection(sourceId: string, sectionIndex: number): void {
+		void this.session.send({ type: "select-section", sourceId, sectionIndex });
+	}
+
+	lookup(query: string): Promise<void> {
+		return this.session.send({ type: "lookup", query });
+	}
+
 	retry(sourceId: string): Promise<void> {
 		return this.session.send({ type: "retry-source", sourceId });
 	}
@@ -81,12 +89,13 @@ function toSelectionSnapshot(state: DictionaryViewState): SelectionLookupSnapsho
 		status: state.status,
 		sources: state.sources.map((source) => {
 			const sections: SelectionLookupSection[] = [];
-			let hasComplexContent = false;
 			for (const section of source.result?.sections ?? []) {
+				const metadata = { title: section.title, presentation: section.presentation };
 				if (section.content.kind === "list") {
-					sections.push({ kind: "list", items: [...section.content.items] });
+					sections.push({ ...metadata, kind: "list", items: [...section.content.items] });
 				} else if (section.content.kind === "ai-definitions") {
 					sections.push({
+						...metadata,
 						kind: "ai-definitions",
 						definitions: section.content.definitions.map((definition) => ({
 							partOfSpeech: definition.partOfSpeech,
@@ -94,7 +103,11 @@ function toSelectionSnapshot(state: DictionaryViewState): SelectionLookupSnapsho
 						})),
 					});
 				} else {
-					hasComplexContent = true;
+					sections.push({
+						...metadata,
+						kind: "embedded",
+						handle: section.content.document,
+					});
 				}
 			}
 			return {
@@ -110,7 +123,7 @@ function toSelectionSnapshot(state: DictionaryViewState): SelectionLookupSnapsho
 					}),
 				),
 				sections,
-				hasComplexContent,
+				activeSectionIndex: source.activeSectionIndex,
 			};
 		}),
 	};

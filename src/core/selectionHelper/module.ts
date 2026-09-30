@@ -9,12 +9,14 @@ import type {
 import { SelectionListener } from "./obsidian/selectionListener";
 import { buildSelectionHelperSettingsViewModel } from "./settings/viewModel";
 import { selectionHelperStrings } from "./strings/selectionPopup";
+import type { SelectionEmbeddedContentRenderer } from "./ui/types";
 
 export const SELECTION_HELPER_SECTION_ID = "selectionPopup";
 
 export interface SelectionHelperModuleDeps {
 	dictionary: SelectionDictionaryAdapter;
 	translation: SelectionTranslationAdapter;
+	renderEmbeddedContent?: SelectionEmbeddedContentRenderer;
 }
 
 type SelectionHelperWorkbenchHost = WorkbenchHost<"selectionHelper">;
@@ -70,12 +72,21 @@ export function createSelectionHelperModule(
 			const listener = new SelectionListener({
 				helper,
 				getLanguage: () => host.settings.read().language,
+				getTheme: () => (host.app.isDarkMode() ? "dark" : "light"),
+				renderEmbeddedContent: deps.renderEmbeddedContent,
 			});
 			lifetime.defer(() => listener.stop());
 			listener.start();
+			if (typeof document !== "undefined") {
+				const themeEvent = host.app.workspace.on("css-change", () => listener.refresh());
+				lifetime.defer(() => host.app.workspace.offref(themeEvent));
+			}
 			host.settingsSection(section(host));
 
-			return () => helper.refresh();
+			return () => {
+				helper.refresh();
+				listener.refresh();
+			};
 		},
 	});
 }

@@ -10,6 +10,94 @@ import {
 } from "../types";
 
 describe("dictionary query session", () => {
+	it("retires the old entry before history saves, preserves the chosen source, and resets chapters", async () => {
+		const settings = dictionarySettings([
+			{ enabled: true, id: "first", kind: "local", label: "First" },
+			{ enabled: true, id: "oald", kind: "local", label: "OALD" },
+			{ enabled: true, id: "ai", kind: "ai", label: "AI" },
+		]);
+		const session = createDictionaryQuerySession({
+			settings: settings.store,
+			resolveSource: (source) =>
+				dictionarySource(source.id, source.kind, source.label, async (word) => {
+					if (word === "missing") throw new DictionaryError("not-found", "No entry");
+					return {
+						...result(source.id, source.label, word),
+						sections: [
+							{
+								title: "Definition",
+								presentation: "tab",
+								content: { kind: "list", items: [word] },
+							},
+							{
+								title: "Examples",
+								presentation: "tab",
+								content: { kind: "list", items: [] },
+							},
+						],
+					};
+				}),
+			notify: vi.fn(),
+			aiEngineInfo: () => ({ configId: null, name: null }),
+		});
+		await session.send({ type: "lookup", query: "segmenting" });
+		await session.send({ type: "select-source", sourceId: "oald" });
+		await session.send({ type: "select-section", sourceId: "oald", sectionIndex: 1 });
+		const historySave = deferred<boolean>();
+		const save = settings.store.updateDictionarySettings.bind(settings.store);
+		settings.store.updateDictionarySettings = async (mutate) => {
+			await historySave.promise;
+			return save(mutate);
+		};
+		const navigation = session.send({ type: "lookup", query: "segment" });
+		expect(session.getSnapshot()).toMatchObject({
+			query: "segment",
+			activeSourceId: "oald",
+			status: "loading",
+		});
+		expect(
+			session
+				.getSnapshot()
+				.sources.every(
+					(source) => source.result === null && source.activeSectionIndex === null,
+				),
+		).toBe(true);
+		historySave.resolve(true);
+		await navigation;
+		expect(session.getSnapshot().activeSourceId).toBe("oald");
+		expect(session.getSnapshot().sources[1]).toMatchObject({
+			activeSectionIndex: 0,
+			result: { word: "segment" },
+		});
+		expect(settings.current().history.slice(0, 2)).toEqual(["segment", "segmenting"]);
+		expect(session.getSnapshot().sources[2]?.status).toBe("idle");
+		await session.send({ type: "lookup", query: "missing" });
+		expect(session.getSnapshot().activeSourceId).toBe("oald");
+		expect(session.getSnapshot().sources[1]?.status).toBe("empty");
+	});
+
+	it("does not publish a lookup that completes after the session is disposed", async () => {
+		const settings = dictionarySettings([
+			{ enabled: true, id: "oald", kind: "local", label: "OALD" },
+		]);
+		const pending = deferred<DictionaryResult>();
+		const source = dictionarySource("oald", "local", "OALD", () => pending.promise);
+		const session = createDictionaryQuerySession({
+			settings: settings.store,
+			resolveSource: () => source,
+			notify: vi.fn(),
+			aiEngineInfo: () => ({ configId: null, name: null }),
+		});
+		const notification = vi.fn();
+		session.subscribe(notification);
+		const lookup = session.send({ type: "lookup", query: "segment" });
+		await vi.waitFor(() => expect(session.getSnapshot().sources[0]?.status).toBe("loading"));
+		session.dispose();
+		const count = notification.mock.calls.length;
+		pending.resolve(result("oald", "OALD", "segment"));
+		await lookup;
+		expect(notification).toHaveBeenCalledTimes(count);
+	});
 	it("owns lookup ordering, history, independent source failures, and explicit AI generation", async () => {
 		const settings = dictionarySettings([
 			{ enabled: true, id: "youdao", kind: "youdao", label: "有道" },

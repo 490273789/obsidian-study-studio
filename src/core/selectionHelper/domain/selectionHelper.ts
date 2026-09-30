@@ -99,6 +99,15 @@ export class SelectionHelper {
 		this.lookupSession?.selectSource(sourceId);
 	}
 
+	selectSection(sourceId: string, sectionIndex: number): void {
+		this.lookupSession?.selectSection(sourceId, sectionIndex);
+	}
+
+	async lookup(word: string): Promise<void> {
+		if (this.disposed || !this.snapshot.visible) return;
+		await this.lookupSession?.lookup(word);
+	}
+
 	async retry(sourceId: string): Promise<void> {
 		await this.lookupSession?.retry(sourceId);
 	}

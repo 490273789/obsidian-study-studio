@@ -36,13 +36,18 @@ export function sandboxDocumentIdentity(document: SandboxDocument): string {
 	return preparedSandboxDocument(document).identity;
 }
 
-export function sandboxDocumentSource(document: SandboxDocument, theme?: DictionaryTheme): string {
+export function sandboxDocumentSource(
+	document: SandboxDocument,
+	theme?: DictionaryTheme,
+	closeOnEscape = false,
+	fitContent = false,
+): string {
 	const source = preparedSandboxDocument(document).srcdoc;
-	if (!theme) return source;
+	if (!theme && !closeOnEscape && !fitContent) return source;
 	// Only replace the generated root, never matching text inside dictionary content.
 	return source.replace(
 		/^<!doctype html><html data-obsidian-tools-dictionary-theme="light">/,
-		`<!doctype html><html data-obsidian-tools-dictionary-theme="${theme}" style="color-scheme:${theme}">`,
+		`<!doctype html><html data-obsidian-tools-dictionary-theme="${theme ?? "light"}"${theme ? ` style="color-scheme:${theme}"` : ""}${closeOnEscape ? ' data-obsidian-tools-dictionary-close-on-escape="true"' : ""}${fitContent ? ' data-obsidian-tools-dictionary-fit-content="true"' : ""}>`,
 	);
 }
 

@@ -180,6 +180,13 @@ class DictionaryQuerySessionModule implements DictionaryQuerySession {
 		this.state.input = query;
 		this.state.query = query;
 		this.state.status = "loading";
+		// Retire old documents before history persistence yields to another query or render.
+		for (const source of this.state.sources) {
+			source.result = null;
+			source.activeSectionIndex = null;
+			source.error = "";
+			source.status = "idle";
+		}
 		this.publish();
 
 		let saved = false;

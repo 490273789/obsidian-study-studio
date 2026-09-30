@@ -3,6 +3,7 @@ import { DEFAULT_DICTIONARY_SETTINGS } from "../domain/configuration";
 import type { DictionaryQuerySession } from "../domain/querySession";
 import type { DictionaryViewState } from "../domain/types";
 import { createDictionarySelectionAdapter } from "../selectionAdapter";
+import { defineSandboxDocument } from "../domain/sandbox-document/document";
 
 describe("dictionary selection adapter", () => {
 	it("reports enabled sources in 词典目录 order", () => {
@@ -10,19 +11,21 @@ describe("dictionary selection adapter", () => {
 		expect(adapter.sources()).toEqual([
 			{ id: "youdao", label: "有道词典", kind: "dictionary" },
 			{ id: "ai", label: "AI 词典", kind: "ai" },
+			{ id: "local", label: "OALD", kind: "dictionary" },
 		]);
 	});
 
-	it("maps only the narrow presentation and marks complex content", () => {
+	it("preserves local sandbox handles and chapter metadata alongside text", () => {
+		const document = defineSandboxDocument("oald", "private HTML");
 		const state = emptyDictionarySnapshot();
 		state.sources = [
 			{
 				id: "youdao",
 				label: "有道词典",
-				kind: "youdao",
+				kind: "local",
 				status: "success",
 				error: "",
-				activeSectionIndex: 0,
+				activeSectionIndex: 1,
 				result: {
 					attribution: "",
 					word: "science",
@@ -40,8 +43,8 @@ describe("dictionary selection adapter", () => {
 						},
 						{
 							title: "HTML",
-							presentation: "stack",
-							content: { kind: "document", document: {} as never },
+							presentation: "tab",
+							content: { kind: "document", document },
 						},
 					],
 				},
@@ -54,9 +57,15 @@ describe("dictionary selection adapter", () => {
 		expect(snapshot?.sources[0]).toMatchObject({
 			id: "youdao",
 			pronunciations: [{ label: "英", phonetic: "saɪəns" }],
-			sections: [{ kind: "list", items: ["科学"] }],
-			hasComplexContent: true,
+			sections: [
+				{ kind: "list", items: ["科学"], title: "释义", presentation: "stack" },
+				{ kind: "embedded", handle: document, title: "HTML", presentation: "tab" },
+			],
+			activeSectionIndex: 1,
 		});
+		const section = snapshot?.sources[0]?.sections[1];
+		expect(section?.kind === "embedded" && section.handle).toBe(document);
+		expect(JSON.stringify(snapshot)).not.toContain("private HTML");
 	});
 
 	it("forwards semantic actions and disposes the isolated query session", async () => {
@@ -66,6 +75,8 @@ describe("dictionary selection adapter", () => {
 		session.selectSource("youdao");
 		await session.retry("youdao");
 		await session.generateAi();
+		session.selectSection("youdao", 2);
+		await session.lookup("world");
 		session.dispose();
 
 		expect(spies.send).toHaveBeenNthCalledWith(1, {
@@ -77,6 +88,12 @@ describe("dictionary selection adapter", () => {
 			sourceId: "youdao",
 		});
 		expect(spies.send).toHaveBeenNthCalledWith(3, { type: "generate-ai" });
+		expect(spies.send).toHaveBeenNthCalledWith(4, {
+			type: "select-section",
+			sourceId: "youdao",
+			sectionIndex: 2,
+		});
+		expect(spies.send).toHaveBeenNthCalledWith(5, { type: "lookup", query: "world" });
 		expect(spies.dispose).toHaveBeenCalledOnce();
 	});
 });
@@ -100,6 +117,7 @@ function setup(state: DictionaryViewState) {
 					{ id: "youdao", kind: "youdao" as const, label: "有道词典", enabled: true },
 					{ id: "off", kind: "hujiang" as const, label: "沪江", enabled: false },
 					{ id: "ai", kind: "ai" as const, label: "AI 词典", enabled: true },
+					{ id: "local", kind: "local" as const, label: "OALD", enabled: true },
 				],
 			}),
 		},

@@ -4,6 +4,7 @@ import { defineSandboxDocument, type DictionarySandboxStorageUpdater } from "./d
 import {
 	createSandboxDocumentIdentity,
 	DICTIONARY_SANDBOX_CHANNEL,
+	DICTIONARY_SANDBOX_MAX_CONTENT_HEIGHT,
 	DICTIONARY_SANDBOX_PROTOCOL_VERSION,
 	sandboxMessageExpression,
 } from "./protocol";
@@ -345,6 +346,26 @@ function themeScript(documentId: string): string {
 	return `<script nonce="${documentId}">addEventListener('message',e=>{const x=e.data;if(e.source!==parent||!x||x.channel!=='${DICTIONARY_SANDBOX_CHANNEL}'||x.version!==${DICTIONARY_SANDBOX_PROTOCOL_VERSION}||x.documentId!=='${documentId}'||x.action!=='set-theme')return;const t=x.payload?.theme;if(t!=='dark'&&t!=='light')return;const h=document.documentElement;h.setAttribute('${THEME_ATTRIBUTE}',t);h.style.colorScheme=t})</script>`;
 }
 
+function assistantEscapeScript(documentId: string): string {
+	const postMessage = sandboxMessageExpression(documentId, "request-close", "null");
+	return `<script nonce="${documentId}">if(document.documentElement.getAttribute('data-obsidian-tools-dictionary-close-on-escape')==='true')document.addEventListener('keydown',e=>{if(e.key!=='Escape'||e.isComposing)return;e.preventDefault();${postMessage}},true)</script>`;
+}
+
+function contentFitScript(documentId: string): string {
+	const postMessage = sandboxMessageExpression(documentId, "content-height", "h");
+	return `<script nonce="${documentId}">(()=>{
+if(document.documentElement.getAttribute('data-obsidian-tools-dictionary-fit-content')!=='true')return;
+let frame=0,last=0,growing=0,active=true,resize,mutation;
+const stop=()=>{if(!active)return;active=false;if(frame)cancelAnimationFrame(frame);frame=0;resize?.disconnect();mutation?.disconnect();document.removeEventListener('load',schedule,true);removeEventListener('resize',schedule);document.fonts?.removeEventListener('loadingdone',schedule)};
+const measure=()=>{frame=0;if(!active||!document.body)return;const b=document.body,s=getComputedStyle(b);const raw=Math.max(1,Math.ceil(Math.max(b.scrollHeight,b.getBoundingClientRect().height)+Math.max(0,parseFloat(s.marginTop)||0)+Math.max(0,parseFloat(s.marginBottom)||0)));const h=Math.min(${DICTIONARY_SANDBOX_MAX_CONTENT_HEIGHT},raw);growing=h>last?growing+1:0;if(raw>${DICTIONARY_SANDBOX_MAX_CONTENT_HEIGHT}||growing>=8){document.documentElement.setAttribute('data-obsidian-tools-dictionary-fit-bounded','true');stop()}if(h===last)return;last=h;${postMessage}};
+const schedule=()=>{if(active&&!frame)frame=requestAnimationFrame(measure)};
+const start=()=>{if(!active)return;if(typeof ResizeObserver!=='undefined'){resize=new ResizeObserver(schedule);resize.observe(document.body)}if(typeof MutationObserver!=='undefined'){mutation=new MutationObserver(schedule);mutation.observe(document.body,{attributes:true,childList:true,characterData:true,subtree:true})}schedule()};
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
+document.addEventListener('load',schedule,true);addEventListener('resize',schedule);document.fonts?.addEventListener('loadingdone',schedule);document.fonts?.ready.then(schedule);
+addEventListener('pagehide',stop,{once:true});
+})()</script>`;
+}
+
 function storageCompatibilityScript(
 	documentId: string,
 	values: Readonly<Record<string, string>>,
@@ -500,7 +521,9 @@ function sandboxDocument(
 	const navigationScript = localCompatibility ? localNavigationGuardScript(documentId) : "";
 	const companionScript = localCompatibility ? (options.script ?? "") : "";
 	const dictionaryScript = companionScript ? `<script>${companionScript}</script>` : "";
-	return `<!doctype html><html ${THEME_ATTRIBUTE}="light"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}">${strictStyles}${customStyles}${responsiveMediaStyles}</head><body>${storageScript}${body}${themeScript(documentId)}${dictionaryScript}${navigationScript}${audioScript}${entryScript}</body></html>`;
+	const contentFitStyles =
+		'<style>html[data-obsidian-tools-dictionary-fit-content="true"],html[data-obsidian-tools-dictionary-fit-content="true"] body{height:auto!important;min-height:0!important;max-height:none!important}html[data-obsidian-tools-dictionary-fit-content="true"]:not([data-obsidian-tools-dictionary-fit-bounded="true"]),html[data-obsidian-tools-dictionary-fit-content="true"]:not([data-obsidian-tools-dictionary-fit-bounded="true"]) body{overflow-y:hidden!important}html[data-obsidian-tools-dictionary-fit-bounded="true"]{overflow-y:auto!important}html[data-obsidian-tools-dictionary-fit-bounded="true"] body{overflow-y:visible!important}</style>';
+	return `<!doctype html><html ${THEME_ATTRIBUTE}="light"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}">${assistantEscapeScript(documentId)}${contentFitScript(documentId)}${strictStyles}${customStyles}${responsiveMediaStyles}${contentFitStyles}</head><body>${storageScript}${body}${themeScript(documentId)}${dictionaryScript}${navigationScript}${audioScript}${entryScript}</body></html>`;
 }
 
 export async function prepareDictionarySandboxDocument(

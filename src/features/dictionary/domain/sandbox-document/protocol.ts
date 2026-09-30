@@ -1,9 +1,16 @@
 export const DICTIONARY_SANDBOX_CHANNEL = "obsidian-tools.dictionary-sandbox";
 export const DICTIONARY_SANDBOX_PROTOCOL_VERSION = 1;
+export const DICTIONARY_SANDBOX_MAX_CONTENT_HEIGHT = 8192;
 
 export type DictionaryTheme = "dark" | "light";
 
-export type DictionarySandboxAction = "open-entry" | "play-audio" | "set-theme" | "storage-update";
+export type DictionarySandboxAction =
+	| "content-height"
+	| "open-entry"
+	| "play-audio"
+	| "set-theme"
+	| "storage-update"
+	| "request-close";
 
 export type DictionarySandboxStorageMutation =
 	| { readonly key: string; readonly operation: "remove" }
@@ -54,6 +61,8 @@ export function parseSandboxEnvelope(value: unknown): DictionarySandboxEnvelope 
 		envelope.version !== DICTIONARY_SANDBOX_PROTOCOL_VERSION ||
 		typeof envelope.documentId !== "string" ||
 		(envelope.action !== "open-entry" &&
+			envelope.action !== "content-height" &&
+			envelope.action !== "request-close" &&
 			envelope.action !== "play-audio" &&
 			envelope.action !== "set-theme" &&
 			envelope.action !== "storage-update")

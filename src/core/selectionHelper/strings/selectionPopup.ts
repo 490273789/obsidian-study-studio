@@ -4,6 +4,10 @@ export interface SelectionHelperStrings {
 	lookup: string;
 	translate: string;
 	openInMainTabHint: string;
+	openInMainTab: string;
+	close: string;
+	details: string;
+	renderFailed: string;
 	emptyDefinition: string;
 	loading: string;
 	settingsHeading: string;
@@ -23,18 +27,21 @@ export interface SelectionHelperStrings {
 	aiGenerate: string;
 	aiGenerating: string;
 	retry: string;
-	complexContent: string;
 }
 
 const ZH_STRINGS: SelectionHelperStrings = {
 	lookup: "查词",
 	translate: "翻译",
 	openInMainTabHint: "按 Enter 在主标签页打开",
+	openInMainTab: "在词典主标签打开",
+	close: "关闭",
+	details: "词条章节",
+	renderFailed: "词条显示失败，请重试或在词典主标签查看。",
 	emptyDefinition: "未找到释义",
 	loading: "正在查询...",
 	settingsHeading: "划词助手",
 	enablePopup: "启用划词快捷浮窗",
-	enablePopupDesc: "在笔记中选中文本松开鼠标时，在鼠标位置显示查词与翻译快捷浮窗。",
+	enablePopupDesc: "在笔记中划词或长按选中文本后，显示查词与翻译快捷浮窗。",
 	modifier: "触发修饰键",
 	modifierDesc: "设置触发浮窗所需的修饰键，避免正常写作或选择文本时光标处频繁弹窗。",
 	modifierNone: "无（直接划词抬起鼠标即触发）",
@@ -50,19 +57,22 @@ const ZH_STRINGS: SelectionHelperStrings = {
 	aiGenerate: "生成 AI 释义",
 	aiGenerating: "正在生成 AI 释义…",
 	retry: "重试",
-	complexContent: "此来源包含复杂内容，请在词典主标签查看。",
 };
 
 const EN_OVERRIDES: Partial<SelectionHelperStrings> = {
 	lookup: "Lookup",
 	translate: "Translate",
 	openInMainTabHint: "Press Enter to open in main tab",
+	openInMainTab: "Open in dictionary tab",
+	close: "Close",
+	details: "Entry sections",
+	renderFailed: "Unable to display this entry. Retry or open it in the dictionary tab.",
 	emptyDefinition: "No definitions found",
 	loading: "Searching...",
 	settingsHeading: "Selection Helper",
 	enablePopup: "Enable selection popup",
 	enablePopupDesc:
-		"Show quick lookup and translation popup at mouse position upon selecting text.",
+		"Show quick lookup and translation actions after selecting text with a mouse or touch.",
 	modifier: "Trigger modifier key",
 	modifierDesc:
 		"Choose a modifier key to require for the popup to appear, avoiding distractions.",
@@ -80,7 +90,6 @@ const EN_OVERRIDES: Partial<SelectionHelperStrings> = {
 	aiGenerate: "Generate AI definitions",
 	aiGenerating: "Generating AI definitions…",
 	retry: "Retry",
-	complexContent: "This source contains rich content. Open it in the main dictionary tab.",
 };
 
 export function selectionHelperStrings(language: Language): SelectionHelperStrings {

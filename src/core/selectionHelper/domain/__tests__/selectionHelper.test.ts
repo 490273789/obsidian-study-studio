@@ -83,6 +83,40 @@ describe("SelectionHelper", () => {
 		helper.handleSelection(candidate("hello", { altKey: true }));
 		expect(helper.getSnapshot().visible).toBe(true);
 	});
+
+	it("keeps the isolated session for entry navigation and chapter selection", async () => {
+		const { session, actions } = fakeSession();
+		const startLookup = vi.fn(() => session);
+		const { helper } = setup({ startLookup });
+		helper.handleSelection(candidate("hello"));
+		helper.beginLookup();
+		helper.selectSource("b");
+		helper.selectSection("b", 2);
+		await helper.lookup("world");
+		expect(startLookup).toHaveBeenCalledTimes(1);
+		expect(actions.selectSource).toHaveBeenCalledWith("b");
+		expect(actions.selectSection).toHaveBeenCalledWith("b", 2);
+		expect(actions.lookup).toHaveBeenCalledWith("world");
+		expect(helper.getSnapshot()).toMatchObject({ visible: true, mode: "dictionary" });
+		helper.dismiss();
+		await helper.lookup("later");
+		expect(actions.lookup).toHaveBeenCalledTimes(1);
+	});
+
+	it("ignores late session notifications after dismissal", () => {
+		const { session } = fakeSession();
+		let notify!: () => void;
+		session.subscribe = (listener) => {
+			notify = listener;
+			return vi.fn();
+		};
+		const { helper } = setup({ startLookup: () => session });
+		helper.handleSelection(candidate("hello"));
+		helper.beginLookup();
+		helper.dismiss();
+		notify();
+		expect(helper.getSnapshot()).toMatchObject({ visible: false, lookup: null });
+	});
 });
 
 function setup(
@@ -130,7 +164,15 @@ function candidate(
 	};
 }
 
-function fakeSession(): { session: SelectionLookupSession; dispose: ReturnType<typeof vi.fn> } {
+function fakeSession(): {
+	session: SelectionLookupSession;
+	dispose: ReturnType<typeof vi.fn>;
+	actions: {
+		selectSource: ReturnType<typeof vi.fn>;
+		selectSection: ReturnType<typeof vi.fn>;
+		lookup: ReturnType<typeof vi.fn>;
+	};
+} {
 	const snapshot: SelectionLookupSnapshot = {
 		query: "hello",
 		activeSourceId: "a",
@@ -139,12 +181,18 @@ function fakeSession(): { session: SelectionLookupSession; dispose: ReturnType<t
 		sources: [],
 	};
 	const dispose = vi.fn();
+	const actions = {
+		selectSource: vi.fn(),
+		selectSection: vi.fn(),
+		lookup: vi.fn().mockResolvedValue(undefined),
+	};
 	return {
+		actions,
 		dispose,
 		session: {
 			getSnapshot: () => snapshot,
 			subscribe: () => () => {},
-			selectSource: vi.fn(),
+			...actions,
 			retry: vi.fn().mockResolvedValue(undefined),
 			generateAi: vi.fn().mockResolvedValue(undefined),
 			dispose,

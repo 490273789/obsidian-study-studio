@@ -39,12 +39,17 @@ export interface SelectionLookupPronunciation {
 	phonetic: string;
 }
 
-export type SelectionLookupSection =
+export type SelectionLookupSection = {
+	title: string;
+	presentation: "stack" | "tab";
+} & (
 	| { kind: "list"; items: readonly string[] }
 	| {
 			kind: "ai-definitions";
 			definitions: readonly { partOfSpeech: string; meaning: string }[];
-	  };
+	  }
+	| { kind: "embedded"; /** Opaque content owned by the dictionary adapter. */ handle: object }
+);
 
 export interface SelectionLookupSourceSnapshot {
 	id: string;
@@ -54,7 +59,7 @@ export interface SelectionLookupSourceSnapshot {
 	error: string;
 	pronunciations: readonly SelectionLookupPronunciation[];
 	sections: readonly SelectionLookupSection[];
-	hasComplexContent: boolean;
+	activeSectionIndex: number | null;
 }
 
 export interface SelectionLookupSnapshot {
@@ -69,6 +74,8 @@ export interface SelectionLookupSession {
 	getSnapshot(): SelectionLookupSnapshot;
 	subscribe(listener: () => void): () => void;
 	selectSource(sourceId: string): void;
+	selectSection(sourceId: string, sectionIndex: number): void;
+	lookup(query: string): Promise<void>;
 	retry(sourceId: string): Promise<void>;
 	generateAi(): Promise<void>;
 	dispose(): void;

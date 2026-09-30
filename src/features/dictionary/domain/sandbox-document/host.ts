@@ -6,6 +6,7 @@ import {
 } from "./document";
 import {
 	createSandboxEnvelope,
+	DICTIONARY_SANDBOX_MAX_CONTENT_HEIGHT,
 	parseSandboxEnvelope,
 	parseSandboxStorageMutation,
 	type DictionaryTheme,
@@ -14,6 +15,7 @@ import {
 const MAX_AUDIO_URL_LENGTH = 28_100_000;
 
 interface RegisteredFrame {
+	readonly originalHeight?: string;
 	readonly documentId: string;
 	readonly frame: HTMLIFrameElement;
 	readonly handleLoad: () => void;
@@ -29,7 +31,9 @@ export interface DictionarySandboxHost {
 }
 
 export interface DictionarySandboxHostOptions {
+	readonly fitContent?: boolean;
 	readonly initialTheme?: DictionaryTheme;
+	readonly onClose?: () => void;
 	openEntry(term: string): void;
 }
 
@@ -103,11 +107,31 @@ export function createDictionarySandboxHost(
 	}
 
 	function handleMessage(event: MessageEvent): void {
+		if (disposed) return;
 		const envelope = parseSandboxEnvelope(event.data);
 		if (!envelope) return;
 		const registered = registeredFrame(event, envelope.documentId);
 		if (!registered) return;
 		switch (envelope.action) {
+			case "content-height": {
+				const height = envelope.payload;
+				if (
+					options.fitContent &&
+					typeof height === "number" &&
+					Number.isInteger(height) &&
+					height >= 1 &&
+					height <= DICTIONARY_SANDBOX_MAX_CONTENT_HEIGHT
+				) {
+					registered.frame.style.height = `${height}px`;
+				}
+				break;
+			}
+			case "request-close":
+				if (envelope.payload === null && options.onClose) {
+					stopAudio();
+					options.onClose();
+				}
+				break;
 			case "open-entry":
 				openEntry(envelope.payload);
 				break;
@@ -132,6 +156,8 @@ export function createDictionarySandboxHost(
 			window.removeEventListener("message", handleMessage);
 			for (const registered of frames.values()) {
 				registered.frame.removeEventListener("load", registered.handleLoad);
+				if (registered.originalHeight !== undefined)
+					registered.frame.style.height = registered.originalHeight;
 			}
 			frames.clear();
 			stopAudio();
@@ -148,17 +174,27 @@ export function createDictionarySandboxHost(
 					return;
 				}
 				current.frame.removeEventListener("load", current.handleLoad);
+				if (current.originalHeight !== undefined)
+					current.frame.style.height = current.originalHeight;
 				stopMediaFor(frame);
 			}
 			// Set the embedding scheme before navigation, and seed the document before its first paint.
 			frame.style.colorScheme = theme;
-			frame.srcdoc = sandboxDocumentSource(document, theme);
+			const originalHeight = frame.style.height ?? "";
+			if (options.fitContent) frame.style.height = "120px";
+			frame.srcdoc = sandboxDocumentSource(
+				document,
+				theme,
+				Boolean(options.onClose),
+				options.fitContent,
+			);
 			const registered: RegisteredFrame = {
 				documentId,
 				frame,
 				handleLoad: () => sendTheme(registered),
 				source: frame.contentWindow ?? source,
 				updateStorage: sandboxDocumentStorageUpdater(document),
+				...(options.fitContent ? { originalHeight } : {}),
 			};
 			frame.addEventListener("load", registered.handleLoad);
 			frames.set(frame, registered);
@@ -173,6 +209,8 @@ export function createDictionarySandboxHost(
 			const registered = frames.get(frame);
 			if (!registered) return;
 			registered.frame.removeEventListener("load", registered.handleLoad);
+			if (registered.originalHeight !== undefined)
+				registered.frame.style.height = registered.originalHeight;
 			frames.delete(frame);
 			stopMediaFor(frame);
 		},
