@@ -11,6 +11,7 @@ import {
 } from "./compiled-package/internal";
 import { readCompiledPackageQueryPlan } from "./compiled-package/manifest";
 import type { CompiledPackageQueryPlan } from "./compiled-package/types";
+import { resolveLinkedDefinitions, type RecordValue } from "./linked-definitions";
 
 interface WorkerContext {
 	addEventListener(type: "message", listener: (event: MessageEvent<QueryInput>) => void): void;
@@ -47,11 +48,6 @@ type QueryInput = LookupInput | OpenInput | ReadResultInput | ResourceInput;
 interface RecordLocator {
 	readonly frame: number;
 	readonly item: number;
-}
-
-interface RecordValue {
-	readonly definition: string;
-	readonly keyText: string;
 }
 
 interface ResourceLocator {
@@ -141,28 +137,11 @@ async function lookup(word: string): Promise<{
 }> {
 	const normalized = normalizeCompiledLookupKey(word);
 	if (!normalized || normalized.length > 512) return { definitions: [], suggestions: [] };
-	const definitions = await resolveLinkedDefinitions(normalized);
+	const definitions = await resolveLinkedDefinitions(normalized, exactDefinitions);
 	if (definitions.length > 0) return { definitions, suggestions: [] };
 	const prefix = await prefixSuggestions(normalized, 12);
 	const suggestions = prefix.length > 0 ? prefix : await fuzzySuggestions(normalized, 12);
 	return { definitions: [], suggestions };
-}
-
-async function resolveLinkedDefinitions(initialKey: string): Promise<RecordValue[]> {
-	let key = initialKey;
-	const visited = new Set<string>();
-	for (let depth = 0; depth <= 8; depth += 1) {
-		if (visited.has(key)) return [];
-		visited.add(key);
-		// oxlint-disable-next-line no-await-in-loop -- links are ordered and the next key is data-dependent.
-		const values = await exactDefinitions(key);
-		if (values.length === 0) return [];
-		const link = /^\s*@@@LINK=(.+?)\s*$/i.exec(values[0]!.definition)?.[1];
-		if (!link) return values;
-		key = normalizeCompiledLookupKey(link);
-		if (!key) return [];
-	}
-	return [];
 }
 
 async function exactDefinitions(key: string): Promise<RecordValue[]> {
