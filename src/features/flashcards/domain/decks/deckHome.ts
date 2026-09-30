@@ -126,6 +126,8 @@ export interface ChallengeReadiness {
 export interface DeckHomeSnapshot {
 	readonly challenge: ChallengeReadiness;
 	readonly revision: number;
+	/** Clock instant used to evaluate this snapshot's learning readiness. */
+	readonly evaluatedAt: number;
 	readonly decks: ReadonlyArray<DeckHomeDeckSnapshot>;
 	readonly totals: Readonly<DeckHomeTotals>;
 	readonly learningFootprint: LearningFootprintSnapshot;
@@ -906,6 +908,7 @@ class DefaultDeckHome implements DeckHome {
 		return freezeDeckHomeSnapshot({
 			challenge,
 			revision,
+			evaluatedAt: now.getTime(),
 			decks: deckSnapshots,
 			totals,
 			learningFootprint: this.options.repository.getLearningFootprint(now),

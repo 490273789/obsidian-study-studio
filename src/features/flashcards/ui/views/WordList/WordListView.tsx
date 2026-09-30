@@ -24,7 +24,7 @@ import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
 import { ModalSurface } from "../../../../../core/ui/primitives/Modal";
 import { useFlashcardI18n } from "../../../strings/context";
 import styles from "./WordList.module.scss";
-import { WordListViewport } from "./wordListViewport";
+import { WordListViewport, type WordListViewportRow } from "./wordListViewport";
 
 const COLUMN_STYLES = {
 	front: {
@@ -51,6 +51,32 @@ interface WordRowProps {
 	revealedIdsByColumn: Record<VisibleWordColumnKey, ReadonlySet<string>>;
 	onReveal: (columnKey: VisibleWordColumnKey, itemId: string) => void;
 	onShowExplanation: (item: WordListItem) => void;
+}
+
+function WordRowFrame({
+	bindRow,
+	row,
+	children,
+}: {
+	bindRow: (id: string, element: HTMLDivElement | null) => void;
+	row: WordListViewportRow;
+	children: React.ReactNode;
+}) {
+	const attachRow = useCallback(
+		(element: HTMLDivElement | null) => {
+			bindRow(row.item.id, element);
+		},
+		[bindRow, row.item.id],
+	);
+	return (
+		<div
+			ref={attachRow}
+			className={styles.rowFrame}
+			style={{ transform: `translateY(${row.top}px)` }}
+		>
+			{children}
+		</div>
+	);
 }
 
 const WordRow = memo(function WordRow({
@@ -213,6 +239,24 @@ export const WordListView = React.memo(function WordListView({
 	const isShuffled = shuffledItems !== null;
 	const items = shuffledItems ?? sourceItems;
 	const [viewport] = useState(() => new WordListViewport(items));
+	const bindScroll = useCallback(
+		(element: HTMLDivElement | null) => {
+			viewport.refs.scroll(element);
+		},
+		[viewport],
+	);
+	const bindList = useCallback(
+		(element: HTMLDivElement | null) => {
+			viewport.refs.list(element);
+		},
+		[viewport],
+	);
+	const bindRow = useCallback(
+		(id: string, element: HTMLDivElement | null) => {
+			viewport.refs.row(id)(element);
+		},
+		[viewport],
+	);
 	useLayoutEffect(() => viewport.setItems(items), [items, viewport]);
 	useLayoutEffect(() => viewport.mount(), [viewport]);
 	const virtualRows = useSyncExternalStore(viewport.subscribe, viewport.getSnapshot);
@@ -319,21 +363,14 @@ export const WordListView = React.memo(function WordListView({
 				})}
 			</div>
 
-			<div className={styles.scroll} ref={viewport.refs.scroll}>
+			<div className={styles.scroll} ref={bindScroll}>
 				<div
-					ref={viewport.refs.list}
+					ref={bindList}
 					className={styles.virtual}
 					style={{ height: virtualRows.totalHeight }}
 				>
 					{virtualRows.rows.map((row) => (
-						<div
-							key={row.item.id}
-							ref={viewport.refs.row(row.item.id)}
-							className={styles.rowFrame}
-							style={{
-								transform: `translateY(${row.top}px)`,
-							}}
-						>
+						<WordRowFrame key={row.item.id} bindRow={bindRow} row={row}>
 							<WordRow
 								item={row.item}
 								maskedColumns={maskedColumns}
@@ -341,7 +378,7 @@ export const WordListView = React.memo(function WordListView({
 								onReveal={handleReveal}
 								onShowExplanation={handleShowExplanation}
 							/>
-						</div>
+						</WordRowFrame>
 					))}
 				</div>
 			</div>

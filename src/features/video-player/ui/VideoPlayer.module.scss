@@ -504,6 +504,13 @@
 }
 
 .sourceContent {
+	appearance: none;
+	border: 0;
+	box-shadow: none !important;
+	height: auto !important;
+	min-height: unset !important;
+	font: inherit;
+	color: inherit;
 	display: flex;
 	flex: 1 1 0%;
 	min-width: 0;

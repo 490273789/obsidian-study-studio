@@ -1,9 +1,5 @@
 import { TransportError, type OutboundPort } from "../../../../core/net/types";
-import type {
-	CardDirection,
-	PronunciationAccent,
-	PronunciationSettings,
-} from "../../../../core/shared/types";
+import type { PronunciationAccent, PronunciationSettings } from "../../../../core/shared/types";
 import { extractSpellingWord } from "../cards/spellingWord";
 import { IndexedDbPronunciationAudioCache, createPronunciationCacheKey } from "./audioCache";
 import {
@@ -768,19 +764,4 @@ export function selectLocalEnglishVoice(
 		if (exact) return exact;
 	}
 	return localEnglishVoices.find((voice) => voice.default) ?? localEnglishVoices[0] ?? null;
-}
-
-export function shouldAutoPronounceSessionCard(options: {
-	wordLearningEnabled: boolean;
-	autoPlayEnabled: boolean;
-	direction: CardDirection;
-	answerVisible: boolean;
-	word: string | null;
-}): boolean {
-	return Boolean(
-		options.wordLearningEnabled &&
-		options.autoPlayEnabled &&
-		options.word &&
-		(options.direction === "normal" || options.answerVisible),
-	);
 }

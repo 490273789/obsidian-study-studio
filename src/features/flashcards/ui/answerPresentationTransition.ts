@@ -3,6 +3,8 @@ import type {
 	ActivePracticeReference,
 	ActiveSpellingReference,
 	ActiveStudyReference,
+	ActiveStudySnapshot,
+	ActivePracticeSnapshot,
 	LifecycleRejection,
 	LifecycleOutcome,
 	SessionLifecycle,
@@ -11,8 +13,17 @@ import type {
 } from "../domain/sessions/sessionLifecycle";
 import type { StudyRating } from "../../../core/shared/types";
 import type { PronunciationOutcome, PronunciationRuntime } from "../domain/pronunciation/types";
+import { extractSpellingWord } from "../domain/cards/spellingWord";
 
 export type AnswerPresentationAction =
+	| {
+			readonly kind: "card-reveal";
+			readonly reference: ActiveStudyReference | ActivePracticeReference;
+	  }
+	| {
+			readonly kind: "card-toggle-auto-pronunciation";
+			readonly reference: ActiveStudyReference | ActivePracticeReference;
+	  }
 	| {
 			readonly kind: "challenge-answer";
 			readonly reference: ActiveChallengeReference;
@@ -41,8 +52,16 @@ export type AnswerPresentationAction =
 
 export type AnswerPresentationActionKind = AnswerPresentationAction["kind"];
 
+export interface CardPresentationSnapshot {
+	readonly answerVisible: boolean;
+	readonly autoPronunciationEnabled: boolean;
+	readonly pronunciationEnabled: boolean;
+	readonly pronunciationWord: string | null;
+}
+
 export interface AnswerPresentationSnapshot {
 	readonly lifecycle: SessionLifecycleSnapshot;
+	readonly cardPresentation: CardPresentationSnapshot;
 	readonly activity:
 		| { readonly kind: "idle" }
 		| { readonly kind: "transitioning"; readonly action: AnswerPresentationActionKind };
@@ -68,6 +87,7 @@ export interface CreateAnswerPresentationTransitionOptions {
 	lifecycle: SessionLifecycle;
 	clock?: AnswerPresentationClock;
 	pronunciationRuntime?: PronunciationRuntime;
+	wordLearningDecks?: Readonly<Record<string, boolean>>;
 	now?: () => number;
 	prepareSpellingAdvance?: (feedback: SpellingLifecycleFeedback) => Promise<number>;
 }
@@ -76,6 +96,7 @@ export interface AnswerPresentationTransition {
 	getSnapshot(): AnswerPresentationSnapshot;
 	subscribe(listener: () => void): () => void;
 	act(action: AnswerPresentationAction): Promise<AnswerPresentationOutcome>;
+	setWordLearningDecks(decks: Readonly<Record<string, boolean>>): void;
 }
 
 interface PendingDelay {
@@ -119,10 +140,20 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 	private generation = 0;
 	private pendingDelay: PendingDelay | null = null;
 	private cancelPendingSpellingAdvance: (() => void) | null = null;
+	private wordLearningDecks: Readonly<Record<string, boolean>>;
+	private answerVisible = false;
+	private autoPronunciationEnabled = false;
+	private autoPronunciationAttempted = false;
+	// Track every semantic change, including those hidden behind a pending commit/delay.
+	private latestCardPresentation = 0;
+	private presentedCardPresentation = 0;
+	private latestCardScope = 0;
+	private presentedCardScope = 0;
 
 	constructor(private readonly options: CreateAnswerPresentationTransitionOptions) {
 		this.clock = options.clock ?? browserClock;
 		this.pronunciationRuntime = options.pronunciationRuntime;
+		this.wordLearningDecks = { ...options.wordLearningDecks };
 		this.now = options.now ?? Date.now;
 		this.prepareSpellingAdvance =
 			options.prepareSpellingAdvance ??
@@ -134,6 +165,16 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 
 	getSnapshot(): AnswerPresentationSnapshot {
 		return this.snapshot;
+	}
+
+	setWordLearningDecks(decks: Readonly<Record<string, boolean>>): void {
+		const previouslyEnabled = this.getCardPresentation().pronunciationEnabled;
+		this.wordLearningDecks = { ...decks };
+		if (previouslyEnabled && !this.getCardPresentation().pronunciationEnabled) {
+			this.pronunciationRuntime?.stop();
+		}
+		this.autoPronounceCard();
+		this.publish();
 	}
 
 	subscribe(listener: () => void): () => void {
@@ -149,14 +190,19 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 	async act(action: AnswerPresentationAction): Promise<AnswerPresentationOutcome> {
 		if (this.listeners.size === 0) return { kind: "rejected", reason: "inactive" };
 		if (this.activity.kind !== "idle") return { kind: "rejected", reason: "busy" };
+		if (action.kind === "card-reveal" || action.kind === "card-toggle-auto-pronunciation") {
+			return this.applyCardAction(action);
+		}
 
 		const generation = ++this.generation;
 		this.activity = { kind: "transitioning", action: action.kind };
 		this.publish();
 		const outcome = await this.applyLifecycleAction(action);
-		this.latestLifecycle = outcome.snapshot;
 
 		if (!this.isCurrent(generation)) return { kind: "cancelled" };
+		if (outcome.snapshot.revision >= this.latestLifecycle.revision) {
+			this.observeLifecycle(outcome.snapshot);
+		}
 		if (outcome.kind === "rejected") {
 			this.settle();
 			return { kind: "rejected", reason: outcome.reason };
@@ -203,14 +249,15 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 		this.cancelPendingTransition();
 		this.latestLifecycle = this.options.lifecycle.getSnapshot();
 		this.presentedLifecycle = this.latestLifecycle;
+		this.resetCardPresentation();
 		this.activity = { kind: "idle" };
 		this.spellingFeedback = null;
 		this.feedbackCardIdentity = null;
 		this.snapshot = this.buildSnapshot();
 		this.unsubscribeLifecycle = this.options.lifecycle.subscribe(() => {
-			this.latestLifecycle = this.options.lifecycle.getSnapshot();
+			this.observeLifecycle(this.options.lifecycle.getSnapshot());
 			if (this.activity.kind === "idle") {
-				this.presentedLifecycle = this.latestLifecycle;
+				this.presentLatestLifecycle();
 				this.clearFeedbackForDifferentCard();
 				this.publish();
 			}
@@ -223,13 +270,19 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 		this.cancelPendingTransition();
 		this.latestLifecycle = this.options.lifecycle.getSnapshot();
 		this.presentedLifecycle = this.latestLifecycle;
+		this.resetCardPresentation();
 		this.activity = { kind: "idle" };
 		this.spellingFeedback = null;
 		this.feedbackCardIdentity = null;
 		this.snapshot = this.buildSnapshot();
 	}
 
-	private applyLifecycleAction(action: AnswerPresentationAction): Promise<LifecycleOutcome> {
+	private applyLifecycleAction(
+		action: Exclude<
+			AnswerPresentationAction,
+			{ kind: "card-reveal" | "card-toggle-auto-pronunciation" }
+		>,
+	): Promise<LifecycleOutcome> {
 		switch (action.kind) {
 			case "challenge-answer":
 				return this.options.lifecycle.act(
@@ -275,10 +328,117 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 	}
 
 	private settle(): void {
-		this.presentedLifecycle = this.latestLifecycle;
+		this.presentLatestLifecycle();
 		this.activity = { kind: "idle" };
 		this.clearFeedbackForDifferentCard();
 		this.publish();
+	}
+
+	private applyCardAction(
+		action: Extract<
+			AnswerPresentationAction,
+			{ kind: "card-reveal" | "card-toggle-auto-pronunciation" }
+		>,
+	): AnswerPresentationOutcome {
+		const current = getSessionCard(this.presentedLifecycle);
+		if (!current) return { kind: "rejected", reason: "action-not-available" };
+		const reference = this.latestLifecycle.reference;
+		if (
+			action.reference.mode !== current.mode ||
+			action.reference.key !== reference.key ||
+			action.reference.revision !== reference.revision
+		) {
+			return { kind: "rejected", reason: "stale-reference" };
+		}
+		if (action.kind === "card-reveal") {
+			this.answerVisible = true;
+		} else {
+			this.autoPronunciationEnabled = !this.autoPronunciationEnabled;
+			this.autoPronunciationAttempted = false;
+			if (!this.autoPronunciationEnabled) this.pronunciationRuntime?.stop();
+		}
+		this.autoPronounceCard();
+		this.publish();
+		return { kind: "applied", studyCompleted: false };
+	}
+
+	private observeLifecycle(next: SessionLifecycleSnapshot): void {
+		if (!sameCardScope(this.latestLifecycle, next)) this.latestCardScope++;
+		if (!sameCardPresentation(this.latestLifecycle, next)) this.latestCardPresentation++;
+		this.latestLifecycle = next;
+	}
+
+	private presentLatestLifecycle(): void {
+		const previouslyEnabled = this.getCardPresentation().pronunciationEnabled;
+		const presentationChanged = this.latestCardPresentation !== this.presentedCardPresentation;
+		if (presentationChanged) {
+			if (getSessionCard(this.presentedLifecycle) || getSessionCard(this.latestLifecycle)) {
+				this.pronunciationRuntime?.stop();
+			}
+			this.answerVisible = false;
+			this.autoPronunciationAttempted = false;
+		}
+		if (this.latestCardScope !== this.presentedCardScope) {
+			this.autoPronunciationEnabled = false;
+		}
+		this.presentedLifecycle = this.latestLifecycle;
+		this.presentedCardPresentation = this.latestCardPresentation;
+		this.presentedCardScope = this.latestCardScope;
+		if (
+			!presentationChanged &&
+			previouslyEnabled &&
+			!this.getCardPresentation().pronunciationEnabled
+		) {
+			this.pronunciationRuntime?.stop();
+		}
+		this.autoPronounceCard();
+	}
+
+	private resetCardPresentation(): void {
+		this.answerVisible = false;
+		this.autoPronunciationEnabled = false;
+		this.autoPronunciationAttempted = false;
+		this.presentedCardPresentation = this.latestCardPresentation;
+		this.presentedCardScope = this.latestCardScope;
+	}
+
+	private getCardPresentation(): CardPresentationSnapshot {
+		const current = getSessionCard(this.presentedLifecycle);
+		const pronunciationEnabled = Boolean(
+			current && this.wordLearningDecks[current.currentCard.currentDeckId],
+		);
+		return {
+			answerVisible: current !== null && this.answerVisible,
+			autoPronunciationEnabled: current !== null && this.autoPronunciationEnabled,
+			pronunciationEnabled,
+			pronunciationWord:
+				pronunciationEnabled && current
+					? extractSpellingWord(current.currentCard.front)
+					: null,
+		};
+	}
+
+	private autoPronounceCard(): void {
+		const current = getSessionCard(this.presentedLifecycle);
+		const presentation = this.getCardPresentation();
+		if (
+			this.listeners.size === 0 ||
+			!this.pronunciationRuntime ||
+			!current ||
+			!presentation.autoPronunciationEnabled ||
+			!presentation.pronunciationWord ||
+			(current.direction === "reversed" && !presentation.answerVisible) ||
+			this.autoPronunciationAttempted
+		)
+			return;
+		this.autoPronunciationAttempted = true;
+		try {
+			void this.pronunciationRuntime
+				.speak(presentation.pronunciationWord, "auto")
+				.catch(() => undefined);
+		} catch {
+			// Automatic playback errors stay silent; manual playback owns its notices.
+		}
 	}
 
 	private clearFeedbackForDifferentCard(): void {
@@ -376,6 +536,7 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 		const activity = Object.freeze({ ...this.activity });
 		return Object.freeze({
 			lifecycle: this.presentedLifecycle,
+			cardPresentation: Object.freeze(this.getCardPresentation()),
 			activity,
 			spellingFeedback: this.spellingFeedback
 				? Object.freeze(cloneFeedback(this.spellingFeedback))
@@ -385,12 +546,49 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 }
 
 function getTransitionDelay(
-	action: Exclude<AnswerPresentationActionKind, "spelling-answer">,
+	action: Exclude<
+		AnswerPresentationActionKind,
+		"spelling-answer" | "card-reveal" | "card-toggle-auto-pronunciation"
+	>,
 	next: SessionLifecycleSnapshot,
 ): number {
 	if (action === "study-answer" && (next.kind === "idle" || next.kind === "result")) return 300;
 	if (action === "practice-answer" && next.kind === "result") return 300;
 	return 200;
+}
+
+function getSessionCard(
+	snapshot: SessionLifecycleSnapshot,
+): ActiveStudySnapshot | ActivePracticeSnapshot | null {
+	return snapshot.kind === "active" && (snapshot.mode === "study" || snapshot.mode === "practice")
+		? snapshot
+		: null;
+}
+
+function sameCardScope(
+	previous: SessionLifecycleSnapshot,
+	next: SessionLifecycleSnapshot,
+): boolean {
+	const a = getSessionCard(previous);
+	const b = getSessionCard(next);
+	return a && b ? a.mode === b.mode && a.reference.key === b.reference.key : a === b;
+}
+
+function sameCardPresentation(
+	previous: SessionLifecycleSnapshot,
+	next: SessionLifecycleSnapshot,
+): boolean {
+	const a = getSessionCard(previous);
+	const b = getSessionCard(next);
+	if (!a || !b) return a === b;
+	return (
+		sameCardScope(previous, next) &&
+		a.currentCard.identity === b.currentCard.identity &&
+		a.currentCard.front === b.currentCard.front &&
+		a.currentCard.back === b.currentCard.back &&
+		a.direction === b.direction &&
+		a.answerEventCount === b.answerEventCount
+	);
 }
 
 function isIncorrectSpellingFeedback(feedback: SpellingLifecycleFeedback): boolean {

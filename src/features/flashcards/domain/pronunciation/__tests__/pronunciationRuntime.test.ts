@@ -8,7 +8,6 @@ import {
 	createPronunciationRuntime,
 	type PronunciationRuntimeHost,
 	selectLocalEnglishVoice,
-	shouldAutoPronounceSessionCard,
 } from "../pronunciationRuntime";
 import { normalizePronunciationSettings } from "../pronunciationSettings";
 import type { PronunciationAudioCache } from "../types";
@@ -650,45 +649,5 @@ describe("pronunciation runtime order and resilience", () => {
 		now += 30_001;
 		expect(await runtime.canSpeak("hello")).toBe(true);
 		runtime.dispose();
-	});
-});
-
-describe("shouldAutoPronounceSessionCard", () => {
-	it("only auto-pronounces eligible session cards after their word is visible", () => {
-		const defaults = {
-			wordLearningEnabled: true,
-			autoPlayEnabled: true,
-			direction: "normal" as const,
-			answerVisible: false,
-			word: "architecture",
-		};
-
-		expect(shouldAutoPronounceSessionCard(defaults)).toBe(true);
-		expect(
-			shouldAutoPronounceSessionCard({
-				...defaults,
-				wordLearningEnabled: false,
-			}),
-		).toBe(false);
-		expect(
-			shouldAutoPronounceSessionCard({
-				...defaults,
-				autoPlayEnabled: false,
-			}),
-		).toBe(false);
-		expect(
-			shouldAutoPronounceSessionCard({
-				...defaults,
-				direction: "reversed",
-			}),
-		).toBe(false);
-		expect(
-			shouldAutoPronounceSessionCard({
-				...defaults,
-				direction: "reversed",
-				answerVisible: true,
-			}),
-		).toBe(true);
-		expect(shouldAutoPronounceSessionCard({ ...defaults, word: null })).toBe(false);
 	});
 });

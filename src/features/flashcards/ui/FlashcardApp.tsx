@@ -97,6 +97,9 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 			}),
 		[pronunciationRuntime, sessionLifecycle],
 	);
+	useLayoutEffect(() => {
+		answerPresentationTransition.setWordLearningDecks(settings.wordLearningDecks);
+	}, [answerPresentationTransition, settings.wordLearningDecks]);
 	const subscribeAnswerPresentation = useCallback(
 		(listener: () => void) => answerPresentationTransition.subscribe(listener),
 		[answerPresentationTransition],
@@ -337,11 +340,7 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 						onClose={handleExitActive}
 						markdownRenderer={renderMarkdown}
 						pronunciationRuntime={pronunciationRuntime}
-						pronunciationEnabled={Boolean(
-							settings.wordLearningDecks[
-								presentedLifecycleSnapshot.currentCard.currentDeckId
-							],
-						)}
+						cardPresentation={answerPresentationSnapshot.cardPresentation}
 					/>
 				);
 			}
@@ -356,11 +355,7 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 						onClose={handleExitActive}
 						markdownRenderer={renderMarkdown}
 						pronunciationRuntime={pronunciationRuntime}
-						pronunciationEnabled={Boolean(
-							settings.wordLearningDecks[
-								presentedLifecycleSnapshot.currentCard.currentDeckId
-							],
-						)}
+						cardPresentation={answerPresentationSnapshot.cardPresentation}
 					/>
 				);
 			}
@@ -433,7 +428,7 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 				const plan = getStudySetupPlan(
 					deck,
 					effectiveSettings,
-					new Date(),
+					new Date(deckHomeSnapshot.evaluatedAt),
 					viewState.initialStudyOrder,
 				);
 				return (

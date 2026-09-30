@@ -19,7 +19,7 @@ export interface WordListViewportDomAdapter {
 	mount(
 		scroll: HTMLElement,
 		list: HTMLElement,
-		changed: { viewport(): void; row(element: HTMLElement): void },
+		changed: { viewport: () => void; row: (element: HTMLElement) => void },
 	): WordListViewportDomMount;
 }
 

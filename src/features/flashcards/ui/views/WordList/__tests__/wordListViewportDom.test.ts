@@ -22,13 +22,15 @@ describe("word list browser measurement adapter", () => {
 			}),
 			cancelAnimationFrame: vi.fn(),
 		};
+		const addEventListener = vi.fn();
+		const removeEventListener = vi.fn();
 		const scroll = {
 			ownerDocument: { defaultView: win },
 			scrollTop: 200,
 			clientWidth: 600,
 			clientHeight: 400,
-			addEventListener: vi.fn(),
-			removeEventListener: vi.fn(),
+			addEventListener,
+			removeEventListener,
 		} as unknown as HTMLElement;
 		const list = {} as HTMLElement;
 		const row = {
@@ -40,7 +42,7 @@ describe("word list browser measurement adapter", () => {
 		expect(mount.readViewport()).toEqual({ scrollTop: 200, width: 600, height: 400, gap: 16 });
 		expect(win.getComputedStyle).toHaveBeenCalledWith(list);
 		expect(mount.readHeight(row)).toBe(143);
-		expect(scroll.addEventListener).toHaveBeenCalledWith("scroll", changed.viewport, {
+		expect(addEventListener).toHaveBeenCalledWith("scroll", changed.viewport, {
 			passive: true,
 		});
 		expect(observers[0]!.observe).toHaveBeenCalledWith(scroll);
@@ -61,7 +63,7 @@ describe("word list browser measurement adapter", () => {
 		cancel();
 		expect(win.cancelAnimationFrame).toHaveBeenCalledWith(23);
 		mount.dispose();
-		expect(scroll.removeEventListener).toHaveBeenCalledWith("scroll", changed.viewport);
+		expect(removeEventListener).toHaveBeenCalledWith("scroll", changed.viewport);
 		for (const observer of observers) expect(observer.disconnect).toHaveBeenCalledOnce();
 	});
 });

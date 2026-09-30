@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo } from "react";
 import { PartyPopper, RotateCcw } from "lucide-react";
 import { Notice } from "obsidian";
 import { cls } from "../../../../../core/shared/classNames";
@@ -6,18 +6,17 @@ import type { StudyRating } from "../../../../../core/shared/types";
 import { getRatingButtons } from "../../../domain/sessions/scheduler";
 import { getDisplayCardContent } from "../../../domain/cards/cardDisplay";
 import type { ActiveStudySnapshot } from "../../../domain/sessions/sessionLifecycle";
-import type { AnswerPresentationTransition } from "../../answerPresentationTransition";
+import type {
+	AnswerPresentationTransition,
+	CardPresentationSnapshot,
+} from "../../answerPresentationTransition";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { MarkdownContent, PronounceableMarkdown } from "../../primitives/Markdown";
 import { SessionToolbar } from "../../primitives/SessionToolbar";
 import { SessionTimer } from "../../../../../core/ui/primitives/SessionTimer";
 import { useWindowKeyDown } from "../../../../../core/ui/hooks/hooks";
 import { useFlashcardI18n } from "../../../strings/context";
-import {
-	shouldAutoPronounceSessionCard,
-	type PronunciationRuntime,
-} from "../../../domain/pronunciation";
-import { extractSpellingWord } from "../../../domain/cards/spellingWord";
+import type { PronunciationRuntime } from "../../../domain/pronunciation";
 import styles from "./CardView.module.scss";
 
 const RATING_CLASSES: Record<StudyRating, string> = {
@@ -38,7 +37,7 @@ interface CardViewProps {
 	onClose: () => void;
 	markdownRenderer: (content: string, el: HTMLElement) => Promise<void>;
 	pronunciationRuntime: PronunciationRuntime;
-	pronunciationEnabled: boolean;
+	cardPresentation: CardPresentationSnapshot;
 }
 
 export const CardView = React.memo(function CardView({
@@ -51,49 +50,33 @@ export const CardView = React.memo(function CardView({
 	onClose,
 	markdownRenderer,
 	pronunciationRuntime,
-	pronunciationEnabled,
+	cardPresentation,
 }: CardViewProps) {
 	const { t, language } = useFlashcardI18n();
-	const [answerCardId, setAnswerCardId] = useState<string | null>(null);
-	const [autoPronunciationEnabled, setAutoPronunciationEnabled] = useState(false);
+	const {
+		answerVisible: showAnswer,
+		autoPronunciationEnabled,
+		pronunciationEnabled,
+		pronunciationWord,
+	} = cardPresentation;
 
 	const currentCard = session.currentCard;
-	const showAnswer = answerCardId === currentCard.identity;
 	const ratingButtons = useMemo(() => getRatingButtons(language), [language]);
 	const displayContent = useMemo(
 		() => (currentCard ? getDisplayCardContent(currentCard, session.direction) : null),
 		[currentCard, session.direction],
 	);
-	const pronunciationWord =
-		pronunciationEnabled && currentCard ? extractSpellingWord(currentCard.front) : null;
-
-	useEffect(() => {
-		pronunciationRuntime.stop();
-		return () => pronunciationRuntime.stop();
-	}, [currentCard.identity, pronunciationRuntime]);
-
-	const shouldAutoPronounce = shouldAutoPronounceSessionCard({
-		wordLearningEnabled: pronunciationEnabled,
-		autoPlayEnabled: autoPronunciationEnabled,
-		direction: session.direction,
-		answerVisible: showAnswer,
-		word: pronunciationWord,
-	});
-	const autoPronunciationText = shouldAutoPronounce ? pronunciationWord : null;
-
-	useEffect(() => {
-		if (!autoPronunciationText) return;
-		void pronunciationRuntime.speak(autoPronunciationText, "auto").catch(() => undefined);
-		return () => pronunciationRuntime.stop();
-	}, [autoPronunciationText, currentCard.identity, pronunciationRuntime]);
 
 	const handleShowAnswer = useCallback(() => {
-		setAnswerCardId(currentCard.identity);
-	}, [currentCard.identity]);
+		void transition.act({ kind: "card-reveal", reference: session.reference });
+	}, [session.reference, transition]);
 
 	const handleToggleAutoPronunciation = useCallback(() => {
-		setAutoPronunciationEnabled((enabled) => !enabled);
-	}, []);
+		void transition.act({
+			kind: "card-toggle-auto-pronunciation",
+			reference: session.reference,
+		});
+	}, [session.reference, transition]);
 
 	const handleRating = useCallback(
 		async (rating: StudyRating) => {

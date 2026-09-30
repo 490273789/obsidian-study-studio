@@ -15,6 +15,7 @@ import {
 	createAnswerPresentationTransition,
 	shouldAutoPronounceSpellingFeedback,
 	type AnswerPresentationClock,
+	type AnswerPresentationAction,
 } from "../answerPresentationTransition";
 import type { PronunciationRuntime } from "../../domain/pronunciation";
 
@@ -107,7 +108,11 @@ function activeStudy(
 	};
 }
 
-function activePractice(cardId: string, revision: number): ActivePracticeSnapshot {
+function activePractice(
+	cardId: string,
+	revision: number,
+	overrides: Partial<ActivePracticeSnapshot> = {},
+): ActivePracticeSnapshot {
 	return {
 		kind: "active",
 		mode: "practice",
@@ -120,6 +125,7 @@ function activePractice(cardId: string, revision: number): ActivePracticeSnapsho
 		answerEventCount: revision - 1,
 		direction: "normal",
 		canPrevious: true,
+		...overrides,
 	};
 }
 
@@ -223,6 +229,409 @@ async function flushPromises(): Promise<void> {
 		await Promise.resolve();
 	}
 }
+
+// Session key, callback revision and answer count deliberately vary independently.
+function sessionCard(
+	mode: "study" | "practice",
+	revision: number,
+	answerEventCount = 0,
+	identity = "hello",
+	direction: "normal" | "reversed" = "normal",
+) {
+	const reference = { kind: "active" as const, mode, revision, key: "session" };
+	return mode === "study"
+		? activeStudy(identity, revision, {
+				reference: { ...reference, mode },
+				answerEventCount,
+				direction,
+			})
+		: activePractice(identity, revision, {
+				reference: { ...reference, mode },
+				answerEventCount,
+				direction,
+			});
+}
+
+describe.each(["study", "practice"] as const)("%s card presentation", (mode) => {
+	function setup(direction: "normal" | "reversed" = "normal") {
+		const initial = sessionCard(mode, 1, 0, "hello", direction);
+		const lifecycle = new ScriptedLifecycle(initial);
+		const clock = new FakeClock();
+		const speak = vi.fn().mockResolvedValue({ status: "success", source: "local" });
+		const stop = vi.fn();
+		const runtime = { speak, stop } as unknown as PronunciationRuntime;
+		const subject = createAnswerPresentationTransition({
+			lifecycle,
+			clock,
+			pronunciationRuntime: runtime,
+			wordLearningDecks: { deck: true },
+		});
+		const unsubscribe = subject.subscribe(() => undefined);
+		const local = (kind: "card-reveal" | "card-toggle-auto-pronunciation") =>
+			subject.act({ kind, reference: (lifecycle.getSnapshot() as typeof initial).reference });
+		const answer = (): AnswerPresentationAction =>
+			mode === "study"
+				? {
+						kind: "study-answer",
+						reference: initial.reference as ActiveStudySnapshot["reference"],
+						rating: 1,
+					}
+				: {
+						kind: "practice-answer",
+						reference: initial.reference as ActivePracticeSnapshot["reference"],
+						correct: false,
+					};
+		return { initial, lifecycle, clock, speak, stop, subject, unsubscribe, local, answer };
+	}
+
+	it("reads a frozen card snapshot and reveals without writing or delaying", async () => {
+		const test = setup();
+		expect(test.subject.getSnapshot().cardPresentation).toEqual({
+			answerVisible: false,
+			autoPronunciationEnabled: false,
+			pronunciationEnabled: true,
+			pronunciationWord: "hello",
+		});
+		await test.local("card-reveal");
+		expect(test.subject.getSnapshot().cardPresentation.answerVisible).toBe(true);
+		expect(Object.isFrozen(test.subject.getSnapshot().cardPresentation)).toBe(true);
+		expect(test.lifecycle.actions).toHaveLength(0);
+		expect(test.clock.pendingCount).toBe(0);
+		test.unsubscribe();
+	});
+
+	it("plays a forward word once, stops on disable and permits explicit re-enabling", async () => {
+		const test = setup();
+		await test.local("card-toggle-auto-pronunciation");
+		expect(test.speak).toHaveBeenCalledWith("hello", "auto");
+		await test.local("card-reveal");
+		await test.local("card-reveal");
+		test.lifecycle.publish(sessionCard(mode, 2));
+		test.subject.setWordLearningDecks({ deck: true });
+		expect(test.speak).toHaveBeenCalledTimes(1);
+		test.stop.mockClear();
+		await test.local("card-toggle-auto-pronunciation");
+		expect(test.stop).toHaveBeenCalledTimes(1);
+		await test.local("card-toggle-auto-pronunciation");
+		expect(test.speak).toHaveBeenCalledTimes(2);
+		test.unsubscribe();
+	});
+
+	it("waits for the reverse answer and hides it again on the next encounter", async () => {
+		const test = setup("reversed");
+		await test.local("card-toggle-auto-pronunciation");
+		expect(test.speak).not.toHaveBeenCalled();
+		await test.local("card-reveal");
+		await test.local("card-reveal");
+		expect(test.speak).toHaveBeenCalledTimes(1);
+		test.lifecycle.publish(sessionCard(mode, 2, 1, "hello", "reversed"));
+		expect(test.subject.getSnapshot().cardPresentation).toMatchObject({
+			answerVisible: false,
+			autoPronunciationEnabled: true,
+		});
+		expect(test.speak).toHaveBeenCalledTimes(1);
+		await test.local("card-reveal");
+		expect(test.speak).toHaveBeenCalledTimes(2);
+		test.unsubscribe();
+	});
+
+	it("resets A to B to A and undo with the same session key", async () => {
+		const test = setup();
+		await test.local("card-toggle-auto-pronunciation");
+		await test.local("card-reveal");
+		test.lifecycle.publish(sessionCard(mode, 2, 1, "world"));
+		expect(test.subject.getSnapshot().cardPresentation.answerVisible).toBe(false);
+		await test.local("card-reveal");
+		test.lifecycle.publish(sessionCard(mode, 3, 0, "hello"));
+		expect(test.subject.getSnapshot().cardPresentation).toMatchObject({
+			answerVisible: false,
+			autoPronunciationEnabled: true,
+		});
+		expect(test.speak.mock.calls.map(([word]) => word)).toEqual(["hello", "world", "hello"]);
+		test.unsubscribe();
+	});
+
+	it("gives the same identity and word another opportunity only after committed delay", async () => {
+		const test = setup();
+		await test.local("card-toggle-auto-pronunciation");
+		await test.local("card-reveal");
+		const next = sessionCard(mode, 2, 1);
+		test.lifecycle.onAct = async () => {
+			test.lifecycle.publish(next);
+			return { kind: "applied", snapshot: next };
+		};
+		const pending = test.subject.act(test.answer());
+		await flushPromises();
+		expect(test.subject.getSnapshot().cardPresentation.answerVisible).toBe(true);
+		expect(test.speak).toHaveBeenCalledTimes(1);
+		expect(await test.local("card-reveal")).toEqual({ kind: "rejected", reason: "busy" });
+		test.clock.runNext();
+		await pending;
+		expect(test.subject.getSnapshot().cardPresentation.answerVisible).toBe(false);
+		expect(test.speak).toHaveBeenCalledTimes(2);
+		test.unsubscribe();
+	});
+
+	it("preserves explanation/source-only changes but resets either card face", async () => {
+		const test = setup();
+		await test.local("card-toggle-auto-pronunciation");
+		await test.local("card-reveal");
+		const moved = sessionCard(mode, 2);
+		test.lifecycle.publish({
+			...moved,
+			currentCard: {
+				...moved.currentCard,
+				explanation: "new explanation",
+				sourceFile: "moved.md",
+				indexInFile: 5,
+			},
+		});
+		expect(test.subject.getSnapshot().cardPresentation.answerVisible).toBe(true);
+		expect(test.speak).toHaveBeenCalledTimes(1);
+		const backEdited = sessionCard(mode, 3);
+		test.lifecycle.publish({
+			...backEdited,
+			currentCard: { ...backEdited.currentCard, back: "edited answer" },
+		});
+		expect(test.subject.getSnapshot().cardPresentation.answerVisible).toBe(false);
+		expect(test.speak).toHaveBeenCalledTimes(2);
+		await test.local("card-reveal");
+		const frontEdited = sessionCard(mode, 4);
+		test.lifecycle.publish({
+			...frontEdited,
+			currentCard: { ...frontEdited.currentCard, front: "changed", back: "edited answer" },
+		});
+		expect(test.subject.getSnapshot().cardPresentation.answerVisible).toBe(false);
+		expect(test.speak).toHaveBeenLastCalledWith("changed", "auto");
+		test.unsubscribe();
+	});
+
+	it.each(["failed", "rejected"] as const)(
+		"preserves visibility and playback after a %s submission",
+		async (kind) => {
+			const test = setup();
+			await test.local("card-toggle-auto-pronunciation");
+			await test.local("card-reveal");
+			test.lifecycle.onAct = async () =>
+				kind === "failed"
+					? {
+							kind,
+							snapshot: test.initial,
+							failure: {
+								code: "persistence-failed",
+								message: "unavailable",
+								retryable: true,
+							},
+						}
+					: { kind, snapshot: test.initial, reason: "action-not-available" };
+			test.stop.mockClear();
+			expect((await test.subject.act(test.answer())).kind).toBe(kind);
+			expect(test.subject.getSnapshot().cardPresentation.answerVisible).toBe(true);
+			expect(test.speak).toHaveBeenCalledTimes(1);
+			expect(test.stop).not.toHaveBeenCalled();
+			expect(test.clock.pendingCount).toBe(0);
+			test.unsubscribe();
+		},
+	);
+
+	it("rejects old callback revisions and mismatched session/mode references", async () => {
+		const test = setup();
+		test.lifecycle.publish(sessionCard(mode, 2));
+		for (const reference of [
+			test.initial.reference,
+			{ ...test.initial.reference, revision: 2, key: "old session" },
+			{
+				...test.initial.reference,
+				revision: 2,
+				mode: mode === "study" ? ("practice" as const) : ("study" as const),
+			},
+		]) {
+			expect(await test.subject.act({ kind: "card-reveal", reference })).toEqual({
+				kind: "rejected",
+				reason: "stale-reference",
+			});
+		}
+		expect(test.subject.getSnapshot().cardPresentation.answerVisible).toBe(false);
+		test.unsubscribe();
+		expect(await test.local("card-reveal")).toEqual({ kind: "rejected", reason: "inactive" });
+	});
+
+	it("honors committed eligibility changes without repeating metadata-only playback", async () => {
+		const test = setup();
+		await test.local("card-toggle-auto-pronunciation");
+		await test.local("card-reveal");
+		test.stop.mockClear();
+		const moved = sessionCard(mode, 2);
+		test.lifecycle.publish({
+			...moved,
+			currentCard: { ...moved.currentCard, currentDeckId: "other" },
+		});
+		expect(test.stop).toHaveBeenCalledTimes(1);
+		expect(test.subject.getSnapshot().cardPresentation).toMatchObject({
+			answerVisible: true,
+			pronunciationEnabled: false,
+			pronunciationWord: null,
+		});
+		test.subject.setWordLearningDecks({ other: true });
+		expect(test.speak).toHaveBeenCalledTimes(1);
+		test.subject.setWordLearningDecks({});
+		expect(test.subject.getSnapshot().cardPresentation.pronunciationEnabled).toBe(false);
+		test.unsubscribe();
+	});
+
+	it("retains causal changes that end with the original card signature during a delay", async () => {
+		const test = setup();
+		await test.local("card-toggle-auto-pronunciation");
+		await test.local("card-reveal");
+		const answered = sessionCard(mode, 2, 1, "world");
+		test.lifecycle.onAct = async () => {
+			test.lifecycle.publish(answered);
+			return { kind: "applied", snapshot: answered };
+		};
+		const pending = test.subject.act(test.answer());
+		await flushPromises();
+		test.lifecycle.publish(sessionCard(mode, 3));
+		test.clock.runNext();
+		await pending;
+		expect(test.subject.getSnapshot().cardPresentation).toMatchObject({
+			answerVisible: false,
+			autoPronunciationEnabled: true,
+		});
+		expect(test.speak.mock.calls.map(([word]) => word)).toEqual(["hello", "hello"]);
+		test.unsubscribe();
+	});
+
+	it("resets autoplay on mode/session changes and on cleanup/setup replay", async () => {
+		const test = setup();
+		await test.local("card-toggle-auto-pronunciation");
+		await test.local("card-reveal");
+		const otherMode = mode === "study" ? "practice" : "study";
+		test.lifecycle.publish(sessionCard(otherMode, 2));
+		expect(test.subject.getSnapshot().cardPresentation).toMatchObject({
+			answerVisible: false,
+			autoPronunciationEnabled: false,
+		});
+		await test.local("card-toggle-auto-pronunciation");
+		const restarted = sessionCard(otherMode, 3);
+		test.lifecycle.publish({
+			...restarted,
+			reference: { ...restarted.reference, key: "new session" },
+		} as typeof restarted);
+		expect(test.subject.getSnapshot().cardPresentation.autoPronunciationEnabled).toBe(false);
+		await test.local("card-toggle-auto-pronunciation");
+		await test.local("card-reveal");
+		test.unsubscribe();
+		const unsubscribeAgain = test.subject.subscribe(() => undefined);
+		expect(test.subject.getSnapshot().cardPresentation).toMatchObject({
+			answerVisible: false,
+			autoPronunciationEnabled: false,
+		});
+		unsubscribeAgain();
+	});
+
+	it("clears card controls in inactive modes and stops playback", async () => {
+		const test = setup();
+		await test.local("card-toggle-auto-pronunciation");
+		test.stop.mockClear();
+		test.lifecycle.publish(idle(2));
+		expect(test.stop).toHaveBeenCalledTimes(1);
+		expect(test.subject.getSnapshot().cardPresentation).toEqual({
+			answerVisible: false,
+			autoPronunciationEnabled: false,
+			pronunciationEnabled: false,
+			pronunciationWord: null,
+		});
+		expect(
+			await test.subject.act({ kind: "card-reveal", reference: test.initial.reference }),
+		).toEqual({ kind: "rejected", reason: "action-not-available" });
+		test.lifecycle.publish(sessionCard(mode, 3));
+		expect(test.subject.getSnapshot().cardPresentation.autoPronunciationEnabled).toBe(false);
+		test.unsubscribe();
+	});
+
+	it("ignores a late commit result after cleanup and a new subscription", async () => {
+		const test = setup();
+		const completion = deferred<LifecycleOutcome>();
+		test.lifecycle.onAct = () => completion.promise;
+		const pending = test.subject.act(test.answer());
+		test.unsubscribe();
+		const next = sessionCard(mode, 3, 2, "world");
+		test.lifecycle.publish(next);
+		const unsubscribeAgain = test.subject.subscribe(() => undefined);
+		completion.resolve({ kind: "applied", snapshot: sessionCard(mode, 2, 1) });
+		expect(await pending).toEqual({ kind: "cancelled" });
+		expect(test.subject.getSnapshot().lifecycle).toBe(next);
+		expect(test.clock.pendingCount).toBe(0);
+		unsubscribeAgain();
+	});
+
+	it("preserves a newer reconciliation that arrives before the action result", async () => {
+		const test = setup();
+		const completion = deferred<LifecycleOutcome>();
+		test.lifecycle.onAct = () => completion.promise;
+		const pending = test.subject.act(test.answer());
+		const committed = sessionCard(mode, 2, 1);
+		const reconciled = sessionCard(mode, 3, 1, "changed");
+		test.lifecycle.publish(committed);
+		test.lifecycle.publish(reconciled);
+		completion.resolve({ kind: "applied", snapshot: committed });
+		await flushPromises();
+		test.clock.runNext();
+		await pending;
+		expect(test.subject.getSnapshot().lifecycle).toBe(reconciled);
+		test.unsubscribe();
+	});
+
+	it("remembers leaving the active mode even if it returns during a delay", async () => {
+		const test = setup();
+		await test.local("card-toggle-auto-pronunciation");
+		await test.local("card-reveal");
+		const next = sessionCard(mode, 2, 1);
+		test.lifecycle.onAct = async () => {
+			test.lifecycle.publish(next);
+			return { kind: "applied", snapshot: next };
+		};
+		const pending = test.subject.act(test.answer());
+		await flushPromises();
+		test.lifecycle.publish(idle(3));
+		test.lifecycle.publish(sessionCard(mode, 4));
+		test.clock.runNext();
+		await pending;
+		expect(test.subject.getSnapshot().cardPresentation).toMatchObject({
+			answerVisible: false,
+			autoPronunciationEnabled: false,
+		});
+		expect(test.speak).toHaveBeenCalledTimes(1);
+		test.unsubscribe();
+	});
+
+	it("applies eligibility without enabling autoplay or revealing the answer", async () => {
+		const test = setup("reversed");
+		test.subject.setWordLearningDecks({});
+		await test.local("card-toggle-auto-pronunciation");
+		test.subject.setWordLearningDecks({ deck: true });
+		expect(test.speak).not.toHaveBeenCalled();
+		expect(test.subject.getSnapshot().cardPresentation.answerVisible).toBe(false);
+		await test.local("card-reveal");
+		expect(test.speak).toHaveBeenCalledTimes(1);
+		test.unsubscribe();
+	});
+
+	it("keeps automatic errors silent without retrying on duplicate reveal", async () => {
+		const test = setup();
+		test.speak.mockRejectedValueOnce(new Error("playback failed"));
+		await test.local("card-toggle-auto-pronunciation");
+		await flushPromises();
+		await test.local("card-reveal");
+		expect(test.speak).toHaveBeenCalledTimes(1);
+		await test.local("card-toggle-auto-pronunciation");
+		test.speak.mockImplementationOnce(() => {
+			throw new Error("no playback");
+		});
+		expect((await test.local("card-toggle-auto-pronunciation")).kind).toBe("applied");
+		test.unsubscribe();
+	});
+});
 
 describe("AnswerPresentationTransition", () => {
 	it("retains the answered study card, rejects duplicate input, then publishes once after 200 ms", async () => {

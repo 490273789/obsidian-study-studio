@@ -50,6 +50,8 @@ Pure engines and planners under `src/features/flashcards/domain/sessions/` are i
 
 - It serializes input, retains the previously presented lifecycle snapshot while an action commits and feedback/delay settles, and then publishes the next snapshot once.
 - It owns answer-transition delays, spelling feedback retention, optional pronunciation wait, and unsubscribe cleanup.
+- Its `cardPresentation` snapshot owns study/practice answer visibility and automatic pronunciation. Reveal/toggle actions carry the presented revision-bound reference; word-learning deck eligibility is updated through `setWordLearningDecks()`.
+- A new encounter (including returning/undoing, consecutive answers on the same identity, or front/back edits) hides the answer and creates one automatic pronunciation opportunity when the word becomes visible. Explanation/source-only changes preserve visibility and do not replay. Autoplay persists across cards, resets on session/mode changes or last unsubscribe, and presentation changes follow the committed snapshot after its delay.
 - `CardView`, `PracticeView`, and `SpellingView` retain rendering, keyboard mapping, focus, and mode-specific controls. Do not reintroduce per-component timer/pending-action state.
 
 Add focused tests under `src/features/flashcards/domain/sessions/__tests__/`, `src/features/flashcards/domain/cards/__tests__/`, and `src/core/ui/__tests__/` when applicable. Prefer tests through `SessionLifecycle` and `AnswerPresentationTransition`, with pure-engine tests for focused algorithms.

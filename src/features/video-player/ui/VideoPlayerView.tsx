@@ -274,27 +274,17 @@ export function VideoPlayerView({
 														<span>{index + 1}</span>
 													)}
 												</div>
-												<div
-													role="button"
-													tabIndex={0}
+												<button
+													type="button"
 													className={styles.sourceContent}
 													onClick={() => runtime.selectSource(source.id)}
-													onKeyDown={(event) => {
-														if (
-															event.key === "Enter" ||
-															event.key === " "
-														) {
-															event.preventDefault();
-															runtime.selectSource(source.id);
-														}
-													}}
 													title={`${source.name}\n${source.path}`}
 												>
-													<div className={styles.sourceName}>
+													<span className={styles.sourceName}>
 														{source.name}
-													</div>
+													</span>
 													{progressLabel && (
-														<div className={styles.sourceMeta}>
+														<span className={styles.sourceMeta}>
 															<span
 																className={
 																	isActive
@@ -304,9 +294,9 @@ export function VideoPlayerView({
 															>
 																{progressLabel}
 															</span>
-														</div>
+														</span>
 													)}
-												</div>
+												</button>
 												<div className={styles.itemActions}>
 													{snapshot.sources.length > 1 && (
 														<>

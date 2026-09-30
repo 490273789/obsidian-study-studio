@@ -22,6 +22,7 @@ import {
 	restoreDailyLearningActivity,
 	type DailyLearningActivity,
 } from "../../history/dailyLearningActivity";
+import { getStudySetupPlan } from "../../sessions/sessionPlanner";
 
 const STABLE_ONE = "550e8400-e29b-41d4-a716-446655440000";
 const STABLE_TWO = "7d444840-9dc0-11d1-b245-5ffdce74fad2";
@@ -555,8 +556,9 @@ describe("DeckHome", () => {
 	it("refreshes due counts at the earliest due time and stops the clock without subscribers", () => {
 		const clock = new FakeClock(new Date("2026-08-02T12:00:00.000Z"));
 		const deck = makeDeck();
+		const repository = new MemoryRepository([deck]);
 		const home = createDeckHome({
-			repository: new MemoryRepository([deck]),
+			repository,
 			identity: makeIdentity(),
 			saveSettingsPatch: vi.fn(),
 			exportDeck: vi.fn(),
@@ -568,8 +570,22 @@ describe("DeckHome", () => {
 		listener.mockClear();
 
 		expect(clock.delay).toBe(60_000);
+		const before = home.getSnapshot();
+		expect(before.evaluatedAt).toBe(clock.current.getTime());
+		expect(
+			getStudySetupPlan(deck, repository.settings, new Date(before.evaluatedAt))
+				.todayReviewCount,
+		).toBe(0);
 		clock.advanceTo(new Date("2026-08-02T12:01:00.000Z"));
 		expect(home.getSnapshot().totals.dueCards).toBe(1);
+		const after = home.getSnapshot();
+		expect(after.revision).toBe(before.revision);
+		expect(after.evaluatedAt).toBe(clock.current.getTime());
+		expect(before.evaluatedAt).toBe(new Date("2026-08-02T12:00:00.000Z").getTime());
+		expect(
+			getStudySetupPlan(deck, repository.settings, new Date(after.evaluatedAt))
+				.todayReviewCount,
+		).toBe(1);
 		expect(listener).toHaveBeenCalledTimes(1);
 
 		unsubscribe();
