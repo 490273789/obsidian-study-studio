@@ -34,6 +34,50 @@ class MemoryStateStore implements ContinuityStateStore {
 }
 
 describe("Obsidian continuity source store", () => {
+	it("protects and indexes targeted source edits even when metadata incorrectly reports no tags", async () => {
+		const path = "notes/empty.md";
+		const file = Object.assign(new TFile(), { path, basename: "empty" });
+		let content = "#单词\n";
+		const read = vi.fn(async () => content);
+		const process = vi.fn(async (_file: TFile, update: (source: string) => string) => {
+			content = update(content);
+		});
+		const app = {
+			vault: {
+				getMarkdownFiles: () => [file],
+				getAbstractFileByPath: () => file,
+				read,
+				process,
+			},
+			metadataCache: { getFileCache: () => ({ tags: [] }) },
+		} as unknown as App;
+		const state = new MemoryStateStore({
+			configuredTags: ["#单词"],
+			decks: new Map(),
+			continuity: { sources: {}, issues: [], journal: null },
+		});
+		const sources = createObsidianContinuitySourceStore(app);
+		expect(await sources.read?.(path)).toMatchObject({ path, content: "#单词\n" });
+		const continuity = createCardIdentityContinuity({
+			sources,
+			state,
+			createIdentity: () => CARD_ID,
+		});
+		expect(await continuity.sourceEdits.prepare(path, content)).toEqual({
+			kind: "ready",
+			cards: [],
+		});
+		expect(
+			await continuity.sourceEdits.change({
+				path,
+				expectedContent: content,
+				changes: [{ kind: "add", content: { front: "## apple", back: "苹果" } }],
+			}),
+		).toEqual({ kind: "applied" });
+		expect(process).toHaveBeenCalledTimes(1);
+		expect(state.state.decks.get(path)?.cards[0]?.id).toBe(CARD_ID);
+	});
+
 	it("discovers unconfigured flashcard tags without treating cached files as live sources", async () => {
 		const configuredPath = "notes/words.md";
 		const discoveredPath = "notes/phrases.md";

@@ -43,6 +43,16 @@ export function createObsidianContinuitySourceStore(app: App): ContinuitySourceS
 class ObsidianContinuitySourceStore implements ContinuitySourceStore {
 	constructor(private readonly app: App) {}
 
+	async read(path: string): Promise<ContinuitySourceDocument | null> {
+		const file = this.app.vault.getAbstractFileByPath(path);
+		if (!(file instanceof TFile)) return null;
+		return {
+			path: file.path,
+			basename: file.basename,
+			content: await this.app.vault.read(file),
+		};
+	}
+
 	async list(configuredTags?: string[]): Promise<ContinuitySourceDocument[]> {
 		const files = this.app.vault.getMarkdownFiles();
 		if (files.length === 0) return [];

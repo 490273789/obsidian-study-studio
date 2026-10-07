@@ -6,6 +6,7 @@ import { normalizeDictionarySettings } from "./domain/configuration";
 import { DictionaryRuntime } from "./domain/dictionaryRuntime";
 import { dictionaryStrings } from "./strings/dictionary";
 import type { Language } from "../../core/shared/types";
+import type { CardSourceMutation } from "../../core/shared/cardSourceMutation";
 import { FlashcardButton } from "../../core/ui/primitives/Button";
 import { DictionaryFavoriteView, DictionaryView } from "./ui";
 import { playDictionaryAudio, stopDictionaryAudio } from "./ui/audio";
@@ -36,6 +37,7 @@ export const VIEW_TYPE_DICTIONARY = "flashcard-dictionary-view";
 export const VIEW_TYPE_DICTIONARY_FAVORITE = "flashcard-dictionary-favorite-view";
 
 export interface DictionaryFeatureDeps {
+	sourceEdits?: CardSourceMutation;
 	ai: AiService;
 	net: OutboundPort;
 	plugin: Plugin;
@@ -151,6 +153,7 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 		start: (host, lifetime) => {
 			const dictionary = lifetime.own(
 				new DictionaryRuntime({
+					sourceEdits: deps.sourceEdits,
 					app: host.app,
 					plugin: deps.plugin,
 					settings: createDictionarySettingsStore({

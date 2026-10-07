@@ -2,6 +2,7 @@ import { Notice, Platform, type Plugin } from "obsidian";
 import { createTranslator, flashcardTranslator } from "./strings/index";
 import type { Language, PronunciationSettings, StudySettings } from "../../core/shared/types";
 import type { OwnedSettings } from "../../core/host/settingsSlices";
+import type { CardSourceMutation } from "../../core/shared/cardSourceMutation";
 import { buildSettingsViewModel, type SettingsViewModelActions } from "./settings/viewModel";
 import type { OutboundPort } from "../../core/net";
 import type { WorkbenchStore } from "../../core/storage/workbenchStore";
@@ -537,7 +538,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 		},
 	});
 
-	return defineFeatureLifetime({
+	const module = defineFeatureLifetime({
 		id: "flashcards",
 		start: (host, lifetime) => {
 			const repo =
@@ -704,4 +705,10 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 			};
 		},
 	});
+	const sourceEditAdapter: CardSourceMutation = {
+		prepare: (path, expectedContent) =>
+			activeServices().cardIdentityContinuity.sourceEdits.prepare(path, expectedContent),
+		change: (request) => activeServices().cardIdentityContinuity.sourceEdits.change(request),
+	};
+	return { ...module, sourceEditAdapter };
 }

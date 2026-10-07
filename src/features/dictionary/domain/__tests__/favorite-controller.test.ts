@@ -5,6 +5,7 @@ import type { DictionaryFavoriteFile, StoredDictionaryFavorite } from "../favori
 import type { DictionarySettingsStore } from "../types";
 import type { FavoriteGeneratedDraft } from "../favorite-ai";
 import { TransportError } from "../../../../core/net/types";
+import { FavoriteSaveError } from "../favorite-save-error";
 
 function deferred<T>() {
 	let resolve!: (value: T) => void;
@@ -57,6 +58,49 @@ function setup() {
 }
 
 describe("favorite generation interaction", () => {
+	it("saves the final word after changing the form without requesting a rename", async () => {
+		const { controller, file } = setup();
+		file.find.mockResolvedValueOnce({
+			word: "apple",
+			meaning: "苹果",
+			note: "old",
+			path: "word.md",
+		});
+		await controller.prefill("apple");
+		controller.setWord("banana");
+		controller.setMeaning("香蕉");
+		controller.setNote("");
+		await controller.save();
+		expect(file.save).toHaveBeenCalledExactlyOnceWith({
+			word: "banana",
+			meaning: "香蕉",
+			note: "",
+			path: "word.md",
+		});
+	});
+
+	it.each([
+		["migration-required", "迁移卡片身份"],
+		["source-needs-repair", "修复题库"],
+		["source-changing", "重试保存"],
+		["invalid-card-content", "释义不能为空"],
+	] as const)(
+		"shows an actionable %s failure without clearing the learner's draft",
+		async (reason, message) => {
+			const { controller, file } = setup();
+			await controller.prefill("apple");
+			controller.setMeaning("新释义");
+			controller.setNote("新笔记");
+			file.save.mockRejectedValueOnce(new FavoriteSaveError(reason));
+			await controller.save();
+			expect(controller.getSnapshot()).toMatchObject({
+				status: "error",
+				meaning: "新释义",
+				note: "新笔记",
+			});
+			expect(controller.getSnapshot().message).toContain(message);
+		},
+	);
 	it("replaces both draft fields without saving and permits subsequent manual edits", async () => {
 		const { controller, file } = setup();
 		await controller.prefill("exchange");

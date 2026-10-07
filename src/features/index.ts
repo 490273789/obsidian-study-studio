@@ -29,7 +29,12 @@ export function createWorkbenchModules(deps: WorkbenchModuleDeps): AnyWorkbenchM
 		plugin: deps.plugin,
 	});
 	const translation = createTranslationFeature({ ai: deps.ai, net: deps.net });
-	const dictionary = createDictionaryFeature({ ai: deps.ai, net: deps.net, plugin: deps.plugin });
+	const dictionary = createDictionaryFeature({
+		ai: deps.ai,
+		net: deps.net,
+		plugin: deps.plugin,
+		sourceEdits: flashcards.sourceEditAdapter,
+	});
 	const videoPlayer = createVideoPlayerFeature();
 
 	const selectionHelper = createSelectionHelperModule({

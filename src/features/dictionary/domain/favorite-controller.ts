@@ -9,6 +9,7 @@ import {
 	DICTIONARY_FAVORITE_PATH_MAX_LENGTH,
 } from "./favorite-limits";
 import type { DictionaryFavoriteFile } from "./favorite-file";
+import { FavoriteSaveError } from "./favorite-save-error";
 import { isFavoriteAiWord, type FavoriteDraftGenerator } from "./favorite-ai";
 import { aiFailureCode } from "../../../core/ai";
 import { aiErrorText } from "../../../core/i18n/ai";
@@ -243,9 +244,19 @@ export class DictionaryFavoriteController {
 			this.state.word = word;
 			this.state.message = dictionaryText().favoriteSaved(savedPath);
 			this.state.status = "success";
-		} catch {
+		} catch (error) {
 			if (this.disposed || revision !== this.sessionRevision) return;
-			this.state.message = dictionaryText().favoriteSaveFailed;
+			const strings = dictionaryText(this.ai.language());
+			const messages = {
+				"migration-required": strings.favoriteMigrationRequired,
+				"source-needs-repair": strings.favoriteSourceNeedsRepair,
+				"source-changing": strings.favoriteSourceChanging,
+				"invalid-card-content": strings.favoriteInvalidCardContent,
+			};
+			this.state.message =
+				error instanceof FavoriteSaveError
+					? messages[error.reason]
+					: strings.favoriteSaveFailed;
 			this.state.status = "error";
 			this.applySettings();
 		}

@@ -1,5 +1,11 @@
 import { TFile, TFolder, normalizePath, type App } from "obsidian";
 import { normalizeDictionaryFavoritePath, normalizeDictionaryQuery } from "./configuration";
+import type {
+	CardSourceMutation,
+	CardSourceOperation,
+	SourceCard,
+} from "../../../core/shared/cardSourceMutation";
+import { FavoriteSaveError } from "./favorite-save-error";
 
 export interface DictionaryFavoriteEntry {
 	meaning: string;
@@ -24,7 +30,7 @@ export * from "./favorite-limits";
 
 /** Matches one `## word / ?? / meaning / :: / note / ;;` favorite block. */
 export const DICTIONARY_FAVORITE_BLOCK_PATTERN =
-	/^##[ \t]+(.+?)[ \t]*\n\?\?\n([\s\S]*?)\n::\n([\s\S]*?)\n;;[ \t]*(?=\n|$)/gmu;
+	/^##[ \t]+(.+?)[ \t]*(?:\r\n|\r|\n)[ \t]*\?\?[ \t]*(?:\r\n|\r|\n)((?:(?!^[ \t]*(?:\?\?|;;)[ \t]*(?=\r|\n|$))[\s\S])*?)(?:\r\n|\r|\n)[ \t]*::[ \t]*(?:\r\n|\r|\n)((?:(?!^[ \t]*(?:\?\?|;;)[ \t]*(?=\r|\n|$))[\s\S])*?)(?:\r\n|\r|\n)[ \t]*;;[ \t]*(?=\r|\n|$)/gmu;
 
 function normalizeBody(value: string, limit: number): string {
 	return value.replaceAll("\r\n", "\n").replaceAll("\r", "\n").trim().slice(0, limit);
@@ -47,6 +53,77 @@ export function appendDictionaryFavorite(current: string, favorite: string): str
 	if (!current) return favorite;
 	const separator = current.endsWith("\n\n") ? "" : current.endsWith("\n") ? "\n" : "\n\n";
 	return `${current}${separator}${favorite}`;
+}
+
+function favoriteWordKey(word: string): string {
+	return normalizeDictionaryQuery(word).toLocaleLowerCase("en-US");
+}
+
+/** Updates the last matching block and removes earlier duplicates, without rewriting other text. */
+export function upsertDictionaryFavorite(current: string, entry: DictionaryFavoriteEntry): string {
+	const favorite = formatDictionaryFavorite(entry);
+	const key = favoriteWordKey(entry.word);
+	const pattern = new RegExp(
+		DICTIONARY_FAVORITE_BLOCK_PATTERN.source,
+		DICTIONARY_FAVORITE_BLOCK_PATTERN.flags,
+	);
+	const matches = [...current.matchAll(pattern)].filter(
+		(match) => favoriteWordKey(match[1] ?? "") === key,
+	);
+	const last = matches[matches.length - 1];
+	if (!last) return appendDictionaryFavorite(current, favorite);
+
+	let cursor = 0;
+	const parts: string[] = [];
+	for (const match of matches) {
+		parts.push(current.slice(cursor, match.index));
+		cursor = match.index + match[0].length;
+		if (match === last) {
+			const newline = match[0].match(/\r\n|\r|\n/)?.[0] ?? "\n";
+			parts.push(favorite.slice(0, -1).replaceAll("\n", newline));
+		} else {
+			// The removed block owns its trailing newline, but surrounding text does not.
+			const newline = current.slice(cursor).match(/^(?:\r\n|\r|\n)/)?.[0];
+			cursor += newline?.length ?? 0;
+		}
+	}
+	parts.push(current.slice(cursor));
+	return parts.join("");
+}
+
+function favoriteCardWord(card: SourceCard): string | null {
+	const match = card.front.match(/^##[ \t]+(.+?)[ \t]*$/u);
+	return match ? favoriteWordKey(match[1] ?? "") : null;
+}
+
+function favoriteSourceChanges(
+	current: string,
+	entry: DictionaryFavoriteEntry,
+	cards: readonly SourceCard[],
+): CardSourceOperation[] {
+	const key = favoriteWordKey(entry.word);
+	const matches = cards.filter((card) => favoriteCardWord(card) === key);
+	const favorites = parseDictionaryFavorites(current).filter(
+		(favorite) => favoriteWordKey(favorite.word) === key,
+	);
+	// A favorite with extra front matter or an invalid card body cannot safely be
+	// replaced using a card identity. Keep the original source for explicit repair.
+	if (favorites.length !== matches.length) throw new FavoriteSaveError("source-needs-repair");
+	const content = {
+		front: `## ${normalizeDictionaryQuery(entry.word)}`,
+		back: normalizeBody(entry.meaning, DICTIONARY_FAVORITE_MEANING_MAX_LENGTH),
+		explanation: normalizeBody(entry.note, DICTIONARY_FAVORITE_NOTE_MAX_LENGTH),
+	};
+	const last = matches[matches.length - 1];
+	return last
+		? [
+				{ kind: "edit", identity: last.identity, content },
+				...matches.slice(0, -1).map((card): CardSourceOperation => ({
+					kind: "delete",
+					identity: card.identity,
+				})),
+			]
+		: [{ kind: "add", content }];
 }
 
 /** Parses every favorite block in `content` in document order. */
@@ -76,11 +153,11 @@ export function findDictionaryFavorite(
 	content: string,
 	requestedWord: string,
 ): Omit<StoredDictionaryFavorite, "path"> | null {
-	const normalizedWord = normalizeDictionaryQuery(requestedWord).toLocaleLowerCase("en-US");
+	const normalizedWord = favoriteWordKey(requestedWord);
 	if (!normalizedWord) return null;
 	let found: Omit<StoredDictionaryFavorite, "path"> | null = null;
 	for (const favorite of parseDictionaryFavorites(content)) {
-		if (favorite.word.toLocaleLowerCase("en-US") !== normalizedWord) continue;
+		if (favoriteWordKey(favorite.word) !== normalizedWord) continue;
 		found = favorite;
 	}
 	return found;
@@ -100,7 +177,10 @@ export function dictionaryFavoriteSuggestions(
 }
 
 export class DictionaryFavoriteFile {
-	constructor(private readonly app: App) {}
+	constructor(
+		private readonly app: App,
+		private readonly sourceEdits?: CardSourceMutation,
+	) {}
 
 	suggestions(currentPath: string): string[] {
 		return dictionaryFavoriteSuggestions(
@@ -120,9 +200,35 @@ export class DictionaryFavoriteFile {
 			return path;
 		}
 		if (!(existing instanceof TFile)) throw new Error("Favorite path is not a file");
-		await this.app.vault.process(existing, (current) =>
-			appendDictionaryFavorite(current, favorite),
-		);
+		const expectedContent = await this.app.vault.read(existing);
+		const preparation = this.sourceEdits
+			? await this.sourceEdits.prepare(path, expectedContent)
+			: { kind: "unmanaged" as const };
+		if (preparation.kind === "ready") {
+			const outcome = await this.sourceEdits!.change({
+				path,
+				expectedContent,
+				changes: favoriteSourceChanges(expectedContent, entry, preparation.cards),
+			});
+			if (outcome.kind === "applied") return path;
+			if (outcome.kind === "blocked") throw new FavoriteSaveError(outcome.reason);
+			if (outcome.kind === "source-changing") throw new FavoriteSaveError("source-changing");
+			if (outcome.kind === "validation-failed") {
+				throw new FavoriteSaveError("invalid-card-content");
+			}
+			throw new Error("Favorite source update failed");
+		}
+		if (preparation.kind === "blocked") throw new FavoriteSaveError(preparation.reason);
+		if (preparation.kind === "source-changing") throw new FavoriteSaveError("source-changing");
+		if (preparation.kind === "failed") throw new Error("Favorite source preparation failed");
+		let written = false;
+		await this.app.vault.process(existing, (current) => {
+			if (current !== expectedContent) return current;
+			const next = upsertDictionaryFavorite(current, entry);
+			written = true;
+			return next;
+		});
+		if (!written) throw new FavoriteSaveError("source-changing");
 		return path;
 	}
 

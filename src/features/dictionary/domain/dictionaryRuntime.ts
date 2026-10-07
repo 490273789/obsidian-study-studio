@@ -2,6 +2,7 @@ import type { App, Plugin } from "obsidian";
 import type { AiService } from "../../../core/ai";
 import type { OutboundPort } from "../../../core/net";
 import type { Language } from "../../../core/shared/types";
+import type { CardSourceMutation } from "../../../core/shared/cardSourceMutation";
 import { AiDictionarySource } from "./ai";
 import { CambridgeDictionarySource } from "./cambridge";
 import { CompiledDictionarySource } from "./compiled-source";
@@ -25,6 +26,7 @@ import {
 import { YoudaoDictionarySource } from "./youdao";
 
 export interface DictionaryRuntimeOptions {
+	sourceEdits?: CardSourceMutation;
 	ai: AiService;
 	app: App;
 	language: () => Language;
@@ -60,7 +62,7 @@ export class DictionaryRuntime {
 		this.dictionaryRoot = `${options.app.vault.configDir}/plugins/${options.plugin.manifest.id}/dictionaries`;
 		this.favoriteController = new DictionaryFavoriteController(
 			options.settings,
-			new DictionaryFavoriteFile(options.app),
+			new DictionaryFavoriteFile(options.app, options.sourceEdits),
 			options.notify,
 			{
 				generator: createFavoriteDraftGenerator(options.ai),

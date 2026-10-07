@@ -67,6 +67,12 @@ const zh = {
 	favoriteRenderFailed: "收藏表单加载失败，请重新加载插件后重试。",
 	favoriteSave: "保存收藏",
 	favoriteSaveFailed: "收藏保存失败，请检查路径和文件权限后重试。",
+	favoriteMigrationRequired: "该收藏文件同时用作题库，请先在闪卡中迁移卡片身份，再重试保存。",
+	favoriteSourceNeedsRepair:
+		"该收藏文件的卡片身份或格式需要修复，请先在闪卡中恢复题库配置或修复题库，再重试保存。",
+	favoriteSourceChanging: "收藏文件已发生变化，请重试保存。",
+	favoriteInvalidCardContent:
+		"该收藏文件同时用作题库，释义不能为空，内容也不能包含独立的 ??、:: 或 ;; 分隔行。",
 	favoriteSaved: (path: string) => `已保存到 ${path}。`,
 	favoriteSaving: "正在保存…",
 	favoriteSidebarEyebrow: "Dictionary · Local Markdown",
@@ -228,6 +234,13 @@ const en: typeof zh = {
 	favoriteRenderFailed: "Failed to load the favorites form. Reload the plugin and try again.",
 	favoriteSave: "Save favorite",
 	favoriteSaveFailed: "Failed to save the favorite. Check the path and file permissions.",
+	favoriteMigrationRequired:
+		"This favorites file is also a deck. Migrate its card identities in Flashcards, then retry saving.",
+	favoriteSourceNeedsRepair:
+		"This favorites file needs card identity or format repair. Restore its deck configuration or repair the deck in Flashcards, then retry saving.",
+	favoriteSourceChanging: "The favorites file has changed. Retry saving.",
+	favoriteInvalidCardContent:
+		"This favorites file is also a deck. Meaning is required, and content cannot contain standalone ??, ::, or ;; separator lines.",
 	favoriteSaved: (path: string) => `Saved to ${path}.`,
 	favoriteSaving: "Saving…",
 	favoriteSidebarEyebrow: "Dictionary · Local Markdown",

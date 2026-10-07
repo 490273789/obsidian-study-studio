@@ -187,6 +187,7 @@ function makeIdentity(
 	resolve = vi.fn().mockResolvedValue({ kind: "applied" }),
 ): CardIdentityContinuity {
 	return {
+		sourceEdits: { prepare: vi.fn(), change: vi.fn() },
 		synchronize: vi.fn().mockResolvedValue({ kind: "current", changedDeckIds: [] }),
 		prepareEdit: vi.fn().mockResolvedValue({ kind: "not-found" }),
 		change: vi.fn(),
