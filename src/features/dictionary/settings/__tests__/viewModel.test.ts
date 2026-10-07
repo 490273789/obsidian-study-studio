@@ -38,6 +38,7 @@ function setup() {
 	const actions: DictionarySettingsEditorActions = {
 		setEnabled: vi.fn(),
 		setFavoritePath: vi.fn(),
+		setFavoriteOpenMode: vi.fn(),
 		setFavoriteAiConfigId: vi.fn(),
 		setYoudaoAccessMode: vi.fn(),
 		setYoudaoDictionary: vi.fn(),
@@ -65,6 +66,49 @@ function favoriteSelect(
 	if (select?.kind !== "select") throw new Error("Expected favorite engine select");
 	return { presentation, select };
 }
+
+describe("favorite open mode settings", () => {
+	it.each(["zh", "en"] as const)(
+		"presents localized modal and sidebar options in %s",
+		(language) => {
+			const { state, actions } = setup();
+			const t = dictionaryStrings(language);
+			const presentation = buildDictionarySettingsViewModel(state, actions, language);
+			const row = presentation.snapshot.groups
+				.flatMap((group) => group.rows)
+				.find((item) => item.name === t.favoriteOpenMode);
+			const select = row?.controls[0];
+			if (select?.kind !== "select") throw new Error("Expected favorite open mode select");
+			expect(select.value).toBe("modal");
+			expect(select.options).toEqual([
+				{ value: "modal", label: t.favoriteOpenModeModal },
+				{ value: "sidebar", label: t.favoriteOpenModeSidebar },
+			]);
+		},
+	);
+
+	it("dispatches selection and disables changes during saving", async () => {
+		const { state, actions } = setup();
+		state.settings.favoriteOpenMode = "sidebar";
+		const presentation = buildDictionarySettingsViewModel(state, actions, "en");
+		const findSelect = (model: ReturnType<typeof buildDictionarySettingsViewModel>) => {
+			const row = model.snapshot.groups
+				.flatMap((group) => group.rows)
+				.find((item) => item.name === dictionaryStrings("en").favoriteOpenMode);
+			const select = row?.controls[0];
+			if (select?.kind !== "select") throw new Error("Expected favorite open mode select");
+			return select;
+		};
+		const select = findSelect(presentation);
+		expect(select.value).toBe("sidebar");
+		await presentation.invoke({ action: select.action, value: "modal" });
+		expect(actions.setFavoriteOpenMode).toHaveBeenCalledWith("modal");
+		state.saving = true;
+		expect(findSelect(buildDictionarySettingsViewModel(state, actions, "en")).disabled).toBe(
+			true,
+		);
+	});
+});
 
 describe("favorite words AI settings", () => {
 	it("keeps an unset favorite engine independent of dictionary and default engines", () => {

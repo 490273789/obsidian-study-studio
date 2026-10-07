@@ -112,6 +112,10 @@ export class DictionarySettingsEditor {
 						DEFAULT_DICTIONARY_FAVORITE_PATH,
 					);
 				}),
+			setFavoriteOpenMode: (mode) =>
+				this.patch((draft) => {
+					draft.favoriteOpenMode = mode;
+				}),
 			setYoudaoAccessMode: (accessMode) =>
 				this.patch((draft) => {
 					draft.youdao.accessMode = accessMode;

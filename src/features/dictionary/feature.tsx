@@ -58,6 +58,7 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 	let active: { host: DictionaryWorkbenchHost; runtime: DictionaryRuntime } | null = null;
 	let modal: DictionaryLookupModal | null = null;
 	let favoriteModal: DictionaryFavoriteModal | null = null;
+	let favoriteOpenRevision = 0;
 
 	const openSettings = (host: DictionaryWorkbenchHost): void => {
 		host.settingsTab.open(DICTIONARY_SECTION_ID);
@@ -102,6 +103,42 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 		} catch (error) {
 			console.error("Failed to open the dictionary view:", error);
 			new Notice(strings.openFailed);
+		}
+	};
+
+	const openFavorite = async (
+		host: DictionaryWorkbenchHost,
+		dictionary: DictionaryRuntime,
+		word: string,
+	): Promise<void> => {
+		const revision = ++favoriteOpenRevision;
+		try {
+			if (host.settings.read().dictionary.favoriteOpenMode === "sidebar") {
+				await host.activateView(VIEW_TYPE_DICTIONARY_FAVORITE, { rightSidebar: true });
+				if (active?.runtime !== dictionary || revision !== favoriteOpenRevision) return;
+				favoriteModal?.close();
+			} else if (!favoriteModal) {
+				favoriteModal = new DictionaryFavoriteModal(
+					host.app,
+					dictionary.favoriteController,
+					() => host.settings.read().language,
+					() => {
+						favoriteModal = null;
+						if (
+							host.app.workspace.getLeavesOfType(VIEW_TYPE_DICTIONARY_FAVORITE)
+								.length === 0
+						) {
+							dictionary.favoriteController.resetSession();
+						}
+					},
+				);
+				favoriteModal.open();
+			}
+			await dictionary.favoriteController.prefill(word);
+		} catch (error) {
+			if (active?.runtime !== dictionary || revision !== favoriteOpenRevision) return;
+			console.error("Failed to open the dictionary favorite form:", error);
+			new Notice(dictionaryStrings(host.settings.read().language).favoriteOpenFailed);
 		}
 	};
 
@@ -210,21 +247,7 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 							<DictionaryView
 								query={dictionary.query}
 								language={language}
-								onOpenFavorite={async (word) => {
-									if (!favoriteModal) {
-										favoriteModal = new DictionaryFavoriteModal(
-											host.app,
-											dictionary.favoriteController,
-											() => host.settings.read().language,
-											() => {
-												favoriteModal = null;
-												dictionary.favoriteController.resetSession();
-											},
-										);
-										favoriteModal.open();
-									}
-									await dictionary.favoriteController.prefill(word);
-								}}
+								onOpenFavorite={(word) => openFavorite(host, dictionary, word)}
 								onOpenSettings={() => openSettings(host)}
 								onPlayAudio={async (url) => {
 									if (!(await playDictionaryAudio(url))) {

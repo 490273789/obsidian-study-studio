@@ -100,6 +100,23 @@ describe("normalizeDictionaryFavoritePath", () => {
 	});
 });
 
+describe("normalizeDictionarySettings favorite open mode", () => {
+	it.each(["modal", "sidebar"])("preserves the valid mode %s", (favoriteOpenMode) => {
+		expect(normalizeDictionarySettings({ favoriteOpenMode }).favoriteOpenMode).toBe(
+			favoriteOpenMode,
+		);
+	});
+
+	it("defaults missing and invalid modes to modal", () => {
+		expect(normalizeDictionarySettings({}).favoriteOpenMode).toBe("modal");
+		for (const favoriteOpenMode of [null, undefined, "", "other", "SIDEBAR", 1, true, {}]) {
+			expect(normalizeDictionarySettings({ favoriteOpenMode }).favoriteOpenMode).toBe(
+				"modal",
+			);
+		}
+	});
+});
+
 describe("normalizeDictionarySettings enabled flag", () => {
 	it("is only true for the boolean true", () => {
 		expect(normalizeDictionarySettings({ enabled: true }).enabled).toBe(true);
@@ -534,6 +551,7 @@ describe("DEFAULT_DICTIONARY_SETTINGS", () => {
 			ai: { configId: null },
 			enabled: false,
 			favoritePath: "word.md",
+			favoriteOpenMode: "modal",
 			history: [],
 			localDictionaries: [],
 		});

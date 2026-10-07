@@ -191,10 +191,13 @@ export interface AiDictionarySettings {
 	configId: string | null;
 }
 
+export type DictionaryFavoriteOpenMode = "modal" | "sidebar";
+
 export interface DictionarySettings {
 	ai: AiDictionarySettings;
 	enabled: boolean;
 	favoritePath: string;
+	favoriteOpenMode: DictionaryFavoriteOpenMode;
 	/** Independent shared engine selection for favorite draft generation. */
 	favoriteAiConfigId: string | null;
 	history: string[];

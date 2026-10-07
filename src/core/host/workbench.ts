@@ -447,12 +447,18 @@ async function activateView(
 			leaf = workspace.getLeaf("tab");
 			await leaf.setViewState({ type, active: true });
 		}
+	} else if (options?.rightSidebar) {
+		leaf = workspace
+			.getLeavesOfType(type)
+			.find((candidate) => candidate.getRoot() === workspace.rightSplit);
+		if (!leaf) {
+			leaf = workspace.getRightLeaf(false) ?? workspace.getLeaf("tab");
+			await leaf.setViewState({ type, active: true });
+		}
 	} else {
 		leaf = workspace.getLeavesOfType(type)[0];
 		if (!leaf) {
-			leaf = options?.rightSidebar
-				? (workspace.getRightLeaf(false) ?? workspace.getLeaf("tab"))
-				: workspace.getLeaf("tab");
+			leaf = workspace.getLeaf("tab");
 			await leaf.setViewState({ type, active: true });
 		}
 	}

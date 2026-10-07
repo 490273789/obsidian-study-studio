@@ -625,20 +625,6 @@
 	}
 }
 
-.favoriteDestination {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--fc-space-1);
-	margin: 0;
-	color: var(--fc-faint);
-	font-size: var(--fc-font-xs);
-
-	span:last-child {
-		color: var(--fc-muted);
-		overflow-wrap: anywhere;
-	}
-}
-
 .favoriteForm {
 	display: flex;
 	flex-direction: column;

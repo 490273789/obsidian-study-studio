@@ -54,6 +54,7 @@ function createFakeApp() {
 	const leaf = { setViewState };
 	const app = {
 		workspace: {
+			rightSplit: {},
 			leaves: {} as Record<string, unknown[]>,
 			getLeavesOfType(type: string) {
 				return this.leaves[type] ?? [];
@@ -273,6 +274,35 @@ describe("workbench", () => {
 
 		await host().activateView("view-a", { rightSidebar: true });
 		expect(app.workspace.getRightLeaf).toHaveBeenCalledWith(false);
+	});
+
+	it("reuses a right-sidebar view even when another leaf of that type is elsewhere", async () => {
+		const { app, workbench, host, setViewState, revealLeaf } = setup([
+			feature("translation", (host) => host.registerView("view-a", () => ({}) as never)),
+		]);
+		workbench.refresh();
+		const elsewhere = { getRoot: () => ({}) };
+		const sidebar = { getRoot: () => app.workspace.rightSplit };
+		app.workspace.leaves["view-a"] = [elsewhere, sidebar];
+
+		await host().activateView("view-a", { rightSidebar: true });
+		expect(revealLeaf).toHaveBeenCalledWith(sidebar);
+		expect(app.workspace.getRightLeaf).not.toHaveBeenCalled();
+		expect(setViewState).not.toHaveBeenCalled();
+	});
+
+	it("creates a right-sidebar view when existing leaves are elsewhere", async () => {
+		const { app, workbench, host, setViewState, revealLeaf } = setup([
+			feature("translation", (host) => host.registerView("view-a", () => ({}) as never)),
+		]);
+		workbench.refresh();
+		const elsewhere = { getRoot: () => ({}) };
+		app.workspace.leaves["view-a"] = [elsewhere];
+
+		await host().activateView("view-a", { rightSidebar: true });
+		expect(app.workspace.getRightLeaf).toHaveBeenCalledWith(false);
+		expect(setViewState).toHaveBeenCalledWith({ type: "view-a", active: true });
+		expect(revealLeaf).not.toHaveBeenCalledWith(elsewhere);
 	});
 
 	it("commits a settings patch through the host-owned writer", async () => {

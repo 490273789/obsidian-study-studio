@@ -1,6 +1,11 @@
 import type { AiSnapshot } from "../../../core/ai";
 import type { LocalDictionaryListItem } from "../domain/local-administration";
-import type { DictionarySettings, DictionarySourceKind, YoudaoAccessMode } from "../domain/types";
+import type {
+	DictionaryFavoriteOpenMode,
+	DictionarySettings,
+	DictionarySourceKind,
+	YoudaoAccessMode,
+} from "../domain/types";
 import { dictionaryStrings, type DictionaryStrings } from "../strings/dictionary";
 import type { Language } from "../../../core/shared/types";
 import {
@@ -26,6 +31,7 @@ export interface DictionarySettingsEditorState {
 export interface DictionarySettingsEditorActions {
 	setEnabled: (enabled: boolean) => SettingsActionResult;
 	setFavoritePath: (path: string) => SettingsActionResult;
+	setFavoriteOpenMode: (mode: DictionaryFavoriteOpenMode) => SettingsActionResult;
 	setFavoriteAiConfigId: (configId: string | null) => SettingsActionResult;
 	setYoudaoAccessMode: (mode: YoudaoAccessMode) => SettingsActionResult;
 	setYoudaoDictionary: (dictionary: "ec" | "ee") => SettingsActionResult;
@@ -102,6 +108,19 @@ export function buildDictionarySettingsViewModel(
 					placeholder: t.favoritePathPlaceholder,
 					disabled: state.saving,
 					onChange: actions.setFavoritePath,
+				},
+			);
+			group.select(
+				"favorite-open-mode",
+				{ name: t.favoriteOpenMode, description: t.favoriteOpenModeDescription },
+				{
+					value: settings.favoriteOpenMode,
+					disabled: state.saving,
+					options: [
+						{ value: "modal", label: t.favoriteOpenModeModal },
+						{ value: "sidebar", label: t.favoriteOpenModeSidebar },
+					],
+					onChange: actions.setFavoriteOpenMode,
 				},
 			);
 			const favoriteAiConfigId = settings.favoriteAiConfigId ?? "";

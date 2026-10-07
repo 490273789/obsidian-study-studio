@@ -307,6 +307,7 @@ export const DEFAULT_DICTIONARY_SETTINGS: DictionarySettings = {
 	ai: { configId: null },
 	enabled: false,
 	favoritePath: DEFAULT_DICTIONARY_FAVORITE_PATH,
+	favoriteOpenMode: "modal",
 	favoriteAiConfigId: null,
 	history: [],
 	localDictionaries: [],
@@ -349,6 +350,7 @@ export function normalizeDictionarySettings(value: unknown): DictionarySettings 
 				? candidate.favoriteAiConfigId.trim().slice(0, 200)
 				: null,
 		enabled: candidate.enabled === true,
+		favoriteOpenMode: candidate.favoriteOpenMode === "sidebar" ? "sidebar" : "modal",
 		favoritePath: normalizeDictionaryFavoritePath(
 			candidate.favoritePath,
 			DEFAULT_DICTIONARY_FAVORITE_PATH,

@@ -44,25 +44,6 @@ export function DictionaryFavoriteView({
 				<h2>{strings.favoriteSidebarTitle}</h2>
 			</header>
 
-			<p
-				className={cls(
-					"flashcard-dictionary-favorite-destination",
-					styles.favoriteDestination,
-				)}
-			>
-				<span>{strings.favoritePath}</span>
-				<FlashcardButton
-					type="button"
-					variant="ghost"
-					size="sm"
-					title={state.savedPath}
-					disabled={busy}
-					onClick={() => void controller.openSavedFile()}
-				>
-					{state.savedPath}
-				</FlashcardButton>
-			</p>
-
 			<form
 				className={cls("flashcard-dictionary-favorite-form", styles.favoriteForm)}
 				onSubmit={(event) => {
