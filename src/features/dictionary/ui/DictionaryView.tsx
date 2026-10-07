@@ -767,14 +767,16 @@ export function DictionaryView({
 											))}
 										</div>
 									)}
-									<footer
-										className={cls(
-											"flashcard-dictionary-attribution",
-											styles.attribution,
-										)}
-									>
-										{result.attribution}
-									</footer>
+									{result.attribution ? (
+										<footer
+											className={cls(
+												"flashcard-dictionary-attribution",
+												styles.attribution,
+											)}
+										>
+											{result.attribution}
+										</footer>
+									) : null}
 								</>
 							)}
 						</article>

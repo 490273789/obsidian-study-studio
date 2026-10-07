@@ -493,15 +493,15 @@
 
 .details {
 	display: flex;
-	flex: 1 1 auto;
-	min-height: 0;
+	flex: 0 0 auto;
 	flex-direction: column;
+	min-width: 0;
 	gap: var(--fc-space-2);
 }
 
 .detailPanel {
-	flex: 1 1 auto;
-	min-height: 0;
+	flex: 0 0 auto;
+	min-width: 0;
 }
 
 .detailTabs {
@@ -585,6 +585,7 @@
 
 .attribution {
 	flex: 0 0 auto;
+	margin-top: auto;
 	color: var(--fc-faint);
 	font-size: var(--fc-font-xs);
 }
