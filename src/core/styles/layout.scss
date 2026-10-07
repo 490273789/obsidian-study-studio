@@ -116,8 +116,8 @@
 /* A panel that scrolls as a whole instead of owning an inner body. */
 .fc-panel--scroll {
 	flex: 1 1 auto;
-	gap: var(--fc-space-3);
-	padding: var(--fc-space-3);
+	// gap: var(--fc-space-3);
+	// padding: var(--fc-space-3);
 	overflow-x: hidden;
 	overflow-y: auto;
 	overscroll-behavior: contain;

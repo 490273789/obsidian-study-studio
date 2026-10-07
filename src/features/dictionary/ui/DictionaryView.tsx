@@ -499,286 +499,304 @@ export function DictionaryView({
 						<article
 							key={source.id}
 							id={sourcePanelId(source.id)}
-							className={cls(
-								"flashcard-dictionary-source fc-panel fc-panel--scroll",
-								styles.source,
-							)}
+							data-source-kind={source.kind}
+							className={cls("flashcard-dictionary-source fc-panel", styles.source)}
 							role="tabpanel"
 							aria-labelledby={sourceTabId(source.id)}
 							tabIndex={0}
 							hidden={!selected}
 						>
-							{source.kind === "ai" && source.status === "idle" ? (
-								<div
-									className={cls(
-										"flashcard-dictionary-ai-action",
-										styles.aiAction,
-									)}
-								>
-									<p>{strings.aiEngineDescription}</p>
-									{state.aiEngineName && (
-										<p
-											className={cls(
-												"flashcard-dictionary-ai-engine",
-												styles.aiEngine,
-											)}
-										>
-											<span>{strings.aiEngine}</span>
-											<span>{state.aiEngineName}</span>
-										</p>
-									)}
-									<FlashcardButton
-										variant="primary"
-										icon={Sparkles}
-										onClick={() => void query.send({ type: "generate-ai" })}
+							<div
+								className={cls(
+									"flashcard-dictionary-source-body",
+									styles.sourceBody,
+								)}
+							>
+								{source.kind === "ai" && source.status === "idle" ? (
+									<div
+										className={cls(
+											"flashcard-dictionary-ai-action",
+											styles.aiAction,
+										)}
 									>
-										{strings.aiGenerate}
-									</FlashcardButton>
-								</div>
-							) : source.status === "loading" ? (
-								<output
-									className={cls("flashcard-dictionary-loading", styles.loading)}
-								>
-									{source.kind === "ai" ? strings.aiGenerating : strings.loading}
-								</output>
-							) : source.status === "empty" ? (
-								<p className={cls("flashcard-dictionary-empty", styles.empty)}>
-									{strings.errors.notFound}
-								</p>
-							) : source.status === "error" ? (
-								<div
-									className={cls("flashcard-dictionary-error", styles.error)}
-									role="alert"
-								>
-									<p>{source.error}</p>
-									<FlashcardButton
-										size="sm"
-										icon={RotateCcw}
-										onClick={() =>
-											void query.send({
-												type: "retry-source",
-												sourceId: source.id,
-											})
-										}
-									>
-										{strings.retry}
-									</FlashcardButton>
-								</div>
-							) : null}
-
-							{result && (
-								<>
-									{result.pronunciations.length > 0 && (
-										<div
-											className={cls(
-												"flashcard-dictionary-pronunciations",
-												styles.pronunciations,
-											)}
-										>
-											{result.pronunciations.map((pronunciation) => {
-												const audioUrl = pronunciation.audioUrl;
-												const playable =
-													audioUrl !== null &&
-													canPlayDictionaryAudio(audioUrl);
-												return (
-													<div
-														key={`${pronunciation.accent}-${pronunciation.phonetic}`}
-													>
-														<span>
-															{pronunciation.label} /
-															{pronunciation.phonetic}/
-														</span>
-														{playable && (
-															<FlashcardButton
-																preset="icon"
-																size="sm"
-																variant="ghost"
-																icon={Play}
-																title={strings.playAudio(
-																	pronunciation.label,
-																)}
-																aria-label={strings.playAudio(
-																	pronunciation.label,
-																)}
-																onClick={() =>
-																	void onPlayAudio(audioUrl)
-																}
-															/>
-														)}
-													</div>
-												);
-											})}
-										</div>
-									)}
-
-									{result.sections.map((section, sectionIndex) => {
-										if (section.presentation !== "stack") return null;
-										return (
-											<section
-												key={`${source.id}-${section.title}-${sectionIndex}`}
+										<p>{strings.aiEngineDescription}</p>
+										{state.aiEngineName && (
+											<p
 												className={cls(
-													"flashcard-dictionary-section",
-													styles.section,
-													section.content.kind === "document" && [
-														"is-document",
-														styles.isDocument,
-													],
+													"flashcard-dictionary-ai-engine",
+													styles.aiEngine,
 												)}
 											>
-												{source.kind !== "local" && (
-													<h4>{section.title}</h4>
-												)}
-												<SectionContent
-													content={section.content}
-													word={word}
-													theme={theme}
-													title={`${source.label} · ${section.title}`}
-													onLookup={lookupWord}
-													strings={strings}
-												/>
-											</section>
-										);
-									})}
-
-									{sections.length > 0 && (
-										<div
-											className={cls(
-												"flashcard-dictionary-details",
-												styles.details,
-											)}
+												<span>{strings.aiEngine}</span>
+												<span>{state.aiEngineName}</span>
+											</p>
+										)}
+										<FlashcardButton
+											variant="primary"
+											icon={Sparkles}
+											onClick={() => void query.send({ type: "generate-ai" })}
 										>
+											{strings.aiGenerate}
+										</FlashcardButton>
+									</div>
+								) : source.status === "loading" ? (
+									<output
+										className={cls(
+											"flashcard-dictionary-loading",
+											styles.loading,
+										)}
+									>
+										{source.kind === "ai"
+											? strings.aiGenerating
+											: strings.loading}
+									</output>
+								) : source.status === "empty" ? (
+									<p className={cls("flashcard-dictionary-empty", styles.empty)}>
+										{strings.errors.notFound}
+									</p>
+								) : source.status === "error" ? (
+									<div
+										className={cls("flashcard-dictionary-error", styles.error)}
+										role="alert"
+									>
+										<p>{source.error}</p>
+										<FlashcardButton
+											size="sm"
+											icon={RotateCcw}
+											onClick={() =>
+												void query.send({
+													type: "retry-source",
+													sourceId: source.id,
+												})
+											}
+										>
+											{strings.retry}
+										</FlashcardButton>
+									</div>
+								) : null}
+
+								{result && (
+									<>
+										{result.pronunciations.length > 0 && (
 											<div
-												ref={sectionTablistRef}
 												className={cls(
-													"flashcard-dictionary-detail-tabs",
-													styles.detailTabs,
+													"flashcard-dictionary-pronunciations",
+													styles.pronunciations,
 												)}
-												role="tablist"
-												aria-label={`${source.label} · ${strings.details}`}
 											>
-												{sections.map((item, tabIndex) => {
-													const active =
-														source.activeSectionIndex === item.index;
+												{result.pronunciations.map((pronunciation) => {
+													const audioUrl = pronunciation.audioUrl;
+													const playable =
+														audioUrl !== null &&
+														canPlayDictionaryAudio(audioUrl);
 													return (
-														<button
-															key={`${source.id}-${item.index}`}
-															id={sectionTabId(source.id, item.index)}
-															type="button"
-															role="tab"
-															className={cls(
-																active && [
-																	"is-active",
-																	styles.isActive,
-																],
-															)}
-															aria-controls={sectionPanelId(
-																source.id,
-																item.index,
-															)}
-															aria-selected={active}
-															tabIndex={active ? 0 : -1}
-															onClick={() =>
-																void query.send({
-																	type: "select-section",
-																	sourceId: source.id,
-																	sectionIndex: item.index,
-																})
-															}
-															onKeyDown={(event) =>
-																moveTabFocus(
-																	event,
-																	sectionTablistRef.current,
-																	tabIndex,
-																	sections.length,
-																	(nextIndex) => {
-																		const next =
-																			sections[nextIndex];
-																		if (next)
-																			void query.send({
-																				type: "select-section",
-																				sourceId: source.id,
-																				sectionIndex:
-																					next.index,
-																			});
-																	},
-																)
-															}
+														<div
+															key={`${pronunciation.accent}-${pronunciation.phonetic}`}
 														>
-															{item.section.title}
-														</button>
+															<span>
+																{pronunciation.label} /
+																{pronunciation.phonetic}/
+															</span>
+															{playable && (
+																<FlashcardButton
+																	preset="icon"
+																	size="sm"
+																	variant="ghost"
+																	icon={Play}
+																	title={strings.playAudio(
+																		pronunciation.label,
+																	)}
+																	aria-label={strings.playAudio(
+																		pronunciation.label,
+																	)}
+																	onClick={() =>
+																		void onPlayAudio(audioUrl)
+																	}
+																/>
+															)}
+														</div>
 													);
 												})}
 											</div>
-											{sections.map((item) =>
-												source.activeSectionIndex === item.index ? (
-													<section
-														key={`${source.id}-panel-${item.index}`}
-														id={sectionPanelId(source.id, item.index)}
-														className={cls(
-															"flashcard-dictionary-section flashcard-dictionary-detail-panel",
-															styles.section,
-															styles.detailPanel,
-															item.section.content.kind ===
-																"document" && [
-																"is-document",
-																styles.isDocument,
-															],
-														)}
-														role="tabpanel"
-														aria-labelledby={sectionTabId(
-															source.id,
-															item.index,
-														)}
-													>
-														<SectionContent
-															content={item.section.content}
-															word={word}
-															theme={theme}
-															title={`${source.label} · ${item.section.title}`}
-															onLookup={lookupWord}
-															strings={strings}
-														/>
-													</section>
-												) : null,
-											)}
-										</div>
-									)}
+										)}
 
-									{result.suggestions.length > 0 && (
-										<div
-											className={cls(
-												"flashcard-dictionary-suggestions",
-												styles.suggestions,
-											)}
-										>
-											<strong>{strings.suggestions}</strong>
-											{result.suggestions.map((word) => (
-												<button
-													type="button"
-													key={word}
+										{result.sections.map((section, sectionIndex) => {
+											if (section.presentation !== "stack") return null;
+											return (
+												<section
+													key={`${source.id}-${section.title}-${sectionIndex}`}
 													className={cls(
-														"flashcard-dictionary-suggestion-item",
-														styles.suggestionItem,
+														"flashcard-dictionary-section",
+														styles.section,
+														section.content.kind === "document" && [
+															"is-document",
+															styles.isDocument,
+														],
 													)}
-													onClick={() => lookupWord(word)}
 												>
-													{word}
-												</button>
-											))}
-										</div>
+													{source.kind !== "local" && (
+														<h4>{section.title}</h4>
+													)}
+													<SectionContent
+														content={section.content}
+														word={word}
+														theme={theme}
+														title={`${source.label} · ${section.title}`}
+														onLookup={lookupWord}
+														strings={strings}
+													/>
+												</section>
+											);
+										})}
+
+										{sections.length > 0 && (
+											<div
+												className={cls(
+													"flashcard-dictionary-details",
+													styles.details,
+												)}
+											>
+												<div
+													ref={sectionTablistRef}
+													className={cls(
+														"flashcard-dictionary-detail-tabs",
+														styles.detailTabs,
+													)}
+													role="tablist"
+													aria-label={`${source.label} · ${strings.details}`}
+												>
+													{sections.map((item, tabIndex) => {
+														const active =
+															source.activeSectionIndex ===
+															item.index;
+														return (
+															<button
+																key={`${source.id}-${item.index}`}
+																id={sectionTabId(
+																	source.id,
+																	item.index,
+																)}
+																type="button"
+																role="tab"
+																className={cls(
+																	active && [
+																		"is-active",
+																		styles.isActive,
+																	],
+																)}
+																aria-controls={sectionPanelId(
+																	source.id,
+																	item.index,
+																)}
+																aria-selected={active}
+																tabIndex={active ? 0 : -1}
+																onClick={() =>
+																	void query.send({
+																		type: "select-section",
+																		sourceId: source.id,
+																		sectionIndex: item.index,
+																	})
+																}
+																onKeyDown={(event) =>
+																	moveTabFocus(
+																		event,
+																		sectionTablistRef.current,
+																		tabIndex,
+																		sections.length,
+																		(nextIndex) => {
+																			const next =
+																				sections[nextIndex];
+																			if (next)
+																				void query.send({
+																					type: "select-section",
+																					sourceId:
+																						source.id,
+																					sectionIndex:
+																						next.index,
+																				});
+																		},
+																	)
+																}
+															>
+																{item.section.title}
+															</button>
+														);
+													})}
+												</div>
+												{sections.map((item) =>
+													source.activeSectionIndex === item.index ? (
+														<section
+															key={`${source.id}-panel-${item.index}`}
+															id={sectionPanelId(
+																source.id,
+																item.index,
+															)}
+															className={cls(
+																"flashcard-dictionary-section flashcard-dictionary-detail-panel",
+																styles.section,
+																styles.detailPanel,
+																item.section.content.kind ===
+																	"document" && [
+																	"is-document",
+																	styles.isDocument,
+																],
+															)}
+															role="tabpanel"
+															aria-labelledby={sectionTabId(
+																source.id,
+																item.index,
+															)}
+														>
+															<SectionContent
+																content={item.section.content}
+																word={word}
+																theme={theme}
+																title={`${source.label} · ${item.section.title}`}
+																onLookup={lookupWord}
+																strings={strings}
+															/>
+														</section>
+													) : null,
+												)}
+											</div>
+										)}
+
+										{result.suggestions.length > 0 && (
+											<div
+												className={cls(
+													"flashcard-dictionary-suggestions",
+													styles.suggestions,
+												)}
+											>
+												<strong>{strings.suggestions}</strong>
+												{result.suggestions.map((word) => (
+													<button
+														type="button"
+														key={word}
+														className={cls(
+															"flashcard-dictionary-suggestion-item",
+															styles.suggestionItem,
+														)}
+														onClick={() => lookupWord(word)}
+													>
+														{word}
+													</button>
+												))}
+											</div>
+										)}
+									</>
+								)}
+							</div>
+							{result?.attribution ? (
+								<footer
+									className={cls(
+										"flashcard-dictionary-attribution",
+										styles.attribution,
 									)}
-									{result.attribution ? (
-										<footer
-											className={cls(
-												"flashcard-dictionary-attribution",
-												styles.attribution,
-											)}
-										>
-											{result.attribution}
-										</footer>
-									) : null}
-								</>
-							)}
+								>
+									{result.attribution}
+								</footer>
+							) : null}
 						</article>
 					);
 				})}
