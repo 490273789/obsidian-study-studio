@@ -216,7 +216,8 @@
 	gap: 4px;
 }
 
-.cell {
+.cell,
+button.cell {
 	appearance: none;
 	-webkit-appearance: none;
 	box-sizing: border-box;
@@ -230,13 +231,9 @@
 	padding: 0;
 	line-height: 0;
 	font-size: 0;
-	border: 1px solid color-mix(in srgb, var(--text-normal) 7%, transparent);
+	border: 1px solid color-mix(in srgb, var(--fc-text) 5%, transparent);
 	border-radius: 2.5px;
-	background: color-mix(
-		in srgb,
-		var(--fc-surface-card) 68%,
-		var(--background-modifier-border) 32%
-	);
+	background: color-mix(in srgb, var(--fc-surface-card) 96%, var(--fc-text));
 	box-shadow: none;
 	flex-shrink: 0;
 	transition:
@@ -280,22 +277,22 @@ button.cell:not(:disabled) {
 	}
 }
 
-.level1 {
-	background: color-mix(in srgb, var(--fc-lime) 30%, var(--fc-surface-card));
+.cell.level1 {
+	background: color-mix(in srgb, var(--fc-lime) 38%, var(--fc-surface-card));
 	border-color: rgba(var(--fc-lime-rgb), 0.25);
 }
 
-.level2 {
-	background: color-mix(in srgb, var(--fc-lime) 52%, var(--fc-surface-card));
+.cell.level2 {
+	background: color-mix(in srgb, var(--fc-lime) 58%, var(--fc-surface-card));
 	border-color: rgba(var(--fc-lime-rgb), 0.4);
 }
 
-.level3 {
-	background: color-mix(in srgb, var(--fc-lime) 75%, var(--fc-surface-card));
+.cell.level3 {
+	background: color-mix(in srgb, var(--fc-lime) 79%, var(--fc-surface-card));
 	border-color: rgba(var(--fc-lime-rgb), 0.55);
 }
 
-.level4 {
+.cell.level4 {
 	background: var(--fc-lime);
 	border-color: color-mix(in srgb, var(--fc-lime) 80%, white);
 }
