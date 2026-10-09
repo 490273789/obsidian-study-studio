@@ -135,7 +135,7 @@
 
 .metricSubtitle {
 	color: var(--fc-faint);
-	font-size: 11px;
+	font-size: var(--fc-font-xs);
 	line-height: 1.2;
 }
 
@@ -345,7 +345,7 @@ button.cell:not(:disabled) {
 			font-size: var(--fc-font-sm);
 
 			span {
-				font-size: 10px;
+				font-size: var(--fc-font-2xs);
 				margin-left: 2px;
 			}
 		}
@@ -357,14 +357,14 @@ button.cell:not(:disabled) {
 		}
 
 		.metricLabel {
-			font-size: 11px;
+			font-size: var(--fc-font-xs);
 			white-space: nowrap;
 			overflow: hidden;
 			text-overflow: ellipsis;
 		}
 
 		.metricSubtitle {
-			font-size: 10px;
+			font-size: var(--fc-font-2xs);
 			white-space: nowrap;
 			overflow: hidden;
 			text-overflow: ellipsis;

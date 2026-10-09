@@ -330,7 +330,7 @@
 		background: rgba(var(--fc-bg-elevated-rgb), 0.35);
 
 		.fc-profile-badge {
-			background: rgba(var(--fc-muted-rgb, 120, 120, 120), 0.15);
+			background: color-mix(in srgb, var(--fc-muted) 15%, transparent);
 			color: var(--fc-muted);
 		}
 	}
@@ -428,7 +428,7 @@
 
 		.setting-item-name {
 			font-size: var(--fc-font-sm);
-			font-weight: var(--fc-weight-normal);
+			font-weight: var(--fc-weight-regular);
 			color: var(--fc-muted);
 		}
 	}

@@ -8,6 +8,7 @@
 .flashcard-modal-backdrop,
 .fc-selection-popup-container,
 .study-studio-dictionary-prompt {
+	--fc-font-2xs: 10px;
 	--fc-font-xs: 11px;
 	--fc-font-sm: 13px;
 	--fc-font-md: 14px;
@@ -125,6 +126,13 @@
 		var(--background-modifier-border) 64%,
 		var(--text-normal) 36%
 	);
+
+	/* ── 自定义滚动条 ────────────────────────────────────────── */
+	--fc-scrollbar-thumb: var(
+		--scrollbar-thumb-bg,
+		color-mix(in srgb, var(--text-normal) 20%, transparent)
+	);
+	--fc-scrollbar-thumb-hover: color-mix(in srgb, var(--text-normal) 35%, transparent);
 
 	/* ── 控件表面与边框 ──────────────────────────────────────── */
 	--fc-control-bg: var(--fc-surface-control);

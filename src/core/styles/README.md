@@ -71,17 +71,19 @@
 - `src/features/translation/ui/`：`Translator.module.scss`
 - `src/core/selectionHelper/ui/`：`SelectionPopup.module.scss`
 - `src/features/dictionary/ui/`：`Dictionary.module.scss`
+- `src/features/video-player/ui/`：`VideoPlayer.module.scss`
 - `src/features/flashcards/ui/views/**`：
-    - `Home/`：`DeckList.module.scss`
-    - `Study/`：`StudySetup.module.scss`
+    - `Home/`：`DeckList.module.scss`、`LearningFootprint.module.scss`
+    - `Study/`：`StudySetup.module.scss`、`StudySummary.module.scss`
     - `Card/`：`CardView.module.scss`、`CardEditorModal.module.scss`
     - `Practice/`：`Practice.module.scss`
     - `Spelling/`：`Spelling.module.scss`
     - `WordList/`：`WordList.module.scss`
     - `Stats/`：`Stats.module.scss`
     - `DeckSettings/`：`DeckSettingsModal.module.scss`
+    - `Challenge/`：`Challenge.module.scss`
 
-视图样式只写该视图特有的规则；页面外壳、面板与 header/footer 语义一律来自布局模块。
+视图样式只写该视图特有的规则；页面外壳、面板与 header/footer 语义一律来自布局模块。**切勿在 `src/core/styles/index.scss` 中 `@use` 业务视图的 `*.module.scss`，必须由对应 TSX 就近导入**。
 
 ### Token 唯一来源
 
@@ -106,10 +108,10 @@
 
 ### 字体
 
-- 字号只使用 `--fc-font-xs/sm/md/lg/xl/display/hero/focus`，分别为 11、13、14、15、18、20、24、32px。
+- 字号只使用 `--fc-font-2xs/xs/sm/md/lg/xl/display/hero/focus`，分别为 10、11、13、14、15、18、20、24、32px。
 - 控件默认使用 `--fc-font-sm`，正文使用 `--fc-font-md`，桌面卡片阅读内容使用 `--fc-font-lg`。
-- 辅助文字不得小于 `--fc-font-xs`；窄屏阅读内容可降为 `--fc-font-md`，不得继续缩小。
-- 字重只使用 `--fc-weight-regular/medium/semibold/bold`。
+- `--fc-font-2xs`（10px）专用于键盘热键徽章（kbd / shortcut pill）、微型状态徽章与紧凑角标；常规辅助文字不得小于 `--fc-font-xs`（11px）；窄屏阅读内容可降为 `--fc-font-md`，不得继续缩小。
+- 字重只使用 `--fc-weight-regular/medium/semibold/bold`（400/500/600/700）。
 - 紧凑标签使用 `--fc-line-tight`，普通正文使用 `--fc-line-body`，长文和 Markdown 内容使用 `--fc-line-reading`。
 
 ### 间距与尺寸
@@ -127,6 +129,7 @@
 - 胶囊：`--fc-radius-pill`。
 - 普通边框统一为 1px；当前项、问答卡等状态强调边可使用 3px。
 - 分隔线使用 `--fc-line`（普通）、`--fc-line-soft`（弱分隔）与 `--fc-line-faint`（更弱分隔），强调边框使用 `--fc-line-strong`；组件不得再使用硬编码的分隔线颜色（如 `rgba(139,159,181,α)`）。
+- 自定义精细滚动条使用混入 `@include fc-scrollbar`，滑块颜色通过设计 token `--fc-scrollbar-thumb` 与 `--fc-scrollbar-thumb-hover` 控制，自动继承系统正文透明度混合并适配亮暗主题。
 - 遮罩（backdrop scrim）使用 `--fc-overlay`（普通弹窗）与 `--fc-overlay-heavy`（重确认弹窗），两者都从固定的 `--fc-black-rgb` 派生。
 - `--fc-surface-canvas`：页面画布，继承 `--background-secondary`。
 - `--fc-surface-section`：页面内的大区块，位于画布与卡片之间。
@@ -168,6 +171,7 @@
 ## 允许的例外与验证
 
 - 1px 普通边框、3px 状态强调边、绝对定位、图标绘制、阴影和背景纹理可使用必要的像素值；它们不参与内容密度刻度。
+- 独立沉浸式媒体/视频播放器视图（如 `VideoPlayer`）统一采用深色高对比度控制台（底色为暗夜黑，文字与按钮图标在亮/暗主题下均保持高清晰度浅色，辅以强调色焦点与进度），不强制跟随 Obsidian 亮色主题翻转，以保障音视频画面的专业观感与播放控制清晰度。
 - 旧版兼容选择器可以保留，但不能引入新的字号、间距、圆角或颜色体系。
 - 组件重构后要及时删除不再渲染的 CSS 类（死类）与未被引用的 token。
 - 修改样式不需要添加测试用例；完成后运行 `pnpm run build` 并在 Obsidian 中实际查看受影响的视图，较大范围修改还应运行 `pnpm run lint` 与 `pnpm run format:check`。

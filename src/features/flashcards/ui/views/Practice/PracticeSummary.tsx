@@ -23,10 +23,10 @@ interface PracticeSummaryProps {
 }
 
 function getAccuracyColor(accuracy: number): string {
-	if (accuracy >= 90) return "var(--color-green)";
-	if (accuracy >= 70) return "var(--color-blue)";
-	if (accuracy >= 50) return "var(--color-orange)";
-	return "var(--color-red)";
+	if (accuracy >= 90) return "var(--fc-lime)";
+	if (accuracy >= 70) return "var(--fc-blue)";
+	if (accuracy >= 50) return "var(--fc-orange)";
+	return "var(--fc-danger)";
 }
 
 export const PracticeSummary = React.memo(function PracticeSummary({

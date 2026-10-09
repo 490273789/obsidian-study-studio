@@ -195,7 +195,7 @@
 	border-radius: var(--fc-radius-pill);
 	background: color-mix(in srgb, var(--fc-rating-color) 16%, var(--background-primary));
 	color: var(--fc-rating-color);
-	font-size: 10px;
+	font-size: var(--fc-font-2xs);
 	font-family: var(--fc-font-data);
 	font-weight: var(--fc-weight-medium);
 	line-height: var(--fc-line-tight);

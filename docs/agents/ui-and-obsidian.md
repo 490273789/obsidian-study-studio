@@ -63,11 +63,11 @@ releases all observers and frames and supports setup/cleanup/setup replay.
 
 ## Styling
 
-- Edit SCSS under `src/core/styles/` (for globals) and beside components under `src/core/ui/primitives/` and `src/core/ui/views/`. `src/core/styles/index.scss` is the sole entry imported by `src/core/host/main.ts`; Vite generates root `styles.css`.
-- Preserve the cascade import order in `src/core/styles/index.scss`: base tokens & mixins, settings, primitives, views, motion, and responsive.
+- Styling follows a hybrid architecture: global SCSS under `src/core/styles/`, UI primitives under `src/core/ui/primitives/`, and feature views as CSS Modules under `src/features/**/ui/*.module.scss`. `src/core/styles/index.scss` is the sole global entry imported by `src/core/host/main.ts`; Vite generates root `styles.css`. Feature views import their `.module.scss` directly; never `@use` them in `index.scss`.
+- Preserve the cascade import order in `src/core/styles/index.scss`: base tokens & mixins, settings, layout, primitives, motion, and responsive.
 - Take the page shell, panel surface, and header/footer semantics from the layout module (`src/core/styles/layout.scss`, classes `fc-page*` / `fc-panel*`); add the classes next to the view's own and keep only view-specific rules in its stylesheet. Do not restate the page recipe or the panel recipe.
-- Reuse existing `--fc-*` tokens and Obsidian theme tokens. Avoid inline-style proliferation, new parallel token systems, or fixed light/dark palettes.
-- Keep touch targets, keyboard focus, reduced-motion behavior, responsive layouts, and light/dark contrast intact.
+- Reuse existing `--fc-*` tokens and Obsidian theme tokens. Use `--fc-font-2xs` (10px) only for keyboard shortcuts (kbd) and micro badges; avoid inline-style proliferation, new parallel token systems, or fixed light/dark palettes (except for dedicated immersive players like `VideoPlayer` where high-contrast dark consoles are required).
+- Keep touch targets, keyboard focus (`fc-focus-ring`), reduced-motion behavior, responsive layouts, and light/dark contrast intact.
 - For a visible regression, make the smallest effective repair before considering broader redesign.
 - Style-only changes need no new unit tests, but require `pnpm run build` and visual inspection in Obsidian when feasible.
 

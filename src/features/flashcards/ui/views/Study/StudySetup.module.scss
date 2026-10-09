@@ -101,7 +101,7 @@
 			background: color-mix(in srgb, var(--fc-magenta) 15%, transparent);
 			border: 1px solid color-mix(in srgb, var(--fc-magenta) 30%, transparent);
 			color: var(--fc-magenta);
-			font-size: 10px;
+			font-size: var(--fc-font-2xs);
 			font-weight: var(--fc-weight-semibold);
 			padding: 1px 6px;
 			border-radius: var(--fc-radius-pill);
