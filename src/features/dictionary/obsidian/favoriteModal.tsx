@@ -12,28 +12,22 @@ import styles from "../ui/Dictionary.module.scss";
 /** Native modal owns focus, dismissal, and the favorite form's React lifetime. */
 export class DictionaryFavoriteModal extends Modal {
 	private root: Root | null = null;
-	private unsubscribe: (() => void) | null = null;
+	private closing = false;
 
 	constructor(
 		app: App,
 		private readonly controller: DictionaryFavoriteController,
 		private readonly language: () => Language,
-		private readonly onClosed: () => void,
+		private readonly onClosing: () => void,
 	) {
 		super(app);
 	}
 
 	override onOpen(): void {
+		this.closing = false;
 		this.modalEl.addClass(styles.favoriteModal);
 		this.contentEl.addClass("flashcard-container");
 		this.root = createRoot(this.contentEl.createDiv({ cls: "flashcard-root" }));
-		let previousStatus = this.controller.getSnapshot().status;
-		this.unsubscribe = this.controller.subscribe(() => {
-			const status = this.controller.getSnapshot().status;
-			const saved = previousStatus === "saving" && status === "success";
-			previousStatus = status;
-			if (saved) this.close();
-		});
 		this.updateSettings();
 	}
 
@@ -53,12 +47,21 @@ export class DictionaryFavoriteModal extends Modal {
 		);
 	}
 
+	override close(): void {
+		this.reportClosing();
+		super.close();
+	}
+
 	override onClose(): void {
-		this.unsubscribe?.();
-		this.unsubscribe = null;
 		this.root?.unmount();
 		this.root = null;
 		this.contentEl.empty();
-		this.onClosed();
+		this.reportClosing();
+	}
+
+	private reportClosing(): void {
+		if (this.closing) return;
+		this.closing = true;
+		this.onClosing();
 	}
 }

@@ -31,6 +31,35 @@ Read this guide before changing anything under `src/features/dictionary/domain/*
 - UI copy comes from `src/features/dictionary/strings/dictionary.ts` (`dictionaryStrings(language)`, Chinese-first with English overrides). Add keys there, not as literals in components.
 - Dictionary styles are appended to `src/core/styles/index.scss` before the motion/responsive layers and use `flashcard-dictionary-*` classes plus `--fc-*` and Obsidian theme variables.
 
+## Favorite presentation
+
+`src/features/dictionary/obsidian/favoritePresentation.ts` owns the shared
+`DictionaryFavoritePresentation` module. `feature.tsx` registers its lifetime and
+connects the modal and sidebar adapters. Opening requests, sidebar close signals,
+and settings refreshes cross this module's interface; adapters own mounting,
+focus, and host operations. `DictionaryFavoriteController` remains the sole draft,
+AI generation, and save authority.
+
+- Modal and sidebar share one draft. Reopening the same word preserves edits;
+  opening another word loads that word's favorite. The last opening request wins,
+  including when sidebar activations finish out of order.
+- Opening mode is read for each request. Settings refresh updates an open modal's
+  language without moving the form. A sidebar must open successfully before the
+  module closes the existing modal; failure preserves that modal and draft.
+- Each sidebar registers a lease through the view's acquisition hook and releases
+  it during teardown. Host leaf membership may still include an already closing
+  view; the leases are the presentation authority. A modal reports dismissal when
+  close starts; native animation completion only cleans its React root.
+- Closing one surface preserves the draft while another remains. Closing the last
+  surface resets the draft and cancels AI generation. Accepted saves finish, and
+  their results and delayed native cleanup cannot affect a new draft.
+- Successful saves close the modal, including saves initiated in a shared
+  sidebar. Sidebars retain the result. Failed saves preserve the form for retry;
+  existing-favorite loads and AI generation success keep the modal open.
+- Test these sequences through the presentation interface with the real
+  controller and controllable host/file adapters. Keep modal mounting and feature
+  wiring tests separate from these shared behavior tests.
+
 ## Validation
 
 ```bash

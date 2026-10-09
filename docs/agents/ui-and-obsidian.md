@@ -28,6 +28,13 @@ use `FlashcardNavigation` with the interaction's cancellation signal; navigation
 releases the exact pending continuation. Migration completion leaves retry to the
 learner. Test these sequences through the interaction interface.
 
+## Dictionary favorites
+
+Modal and sidebar adapters render the shared `DictionaryFavoriteController`.
+Route presentation decisions through `DictionaryFavoritePresentation`; read
+[Favorite presentation](dictionary.md#favorite-presentation) before changing
+opening, closing, or save-completion behavior.
+
 ## Deck home
 
 `src/features/flashcards/domain/decks/deckHome.ts` is one shared plugin-lifetime module used by every open flashcard view.

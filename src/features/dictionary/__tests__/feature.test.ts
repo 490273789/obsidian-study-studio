@@ -63,7 +63,12 @@ vi.mock("../domain/dictionaryRuntime", () => ({
 			send: vi.fn().mockResolvedValue(undefined),
 			dispose: vi.fn(),
 		};
-		readonly favoriteController = { prefill: vi.fn(), resetSession: vi.fn() };
+		readonly favoriteController = {
+			prefill: vi.fn(),
+			resetSession: vi.fn(),
+			getSnapshot: () => ({ status: "idle" }),
+			subscribe: vi.fn(() => vi.fn()),
+		};
 		readonly dispose = vi.fn();
 		readonly applySettings = vi.fn();
 		constructor(readonly options?: { net: unknown }) {
@@ -137,13 +142,13 @@ describe("dictionary feature", () => {
 
 		favoriteModalSpies.instances[0]!.close();
 		expect(runtime.favoriteController.resetSession).toHaveBeenCalledOnce();
-		await view.props.onOpenFavorite("again");
+		await feature.selectionAdapter.openFavorite?.("again");
 		expect(favoriteModalSpies.instances).toHaveLength(2);
 		feature.stop();
 		expect(favoriteModalSpies.instances[1]!.close).toHaveBeenCalledOnce();
 	});
 
-	it("opens favorites in the right sidebar when configured and resets only after its last leaf closes", async () => {
+	it("connects favorite sidebar activation and close notifications", async () => {
 		const feature = createDictionaryFeature({
 			ai: {} as never,
 			net: {} as never,
@@ -172,6 +177,9 @@ describe("dictionary feature", () => {
 			}
 		).favoriteController;
 
+		const sidebar = viewSpies.definitions.get(VIEW_TYPE_DICTIONARY_FAVORITE)!;
+		const first = sidebar.acquire!({} as never);
+		const second = sidebar.acquire!({} as never);
 		await view.props.onOpenFavorite("sidebar word");
 		await view.props.onOpenFavorite("another word");
 		expect(fake.activateView.mock.calls).toEqual([
@@ -181,206 +189,13 @@ describe("dictionary feature", () => {
 		expect(controller.prefill.mock.calls).toEqual([["sidebar word"], ["another word"]]);
 		expect(favoriteModalSpies.instances).toHaveLength(0);
 
-		const sidebar = viewSpies.definitions.get(VIEW_TYPE_DICTIONARY_FAVORITE)!;
-		sidebar.onClose?.();
-		await Promise.resolve();
+		first.dispose();
 		expect(controller.resetSession).not.toHaveBeenCalled();
-		leaves.length = 0;
-		sidebar.onClose?.();
-		await Promise.resolve();
+		second.dispose();
+		// The workspace may still list a leaf while its old view is closing.
+		expect(leaves).toHaveLength(1);
 		expect(controller.resetSession).toHaveBeenCalledOnce();
 		feature.stop();
-	});
-
-	it("reads the current opening preference and keeps a sidebar draft when the modal closes", async () => {
-		const feature = createDictionaryFeature({
-			ai: {} as never,
-			net: {} as never,
-			plugin: {} as never,
-		});
-		const leaves: unknown[] = [];
-		const fake = createFakeWorkbenchHost("dictionary", enabledSettings, {
-			workspace: { getLeavesOfType: () => leaves },
-		});
-		fake.activateView.mockImplementation(async () => {
-			leaves.push({});
-		});
-		feature.render(fake.host);
-		const view = viewSpies.definitions.get("flashcard-dictionary-view")!.render({
-			language: "zh",
-			theme: "dark",
-		} as never) as React.ReactElement<DictionaryViewProps>;
-		const controller = (
-			runtimeSpies.instances[0] as {
-				favoriteController: {
-					prefill: ReturnType<typeof vi.fn>;
-					resetSession: ReturnType<typeof vi.fn>;
-				};
-			}
-		).favoriteController;
-
-		await view.props.onOpenFavorite("word");
-		await fake.host.settings.update({
-			dictionary: {
-				...fake.host.settings.read().dictionary,
-				favoriteOpenMode: "sidebar",
-			},
-		});
-		await view.props.onOpenFavorite("word");
-		expect(favoriteModalSpies.instances[0]!.close).toHaveBeenCalledOnce();
-		expect(controller.resetSession).not.toHaveBeenCalled();
-		await fake.host.settings.update({
-			dictionary: {
-				...fake.host.settings.read().dictionary,
-				favoriteOpenMode: "modal",
-			},
-		});
-		await view.props.onOpenFavorite("word");
-		expect(favoriteModalSpies.instances).toHaveLength(2);
-		favoriteModalSpies.instances[1]!.close();
-		expect(controller.resetSession).not.toHaveBeenCalled();
-		expect(controller.prefill.mock.calls).toEqual([["word"], ["word"], ["word"]]);
-		feature.stop();
-	});
-
-	it("reports sidebar activation failure and leaves the existing modal available", async () => {
-		const feature = createDictionaryFeature({
-			ai: {} as never,
-			net: {} as never,
-			plugin: {} as never,
-		});
-		const fake = createFakeWorkbenchHost("dictionary", enabledSettings);
-		feature.render(fake.host);
-		const view = viewSpies.definitions.get("flashcard-dictionary-view")!.render({
-			language: "zh",
-			theme: "dark",
-		} as never) as React.ReactElement<DictionaryViewProps>;
-		await view.props.onOpenFavorite("word");
-		await fake.host.settings.update({
-			dictionary: {
-				...fake.host.settings.read().dictionary,
-				favoriteOpenMode: "sidebar",
-			},
-		});
-		fake.activateView.mockRejectedValueOnce(new Error("unavailable"));
-		vi.spyOn(console, "error").mockImplementation(() => {});
-		await view.props.onOpenFavorite("another word");
-		expect(noticeSpy).toHaveBeenCalledWith(dictionaryStrings("zh").favoriteOpenFailed);
-		expect(favoriteModalSpies.instances[0]!.close).not.toHaveBeenCalled();
-		feature.stop();
-	});
-
-	it("keeps the latest favorite when sidebar activations complete out of order", async () => {
-		const feature = createDictionaryFeature({
-			ai: {} as never,
-			net: {} as never,
-			plugin: {} as never,
-		});
-		const fake = createFakeWorkbenchHost("dictionary", {
-			...enabledSettings,
-			dictionary: { ...enabledSettings.dictionary, favoriteOpenMode: "sidebar" },
-		});
-		const completions: (() => void)[] = [];
-		fake.activateView.mockImplementation(
-			() =>
-				new Promise<void>((resolve) => {
-					completions.push(resolve);
-				}),
-		);
-		feature.render(fake.host);
-		const view = viewSpies.definitions.get("flashcard-dictionary-view")!.render({
-			language: "zh",
-			theme: "dark",
-		} as never) as React.ReactElement<DictionaryViewProps>;
-		const first = view.props.onOpenFavorite("first");
-		const latest = view.props.onOpenFavorite("latest");
-		completions[1]!();
-		await latest;
-		completions[0]!();
-		await first;
-		const controller = (
-			runtimeSpies.instances[0] as {
-				favoriteController: { prefill: ReturnType<typeof vi.fn> };
-			}
-		).favoriteController;
-		expect(controller.prefill.mock.calls).toEqual([["latest"]]);
-		feature.stop();
-	});
-
-	it("keeps a newly opened modal when an older sidebar activation finishes", async () => {
-		const feature = createDictionaryFeature({
-			ai: {} as never,
-			net: {} as never,
-			plugin: {} as never,
-		});
-		const fake = createFakeWorkbenchHost("dictionary", {
-			...enabledSettings,
-			dictionary: { ...enabledSettings.dictionary, favoriteOpenMode: "sidebar" },
-		});
-		let finishActivation!: () => void;
-		fake.activateView.mockImplementation(
-			() =>
-				new Promise<void>((resolve) => {
-					finishActivation = resolve;
-				}),
-		);
-		feature.render(fake.host);
-		const view = viewSpies.definitions.get("flashcard-dictionary-view")!.render({
-			language: "zh",
-			theme: "dark",
-		} as never) as React.ReactElement<DictionaryViewProps>;
-		const pending = view.props.onOpenFavorite("sidebar word");
-		await fake.host.settings.update({
-			dictionary: {
-				...fake.host.settings.read().dictionary,
-				favoriteOpenMode: "modal",
-			},
-		});
-		await view.props.onOpenFavorite("modal word");
-		finishActivation();
-		await pending;
-		const controller = (
-			runtimeSpies.instances[0] as {
-				favoriteController: { prefill: ReturnType<typeof vi.fn> };
-			}
-		).favoriteController;
-		expect(controller.prefill.mock.calls).toEqual([["modal word"]]);
-		expect(favoriteModalSpies.instances[0]!.close).not.toHaveBeenCalled();
-		feature.stop();
-	});
-
-	it("does not prefill a disposed controller after pending sidebar activation completes", async () => {
-		const feature = createDictionaryFeature({
-			ai: {} as never,
-			net: {} as never,
-			plugin: {} as never,
-		});
-		const fake = createFakeWorkbenchHost("dictionary", {
-			...enabledSettings,
-			dictionary: { ...enabledSettings.dictionary, favoriteOpenMode: "sidebar" },
-		});
-		let finishActivation!: () => void;
-		fake.activateView.mockImplementation(
-			() =>
-				new Promise<void>((resolve) => {
-					finishActivation = resolve;
-				}),
-		);
-		feature.render(fake.host);
-		const view = viewSpies.definitions.get("flashcard-dictionary-view")!.render({
-			language: "zh",
-			theme: "dark",
-		} as never) as React.ReactElement<DictionaryViewProps>;
-		const pending = view.props.onOpenFavorite("word");
-		feature.stop();
-		finishActivation();
-		await pending;
-		const controller = (
-			runtimeSpies.instances[0] as {
-				favoriteController: { prefill: ReturnType<typeof vi.fn> };
-			}
-		).favoriteController;
-		expect(controller.prefill).not.toHaveBeenCalled();
 	});
 
 	it("keeps its selection adapter inert before the feature lifetime starts", async () => {
