@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { resolveLinkedDefinitions, type RecordValue } from "../linked-definitions";
 
 function record(keyText: string, definition: string): RecordValue {

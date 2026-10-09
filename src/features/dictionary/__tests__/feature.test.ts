@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { DEFAULT_SETTINGS } from "../../../core/host/settingsSlices";
 import { dictionaryStrings } from "../strings/dictionary";
 import { createDictionaryFeature, VIEW_TYPE_DICTIONARY_FAVORITE } from "../feature";

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { requestUrl } from "obsidian";
 import { createOutboundPort, DEFAULT_REQUEST_TIMEOUT_MS } from "../outboundPort";
 import { TransportError } from "../types";

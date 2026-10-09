@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { FloatingRect, VideoMediaPort, VideoPlayerStateStore } from "../../domain/types";
 import { VideoPlayerRuntime, emptyPlaybackState } from "../../domain/videoPlayerRuntime";
 import type { VideoPlayerPresentationStateStore } from "../../domain/localVideoPlayerState";

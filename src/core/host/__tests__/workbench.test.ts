@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { DEFAULT_SETTINGS, type FeatureSettingsOwner } from "../settingsSlices";
 import {
 	createWorkbench,

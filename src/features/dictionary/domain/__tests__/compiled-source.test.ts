@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { CompiledPackageReader } from "../compiled-package";
 import type { LocalDictionarySettings } from "../types";
 

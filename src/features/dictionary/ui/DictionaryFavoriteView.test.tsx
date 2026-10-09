@@ -1,5 +1,5 @@
 import React from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { DictionaryFavoriteController } from "../domain/favorite-controller";
 import type { DictionaryFavoriteViewState } from "../domain/types";
 import { DictionaryFavoriteView } from "./DictionaryFavoriteView";

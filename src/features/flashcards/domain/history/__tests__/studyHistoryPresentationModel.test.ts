@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { createTranslator } from "../../../strings/index";
 import type { StudyHistoryEntry } from "../../../../../core/shared/types";
 import {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { App } from "obsidian";
 import type { DictionaryFavoriteController } from "../../domain/favorite-controller";
 import type { DictionaryFavoriteViewState } from "../../domain/types";

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { TransportError } from "../../../../core/net/types";
 import { EUDIC_IMAGE_RESOURCE_KIND, EudicImageResourceLoader } from "../eudic-image";
 

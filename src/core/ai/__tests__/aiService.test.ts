@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { AiService } from "../aiService";
 import { type AiEngineConfig, type AiSettings } from "../types";
 import { normalizeAiSettings } from "../configuration";

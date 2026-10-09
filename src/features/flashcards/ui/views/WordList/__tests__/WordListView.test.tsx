@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createEmptyCard } from "ts-fsrs";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { Deck } from "../../../../../../core/shared/types";
 import { I18nProvider } from "../../../../../../core/ui/context/I18nContext";
 import { flashcardTranslator } from "../../../../strings";

@@ -1,5 +1,5 @@
 import { runInNewContext } from "node:vm";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { defineSandboxDocument, sandboxDocumentSource } from "../sandbox-document/document";
 import { createDictionarySandboxHost } from "../sandbox-document/host";
 import { prepareDictionarySandboxDocument } from "../sandbox-document/prepare";

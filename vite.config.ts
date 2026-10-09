@@ -2,7 +2,7 @@ import { builtinModules } from "node:module";
 import { copyFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vite";
+import { defineConfig } from "vite-plus";
 
 const projectRoot = fileURLToPath(new URL(".", import.meta.url));
 const outDir = resolve(projectRoot, "dist");
@@ -29,6 +29,7 @@ function isExternal(id: string): boolean {
 function copyBundleToPluginRoot() {
 	return {
 		name: "copy-bundle-to-plugin-root",
+		apply: "build" as const,
 		writeBundle: async () => {
 			await Promise.all([
 				copyFile(resolve(outDir, bundledFileName), resolve(projectRoot, bundledFileName)),
@@ -50,6 +51,7 @@ function copyBundleToPluginRoot() {
 function bundleDeferredNodeImports() {
 	return {
 		name: "bundle-deferred-node-imports",
+		apply: "build" as const,
 		enforce: "post" as const,
 		renderChunk(code: string) {
 			const bundled = code.replace(
@@ -66,6 +68,64 @@ export default defineConfig(({ mode }) => {
 	const isProduction = mode === "production";
 
 	return {
+		lint: {
+			env: {
+				browser: true,
+				es2020: true,
+			},
+			ignorePatterns: [
+				"node_modules",
+				"dist",
+				"main.js",
+				"styles.css",
+				"vite.config.ts",
+				"scripts/**",
+				"versions.json",
+				"src/features/dictionary/domain/engine",
+			],
+			options: {
+				typeAware: true,
+				typeCheck: true,
+			},
+			plugins: [
+				"typescript",
+				"react",
+				"react-perf",
+				"jsx-a11y",
+				"import",
+				"promise",
+				"unicorn",
+				"oxc",
+			],
+			settings: {
+				react: {
+					version: "19.2.7",
+				},
+			},
+			jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
+			rules: { "vite-plus/prefer-vite-plus-imports": "error" },
+		},
+		test: {
+			environment: "node",
+			include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+		},
+		fmt: {
+			printWidth: 100,
+			useTabs: true,
+			tabWidth: 4,
+			semi: true,
+			singleQuote: false,
+			trailingComma: "all",
+			ignorePatterns: [
+				"node_modules",
+				"dist",
+				"main.js",
+				"styles.css",
+				"*.map",
+				"pnpm-lock.yaml",
+				"src/features/dictionary/domain/engine",
+			],
+		},
 		css: {
 			modules: {
 				localsConvention: "camelCase",
@@ -105,11 +165,16 @@ export default defineConfig(({ mode }) => {
 			sourcemap: isProduction ? false : "inline",
 			target: "es2018",
 		},
-		define: {
-			"process.env.NODE_ENV": JSON.stringify(isProduction ? "production" : "development"),
-		},
-		esbuild: {
-			jsx: "automatic",
+		define:
+			mode === "test"
+				? {}
+				: {
+						"process.env.NODE_ENV": JSON.stringify(
+							isProduction ? "production" : "development",
+						),
+					},
+		oxc: {
+			jsx: { runtime: "automatic" },
 		},
 		plugins: [bundleDeferredNodeImports(), copyBundleToPluginRoot()],
 	};

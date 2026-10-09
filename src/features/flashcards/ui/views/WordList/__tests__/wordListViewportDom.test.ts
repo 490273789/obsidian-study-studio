@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { browserWordListViewportDom } from "../wordListViewportDom";
 
 describe("word list browser measurement adapter", () => {

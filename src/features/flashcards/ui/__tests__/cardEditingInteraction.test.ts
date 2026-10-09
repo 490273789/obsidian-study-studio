@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { createEmptyCard } from "ts-fsrs";
 import type { ViewState } from "../../../../core/shared/types";
 import type {

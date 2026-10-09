@@ -1,6 +1,6 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { I18nProvider } from "../../../../core/ui/context/I18nContext";
 import type { VideoPlayerSnapshot } from "../../domain/types";
 import type { VideoPlayerRuntime } from "../../domain/videoPlayerRuntime";

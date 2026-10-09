@@ -1,5 +1,5 @@
 import { Notice } from "obsidian";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { AiEngineConfig, AiService, AiSnapshot } from "../../ai";
 import type { SettingsPresentation } from "../../settings/presentation";
 import { AiSettingsEditor } from "../aiSettingsEditor";

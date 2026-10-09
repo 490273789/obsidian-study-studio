@@ -16,11 +16,9 @@ jobs:
         steps:
             - uses: actions/checkout@v6
             - uses: pnpm/action-setup@v6
-              with:
-                  version: 11.25.0
             - uses: actions/setup-node@v6
               with:
-                  node-version: 24
+                  node-version-file: .node-version
                   cache: pnpm
             - run: pnpm install --frozen-lockfile
             - name: Verify tag and manifest versions

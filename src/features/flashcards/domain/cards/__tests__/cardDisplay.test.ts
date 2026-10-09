@@ -1,5 +1,5 @@
 import { createEmptyCard } from "ts-fsrs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { getDisplayCardContent } from "../cardDisplay";
 import type { FlashCard } from "../../../../../core/shared/types";
 

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { RecordingSettingsAdapter } from "../../../settings/testing/recordingSettingsAdapter";
 import { buildSelectionHelperSettingsViewModel } from "../viewModel";
 

@@ -1,5 +1,5 @@
 import React from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { SandboxDocumentFrame, type SandboxDocumentFrameProps } from "./SandboxDocumentFrame";
 
 const lifecycle = vi.hoisted(() => ({

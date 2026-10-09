@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { FlashcardSettingTab } from "../settingsTab";
 import { DEFAULT_SETTINGS } from "../settingsSlices";
 import { defineSettings } from "../../settings/presentation";

@@ -1,5 +1,5 @@
 import { createEmptyCard, State } from "ts-fsrs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import {
 	createCardIdentityContinuity,
 	type CardIdentityContinuityState,

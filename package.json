@@ -7,12 +7,12 @@
 	"type": "module",
 	"main": "main.js",
 	"scripts": {
-		"dev": "vite build --watch --mode development",
-		"test": "vitest run && node scripts/verify-commit-msg.test.mjs",
-		"test:watch": "vitest",
+		"dev": "vp build --watch --mode development",
+		"test": "vp test run && node scripts/verify-commit-msg.test.mjs",
+		"test:watch": "vp test watch",
 		"typecheck": "tsc --noEmit --skipLibCheck",
 		"dictionary:engine": "cargo build --release --target wasm32-unknown-unknown -p dictionary-engine && wasm-bindgen target/wasm32-unknown-unknown/release/dictionary_engine.wasm --target web --out-dir src/features/dictionary/domain/engine --out-name dictionary_engine",
-		"build": "pnpm run format && pnpm run typecheck && vite build",
+		"build": "pnpm run format && pnpm run typecheck && vp build",
 		"artifacts:check": "node scripts/check-artifact-size.mjs",
 		"architecture:check": "node scripts/check-module-boundaries.mjs",
 		"deploy": "pnpm run build && node scripts/deploy-icloud.mjs",
@@ -22,11 +22,12 @@
 		"release:patch": "pnpm release patch",
 		"release:minor": "pnpm release minor",
 		"release:major": "pnpm release major",
-		"lint": "pnpm run typecheck && oxlint src",
-		"lint:fix": "oxlint src --fix",
-		"format": "oxfmt .",
-		"format:check": "oxfmt . --check",
-		"check:all": "pnpm run format:check && pnpm run lint && pnpm run architecture:check && pnpm run test",
+		"lint": "pnpm run typecheck && vp lint src",
+		"lint:fix": "vp lint src --fix",
+		"format": "vp fmt .",
+		"format:check": "vp fmt . --check",
+		"check": "vp check",
+		"check:all": "pnpm run check && pnpm run typecheck && pnpm run architecture:check && pnpm run test",
 		"setup-hooks": "node scripts/setup-hooks.mjs",
 		"prepare": "node scripts/setup-hooks.mjs"
 	},
@@ -44,17 +45,14 @@
 		"@types/node": "^26.6.4",
 		"@types/react": "^19.3.0",
 		"@types/react-dom": "^19.3.0",
-		"oxfmt": "^0.70.0",
-		"oxlint": "^1.87.0",
-		"oxlint-tsgolint": "^7.0.2003",
 		"sass": "^1.105.1",
 		"tslib": "2.8.1",
 		"typescript": "^7.0.2",
-		"vite": "^8.3.2",
-		"vitest": "^5.0.3"
+		"vite": "catalog:",
+		"vite-plus": "catalog:"
 	},
 	"engines": {
-		"node": ">=24.0.0"
+		"node": ">=26.11.1"
 	},
-	"packageManager": "pnpm@11.25.0"
+	"packageManager": "pnpm@12.10.1"
 }

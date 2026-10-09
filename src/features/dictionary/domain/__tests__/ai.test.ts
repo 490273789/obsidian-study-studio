@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { AiError, type AiErrorCode, type AiService } from "../../../../core/ai";
 import { TransportError, type TransportErrorCode } from "../../../../core/net/types";
 import {

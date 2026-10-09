@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { DEFAULT_SETTINGS } from "../../host/settingsSlices";
 import { createFakeWorkbenchHost } from "../../host/__tests__/fakeWorkbenchHost";
 import type { SelectionDictionaryAdapter, SelectionTranslationAdapter } from "../domain/types";

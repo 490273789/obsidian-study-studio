@@ -1,5 +1,5 @@
 import { createEmptyCard, Rating, State } from "ts-fsrs";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { FSRSScheduler, getRatingButtons, toFSRSRating } from "../scheduler";
 import { DEFAULT_SETTINGS } from "../../../../../core/host/settingsSlices";
 

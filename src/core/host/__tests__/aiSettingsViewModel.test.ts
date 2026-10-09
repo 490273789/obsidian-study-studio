@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { SettingsPresentation } from "../../settings/presentation";
 import {
 	buildAiSettingsViewModel,

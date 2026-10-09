@@ -1,5 +1,5 @@
 import { createEmptyCard } from "ts-fsrs";
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vite-plus/test";
 import type { App } from "obsidian";
 import type { Deck } from "../../../../../core/shared/types";
 import type { DesktopPdfRuntime, ElectronBrowserWindow } from "../deckPdfDesktopRuntime";

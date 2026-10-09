@@ -4,7 +4,7 @@
 
 `StudyStudio` — an Obsidian flashcard plugin for Chinese-first learning.
 
-- Stack: TypeScript, React, Obsidian API, Vite, Vitest, `ts-fsrs`.
+- Stack: TypeScript, React, Obsidian API, Vite Plus (Vite, Vitest, Oxlint, Oxfmt), `ts-fsrs`.
 - Composition root: `src/core/host/main.ts`; React adapter: `src/features/flashcards/ui/FlashcardApp.tsx`.
 - Hand-written source lives under `src/`. Root `main.js` and `styles.css` are generated from it — edit the source, never the artifact.
 - Markdown notes are the authority for card content. Plugin data holds derived decks, learning state, settings, history, and continuity metadata.

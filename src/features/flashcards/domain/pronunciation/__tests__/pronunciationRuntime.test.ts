@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { TransportError } from "../../../../../core/net/types";
 import { type PronunciationSettings } from "../../../../../core/shared/types";
 import { DEFAULT_SETTINGS } from "../../../../../core/host/settingsSlices";

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { createEmptyCard, State } from "ts-fsrs";
 vi.mock("obsidian", () => ({ normalizePath: (path: string) => path }));
 import { DEFAULT_SETTINGS } from "../../../../../core/host/settingsSlices";

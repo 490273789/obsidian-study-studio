@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { CompiledDictionaryResources, type CompiledResource } from "../compiled-resources";
 import { EudicImageResourceLoader, EUDIC_IMAGE_RESOURCE_KIND } from "../eudic-image";
 import { TransportError } from "../../../../core/net/types";

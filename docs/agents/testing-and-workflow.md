@@ -6,6 +6,8 @@ Read this guide when changing code, choosing validation, touching generated/rele
 
 Run commands from the repository root with pnpm — the only package manager this project uses, pinned through `packageManager` in `package.json`.
 
+Use the Node.js version pinned in `.node-version`; CI and release builds read the same file. The local Vite Plus dependency supplies build, test, lint, and format tools, configured together in `vite.config.ts`. Keep the managed Vite alias/catalog entries in `pnpm-workspace.yaml` when updating Vite Plus.
+
 ```bash
 pnpm install
 pnpm run dev
@@ -17,12 +19,14 @@ pnpm run lint
 pnpm run lint:fix
 pnpm run format:check
 pnpm run format
+pnpm run check
 pnpm run check:all
 pnpm run setup-hooks
 ```
 
 - `pnpm run build` runs TypeScript checking and the production Vite bundle. It is the minimum validation after code changes.
-- `pnpm run check:all` runs format check, lint/typecheck, and the full Vitest suite.
+- `pnpm run check` runs Vite Plus format, lint, and type checks without fixing files. `pnpm run check:all` adds independent `tsc` checking, module-boundary checks, the full Vitest suite, and commit-message tests.
+- `pnpm run dev` runs `vp build --watch --mode development` for the Obsidian plugin. Use the pnpm scripts for composed workflows: bare `vp dev` starts a web server, and bare `vp build` or `vp test` omits the extra steps in the corresponding package script.
 - `pnpm run deploy` builds and copies artifacts to the maintainer's configured iCloud vault. It is machine-specific; never run it unless the user explicitly asks to deploy.
 
 ## Editing and generated files

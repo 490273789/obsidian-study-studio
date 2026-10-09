@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { Notice } from "obsidian";
 import type { AiService, AiSnapshot } from "../../../../core/ai";
 import type { SettingsPresentation } from "../../../../core/settings/presentation";

@@ -34,3 +34,4 @@ data.backup-v*.json
 
 docs/adr/
 CONTEXT.md
+.vitest/

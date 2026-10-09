@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { WorkbenchStore, type StorageBackend } from "../workbenchStore";
 import { DEFAULT_SETTINGS } from "../../host/settingsSlices";
 

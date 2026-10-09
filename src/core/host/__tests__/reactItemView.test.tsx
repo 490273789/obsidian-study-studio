@@ -1,5 +1,5 @@
 import React from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { DEFAULT_SETTINGS } from "../settingsSlices";
 import type { FlashcardSettings } from "../../shared/types";
 import { ReactViewErrorBoundary, createReactItemView } from "../reactItemView";

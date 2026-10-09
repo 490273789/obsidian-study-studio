@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { DictionaryFavoriteController } from "../favorite-controller";
 import { normalizeDictionarySettings } from "../configuration";
 import type { DictionaryFavoriteFile, StoredDictionaryFavorite } from "../favorite-file";

@@ -86,6 +86,8 @@ n. 苹果
 
 ## 🔧 开发
 
+开发工具链使用 Vite Plus。Node.js 的精确版本见 `.node-version`，pnpm 的精确版本见 `package.json` 的 `packageManager`；本地开发与 CI 使用相同版本。
+
 ```bash
 # 安装依赖
 pnpm install
@@ -95,7 +97,12 @@ pnpm run dev
 
 # 构建生产版本
 pnpm run build
+
+# 格式、Lint、类型检查及完整测试
+pnpm run check:all
 ```
+
+构建、测试、Lint 和格式化配置统一位于 `vite.config.ts`。`pnpm run dev` 监听构建 Obsidian 插件，`pnpm run build` 输出根目录的 `main.js` 和 `styles.css`。直接执行 `vp dev` 会启动 Vite 网页开发服务器；插件开发请使用上述 pnpm 脚本。
 
 ## 📄 许可证
 

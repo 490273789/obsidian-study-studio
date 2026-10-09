@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { DEFAULT_DICTIONARY_SETTINGS } from "../domain/configuration";
 import type { DictionaryQuerySession } from "../domain/querySession";
 import type { DictionaryViewState } from "../domain/types";

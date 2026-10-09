@@ -1,5 +1,5 @@
 import { createEmptyCard, State } from "ts-fsrs";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { App } from "obsidian";
 import { TFile } from "obsidian";
 import { createObsidianContinuitySourceStore } from "../continuityAdapters";

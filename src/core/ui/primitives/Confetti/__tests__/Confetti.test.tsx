@@ -1,5 +1,5 @@
 import React from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { renderToString } from "react-dom/server";
 import { Confetti } from "../Confetti";
 

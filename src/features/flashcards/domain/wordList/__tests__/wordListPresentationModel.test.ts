@@ -1,5 +1,5 @@
 import { createEmptyCard } from "ts-fsrs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import type { FlashCard } from "../../../../../core/shared/types";
 import { buildWordListItems } from "../wordListPresentationModel";
 

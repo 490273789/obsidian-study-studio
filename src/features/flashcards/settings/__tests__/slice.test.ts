@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { DEFAULT_PRACTICE_MESSAGES, getDefaultPracticeMessages } from "../../strings/index";
 import { DEFAULT_FLASHCARD_STUDY_SETTINGS, flashcardSettingsSlice } from "../slice";
 

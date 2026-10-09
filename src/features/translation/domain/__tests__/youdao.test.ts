@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { TransportError } from "../../../../core/net/types";
 import { translateYoudao, youdaoV3SignInput } from "../youdao";
 
