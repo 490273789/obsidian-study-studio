@@ -73,6 +73,7 @@
 		grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
 		align-items: start;
 		gap: var(--fc-space-5);
+		padding: var(--fc-space-4) 0;
 
 		:global(.flashcard-setup-control-copy) {
 			padding-top: var(--fc-space-2);
@@ -80,20 +81,25 @@
 
 		:global(.flashcard-setup-control-body) {
 			width: 100%;
+			display: flex;
+			flex-direction: column;
+			align-items: flex-start;
+			gap: var(--fc-space-3);
 		}
 	}
 }
 
 .controlDetail {
+	width: 100%;
 	display: flex;
 	flex-direction: column;
 	gap: var(--fc-space-3);
 	padding: var(--fc-space-3);
 	margin-bottom: 0;
 	border-radius: var(--fc-radius-md);
-	background: color-mix(in srgb, var(--background-secondary) 75%, var(--background-primary) 25%);
-	border: 1px solid var(--fc-line-soft);
-	box-shadow: var(--fc-shadow-inset);
+	background: color-mix(in srgb, var(--fc-cyan) 4%, var(--background-secondary));
+	border: 1px solid color-mix(in srgb, var(--fc-cyan) 14%, var(--fc-line-soft));
+	box-shadow: inset 0 1px 2px rgba(var(--fc-black-rgb, 0, 0, 0), 0.04);
 }
 
 .quickButtons {
@@ -102,6 +108,8 @@
 	gap: var(--fc-space-2);
 }
 
+:global(.flashcard-root) .setupPanel button.chip,
+:global(.flashcard-root) button.chip,
 .chip {
 	min-height: 28px;
 	padding: 2px var(--fc-space-3);
@@ -111,26 +119,37 @@
 	font-weight: var(--fc-weight-medium);
 	justify-content: center;
 	color: var(--fc-muted);
-	background: color-mix(in srgb, var(--fc-surface-card) 90%, var(--text-normal) 10%);
-	border: 1px solid var(--fc-line-glow);
+	background: color-mix(in srgb, var(--fc-surface-card) 85%, transparent);
+	background-color: color-mix(in srgb, var(--fc-surface-card) 85%, transparent);
+	border: 1px solid color-mix(in srgb, var(--fc-line-soft) 80%, transparent);
 	box-shadow: var(--fc-shadow-sm);
 	transition: all 0.18s ease;
 
 	&:hover:not(:disabled) {
-		color: var(--fc-text);
-		background: color-mix(in srgb, var(--fc-surface-card) 80%, var(--interactive-accent) 20%);
-		border-color: color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+		color: var(--fc-cyan);
+		background: color-mix(in srgb, var(--fc-cyan) 8%, var(--fc-surface-card));
+		background-color: color-mix(in srgb, var(--fc-cyan) 8%, var(--fc-surface-card));
+		border-color: color-mix(in srgb, var(--fc-cyan) 30%, transparent);
 		transform: translateY(-1px);
 	}
 
-	&.active {
-		color: var(--fc-text);
-		background: color-mix(in srgb, var(--fc-surface-card) 85%, var(--interactive-accent) 15%);
-		border-color: color-mix(in srgb, var(--interactive-accent) 55%, transparent);
+	&.active,
+	&[aria-pressed="true"] {
+		color: var(--fc-cyan);
+		background: color-mix(in srgb, var(--fc-surface-card) 84%, var(--fc-cyan) 16%);
+		background-color: color-mix(in srgb, var(--fc-surface-card) 84%, var(--fc-cyan) 16%);
+		border-color: color-mix(in srgb, var(--fc-cyan) 48%, transparent);
 		box-shadow:
-			0 1px 4px rgba(0, 0, 0, 0.18),
-			0 0 8px color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+			0 1px 4px rgba(0, 0, 0, 0.14),
+			0 0 8px color-mix(in srgb, var(--fc-cyan) 20%, transparent);
 		font-weight: var(--fc-weight-semibold);
+
+		&:hover:not(:disabled) {
+			color: var(--fc-cyan);
+			background: color-mix(in srgb, var(--fc-surface-card) 80%, var(--fc-cyan) 20%);
+			background-color: color-mix(in srgb, var(--fc-surface-card) 80%, var(--fc-cyan) 20%);
+			border-color: color-mix(in srgb, var(--fc-cyan) 58%, transparent);
+		}
 	}
 }
 
