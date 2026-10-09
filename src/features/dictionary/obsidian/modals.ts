@@ -22,6 +22,7 @@ export class DictionaryLookupModal extends Modal {
 
 	override onOpen(): void {
 		// Use Obsidian's built-in prompt classes to mimic the command palette style
+		this.containerEl.addClass("study-studio-dictionary-prompt-container");
 		this.modalEl.addClass("prompt");
 		this.modalEl.addClass("study-studio-dictionary-prompt");
 
@@ -86,13 +87,18 @@ export class DictionaryLookupModal extends Modal {
 		escInstruction.createSpan({ cls: "prompt-instruction-command", text: "esc" });
 		escInstruction.createSpan({ text: this.strings.cancel });
 
-		requestAnimationFrame(() => {
+		const raf =
+			typeof requestAnimationFrame === "function"
+				? requestAnimationFrame
+				: (fn: () => void) => setTimeout(fn, 0);
+		raf(() => {
 			this.input?.focus();
 			this.input?.select();
 		});
 	}
 
 	override onClose(): void {
+		this.containerEl.removeClass("study-studio-dictionary-prompt-container");
 		if (this.contentEl) this.contentEl.empty();
 		this.input = null;
 	}

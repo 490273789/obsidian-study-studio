@@ -104,9 +104,16 @@
 
 	.titleRow {
 		display: flex;
-		align-items: baseline;
+		align-items: center;
 		justify-content: space-between;
 		gap: 8px;
+	}
+
+	.headerActions {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		flex-shrink: 0;
 	}
 
 	.word {
@@ -229,6 +236,7 @@
 		padding: 4px;
 	}
 
+	.favoriteButton,
 	.closeButton,
 	.openButton {
 		display: inline-flex;
@@ -243,10 +251,35 @@
 		border-radius: 6px;
 		cursor: pointer;
 		font-size: 12px;
+		transition:
+			background-color 0.12s ease,
+			color 0.12s ease,
+			border-color 0.12s ease;
+
+		&:hover {
+			background: var(--background-modifier-hover);
+			color: var(--text-accent);
+			border-color: var(--interactive-accent);
+		}
 
 		&:focus-visible {
 			outline: 2px solid var(--interactive-accent);
 			outline-offset: 1px;
+		}
+	}
+
+	.favoriteButton {
+		flex-shrink: 0;
+		color: var(--text-muted);
+
+		svg {
+			width: 14px;
+			height: 14px;
+			flex-shrink: 0;
+		}
+
+		&:hover {
+			color: var(--text-accent);
 		}
 	}
 
@@ -376,6 +409,7 @@
 @media (pointer: coarse) {
 	.card {
 		.tab,
+		.favoriteButton,
 		.closeButton,
 		.openButton,
 		.aiGenerateBtn {

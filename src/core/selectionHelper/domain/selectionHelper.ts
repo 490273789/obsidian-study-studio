@@ -139,11 +139,23 @@ export class SelectionHelper {
 		await this.options.translation.openPrefilled(text);
 	}
 
+	get canFavorite(): boolean {
+		return typeof this.options.dictionary.openFavorite === "function";
+	}
+
 	async openDictionaryInMainTab(): Promise<void> {
 		const query = this.lookupSession?.getSnapshot().query ?? this.snapshot.target?.text;
 		if (!query) return;
 		this.dismiss();
 		await this.options.dictionary.openInMainTab(query);
+	}
+
+	async openFavorite(word?: string): Promise<void> {
+		const targetWord =
+			word ?? this.lookupSession?.getSnapshot().query ?? this.snapshot.target?.text;
+		if (!targetWord || !this.options.dictionary.openFavorite) return;
+		this.dismiss();
+		await this.options.dictionary.openFavorite(targetWord);
 	}
 
 	refresh(): void {

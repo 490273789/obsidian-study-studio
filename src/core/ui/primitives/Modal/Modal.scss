@@ -124,6 +124,13 @@
 // Dictionary Prompt Overrides
 // =============================================================================
 
+.modal-container:has(.study-studio-dictionary-prompt),
+.modal-container.study-studio-dictionary-prompt-container {
+	display: flex !important;
+	align-items: flex-start !important;
+	justify-content: center !important;
+}
+
 .study-studio-dictionary-prompt.prompt,
 .modal.prompt.study-studio-dictionary-prompt {
 	background-color: var(--background-primary) !important;
@@ -143,6 +150,10 @@
 	min-height: auto !important;
 	max-height: calc(100dvh - 32px) !important;
 	overflow-y: auto !important;
+	position: relative !important;
+	top: 0 !important;
+	align-self: flex-start !important;
+	margin: clamp(60px, 14vh, 140px) auto auto auto !important;
 
 	.study-studio-prompt-header {
 		display: flex !important;

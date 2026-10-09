@@ -92,6 +92,7 @@ export interface SelectionDictionaryAdapter {
 	sources(): readonly SelectionDictionarySource[];
 	startLookup(query: string, sourceIds: readonly string[]): SelectionLookupSession | null;
 	openInMainTab(query: string): Promise<void>;
+	openFavorite?(word: string): Promise<void>;
 }
 
 export interface SelectionTranslationAdapter {

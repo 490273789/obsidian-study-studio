@@ -18,6 +18,7 @@ export interface DictionarySelectionRuntime {
 export interface DictionarySelectionAdapterOptions {
 	runtime(): DictionarySelectionRuntime | null;
 	openInMainTab(query: string): Promise<void>;
+	openFavorite?(word: string): Promise<void>;
 }
 
 /** Adapts the 词典 feature to the narrow 选区助手 seam. */
@@ -42,6 +43,7 @@ export function createDictionarySelectionAdapter(
 		},
 
 		openInMainTab: (query) => options.openInMainTab(query),
+		openFavorite: options.openFavorite ? (word) => options.openFavorite!(word) : undefined,
 	};
 }
 

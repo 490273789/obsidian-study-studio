@@ -111,6 +111,9 @@ export const SelectionPopupHost: React.FC<SelectionPopupHostProps> = ({
 					onRetry={(sourceId) => void helper.retry(sourceId)}
 					onGenerateAi={() => void helper.generateAi()}
 					onOpenInMainTab={() => void helper.openDictionaryInMainTab()}
+					onFavorite={
+						helper.canFavorite ? (word) => void helper.openFavorite(word) : undefined
+					}
 					onClose={() => helper.dismiss()}
 				/>
 			) : null}

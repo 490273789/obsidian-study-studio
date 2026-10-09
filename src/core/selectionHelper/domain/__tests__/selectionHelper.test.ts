@@ -137,6 +137,25 @@ describe("SelectionHelper", () => {
 		notify();
 		expect(helper.getSnapshot()).toMatchObject({ visible: false, lookup: null });
 	});
+	it("opens favorite form for query, dismisses popup, and reflects canFavorite capability", async () => {
+		const openFavorite = vi.fn().mockResolvedValue(undefined);
+		const { helper } = setup({ openFavorite });
+
+		expect(helper.canFavorite).toBe(true);
+
+		helper.handleSelection(candidate("commercial"));
+		helper.beginLookup();
+
+		await helper.openFavorite("commercial");
+
+		expect(openFavorite).toHaveBeenCalledWith("commercial");
+		expect(helper.getSnapshot().visible).toBe(false);
+	});
+
+	it("reflects canFavorite as false when openFavorite is not implemented", () => {
+		const { helper } = setup({ openFavorite: undefined });
+		expect(helper.canFavorite).toBe(false);
+	});
 });
 
 function setup(
@@ -144,6 +163,7 @@ function setup(
 		settings?: SelectionHelperSettings;
 		startLookup?: SelectionDictionaryAdapter["startLookup"];
 		openPrefilled?: SelectionTranslationAdapter["openPrefilled"];
+		openFavorite?: SelectionDictionaryAdapter["openFavorite"];
 	} = {},
 ) {
 	const settings =
@@ -160,12 +180,20 @@ function setup(
 		],
 		startLookup: overrides.startLookup ?? (() => fakeSession().session),
 		openInMainTab: vi.fn().mockResolvedValue(undefined),
+		openFavorite:
+			"openFavorite" in overrides
+				? overrides.openFavorite
+				: vi.fn().mockResolvedValue(undefined),
 	};
 	const translation: SelectionTranslationAdapter = {
 		available: () => true,
 		openPrefilled: overrides.openPrefilled ?? vi.fn().mockResolvedValue(undefined),
 	};
-	return { helper: new SelectionHelper({ settings: () => settings, dictionary, translation }) };
+	return {
+		helper: new SelectionHelper({ settings: () => settings, dictionary, translation }),
+		dictionary,
+		translation,
+	};
 }
 
 function candidate(

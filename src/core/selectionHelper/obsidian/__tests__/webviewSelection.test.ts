@@ -332,4 +332,76 @@ describe("WebviewSelectionAdapter", () => {
 		expect(env.executeJavaScript).toHaveBeenCalledOnce();
 		env.adapter.stop();
 	});
+
+	it("reads selection when webview is focused even if document.hasFocus is false in Electron", async () => {
+		const docHandlers = new Map<string, (e: any) => void>();
+		const env = setup();
+		(env.document as any).addEventListener = (type: string, fn: any) =>
+			docHandlers.set(type, fn);
+		(env.document as any).removeEventListener = vi.fn();
+		env.adapter.start();
+		await flush();
+
+		// Simulate user clicking on the webview element
+		docHandlers.get("mousedown")?.({ target: env.element });
+		env.document.hasFocus.mockReturnValue(false);
+		env.executeJavaScript.mockResolvedValue(event);
+
+		await vi.advanceTimersByTimeAsync(150);
+		expect(env.onSelection).toHaveBeenCalledWith(
+			expect.objectContaining({
+				text: "hello",
+				x: 90,
+				y: 180,
+			}),
+		);
+		env.adapter.stop();
+	});
+
+	it("guest collector preserves selection and updates coordinates on scroll within viewport", async () => {
+		const env = setup();
+		env.adapter.start();
+		await flush();
+		const handlers = new Map<string, (e: any) => void>();
+		let rangeRect = { left: 20, bottom: 40, width: 100, height: 20 };
+		const range = {
+			getBoundingClientRect: () => rangeRect,
+		};
+		const selection = {
+			toString: () => "hello",
+			rangeCount: 1,
+			getRangeAt: () => range,
+			anchorNode: { nodeType: 1, parentElement: null, closest: () => null },
+		};
+		const guest = {
+			window: {
+				getSelection: () => selection,
+			} as Record<string, any>,
+			innerWidth: 800,
+			innerHeight: 600,
+			document: {
+				activeElement: null,
+				addEventListener: (type: string, listener: any) => handlers.set(type, listener),
+				removeEventListener: vi.fn(),
+			},
+		};
+		runInNewContext(env.executeJavaScript.mock.calls[0]![0], guest);
+		handlers.get("mouseup")?.({ clientX: 20, clientY: 40 });
+		const collector = Object.values(guest.window).find(
+			(val) => val && typeof val === "object" && typeof val.read === "function",
+		)!;
+		expect(collector.read()).toMatchObject({ text: "hello", x: 20, y: 40 });
+
+		// Scroll slightly down
+		rangeRect = { left: 20, bottom: 60, width: 100, height: 20 };
+		handlers.get("scroll")?.({});
+		expect(collector.read()).toMatchObject({ text: "hello", x: 20, y: 60 });
+
+		// Scroll completely out of view
+		rangeRect = { left: 20, bottom: -10, width: 100, height: 20 };
+		handlers.get("scroll")?.({});
+		expect(collector.read()).toMatchObject({ text: "" });
+
+		env.adapter.stop();
+	});
 });

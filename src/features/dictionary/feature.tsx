@@ -148,6 +148,10 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 			if (!active) return;
 			await openQuery(active.host, active.runtime, query, true);
 		},
+		openFavorite: async (word) => {
+			if (!active) return;
+			await openFavorite(active.host, active.runtime, word);
+		},
 	});
 	/**
 	 * The 词典 feature keeps both views registered while disabled: the previous

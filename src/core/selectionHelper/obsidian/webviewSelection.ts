@@ -26,6 +26,7 @@ interface Source {
 	ready: boolean;
 	failed: boolean;
 	busy: boolean;
+	focused: boolean;
 	cleanup: () => void;
 }
 
@@ -54,30 +55,53 @@ const installCollector = `(() => {
 			ctrlOrMetaKey: !!(event?.ctrlKey || event?.metaKey) };
 	};
 	const clear = () => record('', 0, 0);
-	const mouseup = (event) => {
+	const capture = (event) => {
 		const active = document.activeElement;
-		let text = '', x = event.clientX, y = event.clientY;
+		let text = '', x = event?.clientX ?? 0, y = event?.clientY ?? 0;
 		if (active?.matches('input,textarea')) {
 			if (active.type === 'password') { clear(); return; }
 			if (typeof active.selectionStart === 'number' && typeof active.selectionEnd === 'number') {
 				text = active.value.slice(active.selectionStart, active.selectionEnd);
-				const rect = active.getBoundingClientRect(); x = rect.left; y = rect.bottom;
+				const rect = active.getBoundingClientRect();
+				if (rect) { x = rect.left; y = rect.bottom; }
 			}
 		} else {
 			const selection = window.getSelection();
 			text = selection?.toString() || '';
 			const node = selection?.anchorNode;
 			const element = node?.nodeType === 1 ? node : node?.parentElement;
-			if (element?.closest('input[type=password],.fc-selection-popup-host,.fc-selection-popup-container')) { clear(); return; }
+			if (element?.closest?.('input[type=password],.fc-selection-popup-host,.fc-selection-popup-container')) { clear(); return; }
 			if (selection?.rangeCount) {
 				const rect = selection.getRangeAt(0).getBoundingClientRect();
-				x = rect.left; y = rect.bottom;
+				if (rect) { x = rect.left; y = rect.bottom; }
 			}
 		}
 		record(text.trim().slice(0, 10000), x, y, event);
 	};
+	const onScroll = () => {
+		if (!latest?.text) return;
+		const selection = window.getSelection();
+		const currentText = selection?.toString()?.trim() || '';
+		if (currentText && currentText === latest.text && selection?.rangeCount) {
+			const rect = selection.getRangeAt(0).getBoundingClientRect();
+			if (rect) {
+				if (rect.bottom < 0 || rect.top > innerHeight || rect.right < 0 || rect.left > innerWidth) {
+					clear();
+				} else {
+					latest.x = rect.left;
+					latest.y = rect.bottom;
+					latest.sequence++;
+				}
+				return;
+			}
+		}
+		clear();
+	};
 	const bind = (type, callback) => { document.addEventListener(type, callback, true); handlers.push([type, callback]); };
-	bind('mouseup', mouseup); bind('mousedown', clear); bind('scroll', clear);
+	bind('mouseup', capture);
+	bind('dblclick', capture);
+	bind('mousedown', clear);
+	bind('scroll', onScroll);
 	bind('keydown', (event) => { if (event.key === 'Escape') clear(); });
 	window.${collectorKey} = { read: () => latest, dispose: () => {
 		for (const [type, callback] of handlers) document.removeEventListener(type, callback, true);
@@ -112,6 +136,11 @@ export class WebviewSelectionAdapter {
 	private readonly sources = new Map<Element, Source>();
 	private observer: MutationObserver | null = null;
 	private timer: ReturnType<typeof setInterval> | null = null;
+	private docMouseDownHandler: ((event: MouseEvent) => void) | null = null;
+	private docFocusInHandler: ((event: FocusEvent) => void) | null = null;
+	private windowBlurHandler: (() => void) | null = null;
+	private windowFocusHandler: (() => void) | null = null;
+	private windowBlurred = false;
 	private running = false;
 	private enabled = false;
 	private status: WebviewSelectionStatus = "idle";
@@ -122,11 +151,73 @@ export class WebviewSelectionAdapter {
 		if (this.running) return;
 		this.running = true;
 		this.enabled = this.options.isEnabled();
+		this.windowBlurred = false;
+		const doc = this.options.document;
+		this.docMouseDownHandler = (event: MouseEvent) => {
+			const target = event.target as
+				| (Node & { closest?: (s: string) => Element | null })
+				| null;
+			const targetEl =
+				target?.nodeType === 1
+					? target
+					: (target?.parentElement as Element | null | undefined);
+			for (const source of this.sources.values()) {
+				if (target && (target === source.element || source.element.contains?.(target))) {
+					source.focused = true;
+					this.windowBlurred = false;
+				} else if (
+					target &&
+					!targetEl?.closest?.(".fc-selection-popup-container,.fc-selection-popup-host")
+				) {
+					source.focused = false;
+				}
+			}
+		};
+		this.docFocusInHandler = (event: FocusEvent) => {
+			const target = event.target as
+				| (Node & { closest?: (s: string) => Element | null })
+				| null;
+			const targetEl =
+				target?.nodeType === 1
+					? target
+					: (target?.parentElement as Element | null | undefined);
+			for (const source of this.sources.values()) {
+				if (target && (target === source.element || source.element.contains?.(target))) {
+					source.focused = true;
+					this.windowBlurred = false;
+				} else if (
+					target &&
+					!targetEl?.closest?.(".fc-selection-popup-container,.fc-selection-popup-host")
+				) {
+					source.focused = false;
+				}
+			}
+		};
+		if (typeof doc.addEventListener === "function") {
+			doc.addEventListener("mousedown", this.docMouseDownHandler, true);
+			doc.addEventListener("focusin", this.docFocusInHandler, true);
+		}
+		const win = doc.defaultView;
+		if (win?.addEventListener) {
+			this.windowBlurHandler = () => {
+				this.windowBlurred = true;
+				for (const source of this.sources.values()) {
+					source.focused = false;
+				}
+			};
+			this.windowFocusHandler = () => {
+				this.windowBlurred = false;
+			};
+			win.addEventListener("blur", this.windowBlurHandler);
+			win.addEventListener("focus", this.windowFocusHandler);
+		}
 		this.discover();
-		const Observer = this.options.document.defaultView?.MutationObserver;
+		const Observer = doc.defaultView?.MutationObserver;
 		if (Observer) {
 			this.observer = new Observer(() => this.discover());
-			this.observer.observe(this.options.document.body, { childList: true, subtree: true });
+			if (doc.body) {
+				this.observer.observe(doc.body, { childList: true, subtree: true });
+			}
 		}
 		this.timer = setInterval(() => this.poll(), 150);
 	}
@@ -138,6 +229,31 @@ export class WebviewSelectionAdapter {
 		this.observer = null;
 		if (this.timer !== null) clearInterval(this.timer);
 		this.timer = null;
+		if (
+			this.docMouseDownHandler &&
+			typeof this.options.document.removeEventListener === "function"
+		) {
+			this.options.document.removeEventListener("mousedown", this.docMouseDownHandler, true);
+			this.docMouseDownHandler = null;
+		}
+		if (
+			this.docFocusInHandler &&
+			typeof this.options.document.removeEventListener === "function"
+		) {
+			this.options.document.removeEventListener("focusin", this.docFocusInHandler, true);
+			this.docFocusInHandler = null;
+		}
+		if (this.windowBlurHandler) {
+			this.options.document.defaultView?.removeEventListener("blur", this.windowBlurHandler);
+			this.windowBlurHandler = null;
+		}
+		if (this.windowFocusHandler) {
+			this.options.document.defaultView?.removeEventListener(
+				"focus",
+				this.windowFocusHandler,
+			);
+			this.windowFocusHandler = null;
+		}
 		for (const source of this.sources.values()) this.release(source);
 		this.sources.clear();
 		this.publishStatus();
@@ -166,6 +282,7 @@ export class WebviewSelectionAdapter {
 				ready: false,
 				failed: false,
 				busy: false,
+				focused: false,
 				cleanup: () => {},
 			};
 			const navigate = () => this.invalidate(source);
@@ -227,6 +344,20 @@ export class WebviewSelectionAdapter {
 		this.publishStatus();
 	}
 
+	private isActive(source: Source): boolean {
+		if (source.focused) return true;
+		const active = this.options.document.activeElement;
+		if (!active) return false;
+		if (active === source.element || source.element.contains(active)) return true;
+		if (active !== this.options.document.body && active.contains(source.element)) return true;
+		return false;
+	}
+
+	private hasFocus(source?: Source): boolean {
+		if (this.options.document.hasFocus()) return true;
+		return Boolean(source?.focused && !this.windowBlurred);
+	}
+
 	private poll(): void {
 		const document = this.options.document;
 		const enabled = this.options.isEnabled();
@@ -237,14 +368,10 @@ export class WebviewSelectionAdapter {
 				if (enabled) void this.install(source);
 			}
 		}
-		if (
-			!this.options.isEnabled() ||
-			document.visibilityState === "hidden" ||
-			!document.hasFocus()
-		)
-			return;
+		if (!this.options.isEnabled() || document.visibilityState === "hidden") return;
 		for (const source of this.sources.values()) {
-			if (!source.ready || source.busy || document.activeElement !== source.element) continue;
+			if (!source.ready || source.busy || !this.isActive(source) || !this.hasFocus(source))
+				continue;
 			if (!this.visibleRect(source)) continue;
 			void this.read(source);
 		}
@@ -266,9 +393,9 @@ export class WebviewSelectionAdapter {
 			if (
 				!rect ||
 				!this.options.isEnabled() ||
-				!this.options.document.hasFocus() ||
+				!this.hasFocus(source) ||
 				this.options.document.visibilityState === "hidden" ||
-				this.options.document.activeElement !== source.element
+				!this.isActive(source)
 			)
 				return;
 			if (!event.text.trim()) {

@@ -7,6 +7,7 @@ export interface SelectionHelperStrings {
 	translate: string;
 	openInMainTabHint: string;
 	openInMainTab: string;
+	favorite: string;
 	close: string;
 	details: string;
 	renderFailed: string;
@@ -44,6 +45,7 @@ const ZH_STRINGS: SelectionHelperStrings = {
 	translate: "翻译",
 	openInMainTabHint: "按 Enter 在主标签页打开",
 	openInMainTab: "在词典主标签打开",
+	favorite: "收藏",
 	close: "关闭",
 	details: "词条章节",
 	renderFailed: "词条显示失败，请重试或在词典主标签查看。",
@@ -84,6 +86,7 @@ const EN_OVERRIDES: Partial<SelectionHelperStrings> = {
 	translate: "Translate",
 	openInMainTabHint: "Press Enter to open in main tab",
 	openInMainTab: "Open in dictionary tab",
+	favorite: "Favorite",
 	close: "Close",
 	details: "Entry sections",
 	renderFailed: "Unable to display this entry. Retry or open it in the dictionary tab.",

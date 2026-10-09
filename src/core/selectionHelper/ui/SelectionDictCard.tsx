@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { Sparkles, RotateCcw } from "lucide-react";
+import { Bookmark, RotateCcw, Sparkles } from "lucide-react";
 import { cls } from "../../shared/classNames";
 import type { SelectionLookupSection, SelectionLookupSnapshot } from "../domain/types";
 import type { SelectionHelperStrings } from "../strings/selectionPopup";
@@ -18,6 +18,7 @@ export interface SelectionDictCardProps {
 	onRetry: (sourceId: string) => void;
 	onGenerateAi: () => void;
 	onOpenInMainTab: (word: string) => void;
+	onFavorite?: (word: string) => void;
 	onClose: () => void;
 }
 
@@ -115,6 +116,7 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 		onRetry,
 		onGenerateAi,
 		onOpenInMainTab,
+		onFavorite,
 		onClose,
 	} = props;
 	const cardRef = useRef<HTMLDialogElement | null>(null);
@@ -168,14 +170,28 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 			<header className={styles.header}>
 				<div className={styles.titleRow}>
 					<h3 className={styles.word}>{activeWord}</h3>
-					<button
-						type="button"
-						className={styles.closeButton}
-						onClick={onClose}
-						aria-label={strings.close}
-					>
-						{strings.close} <kbd>Esc</kbd>
-					</button>
+					<div className={styles.headerActions}>
+						{onFavorite && (
+							<button
+								type="button"
+								className={styles.favoriteButton}
+								onClick={() => onFavorite(activeWord)}
+								aria-label={strings.favorite}
+								title={strings.favorite}
+							>
+								<Bookmark size={14} aria-hidden="true" />
+								<span>{strings.favorite}</span>
+							</button>
+						)}
+						<button
+							type="button"
+							className={styles.closeButton}
+							onClick={onClose}
+							aria-label={strings.close}
+						>
+							{strings.close} <kbd>Esc</kbd>
+						</button>
+					</div>
 				</div>
 				{(activeSource?.pronunciations.length ?? 0) > 0 && (
 					<div className={styles.phonetics}>

@@ -96,9 +96,21 @@ describe("dictionary selection adapter", () => {
 		expect(spies.send).toHaveBeenNthCalledWith(5, { type: "lookup", query: "world" });
 		expect(spies.dispose).toHaveBeenCalledOnce();
 	});
+
+	it("delegates openFavorite to options when provided", async () => {
+		const openFavorite = vi.fn().mockResolvedValue(undefined);
+		const { adapter } = setup(emptyDictionarySnapshot(), { openFavorite });
+
+		await adapter.openFavorite?.("commercial");
+
+		expect(openFavorite).toHaveBeenCalledWith("commercial");
+	});
 });
 
-function setup(state: DictionaryViewState) {
+function setup(
+	state: DictionaryViewState,
+	overrides: { openFavorite?: (word: string) => Promise<void> } = {},
+) {
 	const spies = {
 		send: vi.fn().mockResolvedValue(undefined),
 		dispose: vi.fn(),
@@ -128,6 +140,7 @@ function setup(state: DictionaryViewState) {
 		adapter: createDictionarySelectionAdapter({
 			runtime: () => runtime,
 			openInMainTab: vi.fn().mockResolvedValue(undefined),
+			openFavorite: overrides.openFavorite,
 		}),
 	};
 }
