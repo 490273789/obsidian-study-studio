@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { copyTextToClipboard } from "../clipboard";
 
 describe("copyTextToClipboard", () => {
