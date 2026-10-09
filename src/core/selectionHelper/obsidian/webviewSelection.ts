@@ -26,7 +26,6 @@ interface Source {
 	ready: boolean;
 	failed: boolean;
 	busy: boolean;
-	focused: boolean;
 	cleanup: () => void;
 }
 
@@ -90,7 +89,7 @@ const installCollector = `(() => {
 				} else {
 					latest.x = rect.left;
 					latest.y = rect.bottom;
-					latest.sequence++;
+					latest.sequence = ++sequence;
 				}
 				return;
 			}
@@ -101,9 +100,13 @@ const installCollector = `(() => {
 	bind('mouseup', capture);
 	bind('dblclick', capture);
 	bind('mousedown', clear);
+	bind('blur', clear);
 	bind('scroll', onScroll);
 	bind('keydown', (event) => { if (event.key === 'Escape') clear(); });
-	window.${collectorKey} = { read: () => latest, dispose: () => {
+	window.${collectorKey} = { read: () => {
+		if (!document.hasFocus()) { latest = null; return null; }
+		return latest;
+	}, dispose: () => {
 		for (const [type, callback] of handlers) document.removeEventListener(type, callback, true);
 	} };
 	return true;
@@ -139,8 +142,7 @@ export class WebviewSelectionAdapter {
 	private docMouseDownHandler: ((event: MouseEvent) => void) | null = null;
 	private docFocusInHandler: ((event: FocusEvent) => void) | null = null;
 	private windowBlurHandler: (() => void) | null = null;
-	private windowFocusHandler: (() => void) | null = null;
-	private windowBlurred = false;
+	private interactionRevision = 0;
 	private running = false;
 	private enabled = false;
 	private status: WebviewSelectionStatus = "idle";
@@ -151,65 +153,22 @@ export class WebviewSelectionAdapter {
 		if (this.running) return;
 		this.running = true;
 		this.enabled = this.options.isEnabled();
-		this.windowBlurred = false;
 		const doc = this.options.document;
-		this.docMouseDownHandler = (event: MouseEvent) => {
-			const target = event.target as
-				| (Node & { closest?: (s: string) => Element | null })
-				| null;
-			const targetEl =
-				target?.nodeType === 1
-					? target
-					: (target?.parentElement as Element | null | undefined);
-			for (const source of this.sources.values()) {
-				if (target && (target === source.element || source.element.contains?.(target))) {
-					source.focused = true;
-					this.windowBlurred = false;
-				} else if (
-					target &&
-					!targetEl?.closest?.(".fc-selection-popup-container,.fc-selection-popup-host")
-				) {
-					source.focused = false;
-				}
-			}
+		// Guest input never bubbles to the embedder. Host input only fences pending
+		// reads; focus eligibility is determined in the guest document itself.
+		const invalidatePendingRead = () => {
+			this.interactionRevision++;
 		};
-		this.docFocusInHandler = (event: FocusEvent) => {
-			const target = event.target as
-				| (Node & { closest?: (s: string) => Element | null })
-				| null;
-			const targetEl =
-				target?.nodeType === 1
-					? target
-					: (target?.parentElement as Element | null | undefined);
-			for (const source of this.sources.values()) {
-				if (target && (target === source.element || source.element.contains?.(target))) {
-					source.focused = true;
-					this.windowBlurred = false;
-				} else if (
-					target &&
-					!targetEl?.closest?.(".fc-selection-popup-container,.fc-selection-popup-host")
-				) {
-					source.focused = false;
-				}
-			}
-		};
+		this.docMouseDownHandler = invalidatePendingRead;
+		this.docFocusInHandler = invalidatePendingRead;
 		if (typeof doc.addEventListener === "function") {
 			doc.addEventListener("mousedown", this.docMouseDownHandler, true);
 			doc.addEventListener("focusin", this.docFocusInHandler, true);
 		}
 		const win = doc.defaultView;
 		if (win?.addEventListener) {
-			this.windowBlurHandler = () => {
-				this.windowBlurred = true;
-				for (const source of this.sources.values()) {
-					source.focused = false;
-				}
-			};
-			this.windowFocusHandler = () => {
-				this.windowBlurred = false;
-			};
+			this.windowBlurHandler = invalidatePendingRead;
 			win.addEventListener("blur", this.windowBlurHandler);
-			win.addEventListener("focus", this.windowFocusHandler);
 		}
 		this.discover();
 		const Observer = doc.defaultView?.MutationObserver;
@@ -247,13 +206,6 @@ export class WebviewSelectionAdapter {
 			this.options.document.defaultView?.removeEventListener("blur", this.windowBlurHandler);
 			this.windowBlurHandler = null;
 		}
-		if (this.windowFocusHandler) {
-			this.options.document.defaultView?.removeEventListener(
-				"focus",
-				this.windowFocusHandler,
-			);
-			this.windowFocusHandler = null;
-		}
 		for (const source of this.sources.values()) this.release(source);
 		this.sources.clear();
 		this.publishStatus();
@@ -282,7 +234,6 @@ export class WebviewSelectionAdapter {
 				ready: false,
 				failed: false,
 				busy: false,
-				focused: false,
 				cleanup: () => {},
 			};
 			const navigate = () => this.invalidate(source);
@@ -344,20 +295,6 @@ export class WebviewSelectionAdapter {
 		this.publishStatus();
 	}
 
-	private isActive(source: Source): boolean {
-		if (source.focused) return true;
-		const active = this.options.document.activeElement;
-		if (!active) return false;
-		if (active === source.element || source.element.contains(active)) return true;
-		if (active !== this.options.document.body && active.contains(source.element)) return true;
-		return false;
-	}
-
-	private hasFocus(source?: Source): boolean {
-		if (this.options.document.hasFocus()) return true;
-		return Boolean(source?.focused && !this.windowBlurred);
-	}
-
 	private poll(): void {
 		const document = this.options.document;
 		const enabled = this.options.isEnabled();
@@ -370,8 +307,7 @@ export class WebviewSelectionAdapter {
 		}
 		if (!this.options.isEnabled() || document.visibilityState === "hidden") return;
 		for (const source of this.sources.values()) {
-			if (!source.ready || source.busy || !this.isActive(source) || !this.hasFocus(source))
-				continue;
+			if (!source.ready || source.busy) continue;
 			if (!this.visibleRect(source)) continue;
 			void this.read(source);
 		}
@@ -379,6 +315,7 @@ export class WebviewSelectionAdapter {
 
 	private async read(source: Source): Promise<void> {
 		const generation = source.generation;
+		const revision = this.interactionRevision;
 		source.busy = true;
 		try {
 			const result = await source.element.executeJavaScript(
@@ -393,9 +330,9 @@ export class WebviewSelectionAdapter {
 			if (
 				!rect ||
 				!this.options.isEnabled() ||
-				!this.hasFocus(source) ||
+				revision !== this.interactionRevision ||
 				this.options.document.visibilityState === "hidden" ||
-				!this.isActive(source)
+				!this.running
 			)
 				return;
 			if (!event.text.trim()) {

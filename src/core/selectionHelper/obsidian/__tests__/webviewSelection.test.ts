@@ -4,6 +4,8 @@ import { WebviewSelectionAdapter } from "../webviewSelection";
 
 function setup() {
 	const handlers = new Map<string, () => void>();
+	const hostHandlers = new Map<string, () => void>();
+	const windowHandlers = new Map<string, () => void>();
 	const executeJavaScript = vi.fn<(code: string) => Promise<unknown>>().mockResolvedValue(true);
 	const element = {
 		executeJavaScript,
@@ -21,11 +23,19 @@ function setup() {
 	};
 	let elements = [element];
 	const document = {
+		addEventListener: (type: string, callback: () => void) => hostHandlers.set(type, callback),
+		removeEventListener: vi.fn(),
 		querySelectorAll: () => elements,
 		activeElement: element as object | null,
 		hasFocus: vi.fn(() => true),
 		visibilityState: "visible",
-		defaultView: { innerWidth: 1000, innerHeight: 1000 },
+		defaultView: {
+			innerWidth: 1000,
+			innerHeight: 1000,
+			addEventListener: (type: string, callback: () => void) =>
+				windowHandlers.set(type, callback),
+			removeEventListener: vi.fn(),
+		},
 	};
 	const onSelection = vi.fn();
 	const onDismiss = vi.fn();
@@ -43,6 +53,8 @@ function setup() {
 		document,
 		element,
 		handlers,
+		hostHandlers,
+		windowHandlers,
 		executeJavaScript,
 		onSelection,
 		onDismiss,
@@ -74,6 +86,47 @@ describe("WebviewSelectionAdapter", () => {
 	beforeEach(() => vi.useFakeTimers());
 	afterEach(() => vi.useRealTimers());
 
+	it("captures guest-only mouse events when the embedder loses focus to Web viewer", async () => {
+		const env = setup();
+		const handlers = new Map<string, (event: unknown) => void>();
+		const guest = {
+			window: {
+				getSelection: () => ({
+					toString: () => "hello",
+					rangeCount: 1,
+					getRangeAt: () => ({ getBoundingClientRect: () => ({ left: 20, bottom: 40 }) }),
+				}),
+			},
+			innerWidth: 200,
+			innerHeight: 150,
+			document: {
+				activeElement: null,
+				hasFocus: vi.fn(() => true),
+				addEventListener: (type: string, callback: (event: unknown) => void) =>
+					handlers.set(type, callback),
+				removeEventListener: vi.fn(),
+			},
+		};
+		env.executeJavaScript.mockImplementation(async (code) => runInNewContext(code, guest));
+		// Electron moves focus into the guest, whose input events never bubble to the host.
+		env.document.hasFocus.mockReturnValue(false);
+		env.adapter.start();
+		await flush();
+		handlers.get("mouseup")?.({ clientX: 20, clientY: 40, altKey: true });
+		await vi.advanceTimersByTimeAsync(150);
+		expect(env.onSelection).toHaveBeenCalledWith(
+			expect.objectContaining({ text: "hello", x: 90, y: 180 }),
+		);
+		guest.document.hasFocus.mockReturnValue(false);
+		handlers.get("mouseup")?.({ clientX: 20, clientY: 40 });
+		await vi.advanceTimersByTimeAsync(150);
+		guest.document.hasFocus.mockReturnValue(true);
+		await vi.advanceTimersByTimeAsync(150);
+		// Unfocused guest events are neither sent nor replayed on returning focus.
+		expect(env.onSelection).toHaveBeenCalledOnce();
+		env.adapter.stop();
+	});
+
 	it("reads focused webview selections and converts guest viewport coordinates", async () => {
 		const env = setup();
 		env.adapter.start();
@@ -97,20 +150,20 @@ describe("WebviewSelectionAdapter", () => {
 		env.adapter.stop();
 	});
 
-	it("stops reading while unfocused, hidden, disabled, or another element is focused", async () => {
+	it("stops probing hidden and disabled webviews", async () => {
 		const env = setup();
 		env.adapter.start();
 		await flush();
-		env.document.hasFocus.mockReturnValue(false);
-		await vi.advanceTimersByTimeAsync(300);
-		env.document.hasFocus.mockReturnValue(true);
 		env.document.visibilityState = "hidden";
 		await vi.advanceTimersByTimeAsync(150);
+		expect(env.executeJavaScript).toHaveBeenCalledOnce();
 		env.document.visibilityState = "visible";
 		env.isEnabled.mockReturnValue(false);
 		await vi.advanceTimersByTimeAsync(150);
+		expect(env.executeJavaScript).toHaveBeenCalledTimes(2);
+		await vi.advanceTimersByTimeAsync(300);
+		expect(env.executeJavaScript).toHaveBeenCalledTimes(2);
 		env.isEnabled.mockReturnValue(true);
-		env.document.activeElement = null;
 		await vi.advanceTimersByTimeAsync(150);
 		expect(env.executeJavaScript).toHaveBeenCalledTimes(4);
 		env.adapter.stop();
@@ -215,6 +268,7 @@ describe("WebviewSelectionAdapter", () => {
 			innerHeight: 600,
 			document: {
 				activeElement: input,
+				hasFocus: () => true,
 				addEventListener: (type: string, listener: (event: unknown) => void) =>
 					handlers.set(type, listener),
 				removeEventListener: vi.fn(),
@@ -252,34 +306,43 @@ describe("WebviewSelectionAdapter", () => {
 		env.adapter.stop();
 	});
 
-	it("rejects a result completing after focus or visibility is lost", async () => {
-		const env = setup();
-		env.adapter.start();
-		await flush();
-		let resolve!: (value: unknown) => void;
-		env.executeJavaScript.mockReturnValueOnce(
-			new Promise((done) => {
-				resolve = done;
-			}),
-		);
-		await vi.advanceTimersByTimeAsync(150);
-		env.document.hasFocus.mockReturnValue(false);
-		resolve(event);
-		await flush();
-		expect(env.onSelection).not.toHaveBeenCalled();
-		env.document.hasFocus.mockReturnValue(true);
-		env.executeJavaScript.mockReturnValueOnce(
-			new Promise((done) => {
-				resolve = done;
-			}),
-		);
-		await vi.advanceTimersByTimeAsync(150);
-		env.document.visibilityState = "hidden";
-		resolve(event);
-		await flush();
-		expect(env.onSelection).not.toHaveBeenCalled();
-		env.adapter.stop();
-	});
+	it.each(["window blur", "host mousedown", "host focusin"])(
+		"rejects a result completing after %s or visibility loss",
+		async (interruption) => {
+			const env = setup();
+			env.adapter.start();
+			await flush();
+			let resolve!: (value: unknown) => void;
+			env.executeJavaScript.mockReturnValueOnce(
+				new Promise((done) => {
+					resolve = done;
+				}),
+			);
+			await vi.advanceTimersByTimeAsync(150);
+			if (interruption === "window blur") env.windowHandlers.get("blur")?.();
+			else
+				env.hostHandlers.get(
+					interruption === "host mousedown" ? "mousedown" : "focusin",
+				)?.();
+			resolve(event);
+			await flush();
+			expect(env.onSelection).not.toHaveBeenCalled();
+			env.executeJavaScript.mockResolvedValue(event);
+			await vi.advanceTimersByTimeAsync(150);
+			expect(env.onSelection).not.toHaveBeenCalled();
+			env.executeJavaScript.mockReturnValueOnce(
+				new Promise((done) => {
+					resolve = done;
+				}),
+			);
+			await vi.advanceTimersByTimeAsync(150);
+			env.document.visibilityState = "hidden";
+			resolve({ ...event, sequence: 2 });
+			await flush();
+			expect(env.onSelection).not.toHaveBeenCalled();
+			env.adapter.stop();
+		},
+	);
 
 	it("removes disabled collectors and does not revive their cached event", async () => {
 		const env = setup();
@@ -381,6 +444,7 @@ describe("WebviewSelectionAdapter", () => {
 			innerHeight: 600,
 			document: {
 				activeElement: null,
+				hasFocus: () => true,
 				addEventListener: (type: string, listener: any) => handlers.set(type, listener),
 				removeEventListener: vi.fn(),
 			},
@@ -396,6 +460,9 @@ describe("WebviewSelectionAdapter", () => {
 		rangeRect = { left: 20, bottom: 60, width: 100, height: 20 };
 		handlers.get("scroll")?.({});
 		expect(collector.read()).toMatchObject({ text: "hello", x: 20, y: 60 });
+		const afterScroll = collector.read().sequence;
+		handlers.get("mouseup")?.({ clientX: 20, clientY: 60 });
+		expect(collector.read().sequence).toBeGreaterThan(afterScroll);
 
 		// Scroll completely out of view
 		rangeRect = { left: 20, bottom: -10, width: 100, height: 20 };
