@@ -1,6 +1,8 @@
 import type { Language } from "../../../core/shared/types";
 
 export interface SelectionHelperStrings {
+	webCompatibility: string;
+	webStatus: Record<"idle" | "available" | "unavailable" | "mobile", string>;
 	lookup: string;
 	translate: string;
 	openInMainTabHint: string;
@@ -30,6 +32,14 @@ export interface SelectionHelperStrings {
 }
 
 const ZH_STRINGS: SelectionHelperStrings = {
+	webCompatibility: "网页划词兼容状态",
+	webStatus: {
+		idle: "尚未检测到可用的网页选区接口。请在桌面 Web viewer 打开网页；无法划词时，可复制文字并粘贴到翻译页面。",
+		available:
+			"已检测到网页采集接口；具体页面仍可能不兼容。无法划词时，可复制文字并粘贴到翻译页面。",
+		unavailable: "部分网页无法接入划词助手。请复制文字并粘贴到翻译页面；普通页面划词不受影响。",
+		mobile: "移动端支持应用内可选文字。无法接入的嵌入网页，请复制文字并粘贴到翻译页面。",
+	},
 	lookup: "查词",
 	translate: "翻译",
 	openInMainTabHint: "按 Enter 在主标签页打开",
@@ -41,9 +51,10 @@ const ZH_STRINGS: SelectionHelperStrings = {
 	loading: "正在查询...",
 	settingsHeading: "划词助手",
 	enablePopup: "启用划词快捷浮窗",
-	enablePopupDesc: "在笔记中划词或长按选中文本后，显示查词与翻译快捷浮窗。",
+	enablePopupDesc:
+		"在 Obsidian 页面、侧栏、弹窗和普通输入框中选中文字后，显示查词与翻译入口；移动端长按选中。",
 	modifier: "触发修饰键",
-	modifierDesc: "设置触发浮窗所需的修饰键，避免正常写作或选择文本时光标处频繁弹窗。",
+	modifierDesc: "设置桌面鼠标划词所需的修饰键；移动端长按选中无需修饰键。",
 	modifierNone: "无（直接划词抬起鼠标即触发）",
 	modifierAlt: "Alt / Option",
 	modifierShift: "Shift",
@@ -60,6 +71,15 @@ const ZH_STRINGS: SelectionHelperStrings = {
 };
 
 const EN_OVERRIDES: Partial<SelectionHelperStrings> = {
+	webCompatibility: "Web selection compatibility",
+	webStatus: {
+		idle: "No web selection interface detected yet. Open a page in desktop Web viewer. If selection is unavailable, copy and paste text into Translation.",
+		available:
+			"Web capture interface detected; individual pages may still be incompatible. If unavailable, copy and paste text into Translation.",
+		unavailable:
+			"Some web pages cannot connect to the selection helper. Copy and paste text into Translation; ordinary page selection remains available.",
+		mobile: "Mobile supports selectable text within the app. For inaccessible embedded pages, copy and paste text into Translation.",
+	},
 	lookup: "Lookup",
 	translate: "Translate",
 	openInMainTabHint: "Press Enter to open in main tab",
@@ -72,10 +92,10 @@ const EN_OVERRIDES: Partial<SelectionHelperStrings> = {
 	settingsHeading: "Selection Helper",
 	enablePopup: "Enable selection popup",
 	enablePopupDesc:
-		"Show quick lookup and translation actions after selecting text with a mouse or touch.",
+		"Show lookup and translation actions for selected text across Obsidian pages, sidebars, dialogs, and text fields. Long-press on mobile.",
 	modifier: "Trigger modifier key",
 	modifierDesc:
-		"Choose a modifier key to require for the popup to appear, avoiding distractions.",
+		"Require a modifier for desktop mouse selection. Mobile long-press does not require a modifier.",
 	modifierNone: "None (Direct selection)",
 	modifierAlt: "Alt / Option",
 	modifierShift: "Shift",

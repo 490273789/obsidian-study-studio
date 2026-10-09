@@ -1,330 +1,321 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { SelectionHelper } from "../../domain/selectionHelper";
 import { SelectionListener } from "../selectionListener";
 
-const rootSpies = vi.hoisted(() => ({ render: vi.fn(), unmount: vi.fn() }));
+const roots = vi.hoisted(() => ({ create: vi.fn() }));
+vi.mock("react-dom/client", () => ({ createRoot: roots.create }));
 
-vi.mock("react-dom/client", () => ({
-	createRoot: () => rootSpies,
-}));
+afterEach(() => {
+	vi.useRealTimers();
+	vi.restoreAllMocks();
+	roots.create.mockReset();
+});
 
-describe("SelectionListener", () => {
-	let addEventListenerSpy: ReturnType<typeof vi.fn>;
-	let removeEventListenerSpy: ReturnType<typeof vi.fn>;
-
-	beforeEach(() => {
-		rootSpies.render.mockReset();
-		rootSpies.unmount.mockReset();
-		addEventListenerSpy = vi.fn();
-		removeEventListenerSpy = vi.fn();
-
-		vi.stubGlobal("document", {
-			addEventListener: addEventListenerSpy,
-			removeEventListener: removeEventListenerSpy,
-			createElement: vi.fn(() => ({
-				className: "",
-				contains: vi.fn((node) => Boolean(node?.internal)),
-				appendChild: vi.fn(),
-				remove: vi.fn(),
-			})),
-			body: { appendChild: vi.fn() },
-		});
-	});
-
-	it("passes note selections to the deep module and unmounts on outside input", () => {
-		const handlers = new Map<string, (event: MouseEvent) => void>();
-		addEventListenerSpy.mockImplementation((type, listener) => {
-			handlers.set(type, listener);
-		});
-		vi.stubGlobal("window", {
-			getSelection: () => ({ toString: () => "hello" }),
-		});
-		const helper = new SelectionHelper({
-			settings: () => ({ enabled: true, modifier: "none", selectedDictionaries: [] }),
-			dictionary: {
-				sources: () => [{ id: "youdao", label: "有道", kind: "dictionary" }],
-				startLookup: () => null,
-				openInMainTab: vi.fn().mockResolvedValue(undefined),
-			},
-			translation: {
-				available: () => true,
-				openPrefilled: vi.fn().mockResolvedValue(undefined),
-			},
-		});
-		const listener = new SelectionListener({
-			helper,
-			getTheme: () => "light",
-			getLanguage: () => "zh",
-		});
-		listener.start();
-
-		handlers.get("mouseup")?.({
-			target: { closest: () => ({}) },
-			clientX: 12,
-			clientY: 24,
-			altKey: false,
-			shiftKey: false,
-			ctrlKey: false,
-			metaKey: false,
-		} as unknown as MouseEvent);
-
-		expect(helper.getSnapshot().target?.text).toBe("hello");
-		expect(rootSpies.render).toHaveBeenCalledOnce();
-
-		handlers.get("mousedown")?.({ target: {} } as MouseEvent);
-		expect(helper.getSnapshot().visible).toBe(false);
-		expect(rootSpies.unmount).toHaveBeenCalledOnce();
-		listener.stop();
-	});
-
-	it("debounces touch selection changes, positions by the range, and ignores synthetic mouse", () => {
-		vi.useFakeTimers();
-		const handlers = new Map<string, (event?: unknown) => void>();
-		addEventListenerSpy.mockImplementation((type, listener) => handlers.set(type, listener));
-		let text = "hello";
-		const target = { closest: () => ({}) };
-		vi.stubGlobal("window", {
+function environment() {
+	const handlers = new Map<string, (event: unknown) => void>();
+	let text = "hello";
+	let x = 32;
+	const element = { nodeType: 1, closest: () => null };
+	const popup = { contains: (node: unknown) => node === popup, remove: vi.fn(), className: "" };
+	const addEventListener = vi.fn(
+		(type: string, fn: (event: unknown) => void, _capture?: boolean) => handlers.set(type, fn),
+	);
+	const appendChild = vi.fn();
+	const removeEventListener = vi.fn();
+	const root = { render: vi.fn(), unmount: vi.fn() };
+	roots.create.mockReturnValueOnce(root);
+	const doc = {
+		defaultView: {
 			getSelection: () => ({
 				toString: () => text,
-				anchorNode: { nodeType: 1, ...target },
+				anchorNode: element,
+				focusNode: element,
 				rangeCount: 1,
-				getRangeAt: () => ({ getBoundingClientRect: () => ({ left: 32, bottom: 64 }) }),
+				getRangeAt: () => ({
+					commonAncestorContainer: element,
+					getBoundingClientRect: () => ({ left: x, bottom: 64, width: 10, height: 10 }),
+				}),
 			}),
+		},
+		activeElement: null,
+		addEventListener,
+		removeEventListener,
+		createElement: () => popup,
+		body: { appendChild },
+		querySelectorAll: () => [],
+	} as unknown as Document;
+	return {
+		doc,
+		appendChild,
+		addEventListener,
+		removeEventListener,
+		root,
+		popup,
+		element,
+		setText: (value: string) => {
+			text = value;
+		},
+		setX: (value: number) => {
+			x = value;
+		},
+		emit: (type: string, event: unknown = {}) => handlers.get(type)?.(event),
+	};
+}
+function helper(modifier: "none" | "alt" = "none") {
+	return new SelectionHelper({
+		settings: () => ({ enabled: true, modifier, selectedDictionaries: [] }),
+		dictionary: { sources: () => [], startLookup: () => null, openInMainTab: async () => {} },
+		translation: { available: () => true, openPrefilled: async () => {} },
+	});
+}
+function listen(env: ReturnType<typeof environment>, shared = helper()) {
+	const listener = new SelectionListener({
+		document: env.doc,
+		helper: shared,
+		getLanguage: () => "zh",
+		getTheme: () => "light",
+	});
+	listener.start();
+	return listener;
+}
+function mouse(target: unknown) {
+	return {
+		target,
+		clientX: 12,
+		clientY: 24,
+		altKey: false,
+		shiftKey: false,
+		ctrlKey: false,
+		metaKey: false,
+	};
+}
+function touch(target: unknown) {
+	return { target, changedTouches: [{ clientX: 5, clientY: 6 }] };
+}
+
+describe("SelectionListener", () => {
+	it("accepts selectable text on arbitrary pages and anchors to its range", () => {
+		const env = environment();
+		const shared = helper();
+		const listener = listen(env, shared);
+		env.emit("mouseup", mouse(env.element));
+		expect(shared.getSnapshot().target).toMatchObject({
+			text: "hello",
+			x: 32,
+			y: 64,
+			trigger: "mouse",
 		});
-		const helper = createHelper();
-		const handleSelection = vi.spyOn(helper, "handleSelection");
-		const listener = new SelectionListener({
-			helper,
-			getTheme: () => "light",
-			getLanguage: () => "zh",
-		});
-		listener.start();
-		handlers.get("touchend")?.({ target, changedTouches: [{ clientX: 5, clientY: 6 }] });
+		expect(env.appendChild).toHaveBeenCalledOnce();
+		env.emit("mousedown", mouse(env.element));
+		expect(shared.getSnapshot().visible).toBe(false);
+		expect(env.root.unmount).toHaveBeenCalledOnce();
+		listener.stop();
+	});
+	it("allows one popup across windows and closing an inactive window preserves it", () => {
+		const first = environment();
+		const second = environment();
+		const shared = helper();
+		const a = listen(first, shared);
+		const b = listen(second, shared);
+		first.emit("mouseup", mouse(first.element));
+		second.setText("world");
+		second.emit("mouseup", mouse(second.element));
+		expect(first.root.unmount).toHaveBeenCalledOnce();
+		expect(second.root.render).toHaveBeenCalled();
+		a.stop();
+		expect(shared.getSnapshot().target?.text).toBe("world");
+		b.stop();
+		expect(shared.getSnapshot().visible).toBe(false);
+	});
+	it("waits for long press and stable selection, ignores modifiers and synthetic mouse", () => {
+		vi.useFakeTimers();
+		const env = environment();
+		const shared = helper("alt");
+		const listener = listen(env, shared);
+		env.emit("touchstart", touch(env.element));
+		vi.advanceTimersByTime(400);
+		env.emit("touchend", touch(env.element));
 		vi.advanceTimersByTime(100);
-		text = "world";
-		handlers.get("selectionchange")?.();
+		env.setText("world");
+		env.emit("selectionchange");
 		vi.advanceTimersByTime(149);
-		expect(handleSelection).not.toHaveBeenCalled();
+		expect(shared.getSnapshot().visible).toBe(false);
 		vi.advanceTimersByTime(1);
-		expect(helper.getSnapshot().target).toMatchObject({ text: "world", x: 32, y: 64 });
-		handlers.get("mouseup")?.({ target, clientX: 5, clientY: 6 });
-		handlers.get("selectionchange")?.();
+		expect(shared.getSnapshot().target).toMatchObject({ text: "world", trigger: "touch" });
+		env.setText("mouse");
+		env.emit("mouseup", mouse(env.element));
+		expect(shared.getSnapshot().target?.text).toBe("world");
+		listener.stop();
+	});
+	it("hides during handle drag and accepts the same word at a different position", () => {
+		vi.useFakeTimers();
+		const env = environment();
+		const shared = helper();
+		const listener = listen(env, shared);
+		env.emit("touchend", touch(env.element));
 		vi.advanceTimersByTime(150);
-		expect(handleSelection).toHaveBeenCalledOnce();
+		env.emit("touchstart", touch(env.element));
+		env.emit("touchmove", touch(env.element));
+		expect(shared.getSnapshot().visible).toBe(false);
+		env.setX(140);
+		env.emit("selectionchange");
+		vi.advanceTimersByTime(200);
+		expect(shared.getSnapshot().visible).toBe(false);
+		env.emit("touchend", touch(env.element));
+		vi.advanceTimersByTime(150);
+		expect(shared.getSnapshot().target).toMatchObject({ text: "hello", x: 140 });
+		listener.stop();
+	});
+	it("hides immediately when native handles only report selectionchange and waits for stability", () => {
+		vi.useFakeTimers();
+		const env = environment();
+		const shared = helper();
+		const listener = listen(env, shared);
+		env.emit("touchend", touch(env.element));
+		vi.advanceTimersByTime(150);
+		expect(shared.getSnapshot().visible).toBe(true);
+		env.emit("selectionchange");
+		expect(shared.getSnapshot().visible).toBe(true);
+		env.setX(100);
+		env.emit("selectionchange");
+		expect(shared.getSnapshot().visible).toBe(false);
+		vi.advanceTimersByTime(100);
+		env.setX(110);
+		env.emit("selectionchange");
+		vi.advanceTimersByTime(149);
+		expect(shared.getSnapshot().visible).toBe(false);
+		vi.advanceTimersByTime(1);
+		expect(shared.getSnapshot().target?.x).toBe(110);
+		listener.dismiss();
+		env.emit("selectionchange");
+		vi.advanceTimersByTime(150);
+		expect(shared.getSnapshot().visible).toBe(false);
 		listener.stop();
 	});
 
-	it("keeps internal touch and scrolling open, and cancels pending touch work on stop", () => {
-		vi.useFakeTimers();
-		const handlers = new Map<string, (event?: unknown) => void>();
-		addEventListenerSpy.mockImplementation((type, listener) => handlers.set(type, listener));
-		vi.stubGlobal("window", { getSelection: () => ({ toString: () => "hello" }) });
-		const helper = createHelper();
-		const listener = new SelectionListener({
-			helper,
-			getTheme: () => "light",
-			getLanguage: () => "zh",
+	it("keeps popup interactions open and dismisses source scrolling and Escape", () => {
+		const env = environment();
+		const shared = helper();
+		const listener = listen(env, shared);
+		env.emit("mouseup", mouse(env.element));
+		env.emit("touchstart", touch(env.popup));
+		env.emit("touchmove", touch(env.popup));
+		env.emit("scroll", { target: env.popup });
+		expect(shared.getSnapshot().visible).toBe(true);
+		env.emit("scroll", { target: env.element });
+		expect(shared.getSnapshot().visible).toBe(false);
+		env.emit("mouseup", mouse(env.element));
+		env.emit("keydown", { key: "Escape" });
+		expect(shared.getSnapshot().visible).toBe(false);
+		listener.stop();
+	});
+	it("binds accessible frames and releases navigation and removed-frame sources", () => {
+		const env = environment();
+		const child = environment();
+		const replacement = environment();
+		const shared = helper();
+		let scan!: () => void;
+		Object.assign(env.doc.defaultView!, {
+			MutationObserver: class {
+				constructor(callback: () => void) {
+					scan = callback;
+				}
+				observe() {}
+				disconnect() {}
+			},
 		});
-		listener.start();
-		helper.handleSelection({
-			text: "hello",
-			x: 0,
-			y: 0,
+		const loads = new Map<string, () => void>();
+		const frame = {
+			nodeType: 1,
+			closest: () => null,
+			ownerDocument: env.doc,
+			contentDocument: child.doc,
+			offsetWidth: 100,
+			offsetHeight: 100,
+			clientLeft: 0,
+			clientTop: 0,
+			getBoundingClientRect: () => ({ left: 100, top: 200, width: 100, height: 100 }),
+			addEventListener: (type: string, fn: () => void) => loads.set(type, fn),
+			removeEventListener: vi.fn(),
+		};
+		Object.assign(child.doc.defaultView!, { frameElement: frame });
+		Object.assign(replacement.doc.defaultView!, { frameElement: frame });
+		let frames: unknown[] = [frame];
+		Object.assign(env.doc, { querySelectorAll: () => frames });
+		const listener = listen(env, shared);
+		child.emit("mouseup", mouse(child.element));
+		expect(shared.getSnapshot().target).toMatchObject({ text: "hello", x: 132, y: 264 });
+		const retired = shared.getSnapshot().target!;
+		frame.contentDocument = replacement.doc;
+		loads.get("load")?.();
+		expect(shared.getSnapshot().visible).toBe(false);
+		shared.handleSelection({
+			...retired,
 			eligibleContext: true,
 			altKey: false,
 			shiftKey: false,
 			ctrlOrMetaKey: false,
 		});
-		handlers.get("touchend")?.({ target: { internal: true } });
-		handlers.get("scroll")?.({ target: { internal: true } });
-		vi.advanceTimersByTime(150);
-		expect(helper.getSnapshot().visible).toBe(true);
-		handlers.get("touchend")?.({ target: { closest: () => ({}) }, changedTouches: [] });
+		expect(shared.getSnapshot().visible).toBe(false);
+		replacement.setText("world");
+		replacement.emit("mouseup", mouse(replacement.element));
+		expect(shared.getSnapshot().target?.text).toBe("world");
+		frames = [];
+		scan();
+		expect(shared.getSnapshot().visible).toBe(false);
+		expect(frame.removeEventListener).toHaveBeenCalledWith("load", expect.any(Function));
 		listener.stop();
-		vi.advanceTimersByTime(150);
-		expect(helper.getSnapshot().visible).toBe(false);
-		expect(removeEventListenerSpy).toHaveBeenCalledWith("touchend", expect.any(Function));
-		expect(removeEventListenerSpy).toHaveBeenCalledWith(
-			"selectionchange",
-			expect.any(Function),
-		);
 	});
 
-	it("applies existing modifier eligibility to touch selections", () => {
+	it("captures mouseup even when a child stops bubbling, and closes removed selection nodes", () => {
+		const env = environment();
+		const shared = helper();
+		let mutation!: () => void;
+		Object.assign(env.element, { isConnected: true });
+		Object.assign(env.doc.defaultView!, {
+			MutationObserver: class {
+				constructor(callback: () => void) {
+					mutation = callback;
+				}
+				observe() {}
+				disconnect() {}
+			},
+		});
+		const listener = listen(env, shared);
+		// This is the capture registration, independent of bubble listeners in a PDF/plugin.
+		const add = env.addEventListener;
+		expect(
+			add.mock.calls.some(([type, , capture]) => type === "mouseup" && capture === true),
+		).toBe(true);
+		env.emit("mouseup", mouse(env.element));
+		expect(shared.getSnapshot().visible).toBe(true);
+		Object.assign(env.element, { isConnected: false });
+		mutation();
+		expect(shared.getSnapshot().visible).toBe(false);
+		listener.stop();
+	});
+
+	it("cancels deferred work and rejects late external events after stop", () => {
 		vi.useFakeTimers();
-		const handlers = new Map<string, (event?: unknown) => void>();
-		addEventListenerSpy.mockImplementation((type, listener) => handlers.set(type, listener));
-		vi.stubGlobal("window", { getSelection: () => ({ toString: () => "hello" }) });
-		const helper = createHelper("alt");
-		const listener = new SelectionListener({
-			helper,
-			getTheme: () => "light",
-			getLanguage: () => "zh",
-		});
-		listener.start();
-		const event = { target: { closest: () => ({}) }, changedTouches: [], altKey: false };
-		handlers.get("touchend")?.(event);
-		vi.advanceTimersByTime(150);
-		expect(helper.getSnapshot().visible).toBe(false);
-		handlers.get("touchend")?.({ ...event, altKey: true });
-		vi.advanceTimersByTime(150);
-		expect(helper.getSnapshot().visible).toBe(true);
+		const env = environment();
+		const shared = helper();
+		const listener = listen(env, shared);
+		env.emit("touchend", touch(env.element));
 		listener.stop();
-	});
-
-	it.each(["retained", "cleared", "ineligible"])(
-		"dismisses an external mobile tap with %s selection",
-		(selectionState) => {
-			vi.useFakeTimers();
-			const handlers = new Map<string, (event?: unknown) => void>();
-			addEventListenerSpy.mockImplementation((type, listener) =>
-				handlers.set(type, listener),
-			);
-			let text = "hello";
-			let eligible = true;
-			vi.stubGlobal("window", {
-				getSelection: () => ({
-					toString: () => text,
-					anchorNode: { nodeType: 1, closest: () => (eligible ? {} : null) },
-				}),
-			});
-			const helper = createHelper();
-			const listener = new SelectionListener({
-				helper,
-				getTheme: () => "light",
-				getLanguage: () => "zh",
-			});
-			listener.start();
-			helper.handleSelection({
-				text: "hello",
-				x: 0,
-				y: 0,
-				eligibleContext: true,
-				altKey: false,
-				shiftKey: false,
-				ctrlOrMetaKey: false,
-			});
-			const event = { target: { closest: () => null }, changedTouches: [] };
-			handlers.get("touchstart")?.(event);
-			vi.advanceTimersByTime(50);
-			if (selectionState === "cleared") text = "";
-			if (selectionState === "ineligible") {
-				text = "toolbar";
-				eligible = false;
-			}
-			handlers.get("touchend")?.(event);
-			expect(helper.getSnapshot().visible).toBe(false);
-			handlers.get("selectionchange")?.();
-			vi.advanceTimersByTime(200);
-			expect(helper.getSnapshot().visible).toBe(false);
-			listener.stop();
-		},
-	);
-
-	it.each(["longpress", "handle-drag"])(
-		"preserves %s selection adjustments and skips unchanged queries",
-		(gesture) => {
-			vi.useFakeTimers();
-			const handlers = new Map<string, (event?: unknown) => void>();
-			addEventListenerSpy.mockImplementation((type, listener) =>
-				handlers.set(type, listener),
-			);
-			let text = "hello";
-			const target = { closest: () => ({}) };
-			vi.stubGlobal("window", {
-				getSelection: () => ({
-					toString: () => text,
-					anchorNode: { nodeType: 1, ...target },
-				}),
-			});
-			const helper = createHelper();
-			const listener = new SelectionListener({
-				helper,
-				getTheme: () => "light",
-				getLanguage: () => "zh",
-			});
-			listener.start();
-			helper.handleSelection({
-				text: "hello",
-				x: 0,
-				y: 0,
-				eligibleContext: true,
-				altKey: false,
-				shiftKey: false,
-				ctrlOrMetaKey: false,
-			});
-			const handleSelection = vi.spyOn(helper, "handleSelection");
-			const event = { target, changedTouches: [] };
-			handlers.get("touchstart")?.(event);
-			if (gesture === "longpress") vi.advanceTimersByTime(400);
-			else handlers.get("touchmove")?.(event);
-			handlers.get("touchend")?.(event);
-			vi.advanceTimersByTime(150);
-			expect(helper.getSnapshot().visible).toBe(true);
-			expect(handleSelection).not.toHaveBeenCalled();
-			text = "world";
-			handlers.get("selectionchange")?.();
-			vi.advanceTimersByTime(150);
-			expect(helper.getSnapshot().target?.text).toBe("world");
-			expect(handleSelection).toHaveBeenCalledOnce();
-			handlers.get("selectionchange")?.();
-			vi.advanceTimersByTime(150);
-			expect(handleSelection).toHaveBeenCalledOnce();
-			listener.stop();
-		},
-	);
-
-	afterEach(() => {
-		vi.unstubAllGlobals();
-		vi.useRealTimers();
-	});
-
-	it("registers mouseup, mousedown, and scroll listeners on start", () => {
-		const helper = new SelectionHelper({
-			settings: () => ({ enabled: true, modifier: "none", selectedDictionaries: [] }),
-			dictionary: {
-				sources: () => [],
-				startLookup: () => null,
-				openInMainTab: vi.fn().mockResolvedValue(undefined),
-			},
-			translation: {
-				available: () => false,
-				openPrefilled: vi.fn().mockResolvedValue(undefined),
-			},
+		vi.advanceTimersByTime(150);
+		listener.submit({
+			text: "late",
+			x: 0,
+			y: 0,
+			sourceId: "external",
+			generation: 0,
+			trigger: "webview",
+			eligibleContext: true,
+			altKey: false,
+			shiftKey: false,
+			ctrlOrMetaKey: false,
 		});
-		const listener = new SelectionListener({
-			helper,
-			getTheme: () => "light",
-			getLanguage: () => "zh",
-		});
-
-		listener.start();
-		expect(addEventListenerSpy).toHaveBeenCalledWith("mouseup", expect.any(Function));
-		expect(addEventListenerSpy).toHaveBeenCalledWith("mousedown", expect.any(Function), true);
-		expect(addEventListenerSpy).toHaveBeenCalledWith("scroll", expect.any(Function), true);
-
-		listener.stop();
-		expect(removeEventListenerSpy).toHaveBeenCalledWith("mouseup", expect.any(Function));
-		expect(removeEventListenerSpy).toHaveBeenCalledWith(
-			"mousedown",
-			expect.any(Function),
-			true,
-		);
-		expect(removeEventListenerSpy).toHaveBeenCalledWith("scroll", expect.any(Function), true);
+		expect(shared.getSnapshot().visible).toBe(false);
+		expect(env.removeEventListener).toHaveBeenCalled();
 	});
 });
-
-function createHelper(modifier: "none" | "alt" = "none"): SelectionHelper {
-	return new SelectionHelper({
-		settings: () => ({ enabled: true, modifier, selectedDictionaries: [] }),
-		dictionary: {
-			sources: () => [{ id: "local", label: "本地", kind: "dictionary" }],
-			startLookup: () => null,
-			openInMainTab: vi.fn().mockResolvedValue(undefined),
-		},
-		translation: {
-			available: () => false,
-			openPrefilled: vi.fn().mockResolvedValue(undefined),
-		},
-	});
-}

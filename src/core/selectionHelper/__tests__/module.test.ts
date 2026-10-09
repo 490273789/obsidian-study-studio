@@ -4,6 +4,8 @@ import { createFakeWorkbenchHost } from "../../host/__tests__/fakeWorkbenchHost"
 import type { SelectionDictionaryAdapter, SelectionTranslationAdapter } from "../domain/types";
 import { createSelectionHelperModule } from "../module";
 
+vi.mock("obsidian", () => ({ Platform: { isDesktopApp: true } }));
+
 describe("selection helper workbench module", () => {
 	it("registers settings without contributing a feature catalog entry", () => {
 		const module = createSelectionHelperModule({

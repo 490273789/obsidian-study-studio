@@ -22,6 +22,7 @@ export class SelectionHelper {
 	private lookupSession: SelectionLookupSession | null = null;
 	private lookupUnsubscribe: (() => void) | null = null;
 	private disposed = false;
+	private readonly sourceGenerations = new Map<string, number>();
 
 	constructor(private readonly options: SelectionHelperOptions) {}
 
@@ -36,6 +37,11 @@ export class SelectionHelper {
 
 	handleSelection(candidate: SelectionCandidate): void {
 		if (this.disposed) return;
+		if (candidate.sourceId) {
+			const generation = candidate.generation ?? 0;
+			if (generation < (this.sourceGenerations.get(candidate.sourceId) ?? 0)) return;
+			this.sourceGenerations.set(candidate.sourceId, generation);
+		}
 		const settings = this.options.settings();
 		if (
 			!settings.enabled ||
@@ -63,7 +69,15 @@ export class SelectionHelper {
 		}
 
 		this.releaseLookup();
-		const target: SelectionTarget = { text, isEnglishWord, x: candidate.x, y: candidate.y };
+		const target: SelectionTarget = {
+			text,
+			isEnglishWord,
+			x: candidate.x,
+			y: candidate.y,
+			sourceId: candidate.sourceId,
+			generation: candidate.generation,
+			trigger: candidate.trigger,
+		};
 		this.publish({
 			visible: true,
 			mode: "actions",
@@ -91,7 +105,9 @@ export class SelectionHelper {
 			return;
 		}
 		this.lookupSession = session;
-		this.lookupUnsubscribe = session.subscribe(() => this.publishLookup());
+		this.lookupUnsubscribe = session.subscribe(() => {
+			if (this.lookupSession === session) this.publishLookup();
+		});
 		this.publish({ ...this.snapshot, mode: "dictionary", lookup: session.getSnapshot() });
 	}
 
@@ -134,6 +150,15 @@ export class SelectionHelper {
 		if (!this.options.settings().enabled) this.dismiss();
 	}
 
+	/** Invalidate a destroyed or navigated source without closing another window. */
+	invalidateSource(sourceId: string, generation: number): void {
+		this.sourceGenerations.set(
+			sourceId,
+			Math.max(generation, this.sourceGenerations.get(sourceId) ?? 0),
+		);
+		if (this.snapshot.target?.sourceId === sourceId) this.dismiss();
+	}
+
 	dismiss(): void {
 		this.releaseLookup();
 		this.publish(EMPTY_SNAPSHOT);
@@ -146,6 +171,7 @@ export class SelectionHelper {
 		this.snapshot = EMPTY_SNAPSHOT;
 		for (const listener of this.listeners) listener();
 		this.listeners.clear();
+		this.sourceGenerations.clear();
 	}
 
 	private publishLookup(): void {
@@ -179,6 +205,7 @@ function modifierMatches(
 	settings: SelectionHelperSettings,
 	candidate: SelectionCandidate,
 ): boolean {
+	if (candidate.trigger === "touch") return true;
 	switch (settings.modifier) {
 		case "alt":
 			return candidate.altKey;

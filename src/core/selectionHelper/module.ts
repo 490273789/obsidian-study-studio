@@ -1,3 +1,4 @@
+import { Platform } from "obsidian";
 import { defineFeatureLifetime } from "../host/featureLifetime";
 import type { WorkbenchHost, WorkbenchModule, WorkbenchSettingsSection } from "../host/workbench";
 import { SelectionHelper } from "./domain/selectionHelper";
@@ -7,6 +8,7 @@ import type {
 	SelectionTranslationAdapter,
 } from "./domain/types";
 import { SelectionListener } from "./obsidian/selectionListener";
+import { WebviewSelectionAdapter, type WebviewSelectionStatus } from "./obsidian/webviewSelection";
 import { buildSelectionHelperSettingsViewModel } from "./settings/viewModel";
 import { selectionHelperStrings } from "./strings/selectionPopup";
 import type { SelectionEmbeddedContentRenderer } from "./ui/types";
@@ -25,6 +27,15 @@ type SelectionHelperWorkbenchHost = WorkbenchHost<"selectionHelper">;
 export function createSelectionHelperModule(
 	deps: SelectionHelperModuleDeps,
 ): WorkbenchModule<"selectionHelper"> {
+	const webStatuses = new Map<Document, WebviewSelectionStatus>();
+	const webStatus = () =>
+		!Platform.isDesktopApp
+			? ("mobile" as const)
+			: [...webStatuses.values()].includes("unavailable")
+				? ("unavailable" as const)
+				: [...webStatuses.values()].includes("available")
+					? ("available" as const)
+					: ("idle" as const);
 	const section = (host: SelectionHelperWorkbenchHost): WorkbenchSettingsSection => ({
 		id: SELECTION_HELPER_SECTION_ID,
 		order: 4,
@@ -55,6 +66,7 @@ export function createSelectionHelperModule(
 					},
 				},
 				language,
+				webStatus(),
 			);
 		},
 	});
@@ -69,23 +81,80 @@ export function createSelectionHelperModule(
 					translation: deps.translation,
 				}),
 			);
-			const listener = new SelectionListener({
-				helper,
-				getLanguage: () => host.settings.read().language,
-				getTheme: () => (host.app.isDarkMode() ? "dark" : "light"),
-				renderEmbeddedContent: deps.renderEmbeddedContent,
+			const windows = new Map<
+				Document,
+				{ listener: SelectionListener; web: WebviewSelectionAdapter | null }
+			>();
+			const attach = (doc: Document) => {
+				if (windows.has(doc)) return;
+				const listener = new SelectionListener({
+					helper,
+					document: doc,
+					isEnabled: () => host.settings.read().selectionPopup.enabled,
+					getLanguage: () => host.settings.read().language,
+					getTheme: () => (host.app.isDarkMode() ? "dark" : "light"),
+					renderEmbeddedContent: deps.renderEmbeddedContent,
+				});
+				const web = Platform.isDesktopApp
+					? new WebviewSelectionAdapter({
+							document: doc,
+							isEnabled: () => host.settings.read().selectionPopup.enabled,
+							onSelection: (candidate) => listener.submit(candidate),
+							onDismiss: (sourceId, generation) => {
+								const target = helper.getSnapshot().target;
+								if (
+									target?.sourceId === sourceId &&
+									target.generation === generation
+								)
+									helper.dismiss();
+							},
+							onStatus: (status) => {
+								if (webStatuses.get(doc) === status) return;
+								webStatuses.set(doc, status);
+								host.settingsTab.refresh();
+							},
+						})
+					: null;
+				windows.set(doc, { listener, web });
+				listener.start();
+				web?.start();
+			};
+			const detach = (doc: Document) => {
+				const entry = windows.get(doc);
+				if (!entry) return;
+				entry.web?.stop();
+				entry.listener.stop();
+				windows.delete(doc);
+				webStatuses.delete(doc);
+			};
+			lifetime.defer(() => {
+				for (const doc of windows.keys()) detach(doc);
 			});
-			lifetime.defer(() => listener.stop());
-			listener.start();
 			if (typeof document !== "undefined") {
-				const themeEvent = host.app.workspace.on("css-change", () => listener.refresh());
-				lifetime.defer(() => host.app.workspace.offref(themeEvent));
+				attach(document);
+				host.app.workspace.iterateAllLeaves((leaf) =>
+					attach(leaf.view.containerEl.ownerDocument),
+				);
+				const opened = host.app.workspace.on("window-open", (_workspaceWindow, win) =>
+					attach(win.document),
+				);
+				const closed = host.app.workspace.on("window-close", (_workspaceWindow, win) =>
+					detach(win.document),
+				);
+				const themeEvent = host.app.workspace.on("css-change", () => {
+					for (const entry of windows.values()) entry.listener.refresh();
+				});
+				lifetime.defer(() => {
+					host.app.workspace.offref(opened);
+					host.app.workspace.offref(closed);
+					host.app.workspace.offref(themeEvent);
+				});
 			}
 			host.settingsSection(section(host));
 
 			return () => {
 				helper.refresh();
-				listener.refresh();
+				for (const entry of windows.values()) entry.listener.refresh();
 			};
 		},
 	});

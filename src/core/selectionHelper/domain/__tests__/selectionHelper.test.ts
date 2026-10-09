@@ -9,6 +9,26 @@ import type {
 } from "../types";
 
 describe("SelectionHelper", () => {
+	it("ignores desktop modifier for touch and invalidates only the destroyed source", () => {
+		const { helper } = setup({
+			settings: { enabled: true, modifier: "alt", selectedDictionaries: [] },
+		});
+		helper.handleSelection(
+			candidate("touch", { sourceId: "a", generation: 0, trigger: "touch" }),
+		);
+		expect(helper.getSnapshot().visible).toBe(true);
+		helper.invalidateSource("a", 1);
+		helper.handleSelection(
+			candidate("late", { sourceId: "a", generation: 0, trigger: "touch" }),
+		);
+		expect(helper.getSnapshot().visible).toBe(false);
+		helper.handleSelection(
+			candidate("next", { sourceId: "b", generation: 0, trigger: "touch" }),
+		);
+		helper.invalidateSource("a", 2);
+		expect(helper.getSnapshot().target?.text).toBe("next");
+	});
+
 	it("filters selected sources in catalog order and owns the lookup lifetime", () => {
 		const { session, dispose } = fakeSession();
 		const startLookup = vi.fn(() => session);

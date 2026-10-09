@@ -23,6 +23,7 @@ export function buildSelectionHelperSettingsViewModel(
 	availableDictionaries: readonly AvailableDictionaryItem[],
 	actions: SelectionHelperSettingsActions,
 	language: Language,
+	webStatus: "idle" | "available" | "unavailable" | "mobile" = "idle",
 ): SettingsPresentation {
 	const strings = selectionHelperStrings(language);
 
@@ -47,6 +48,11 @@ export function buildSelectionHelperSettingsViewModel(
 					onChange: (value) => actions.setModifier(value as SelectionHelperModifier),
 				},
 			);
+
+			group.row("web-compatibility", {
+				name: strings.webCompatibility,
+				description: strings.webStatus[webStatus],
+			});
 
 			if (availableDictionaries.length === 0) return;
 			group.row("dictionary-selection", {

@@ -9,7 +9,14 @@ export interface SelectionHelperSettings {
 	selectedDictionaries: string[];
 }
 
-export interface SelectionCandidate {
+export interface SelectionSource {
+	/** Opaque adapter-owned source; never a DOM or browser object. */
+	sourceId?: string;
+	generation?: number;
+	trigger?: "mouse" | "touch" | "webview";
+}
+
+export interface SelectionCandidate extends SelectionSource {
 	text: string;
 	x: number;
 	y: number;
@@ -19,7 +26,7 @@ export interface SelectionCandidate {
 	ctrlOrMetaKey: boolean;
 }
 
-export interface SelectionTarget {
+export interface SelectionTarget extends SelectionSource {
 	text: string;
 	isEnglishWord: boolean;
 	x: number;
