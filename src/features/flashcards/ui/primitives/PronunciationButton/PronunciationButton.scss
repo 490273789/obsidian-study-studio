@@ -24,6 +24,8 @@
 		inset 0 0 0 1px rgba(var(--fc-white-rgb), 0.025),
 		0 4px 12px rgba(var(--fc-black-rgb), 0.1);
 	cursor: pointer;
+	user-select: none;
+	-webkit-user-select: none;
 	transition:
 		transform var(--fc-motion-quick) ease,
 		border-color var(--fc-motion-quick) ease,

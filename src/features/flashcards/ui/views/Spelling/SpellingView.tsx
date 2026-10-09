@@ -10,6 +10,7 @@ import type {
 	SpellingLifecycleFeedback,
 } from "../../../domain/sessions/sessionLifecycle";
 import { useFlashcardI18n } from "../../../strings/context";
+import { useCardContextMenu } from "../../hooks/useCardContextMenu";
 import type { AnswerPresentationTransition } from "../../answerPresentationTransition";
 import { MarkdownContent } from "../../primitives/Markdown";
 import { SessionToolbar } from "../../primitives/SessionToolbar";
@@ -46,6 +47,7 @@ export const SpellingView = React.memo(function SpellingView({
 	pronunciationRuntime,
 }: SpellingViewProps) {
 	const { t } = useFlashcardI18n();
+	const handleContextMenu = useCardContextMenu();
 	const [input, setInput] = useState("");
 	const inputRef = useRef<HTMLInputElement>(null);
 	const viewRef = useRef<HTMLDivElement>(null);
@@ -180,7 +182,11 @@ export const SpellingView = React.memo(function SpellingView({
 			/>
 
 			<div className={`flashcard-content ${isTransitioning ? "animating" : ""}`}>
-				<div className="flashcard-card-stack" key={currentCard.identity}>
+				<div
+					className="flashcard-card-stack"
+					key={currentCard.identity}
+					onContextMenu={handleContextMenu}
+				>
 					<div className="flashcard-question">
 						<div className="flashcard-label flashcard-label-question">
 							{t("spelling.meaningPrompt")}

@@ -57,6 +57,8 @@
 	gap: var(--fc-space-4);
 	width: 100%;
 	animation: fc-card-slide-in 0.3s cubic-bezier(0.2, 0, 0, 1) forwards;
+	user-select: text;
+	-webkit-user-select: text;
 }
 
 .flashcard-answer-section {
@@ -79,6 +81,8 @@
 	background: var(--fc-surface-card);
 	box-shadow: var(--fc-shadow-card);
 	transition: all 0.2s ease;
+	user-select: text;
+	-webkit-user-select: text;
 }
 
 .flashcard-question {
@@ -89,7 +93,6 @@
 		font-size: var(--fc-font-xl);
 		font-weight: var(--fc-weight-semibold);
 		color: var(--fc-text);
-		margin-top: var(--fc-space-1);
 	}
 }
 
@@ -115,6 +118,8 @@
 	border-bottom-left-radius: var(--fc-radius-md);
 	margin: 0;
 	width: fit-content;
+	user-select: none;
+	-webkit-user-select: none;
 
 	&.flashcard-label-question {
 		background: color-mix(in srgb, var(--fc-cyan) 12%, transparent);
@@ -142,6 +147,8 @@
 		color-mix(in srgb, var(--text-normal) 25%, transparent),
 		transparent
 	);
+	user-select: none;
+	-webkit-user-select: none;
 }
 
 .flashcard-footer {

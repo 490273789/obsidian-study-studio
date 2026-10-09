@@ -20,6 +20,8 @@
 	font: var(--fc-weight-medium) var(--fc-font-sm) / var(--fc-line-tight) var(--fc-font-ui);
 	text-align: center;
 	cursor: pointer;
+	user-select: none;
+	-webkit-user-select: none;
 	transition: var(--fc-transition-button);
 
 	> span {

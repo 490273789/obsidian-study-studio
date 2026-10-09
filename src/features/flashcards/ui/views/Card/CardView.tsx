@@ -16,6 +16,7 @@ import { SessionToolbar } from "../../primitives/SessionToolbar";
 import { SessionTimer } from "../../../../../core/ui/primitives/SessionTimer";
 import { useWindowKeyDown } from "../../../../../core/ui/hooks/hooks";
 import { useFlashcardI18n } from "../../../strings/context";
+import { useCardContextMenu } from "../../hooks/useCardContextMenu";
 import type { PronunciationRuntime } from "../../../domain/pronunciation";
 import styles from "./CardView.module.scss";
 
@@ -53,6 +54,7 @@ export const CardView = React.memo(function CardView({
 	cardPresentation,
 }: CardViewProps) {
 	const { t, language } = useFlashcardI18n();
+	const handleContextMenu = useCardContextMenu();
 	const {
 		answerVisible: showAnswer,
 		autoPronunciationEnabled,
@@ -200,7 +202,11 @@ export const CardView = React.memo(function CardView({
 
 			{/* Content */}
 			<div className={`flashcard-content ${isTransitioning ? "animating" : ""}`}>
-				<div className="flashcard-card-stack" key={currentCard.identity}>
+				<div
+					className="flashcard-card-stack"
+					key={currentCard.identity}
+					onContextMenu={handleContextMenu}
+				>
 					<div className="flashcard-question">
 						<div className="flashcard-label flashcard-label-question">
 							{t("common.question")}

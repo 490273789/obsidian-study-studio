@@ -8,6 +8,9 @@
 	font-size: var(--fc-font-xl);
 	line-height: var(--fc-line-reading);
 	font-family: var(--fc-font-reading);
+	user-select: text;
+	-webkit-user-select: text;
+	cursor: text;
 
 	p {
 		margin: 0 0 var(--fc-space-3);

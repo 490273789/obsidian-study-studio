@@ -14,6 +14,7 @@ import styles from "./Practice.module.scss";
 import { SessionToolbar } from "../../primitives/SessionToolbar";
 import { useWindowKeyDown } from "../../../../../core/ui/hooks/hooks";
 import { useFlashcardI18n } from "../../../strings/context";
+import { useCardContextMenu } from "../../hooks/useCardContextMenu";
 import type { PronunciationRuntime } from "../../../domain/pronunciation";
 
 interface PracticeViewProps {
@@ -40,6 +41,7 @@ export const PracticeView = React.memo(function PracticeView({
 	cardPresentation,
 }: PracticeViewProps) {
 	const { t } = useFlashcardI18n();
+	const handleContextMenu = useCardContextMenu();
 	const {
 		answerVisible: showAnswer,
 		autoPronunciationEnabled,
@@ -160,7 +162,11 @@ export const PracticeView = React.memo(function PracticeView({
 
 			{/* Content */}
 			<div className={`flashcard-content ${isTransitioning ? "animating" : ""}`}>
-				<div className="flashcard-card-stack" key={currentCard.identity}>
+				<div
+					className="flashcard-card-stack"
+					key={currentCard.identity}
+					onContextMenu={handleContextMenu}
+				>
 					<div className="flashcard-question">
 						<div className="flashcard-label flashcard-label-question">
 							{t("common.question")}

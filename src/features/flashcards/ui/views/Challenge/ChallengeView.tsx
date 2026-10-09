@@ -8,6 +8,7 @@ import { useWindowKeyDown } from "../../../../../core/ui/hooks/hooks";
 import { getDisplayCardContent } from "../../../domain/cards/cardDisplay";
 import type { ActiveChallengeSnapshot } from "../../../domain/sessions/sessionLifecycle";
 import { useFlashcardI18n } from "../../../strings/context";
+import { useCardContextMenu } from "../../hooks/useCardContextMenu";
 import type { AnswerPresentationTransition } from "../../answerPresentationTransition";
 import { MarkdownContent } from "../../primitives/Markdown";
 import styles from "./Challenge.module.scss";
@@ -44,6 +45,7 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 	markdownRenderer,
 }: ChallengeViewProps) {
 	const { t } = useFlashcardI18n();
+	const handleContextMenu = useCardContextMenu();
 	const [answerVisible, setAnswerVisible] = useState(false);
 	const [input, setInput] = useState("");
 	const inputRef = useRef<HTMLInputElement>(null);
@@ -174,7 +176,11 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 					styles.content,
 				)}
 			>
-				<div className="flashcard-card-stack" key={currentCard.identity}>
+				<div
+					className="flashcard-card-stack"
+					key={currentCard.identity}
+					onContextMenu={handleContextMenu}
+				>
 					<div className="flashcard-question">
 						<div className="flashcard-label flashcard-label-question">
 							{isSpelling ? t("challenge.spellingPrompt") : t("common.question")}
