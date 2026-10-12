@@ -16,6 +16,9 @@ Read this guide before changing React UI, deck home behavior, the Obsidian view/
 - Push a catalog entry with `host.catalog(...)` so the host generates the feature's open command. Flashcards is the plugin landing page and owns the single plugin ribbon; its header exposes sibling feature shortcuts through `host.openFeature(...)`. Other features do not add ribbon icons.
 - Keep copy Chinese-first and route user-visible strings through `src/core/i18n/`.
 
+For card shortcut mapping, focus ownership, event filtering, or dialog interaction,
+read [Card presentation shortcuts](sessions.md#card-presentation-shortcuts).
+
 ## Card editing
 
 `CardEditingInteraction` in `src/features/flashcards/ui/cardEditingInteraction.ts`

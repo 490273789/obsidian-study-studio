@@ -14,7 +14,7 @@ import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { MarkdownContent, PronounceableMarkdown } from "../../primitives/Markdown";
 import { SessionToolbar } from "../../primitives/SessionToolbar";
 import { SessionTimer } from "../../../../../core/ui/primitives/SessionTimer";
-import { useWindowKeyDown } from "../../../../../core/ui/hooks/hooks";
+import { useCardPresentationShortcuts } from "../../hooks/useCardPresentationShortcuts";
 import { useFlashcardI18n } from "../../../strings/context";
 import { useCardContextMenu } from "../../hooks/useCardContextMenu";
 import type { PronunciationRuntime } from "../../../domain/pronunciation";
@@ -103,56 +103,27 @@ export const CardView = React.memo(function CardView({
 		if (outcome.kind === "failed") new Notice(outcome.message);
 	}, [isTransitioning, session.canPrevious, session.reference, transition]);
 
-	useWindowKeyDown((e) => {
-		// Ignore if in input field
-		if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-			return;
-		}
-
-		if (!showAnswer) {
-			// Show answer on space
-			if (e.code === "Space") {
-				e.preventDefault();
-				handleShowAnswer();
+	const shortcutRootRef = useCardPresentationShortcuts(
+		{
+			mode: "study",
+			answerVisible: showAnswer,
+			canPrevious: session.canPrevious,
+			busy: isTransitioning,
+		},
+		(intent) => {
+			switch (intent.kind) {
+				case "reveal":
+					handleShowAnswer();
+					break;
+				case "rate":
+					void handleRating(intent.rating);
+					break;
+				case "previous":
+					void handlePrevious();
+					break;
 			}
-			return;
-		}
-
-		// Rating shortcuts
-		switch (e.code) {
-			case "Digit1":
-			case "Numpad1":
-				e.preventDefault();
-				void handleRating(1);
-				break;
-			case "Digit2":
-			case "Numpad2":
-			case "Space":
-				e.preventDefault();
-				void handleRating(2);
-				break;
-			case "Digit3":
-			case "Numpad3":
-				e.preventDefault();
-				void handleRating(3);
-				break;
-			case "Digit4":
-			case "Numpad4":
-				e.preventDefault();
-				void handleRating(4);
-				break;
-			case "Digit5":
-			case "Numpad5":
-				e.preventDefault();
-				void handleRating(5);
-				break;
-			case "Digit6":
-			case "Numpad6":
-				e.preventDefault();
-				void handlePrevious();
-				break;
-		}
-	});
+		},
+	);
 
 	// Check if session is complete
 	if (!currentCard) {
@@ -175,7 +146,7 @@ export const CardView = React.memo(function CardView({
 
 	const progress = session.progress;
 	return (
-		<div className="flashcard-study">
+		<div ref={shortcutRootRef} className="flashcard-study">
 			{/* Header */}
 			<SessionToolbar
 				deckName={session.originDeck.name}

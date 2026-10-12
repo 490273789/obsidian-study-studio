@@ -12,7 +12,7 @@ import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { MarkdownContent, PronounceableMarkdown } from "../../primitives/Markdown";
 import styles from "./Practice.module.scss";
 import { SessionToolbar } from "../../primitives/SessionToolbar";
-import { useWindowKeyDown } from "../../../../../core/ui/hooks/hooks";
+import { useCardPresentationShortcuts } from "../../hooks/useCardPresentationShortcuts";
 import { useFlashcardI18n } from "../../../strings/context";
 import { useCardContextMenu } from "../../hooks/useCardContextMenu";
 import type { PronunciationRuntime } from "../../../domain/pronunciation";
@@ -88,40 +88,27 @@ export const PracticeView = React.memo(function PracticeView({
 		if (outcome.kind === "failed") new Notice(outcome.message);
 	}, [isTransitioning, session.canPrevious, session.reference, transition]);
 
-	useWindowKeyDown((e) => {
-		if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-			return;
-		}
-
-		if (!showAnswer) {
-			if (e.code === "Space") {
-				e.preventDefault();
-				handleShowAnswer();
+	const shortcutRootRef = useCardPresentationShortcuts(
+		{
+			mode: "practice",
+			answerVisible: showAnswer,
+			canPrevious: session.canPrevious,
+			busy: isTransitioning,
+		},
+		(intent) => {
+			switch (intent.kind) {
+				case "reveal":
+					handleShowAnswer();
+					break;
+				case "answer":
+					void handleAnswer(intent.correct);
+					break;
+				case "previous":
+					void handlePrevious();
+					break;
 			}
-			return;
-		}
-
-		switch (e.code) {
-			case "Digit1":
-			case "Numpad1":
-			case "KeyX":
-				e.preventDefault();
-				void handleAnswer(false);
-				break;
-			case "Digit2":
-			case "Numpad2":
-			case "KeyO":
-			case "Space":
-				e.preventDefault();
-				void handleAnswer(true);
-				break;
-			case "Digit6":
-			case "Numpad6":
-				e.preventDefault();
-				void handlePrevious();
-				break;
-		}
-	});
+		},
+	);
 
 	if (!currentCard) {
 		return (
@@ -135,7 +122,7 @@ export const PracticeView = React.memo(function PracticeView({
 	const progress = session.progress.label;
 	const progressPercent = session.progress.percent;
 	return (
-		<div className="flashcard-study">
+		<div ref={shortcutRootRef} className="flashcard-study">
 			{/* Header */}
 			<SessionToolbar
 				deckName={session.originDeck.name}

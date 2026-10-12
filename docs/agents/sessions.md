@@ -52,6 +52,29 @@ Pure engines and planners under `src/features/flashcards/domain/sessions/` are i
 - It owns answer-transition delays, spelling feedback retention, optional pronunciation wait, and unsubscribe cleanup.
 - Its `cardPresentation` snapshot owns study/practice answer visibility and automatic pronunciation. Reveal/toggle actions carry the presented revision-bound reference; word-learning deck eligibility is updated through `setWordLearningDecks()`.
 - A new encounter (including returning/undoing, consecutive answers on the same identity, or front/back edits) hides the answer and creates one automatic pronunciation opportunity when the word becomes visible. Explanation/source-only changes preserve visibility and do not replay. Autoplay persists across cards, resets on session/mode changes or last unsubscribe, and presentation changes follow the committed snapshot after its delay.
-- `CardView`, `PracticeView`, and `SpellingView` retain rendering, keyboard mapping, focus, and mode-specific controls. Do not reintroduce per-component timer/pending-action state.
+- Views retain rendering and mode-specific controls; spelling input submission stays local. Do not reintroduce per-component timer/pending-action state.
+
+## Card presentation shortcuts
+
+`src/features/flashcards/ui/cardPresentationShortcuts.ts` owns the study, practice,
+and challenge card shortcut interpretation, event filtering, and focus lifetime.
+`useCardPresentationShortcuts` binds a view's card surface and supplies its latest
+presented state and semantic actions. Answer transactions stay with
+`AnswerPresentationTransition`; challenge answer visibility stays with its view.
+
+- Shortcuts belong to the focused card surface in its owning document. Initial
+  mounting may focus an unclaimed surface; clicking ordinary card content focuses
+  it. Rendering a new card does not take focus from another control or view.
+- Inputs, editable content, buttons, links, and other interactive controls retain
+  their own keyboard behavior. Open dialogs pause card shortcuts. Spelling
+  question input and setup-page shortcuts stay outside this module.
+- Composing, modified, already-consumed, and unmapped key events pass through.
+  Recognized keys prevent the browser default; repeated, busy, or unavailable
+  previous-card actions are consumed without dispatching. Propagation continues.
+- Preserve existing mode and phase mappings, including study Space = rating 2 and
+  challenge feedback Space/Enter = continue. Read the presented state on each
+  event; do not capture a prior card's callback or invent parallel transition state.
+- Test through the binding interface: observable intents, default prevention,
+  focus ownership, dialogs, multiple documents, and idempotent release/rebinding.
 
 Add focused tests under `src/features/flashcards/domain/sessions/__tests__/`, `src/features/flashcards/domain/cards/__tests__/`, and `src/core/ui/__tests__/` when applicable. Prefer tests through `SessionLifecycle` and `AnswerPresentationTransition`, with pure-engine tests for focused algorithms.

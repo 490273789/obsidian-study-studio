@@ -4,7 +4,7 @@ import { Notice } from "obsidian";
 import { cls } from "../../../../../core/shared/classNames";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardInput } from "../../../../../core/ui/primitives/Input";
-import { useWindowKeyDown } from "../../../../../core/ui/hooks/hooks";
+import { useCardPresentationShortcuts } from "../../hooks/useCardPresentationShortcuts";
 import { getDisplayCardContent } from "../../../domain/cards/cardDisplay";
 import type { ActiveChallengeSnapshot } from "../../../domain/sessions/sessionLifecycle";
 import { useFlashcardI18n } from "../../../strings/context";
@@ -103,38 +103,34 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 		report(await transition.act({ kind: "challenge-continue", reference: session.reference }));
 	}, [isFeedback, isTransitioning, report, session.reference, transition]);
 
-	useWindowKeyDown((event) => {
-		if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)
-			return;
-		if (isTransitioning) return;
-		if (isFeedback && (event.code === "Space" || event.code === "Enter")) {
-			event.preventDefault();
-			void continueAfterFeedback();
-			return;
-		}
-		if (isSpelling || isFeedback) return;
-		if (!showAnswer && event.code === "Space") {
-			event.preventDefault();
-			setAnswerVisible(true);
-			return;
-		}
-		if (!showAnswer) return;
-		if (event.code === "Digit1" || event.code === "Numpad1" || event.code === "KeyX") {
-			event.preventDefault();
-			void answer(false);
-		} else if (
-			event.code === "Digit2" ||
-			event.code === "Numpad2" ||
-			event.code === "KeyO" ||
-			event.code === "Space"
-		) {
-			event.preventDefault();
-			void answer(true);
-		}
-	});
+	const shortcutRootRef = useCardPresentationShortcuts(
+		{
+			mode: "challenge",
+			phase: isFeedback ? "feedback" : "question",
+			questionMode: session.questionMode,
+			answerVisible: showAnswer,
+			busy: isTransitioning,
+		},
+		(intent) => {
+			switch (intent.kind) {
+				case "reveal":
+					setAnswerVisible(true);
+					break;
+				case "answer":
+					void answer(intent.correct);
+					break;
+				case "continue":
+					void continueAfterFeedback();
+					break;
+			}
+		},
+	);
 
 	return (
-		<div className={cls("flashcard-study fc-page fc-page--fill", styles.view)}>
+		<div
+			ref={shortcutRootRef}
+			className={cls("flashcard-study fc-page fc-page--fill", styles.view)}
+		>
 			<header className={styles.header}>
 				<FlashcardButton
 					preset="icon"
