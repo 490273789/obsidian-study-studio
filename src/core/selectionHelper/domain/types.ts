@@ -10,13 +10,28 @@ export interface SelectionHelperSettings {
 }
 
 export interface SelectionSource {
-	/** Opaque adapter-owned source; never a DOM or browser object. */
-	sourceId?: string;
-	generation?: number;
-	trigger?: "mouse" | "touch" | "webview";
+	/** Opaque page identity; a navigated page receives a fresh reference. */
+	readonly id: string;
 }
 
-export interface SelectionCandidate extends SelectionSource {
+export interface SelectionRead {
+	isCurrent(): boolean;
+	submit(candidate: SelectionCandidate): boolean;
+	dismiss(): void;
+}
+
+export interface SelectionSourceLease {
+	readonly reference: SelectionSource;
+	readonly active: boolean;
+	/** Capture before asynchronous work, never after it completes. */
+	capture(): SelectionRead;
+	/** Clear this source's selection while allowing future captures. */
+	dismiss(): void;
+	dispose(): void;
+}
+
+export interface SelectionCandidate {
+	trigger?: "mouse" | "touch" | "webview";
 	text: string;
 	x: number;
 	y: number;
@@ -26,7 +41,9 @@ export interface SelectionCandidate extends SelectionSource {
 	ctrlOrMetaKey: boolean;
 }
 
-export interface SelectionTarget extends SelectionSource {
+export interface SelectionTarget {
+	source: SelectionSource;
+	trigger?: "mouse" | "touch" | "webview";
 	text: string;
 	isEnglishWord: boolean;
 	x: number;

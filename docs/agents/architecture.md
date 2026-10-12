@@ -37,6 +37,9 @@ and `词典` own their runtimes the same way. Shared services reach a feature th
 
 `src/core/selectionHelper/` is the 工作台-owned 选区助手 interaction module, not a 工作台功能. It runs through the same `WorkbenchModule` lifecycle without contributing a catalog entry. 词典 and AI 翻译 each provide a narrow adapter; the composition module connects them without reading either feature's runtime.
 
+For selection-source registration, expiry, or delayed capture ordering, read
+[Selection helper sources](ui-and-obsidian.md#selection-helper-sources).
+
 `src/core/host/reactItemView.tsx` mounts every view's React tree and injects the flashcard services into `FlashcardApp`. Closing a view unmounts its React adapter and stops current pronunciation, but it does not itself end an active session. Plugin unload calls `workbench.dispose()`, which stops every feature before the shared `AiService` is disposed.
 
 ## Source layout

@@ -5,6 +5,8 @@ import type {
 	SelectionHelperSettings,
 	SelectionHelperSnapshot,
 	SelectionLookupSession,
+	SelectionSource,
+	SelectionSourceLease,
 	SelectionTarget,
 	SelectionTranslationAdapter,
 } from "./types";
@@ -15,6 +17,13 @@ export interface SelectionHelperOptions {
 	translation: SelectionTranslationAdapter;
 }
 
+interface SourceState {
+	readonly owner: object;
+	readonly reference: SelectionSource;
+	active: boolean;
+	revision: number;
+}
+
 /** Owns selection eligibility, popup state, query lifetime, and action ordering. */
 export class SelectionHelper {
 	private readonly listeners = new Set<() => void>();
@@ -22,7 +31,8 @@ export class SelectionHelper {
 	private lookupSession: SelectionLookupSession | null = null;
 	private lookupUnsubscribe: (() => void) | null = null;
 	private disposed = false;
-	private readonly sourceGenerations = new Map<string, number>();
+	private readonly sources = new Map<SelectionSource, SourceState>();
+	private interactionRevision = 0;
 
 	constructor(private readonly options: SelectionHelperOptions) {}
 
@@ -35,25 +45,79 @@ export class SelectionHelper {
 		return () => this.listeners.delete(listener);
 	}
 
-	handleSelection(candidate: SelectionCandidate): void {
-		if (this.disposed) return;
-		if (candidate.sourceId) {
-			const generation = candidate.generation ?? 0;
-			if (generation < (this.sourceGenerations.get(candidate.sourceId) ?? 0)) return;
-			this.sourceGenerations.set(candidate.sourceId, generation);
-		}
+	/** One source lease per document or web page, shared by all its captures. */
+	openSource(owner: object): SelectionSourceLease {
+		const reference: SelectionSource = Object.freeze({
+			id: `selection-${crypto.randomUUID()}`,
+		});
+		const state: SourceState = { owner, reference, active: !this.disposed, revision: 0 };
+		if (state.active) this.sources.set(reference, state);
+		const lease: SelectionSourceLease = {
+			reference,
+			get active() {
+				return state.active;
+			},
+			capture: () => {
+				const interaction = this.interactionRevision;
+				const revision = state.revision;
+				let consumed = false;
+				const isCurrent = () =>
+					state.active &&
+					!consumed &&
+					interaction === this.interactionRevision &&
+					revision === state.revision;
+				return {
+					isCurrent,
+					submit: (candidate) => {
+						if (!isCurrent()) return false;
+						consumed = true;
+						this.interrupt();
+						return this.acceptSelection(candidate, reference);
+					},
+					dismiss: () => {
+						if (!isCurrent()) return;
+						consumed = true;
+						lease.dismiss();
+					},
+				};
+			},
+			dismiss: () => {
+				if (!state.active) return;
+				state.revision++;
+				if (this.snapshot.target?.source === reference) this.clearSelection();
+			},
+			dispose: () => {
+				if (!state.active) return;
+				state.active = false;
+				this.sources.delete(reference);
+				if (this.snapshot.target?.source === reference) this.clearSelection();
+			},
+		};
+		return lease;
+	}
+
+	ownsSource(owner: object, source: SelectionSource | undefined): boolean {
+		return source !== undefined && this.sources.get(source)?.owner === owner;
+	}
+
+	/** Fence pending captures across windows without closing the current query. */
+	interrupt(): void {
+		this.interactionRevision++;
+	}
+
+	private acceptSelection(candidate: SelectionCandidate, source: SelectionSource): boolean {
 		const settings = this.options.settings();
 		if (
 			!settings.enabled ||
 			!candidate.eligibleContext ||
 			!modifierMatches(settings, candidate)
 		) {
-			return;
+			return false;
 		}
 		const text = candidate.text.trim();
 		if (!text) {
-			this.dismiss();
-			return;
+			this.clearSelection();
+			return false;
 		}
 
 		const sources = selectedSources(
@@ -64,8 +128,8 @@ export class SelectionHelper {
 		const canLookup = isEnglishWord && sources.length > 0;
 		const canTranslate = this.options.translation.available();
 		if (!canLookup && !canTranslate) {
-			this.dismiss();
-			return;
+			this.clearSelection();
+			return false;
 		}
 
 		this.releaseLookup();
@@ -74,8 +138,7 @@ export class SelectionHelper {
 			isEnglishWord,
 			x: candidate.x,
 			y: candidate.y,
-			sourceId: candidate.sourceId,
-			generation: candidate.generation,
+			source,
 			trigger: candidate.trigger,
 		};
 		this.publish({
@@ -86,6 +149,7 @@ export class SelectionHelper {
 			canTranslate,
 			lookup: null,
 		});
+		return true;
 	}
 
 	beginLookup(): void {
@@ -162,16 +226,15 @@ export class SelectionHelper {
 		if (!this.options.settings().enabled) this.dismiss();
 	}
 
-	/** Invalidate a destroyed or navigated source without closing another window. */
-	invalidateSource(sourceId: string, generation: number): void {
-		this.sourceGenerations.set(
-			sourceId,
-			Math.max(generation, this.sourceGenerations.get(sourceId) ?? 0),
-		);
-		if (this.snapshot.target?.sourceId === sourceId) this.dismiss();
+	dismiss(owner?: object): void {
+		if (this.disposed) return;
+		this.interrupt();
+		if (owner === undefined || this.ownsSource(owner, this.snapshot.target?.source)) {
+			this.clearSelection();
+		}
 	}
 
-	dismiss(): void {
+	private clearSelection(): void {
 		this.releaseLookup();
 		this.publish(EMPTY_SNAPSHOT);
 	}
@@ -179,11 +242,13 @@ export class SelectionHelper {
 	dispose(): void {
 		if (this.disposed) return;
 		this.disposed = true;
+		this.interrupt();
+		for (const source of this.sources.values()) source.active = false;
+		this.sources.clear();
 		this.releaseLookup();
 		this.snapshot = EMPTY_SNAPSHOT;
 		for (const listener of this.listeners) listener();
 		this.listeners.clear();
-		this.sourceGenerations.clear();
 	}
 
 	private publishLookup(): void {

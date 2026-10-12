@@ -31,6 +31,38 @@ use `FlashcardNavigation` with the interaction's cancellation signal; navigation
 releases the exact pending continuation. Migration completion leaves retry to the
 learner. Test these sequences through the interaction interface.
 
+## Selection helper sources
+
+`SelectionHelper` in `src/core/selectionHelper/domain/selectionHelper.ts` owns
+source registration, window ownership, capture validity, and the single visible
+assistant/query lifetime. DOM and webview adapters acquire one source lease per
+document or page through `openSource(owner)`; navigation replaces the lease.
+
+- Capture a read token before starting asynchronous work or a touch delay. A token
+  submits once and is rejected after its source closes, another selection wins,
+  or a user interaction fences pending captures. Never capture a fresh token after
+  an old operation returns. Source disposal removes its registration; retain no
+  global tombstone or numeric-generation map in adapters.
+- `dismiss()` closes the assistant and fences old captures. Owner-scoped dismissal
+  fences pending captures globally but closes only that window's visible assistant.
+  `interrupt()` fences pending work without closing the visible query. Automatic
+  source disposal and `lease.dismiss()` affect only the exact source.
+- The target retains captured text, not a live Range or input offset. Copying,
+  assistant interaction, and edits within the same node preserve that snapshot;
+  removal of its origin node, page navigation, and window closure expire it.
+  A removed selection can be replaced by a fresh capture from the same document.
+- The DOM adapter owns origin-node checks, native selection gestures, coordinates,
+  and document/frame cleanup. The webview adapter owns guest-data validation,
+  page-specific collector cleanup, single-flight reads, and sequence deduplication.
+  Consume guest sequence numbers even when a read token rejects a late result.
+  An old page's completion or cleanup must not modify a replacement page's state.
+- Expiry releases the assistant lookup. Translation, main-dictionary, and favorite
+  handoffs already accepted by their owning modules continue. Dictionary sandbox
+  rendering remains dictionary-owned under ADR 0002; web compatibility follows
+  ADR 0004.
+- Test source and capture ordering through the real helper interface; adapter tests
+  cover native event wiring, iframe/window replacement, and the guest protocol.
+
 ## Dictionary favorites
 
 Modal and sidebar adapters render the shared `DictionaryFavoriteController`.

@@ -87,7 +87,9 @@ export function createSelectionHelperModule(
 			>();
 			const attach = (doc: Document) => {
 				if (windows.has(doc)) return;
+				const owner = {};
 				const listener = new SelectionListener({
+					owner,
 					helper,
 					document: doc,
 					isEnabled: () => host.settings.read().selectionPopup.enabled,
@@ -99,15 +101,8 @@ export function createSelectionHelperModule(
 					? new WebviewSelectionAdapter({
 							document: doc,
 							isEnabled: () => host.settings.read().selectionPopup.enabled,
-							onSelection: (candidate) => listener.submit(candidate),
-							onDismiss: (sourceId, generation) => {
-								const target = helper.getSnapshot().target;
-								if (
-									target?.sourceId === sourceId &&
-									target.generation === generation
-								)
-									helper.dismiss();
-							},
+							openSource: () => helper.openSource(owner),
+							interrupt: () => helper.interrupt(),
 							onStatus: (status) => {
 								if (webStatuses.get(doc) === status) return;
 								webStatuses.set(doc, status);

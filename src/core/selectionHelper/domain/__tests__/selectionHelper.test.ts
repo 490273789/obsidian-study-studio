@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { SelectionHelper } from "../selectionHelper";
 import type {
+	SelectionCandidate,
 	SelectionDictionaryAdapter,
 	SelectionHelperSettings,
 	SelectionLookupSession,
@@ -13,19 +14,17 @@ describe("SelectionHelper", () => {
 		const { helper } = setup({
 			settings: { enabled: true, modifier: "alt", selectedDictionaries: [] },
 		});
-		helper.handleSelection(
-			candidate("touch", { sourceId: "a", generation: 0, trigger: "touch" }),
-		);
+		const first = helper.openSource({});
+		first.capture().submit(candidate("touch", { trigger: "touch" }));
 		expect(helper.getSnapshot().visible).toBe(true);
-		helper.invalidateSource("a", 1);
-		helper.handleSelection(
-			candidate("late", { sourceId: "a", generation: 0, trigger: "touch" }),
-		);
+		const late = first.capture();
+		first.dispose();
+		expect(late.submit(candidate("late", { trigger: "touch" }))).toBe(false);
 		expect(helper.getSnapshot().visible).toBe(false);
-		helper.handleSelection(
-			candidate("next", { sourceId: "b", generation: 0, trigger: "touch" }),
-		);
-		helper.invalidateSource("a", 2);
+		const next = helper.openSource({});
+		next.capture().submit(candidate("next", { trigger: "touch" }));
+		first.dismiss();
+		first.dispose();
 		expect(helper.getSnapshot().target?.text).toBe("next");
 	});
 
@@ -37,7 +36,7 @@ describe("SelectionHelper", () => {
 			startLookup,
 		});
 
-		helper.handleSelection(candidate("hello world"));
+		select(helper, candidate("hello world"));
 		expect(helper.getSnapshot()).toMatchObject({
 			visible: true,
 			mode: "actions",
@@ -61,7 +60,7 @@ describe("SelectionHelper", () => {
 			startLookup,
 		});
 
-		helper.handleSelection(candidate("hello"));
+		select(helper, candidate("hello"));
 
 		expect(helper.getSnapshot().canLookup).toBe(false);
 		helper.beginLookup();
@@ -71,10 +70,10 @@ describe("SelectionHelper", () => {
 	it("replaces the previous selection session and discards later updates", () => {
 		const { session, dispose } = fakeSession();
 		const { helper } = setup({ startLookup: () => session });
-		helper.handleSelection(candidate("first"));
+		select(helper, candidate("first"));
 		helper.beginLookup();
 
-		helper.handleSelection(candidate("second"));
+		select(helper, candidate("second"));
 
 		expect(dispose).toHaveBeenCalledOnce();
 		expect(helper.getSnapshot().target?.text).toBe("second");
@@ -84,7 +83,7 @@ describe("SelectionHelper", () => {
 	it("closes before handing text to the translation adapter", async () => {
 		const openPrefilled = vi.fn().mockResolvedValue(undefined);
 		const { helper } = setup({ openPrefilled });
-		helper.handleSelection(candidate("一段中文"));
+		select(helper, candidate("一段中文"));
 
 		await helper.translate();
 
@@ -96,11 +95,11 @@ describe("SelectionHelper", () => {
 		const { helper } = setup({
 			settings: { enabled: true, modifier: "alt", selectedDictionaries: [] },
 		});
-		helper.handleSelection(candidate("hello", { altKey: false }));
+		select(helper, candidate("hello", { altKey: false }));
 		expect(helper.getSnapshot().visible).toBe(false);
-		helper.handleSelection(candidate("hello", { altKey: true, eligibleContext: false }));
+		select(helper, candidate("hello", { altKey: true, eligibleContext: false }));
 		expect(helper.getSnapshot().visible).toBe(false);
-		helper.handleSelection(candidate("hello", { altKey: true }));
+		select(helper, candidate("hello", { altKey: true }));
 		expect(helper.getSnapshot().visible).toBe(true);
 	});
 
@@ -108,7 +107,7 @@ describe("SelectionHelper", () => {
 		const { session, actions } = fakeSession();
 		const startLookup = vi.fn(() => session);
 		const { helper } = setup({ startLookup });
-		helper.handleSelection(candidate("hello"));
+		select(helper, candidate("hello"));
 		helper.beginLookup();
 		helper.selectSource("b");
 		helper.selectSection("b", 2);
@@ -131,7 +130,7 @@ describe("SelectionHelper", () => {
 			return vi.fn();
 		};
 		const { helper } = setup({ startLookup: () => session });
-		helper.handleSelection(candidate("hello"));
+		select(helper, candidate("hello"));
 		helper.beginLookup();
 		helper.dismiss();
 		notify();
@@ -143,7 +142,7 @@ describe("SelectionHelper", () => {
 
 		expect(helper.canFavorite).toBe(true);
 
-		helper.handleSelection(candidate("commercial"));
+		select(helper, candidate("commercial"));
 		helper.beginLookup();
 
 		await helper.openFavorite("commercial");
@@ -156,6 +155,150 @@ describe("SelectionHelper", () => {
 		const { helper } = setup({ openFavorite: undefined });
 		expect(helper.canFavorite).toBe(false);
 	});
+
+	it("rejects another window's pending capture after a newer selection without expiring its source", () => {
+		const { helper } = setup();
+		const first = helper.openSource({});
+		const second = helper.openSource({});
+		const pending = first.capture();
+		second.capture().submit(candidate("new selection"));
+		expect(pending.isCurrent()).toBe(false);
+		expect(pending.submit(candidate("old result"))).toBe(false);
+		expect(helper.getSnapshot().target?.text).toBe("new selection");
+		expect(first.active).toBe(true);
+		first.capture().submit(candidate("fresh selection"));
+		expect(helper.getSnapshot().target?.text).toBe("fresh selection");
+	});
+
+	it("fences pending work when dismissed even if no popup is visible", () => {
+		const { helper } = setup();
+		const source = helper.openSource({});
+		const pending = source.capture();
+		helper.dismiss();
+		expect(pending.submit(candidate("late"))).toBe(false);
+		expect(helper.getSnapshot().visible).toBe(false);
+		source.capture().submit(candidate("new"));
+		expect(helper.getSnapshot().target?.text).toBe("new");
+	});
+
+	it("host interaction fences old reads without releasing the visible lookup", () => {
+		const { session, dispose } = fakeSession();
+		const { helper } = setup({ startLookup: () => session });
+		const source = helper.openSource({});
+		source.capture().submit(candidate("hello"));
+		helper.beginLookup();
+		const pending = source.capture();
+		helper.interrupt();
+		pending.dismiss();
+		expect(pending.submit(candidate("old"))).toBe(false);
+		expect(dispose).not.toHaveBeenCalled();
+		expect(helper.getSnapshot().mode).toBe("dictionary");
+	});
+
+	it("owner-scoped closing fences all pending captures but preserves another window's visible query", () => {
+		const { helper } = setup();
+		const owner = {};
+		const source = helper.openSource(owner);
+		const other = helper.openSource({});
+		other.capture().submit(candidate("other window"));
+		const ownPending = source.capture();
+		const otherPending = other.capture();
+		helper.dismiss(owner);
+		expect(ownPending.isCurrent()).toBe(false);
+		expect(otherPending.isCurrent()).toBe(false);
+		expect(helper.getSnapshot().target?.text).toBe("other window");
+		other.capture().submit(candidate("new other window"));
+		expect(helper.ownsSource(owner, helper.getSnapshot().target?.source)).toBe(false);
+		source.capture().submit(candidate("owned"));
+		expect(helper.ownsSource(owner, helper.getSnapshot().target?.source)).toBe(true);
+		helper.dismiss(owner);
+		expect(helper.getSnapshot().visible).toBe(false);
+	});
+
+	it("retires the exact page without dismissing its replacement or keeping it registered", () => {
+		const { helper } = setup();
+		const owner = {};
+		const page = helper.openSource(owner);
+		page.capture().submit(candidate("old page"));
+		const oldRead = page.capture();
+		page.dispose();
+		const nextPage = helper.openSource(owner);
+		nextPage.capture().submit(candidate("new page"));
+		oldRead.dismiss();
+		page.dismiss();
+		page.dispose();
+		expect(page.active).toBe(false);
+		expect(oldRead.submit(candidate("late page"))).toBe(false);
+		expect(helper.ownsSource(owner, page.reference)).toBe(false);
+		expect(helper.ownsSource(owner, nextPage.reference)).toBe(true);
+		expect(helper.getSnapshot().target?.source).toBe(nextPage.reference);
+	});
+
+	it("releases a disappearing selection's query but accepts a fresh selection from the same source", () => {
+		const { session, dispose } = fakeSession();
+		const { helper } = setup({ startLookup: () => session });
+		const source = helper.openSource({});
+		source.capture().submit(candidate("hello"));
+		helper.beginLookup();
+		const pending = source.capture();
+		source.dismiss();
+		expect(dispose).toHaveBeenCalledOnce();
+		expect(pending.isCurrent()).toBe(false);
+		expect(source.active).toBe(true);
+		source.capture().submit(candidate("next"));
+		expect(helper.getSnapshot().target?.text).toBe("next");
+	});
+
+	it("keeps the captured text and consumes each read once", () => {
+		const { helper } = setup();
+		const source = helper.openSource({});
+		const read = source.capture();
+		const value = candidate("hello");
+		expect(read.submit(value)).toBe(true);
+		value.text = "edited in place";
+		expect(helper.getSnapshot().target?.text).toBe("hello");
+		expect(read.submit(candidate("replayed"))).toBe(false);
+		read.dismiss();
+		expect(helper.getSnapshot().target?.text).toBe("hello");
+	});
+
+	it("expires all leases on disposal and never reactivates a stopped helper", () => {
+		const { helper } = setup();
+		const source = helper.openSource({});
+		const pending = source.capture();
+		helper.dispose();
+		helper.dispose();
+		expect(source.active).toBe(false);
+		expect(pending.submit(candidate("late"))).toBe(false);
+		const afterStop = helper.openSource({});
+		expect(afterStop.active).toBe(false);
+		expect(afterStop.capture().submit(candidate("after stop"))).toBe(false);
+		expect(helper.getSnapshot().visible).toBe(false);
+	});
+
+	it.each(["translate", "openDictionaryInMainTab", "openFavorite"] as const)(
+		"allows accepted %s handoffs to finish after their source closes",
+		async (action) => {
+			let finish!: () => void;
+			const complete = new Promise<void>((resolve) => {
+				finish = resolve;
+			});
+			const { helper, dictionary, translation } = setup();
+			const invoke = vi.fn(() => complete);
+			if (action === "translate") translation.openPrefilled = invoke;
+			else if (action === "openFavorite") dictionary.openFavorite = invoke;
+			else dictionary.openInMainTab = invoke;
+			const source = helper.openSource({});
+			source.capture().submit(candidate("hello"));
+			const handoff = helper[action]();
+			expect(invoke).toHaveBeenCalledWith("hello");
+			source.dispose();
+			helper.openSource({}).capture().submit(candidate("new selection"));
+			finish();
+			await handoff;
+			expect(helper.getSnapshot().target?.text).toBe("new selection");
+		},
+	);
 });
 
 function setup(
@@ -196,10 +339,7 @@ function setup(
 	};
 }
 
-function candidate(
-	text: string,
-	overrides: Partial<Parameters<SelectionHelper["handleSelection"]>[0]> = {},
-) {
+function candidate(text: string, overrides: Partial<SelectionCandidate> = {}) {
 	return {
 		text,
 		x: 10,
@@ -246,4 +386,8 @@ function fakeSession(): {
 			dispose,
 		},
 	};
+}
+
+function select(helper: SelectionHelper, value: SelectionCandidate): boolean {
+	return helper.openSource({}).capture().submit(value);
 }

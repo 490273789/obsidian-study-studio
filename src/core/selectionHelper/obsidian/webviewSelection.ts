@@ -1,4 +1,4 @@
-import type { SelectionCandidate } from "../domain/types";
+import type { SelectionSourceLease } from "../domain/types";
 
 export type WebviewSelectionStatus = "idle" | "available" | "unavailable";
 
@@ -18,26 +18,30 @@ interface GuestEvent {
 	ctrlOrMetaKey: boolean;
 }
 
-interface Source {
-	element: WebviewElement;
-	id: string;
-	generation: number;
+interface Page {
+	lease: SelectionSourceLease;
+	key: string;
 	sequence: number;
 	ready: boolean;
 	failed: boolean;
 	busy: boolean;
+}
+
+interface Source {
+	element: WebviewElement;
+	page: Page;
 	cleanup: () => void;
 }
 
 interface WebviewSelectionOptions {
 	document: Document;
-	onSelection(candidate: SelectionCandidate): void;
-	onDismiss(sourceId: string, generation: number): void;
+	openSource(): SelectionSourceLease;
+	interrupt(): void;
 	onStatus(status: WebviewSelectionStatus): void;
 	isEnabled(): boolean;
 }
 
-let nextSource = 0;
+let nextPage = 0;
 const collectorKey = "__studyStudioSelectionCollector";
 const removeCollector = `(() => { window.${collectorKey}?.dispose(); delete window.${collectorKey}; })()`;
 
@@ -47,18 +51,21 @@ const installCollector = `(() => {
 	window.${collectorKey}?.dispose();
 	let sequence = 0;
 	let latest = null;
+	let origin = null;
 	const handlers = [];
 	const record = (text, x, y, event) => {
 		latest = { sequence: ++sequence, text, x, y, width: innerWidth, height: innerHeight,
 			altKey: !!event?.altKey, shiftKey: !!event?.shiftKey,
 			ctrlOrMetaKey: !!(event?.ctrlKey || event?.metaKey) };
 	};
-	const clear = () => record('', 0, 0);
+	const clear = () => { origin = null; record('', 0, 0); };
 	const capture = (event) => {
 		const active = document.activeElement;
+		origin = null;
 		let text = '', x = event?.clientX ?? 0, y = event?.clientY ?? 0;
 		if (active?.matches('input,textarea')) {
 			if (active.type === 'password') { clear(); return; }
+			origin = active;
 			if (typeof active.selectionStart === 'number' && typeof active.selectionEnd === 'number') {
 				text = active.value.slice(active.selectionStart, active.selectionEnd);
 				const rect = active.getBoundingClientRect();
@@ -68,6 +75,7 @@ const installCollector = `(() => {
 			const selection = window.getSelection();
 			text = selection?.toString() || '';
 			const node = selection?.anchorNode;
+			origin = node;
 			const element = node?.nodeType === 1 ? node : node?.parentElement;
 			if (element?.closest?.('input[type=password],.fc-selection-popup-host,.fc-selection-popup-container')) { clear(); return; }
 			if (selection?.rangeCount) {
@@ -104,7 +112,8 @@ const installCollector = `(() => {
 	bind('scroll', onScroll);
 	bind('keydown', (event) => { if (event.key === 'Escape') clear(); });
 	window.${collectorKey} = { read: () => {
-		if (!document.hasFocus()) { latest = null; return null; }
+		if (!document.hasFocus()) { latest = null; origin = null; return null; }
+		if (origin?.isConnected === false) clear();
 		return latest;
 	}, dispose: () => {
 		for (const [type, callback] of handlers) document.removeEventListener(type, callback, true);
@@ -142,7 +151,6 @@ export class WebviewSelectionAdapter {
 	private docMouseDownHandler: ((event: MouseEvent) => void) | null = null;
 	private docFocusInHandler: ((event: FocusEvent) => void) | null = null;
 	private windowBlurHandler: (() => void) | null = null;
-	private interactionRevision = 0;
 	private running = false;
 	private enabled = false;
 	private status: WebviewSelectionStatus = "idle";
@@ -156,9 +164,7 @@ export class WebviewSelectionAdapter {
 		const doc = this.options.document;
 		// Guest input never bubbles to the embedder. Host input only fences pending
 		// reads; focus eligibility is determined in the guest document itself.
-		const invalidatePendingRead = () => {
-			this.interactionRevision++;
-		};
+		const invalidatePendingRead = () => this.options.interrupt();
 		this.docMouseDownHandler = invalidatePendingRead;
 		this.docFocusInHandler = invalidatePendingRead;
 		if (typeof doc.addEventListener === "function") {
@@ -228,12 +234,7 @@ export class WebviewSelectionAdapter {
 				continue;
 			const source: Source = {
 				element: element as WebviewElement,
-				id: `webview-${++nextSource}`,
-				generation: 0,
-				sequence: 0,
-				ready: false,
-				failed: false,
-				busy: false,
+				page: this.openPage(),
 				cleanup: () => {},
 			};
 			const navigate = () => this.invalidate(source);
@@ -255,47 +256,53 @@ export class WebviewSelectionAdapter {
 		this.publishStatus();
 	}
 
+	private openPage(): Page {
+		const lease = this.options.openSource();
+		return {
+			lease,
+			key: `${collectorKey}_${lease.reference.id.replaceAll(/[^A-Za-z0-9_]/g, "_")}_${++nextPage}`,
+			sequence: 0,
+			ready: false,
+			failed: false,
+			busy: false,
+		};
+	}
+
+	private registered(source: Source): boolean {
+		return this.running && this.sources.get(source.element) === source;
+	}
+
 	private invalidate(source: Source): void {
-		this.options.onDismiss(source.id, source.generation);
-		this.remove(source, source.generation);
-		source.generation++;
-		source.sequence = 0;
-		source.ready = false;
-		source.failed = false;
+		if (!this.registered(source)) return;
+		this.disposePage(source, source.page);
+		source.page = this.openPage();
 		this.publishStatus();
 	}
 
-	private current(source: Source, generation: number): boolean {
-		return (
-			this.running &&
-			this.sources.get(source.element) === source &&
-			source.generation === generation
-		);
-	}
-
 	private async install(source: Source): Promise<void> {
-		if (!this.enabled || !this.options.isEnabled()) return;
-		const generation = source.generation;
+		if (!this.registered(source) || !this.enabled || !this.options.isEnabled()) return;
+		const page = source.page;
 		try {
 			if (typeof source.element.executeJavaScript !== "function")
 				throw new Error("Unavailable webview API");
 			const installed = await source.element.executeJavaScript(
-				this.script(installCollector, source, generation),
+				this.script(installCollector, page),
 			);
-			if (!this.current(source, generation) || !this.options.isEnabled()) {
-				this.remove(source, generation);
+			if (!page.lease.active) {
+				this.remove(source, page);
 				return;
 			}
-			source.ready = installed === true;
-			source.failed = !source.ready;
+			page.ready = installed === true;
+			page.failed = !page.ready;
 		} catch {
-			if (!this.current(source, generation)) return;
-			source.failed = true;
+			if (!page.lease.active) return;
+			page.failed = true;
 		}
 		this.publishStatus();
 	}
 
 	private poll(): void {
+		if (!this.running) return;
 		const document = this.options.document;
 		const enabled = this.options.isEnabled();
 		if (enabled !== this.enabled) {
@@ -307,39 +314,35 @@ export class WebviewSelectionAdapter {
 		}
 		if (!this.options.isEnabled() || document.visibilityState === "hidden") return;
 		for (const source of this.sources.values()) {
-			if (!source.ready || source.busy) continue;
+			if (!source.page.ready || source.page.busy) continue;
 			if (!this.visibleRect(source)) continue;
 			void this.read(source);
 		}
 	}
 
 	private async read(source: Source): Promise<void> {
-		const generation = source.generation;
-		const revision = this.interactionRevision;
-		source.busy = true;
+		const page = source.page;
+		const read = page.lease.capture();
+		page.busy = true;
 		try {
-			const result = await source.element.executeJavaScript(
-				this.script(readCollector, source, generation),
-			);
-			if (!this.current(source, generation) || !source.ready) return;
+			const result = await source.element.executeJavaScript(this.script(readCollector, page));
+			if (!page.lease.active || !page.ready) return;
 			const event = guestEvent(result);
-			if (!event || event.sequence <= source.sequence) return;
+			if (!event || event.sequence <= page.sequence) return;
 			// Consume rejected events too, so returning focus cannot revive them.
-			source.sequence = event.sequence;
+			page.sequence = event.sequence;
 			const rect = this.visibleRect(source);
 			if (
 				!rect ||
 				!this.options.isEnabled() ||
-				revision !== this.interactionRevision ||
-				this.options.document.visibilityState === "hidden" ||
-				!this.running
+				this.options.document.visibilityState === "hidden"
 			)
 				return;
 			if (!event.text.trim()) {
-				this.options.onDismiss(source.id, generation);
+				read.dismiss();
 				return;
 			}
-			this.options.onSelection({
+			read.submit({
 				text: event.text,
 				x: rect.left + (event.x * rect.width) / event.width,
 				y: rect.top + (event.y * rect.height) / event.height,
@@ -348,30 +351,32 @@ export class WebviewSelectionAdapter {
 				shiftKey: event.shiftKey,
 				ctrlOrMetaKey: event.ctrlOrMetaKey,
 				trigger: "mouse",
-				sourceId: source.id,
-				generation,
 			});
 		} catch {
-			if (this.current(source, generation)) {
-				this.invalidate(source);
-				source.failed = true;
+			if (page.lease.active) {
+				this.disposePage(source, page);
+				page.ready = false;
+				page.failed = true;
 				this.publishStatus();
 			}
 		} finally {
-			source.busy = false;
+			// A pending read belongs to its page, never to the replacement page.
+			page.busy = false;
 		}
 	}
 
+	private disposePage(source: Source, page: Page): void {
+		page.lease.dispose();
+		this.remove(source, page);
+	}
+
 	private release(source: Source): void {
-		this.invalidate(source);
+		this.disposePage(source, source.page);
 		source.cleanup();
 	}
 
-	private script(template: string, source: Source, generation: number): string {
-		return template.replaceAll(
-			collectorKey,
-			`${collectorKey}_${source.id.replaceAll("-", "_")}_${generation}`,
-		);
+	private script(template: string, page: Page): string {
+		return template.replaceAll(collectorKey, page.key);
 	}
 
 	private visibleRect(source: Source): DOMRect | null {
@@ -387,11 +392,11 @@ export class WebviewSelectionAdapter {
 			: null;
 	}
 
-	private remove(source: Source, generation: number): void {
+	private remove(source: Source, page: Page): void {
 		try {
 			if (typeof source.element.executeJavaScript === "function") {
 				void source.element
-					.executeJavaScript(this.script(removeCollector, source, generation))
+					.executeJavaScript(this.script(removeCollector, page))
 					.catch(() => {});
 			}
 		} catch {
@@ -404,9 +409,9 @@ export class WebviewSelectionAdapter {
 		const next =
 			!this.running || sources.length === 0
 				? "idle"
-				: sources.some((source) => source.failed)
+				: sources.some((source) => source.page.failed)
 					? "unavailable"
-					: sources.some((source) => source.ready)
+					: sources.some((source) => source.page.ready)
 						? "available"
 						: "idle";
 		if (next !== this.status) {

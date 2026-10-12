@@ -2,7 +2,7 @@ import React from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { Language } from "../../shared/types";
 import type { SelectionHelper } from "../domain/selectionHelper";
-import type { SelectionCandidate } from "../domain/types";
+import type { SelectionRead, SelectionSource } from "../domain/types";
 import { selectionHelperStrings } from "../strings/selectionPopup";
 import { SelectionPopupHost } from "../ui/SelectionPopupHost";
 import type { SelectionEmbeddedContentRenderer } from "../ui/types";
@@ -18,13 +18,12 @@ export interface SelectionListenerDeps {
 	getLanguage: () => Language;
 	getTheme: () => "light" | "dark";
 	document?: Document;
+	owner?: object;
 	isEnabled?: () => boolean;
 	renderEmbeddedContent?: SelectionEmbeddedContentRenderer;
 }
 
-let nextSource = 0;
 interface DocumentBinding {
-	sourceId: string;
 	dispose(): void;
 }
 
@@ -34,11 +33,13 @@ export class SelectionListener {
 	private root: Root | null = null;
 	private unsubscribe: (() => void) | null = null;
 	private readonly bindings = new Map<Document, DocumentBinding>();
-	private readonly sources = new Map<string, number>();
+	private readonly owner: object;
 	private host: Document | null = null;
 	private started = false;
 
-	constructor(private readonly deps: SelectionListenerDeps) {}
+	constructor(private readonly deps: SelectionListenerDeps) {
+		this.owner = deps.owner ?? {};
+	}
 
 	start(): void {
 		if (this.started) return;
@@ -50,21 +51,12 @@ export class SelectionListener {
 		this.bindDocument(doc);
 	}
 
-	/** External adapters supply host-viewport coordinates and opaque source identity. */
-	submit(candidate: SelectionCandidate): void {
-		if (!this.started || this.deps.isEnabled?.() === false || !candidate.sourceId) return;
-		this.sources.set(candidate.sourceId, candidate.generation ?? 0);
-		this.deps.helper.handleSelection(candidate);
-	}
-
-	ownsSource(sourceId: string | undefined): boolean {
-		return sourceId !== undefined && this.sources.has(sourceId);
+	private ownsSource(source: SelectionSource | undefined): boolean {
+		return this.deps.helper.ownsSource(this.owner, source);
 	}
 
 	dismiss(): void {
-		if (this.ownsSource(this.deps.helper.getSnapshot().target?.sourceId)) {
-			this.deps.helper.dismiss();
-		}
+		this.deps.helper.dismiss(this.owner);
 	}
 
 	refresh(): void {
@@ -75,10 +67,6 @@ export class SelectionListener {
 		this.started = false;
 		for (const binding of this.bindings.values()) binding.dispose();
 		this.bindings.clear();
-		for (const [sourceId, generation] of this.sources) {
-			this.deps.helper.invalidateSource(sourceId, generation + 1);
-		}
-		this.sources.clear();
 		this.unsubscribe?.();
 		this.unsubscribe = null;
 		this.destroyPopup();
@@ -86,9 +74,8 @@ export class SelectionListener {
 	}
 
 	private bindDocument(doc: Document): void {
-		if (this.bindings.has(doc)) return;
-		const sourceId = `selection-document-${++nextSource}`;
-		this.sources.set(sourceId, 0);
+		if (!this.started || this.bindings.has(doc)) return;
+		const lease = this.deps.helper.openSource(this.owner);
 		let timer: ReturnType<typeof setTimeout> | null = null;
 		let touchContext: TouchEvent | null = null;
 		let touchGesture: { startedAt: number; text: string; moved: boolean } | null = null;
@@ -107,8 +94,15 @@ export class SelectionListener {
 			const captured = captureSelection(doc, target, { x, y });
 			return captured && this.host ? toHostCoordinates(doc, this.host, captured) : null;
 		};
-		const submit = (event: MouseEvent | TouchEvent, trigger: "mouse" | "touch") => {
-			if (internal(event.target)) return;
+		const submit = (
+			event: MouseEvent | TouchEvent,
+			trigger: "mouse" | "touch",
+			selectionRead?: SelectionRead,
+		) => {
+			if (!this.started || this.deps.isEnabled?.() === false || internal(event.target))
+				return;
+			const currentRead = selectionRead ?? lease.capture();
+			if (!currentRead.isCurrent()) return;
 			const mouse = event as MouseEvent;
 			const touch = (event as TouchEvent).changedTouches?.[0];
 			const selection = read(
@@ -122,30 +116,29 @@ export class SelectionListener {
 				if (
 					signature === lastTouchSelection &&
 					this.deps.helper.getSnapshot().visible &&
-					this.deps.helper.getSnapshot().target?.sourceId === sourceId
+					this.deps.helper.getSnapshot().target?.source === lease.reference
 				)
 					return;
 				lastTouchSelection = signature;
 			}
-			this.submit({
+			const accepted = currentRead.submit({
 				...selection,
-				sourceId,
-				generation: 0,
 				trigger,
 				eligibleContext: true,
 				altKey: Boolean(event.altKey),
 				shiftKey: Boolean(event.shiftKey),
 				ctrlOrMetaKey: Boolean(event.ctrlKey || event.metaKey),
 			});
-			if (this.deps.helper.getSnapshot().target?.sourceId === sourceId) {
+			if (accepted) {
 				selectedNode = selectionOrigin(doc, event.target);
 			}
 		};
 		const scheduleTouch = () => {
 			cancelTimer();
+			const selectionRead = lease.capture();
 			timer = setTimeout(() => {
 				timer = null;
-				if (touchContext && !touchGesture) submit(touchContext, "touch");
+				if (touchContext && !touchGesture) submit(touchContext, "touch", selectionRead);
 			}, 150);
 		};
 		const bind = <K extends keyof DocumentEventMap>(
@@ -249,16 +242,15 @@ export class SelectionListener {
 			if (!binding) return;
 			this.bindings.delete(child);
 			binding.dispose();
-			this.sources.delete(binding.sourceId);
-			this.deps.helper.invalidateSource(binding.sourceId, 1);
 		};
 		const scanFrames = () => {
+			if (!lease.active) return;
 			if (
 				selectedNode?.isConnected === false &&
-				this.deps.helper.getSnapshot().target?.sourceId === sourceId
+				this.deps.helper.getSnapshot().target?.source === lease.reference
 			) {
 				selectedNode = null;
-				this.dismiss();
+				lease.dismiss();
 			}
 			const present = new Set(doc.querySelectorAll<HTMLIFrameElement>("iframe"));
 			for (const [frame, state] of frames) {
@@ -274,6 +266,7 @@ export class SelectionListener {
 					remove: () => frame.removeEventListener("load", load),
 				};
 				const load = () => {
+					if (!lease.active || frames.get(frame) !== state) return;
 					if (state.doc) releaseDocument(state.doc);
 					state.doc = null;
 					try {
@@ -296,8 +289,8 @@ export class SelectionListener {
 		)?.MutationObserver;
 		const observer = Observer ? new Observer(scanFrames) : null;
 		this.bindings.set(doc, {
-			sourceId,
 			dispose: () => {
+				lease.dispose();
 				cancelTimer();
 				touchContext = null;
 				observer?.disconnect();
@@ -317,7 +310,7 @@ export class SelectionListener {
 
 	private renderSnapshot(): void {
 		const snapshot = this.deps.helper.getSnapshot();
-		if (!snapshot.visible || !this.ownsSource(snapshot.target?.sourceId) || !this.host) {
+		if (!snapshot.visible || !this.ownsSource(snapshot.target?.source) || !this.host) {
 			this.destroyPopup();
 			return;
 		}

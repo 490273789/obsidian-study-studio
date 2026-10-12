@@ -1,5 +1,7 @@
 import { runInNewContext } from "node:vm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { SelectionHelper } from "../../domain/selectionHelper";
+import type { SelectionTarget } from "../../domain/types";
 import { WebviewSelectionAdapter } from "../webviewSelection";
 
 function setup() {
@@ -22,6 +24,7 @@ function setup() {
 		}),
 	};
 	let elements = [element];
+	let mutate = () => {};
 	const document = {
 		addEventListener: (type: string, callback: () => void) => hostHandlers.set(type, callback),
 		removeEventListener: vi.fn(),
@@ -30,6 +33,13 @@ function setup() {
 		hasFocus: vi.fn(() => true),
 		visibilityState: "visible",
 		defaultView: {
+			MutationObserver: class {
+				constructor(callback: () => void) {
+					mutate = callback;
+				}
+				observe() {}
+				disconnect() {}
+			},
 			innerWidth: 1000,
 			innerHeight: 1000,
 			addEventListener: (type: string, callback: () => void) =>
@@ -37,14 +47,43 @@ function setup() {
 			removeEventListener: vi.fn(),
 		},
 	};
-	const onSelection = vi.fn();
-	const onDismiss = vi.fn();
+	const lookupDispose = vi.fn();
+	const helper = new SelectionHelper({
+		settings: () => ({ enabled: true, modifier: "none", selectedDictionaries: [] }),
+		dictionary: {
+			sources: () => [{ id: "local", label: "Local", kind: "dictionary" }],
+			startLookup: () => ({
+				getSnapshot: () => ({
+					query: "hello",
+					activeSourceId: null,
+					aiEngineName: "",
+					status: "ready",
+					sources: [],
+				}),
+				subscribe: () => () => {},
+				selectSource: () => {},
+				selectSection: () => {},
+				lookup: async () => {},
+				retry: async () => {},
+				generateAi: async () => {},
+				dispose: lookupDispose,
+			}),
+			openInMainTab: async () => {},
+		},
+		translation: { available: () => true, openPrefilled: async () => {} },
+	});
+	const selections: SelectionTarget[] = [];
+	helper.subscribe(() => {
+		const snapshot = helper.getSnapshot();
+		if (snapshot.target && snapshot.mode === "actions") selections.push(snapshot.target);
+	});
 	const onStatus = vi.fn();
 	const isEnabled = vi.fn(() => true);
+	const openSource = vi.fn(() => helper.openSource({}));
 	const adapter = new WebviewSelectionAdapter({
 		document: document as unknown as Document,
-		onSelection,
-		onDismiss,
+		openSource,
+		interrupt: () => helper.interrupt(),
 		onStatus,
 		isEnabled,
 	});
@@ -56,12 +95,15 @@ function setup() {
 		hostHandlers,
 		windowHandlers,
 		executeJavaScript,
-		onSelection,
-		onDismiss,
+		helper,
+		selections,
+		lookupDispose,
 		onStatus,
 		isEnabled,
+		openSource,
 		remove: () => {
 			elements = [];
+			mutate();
 		},
 	};
 }
@@ -114,7 +156,7 @@ describe("WebviewSelectionAdapter", () => {
 		await flush();
 		handlers.get("mouseup")?.({ clientX: 20, clientY: 40, altKey: true });
 		await vi.advanceTimersByTimeAsync(150);
-		expect(env.onSelection).toHaveBeenCalledWith(
+		expect(env.helper.getSnapshot().target).toEqual(
 			expect.objectContaining({ text: "hello", x: 90, y: 180 }),
 		);
 		guest.document.hasFocus.mockReturnValue(false);
@@ -123,7 +165,7 @@ describe("WebviewSelectionAdapter", () => {
 		guest.document.hasFocus.mockReturnValue(true);
 		await vi.advanceTimersByTimeAsync(150);
 		// Unfocused guest events are neither sent nor replayed on returning focus.
-		expect(env.onSelection).toHaveBeenCalledOnce();
+		expect(env.selections).toHaveLength(1);
 		env.adapter.stop();
 	});
 
@@ -134,19 +176,17 @@ describe("WebviewSelectionAdapter", () => {
 		expect(env.onStatus).toHaveBeenCalledWith("available");
 		env.executeJavaScript.mockResolvedValue(event);
 		await vi.advanceTimersByTimeAsync(150);
-		expect(env.onSelection).toHaveBeenCalledWith(
+		expect(env.helper.getSnapshot().target).toEqual(
 			expect.objectContaining({
 				text: "hello",
 				x: 90,
 				y: 180,
 				trigger: "mouse",
-				altKey: true,
-				sourceId: expect.stringMatching(/^webview-/),
-				generation: 0,
+				source: expect.objectContaining({ id: expect.any(String) }),
 			}),
 		);
 		await vi.advanceTimersByTimeAsync(150);
-		expect(env.onSelection).toHaveBeenCalledOnce();
+		expect(env.selections).toHaveLength(1);
 		env.adapter.stop();
 	});
 
@@ -184,13 +224,13 @@ describe("WebviewSelectionAdapter", () => {
 		env.handlers.get("did-start-loading")?.();
 		resolve(event);
 		await flush();
-		expect(env.onSelection).not.toHaveBeenCalled();
+		expect(env.selections).toHaveLength(0);
 		env.executeJavaScript.mockResolvedValue(true);
 		env.handlers.get("dom-ready")?.();
 		await flush();
 		env.executeJavaScript.mockResolvedValue(event);
 		await vi.advanceTimersByTimeAsync(150);
-		expect(env.onSelection).toHaveBeenCalledWith(expect.objectContaining({ generation: 2 }));
+		expect(env.helper.getSnapshot().target?.text).toBe("hello");
 		env.adapter.stop();
 	});
 
@@ -200,7 +240,7 @@ describe("WebviewSelectionAdapter", () => {
 		await flush();
 		env.executeJavaScript.mockResolvedValue({ ...event, text: "" });
 		await vi.advanceTimersByTimeAsync(150);
-		expect(env.onDismiss).toHaveBeenCalledWith(expect.stringMatching(/^webview-/), 0);
+		expect(env.helper.getSnapshot().visible).toBe(false);
 		env.executeJavaScript.mockRejectedValueOnce(new Error("guest gone"));
 		await vi.advanceTimersByTimeAsync(150);
 		expect(env.onStatus).toHaveBeenCalledWith("unavailable");
@@ -228,7 +268,7 @@ describe("WebviewSelectionAdapter", () => {
 			env.executeJavaScript.mockResolvedValue(result);
 			await vi.advanceTimersByTimeAsync(150);
 		}
-		expect(env.onSelection).not.toHaveBeenCalled();
+		expect(env.selections).toHaveLength(0);
 		env.adapter.stop();
 	});
 
@@ -246,7 +286,7 @@ describe("WebviewSelectionAdapter", () => {
 		env.adapter.stop();
 		resolve(event);
 		await flush();
-		expect(env.onSelection).not.toHaveBeenCalled();
+		expect(env.selections).toHaveLength(0);
 	});
 
 	it("guest collector extracts inputs and excludes passwords", async () => {
@@ -299,10 +339,8 @@ describe("WebviewSelectionAdapter", () => {
 		await flush();
 		env.executeJavaScript.mockResolvedValue(event);
 		await vi.advanceTimersByTimeAsync(150);
-		expect(env.onSelection).toHaveBeenCalledTimes(2);
-		expect(env.onSelection).toHaveBeenLastCalledWith(
-			expect.objectContaining({ generation: 1 }),
-		);
+		expect(env.selections).toHaveLength(2);
+		expect(env.helper.getSnapshot().target).toEqual(expect.objectContaining({ text: "hello" }));
 		env.adapter.stop();
 	});
 
@@ -326,10 +364,10 @@ describe("WebviewSelectionAdapter", () => {
 				)?.();
 			resolve(event);
 			await flush();
-			expect(env.onSelection).not.toHaveBeenCalled();
+			expect(env.selections).toHaveLength(0);
 			env.executeJavaScript.mockResolvedValue(event);
 			await vi.advanceTimersByTimeAsync(150);
-			expect(env.onSelection).not.toHaveBeenCalled();
+			expect(env.selections).toHaveLength(0);
 			env.executeJavaScript.mockReturnValueOnce(
 				new Promise((done) => {
 					resolve = done;
@@ -339,7 +377,7 @@ describe("WebviewSelectionAdapter", () => {
 			env.document.visibilityState = "hidden";
 			resolve({ ...event, sequence: 2 });
 			await flush();
-			expect(env.onSelection).not.toHaveBeenCalled();
+			expect(env.selections).toHaveLength(0);
 			env.adapter.stop();
 		},
 	);
@@ -362,7 +400,7 @@ describe("WebviewSelectionAdapter", () => {
 		expect(newInstall).not.toBe(oldReadScript);
 		env.executeJavaScript.mockResolvedValue(null);
 		await vi.advanceTimersByTimeAsync(150);
-		expect(env.onSelection).not.toHaveBeenCalled();
+		expect(env.selections).toHaveLength(0);
 		env.adapter.stop();
 	});
 
@@ -411,7 +449,7 @@ describe("WebviewSelectionAdapter", () => {
 		env.executeJavaScript.mockResolvedValue(event);
 
 		await vi.advanceTimersByTimeAsync(150);
-		expect(env.onSelection).toHaveBeenCalledWith(
+		expect(env.helper.getSnapshot().target).toEqual(
 			expect.objectContaining({
 				text: "hello",
 				x: 90,
@@ -470,5 +508,333 @@ describe("WebviewSelectionAdapter", () => {
 		expect(collector.read()).toMatchObject({ text: "" });
 
 		env.adapter.stop();
+	});
+	it.each(["another window", "DOM selection"])(
+		"consumes a pending guest event superseded by %s without replay",
+		async () => {
+			const env = setup();
+			env.adapter.start();
+			await flush();
+			let resolve!: (value: unknown) => void;
+			env.executeJavaScript.mockReturnValueOnce(
+				new Promise((done) => {
+					resolve = done;
+				}),
+			);
+			await vi.advanceTimersByTimeAsync(150);
+			const other = env.helper.openSource({});
+			other.capture().submit({ ...event, text: "new", eligibleContext: true });
+			resolve(event);
+			await flush();
+			expect(env.helper.getSnapshot().target?.text).toBe("new");
+			env.executeJavaScript.mockResolvedValue(event);
+			await vi.advanceTimersByTimeAsync(150);
+			expect(env.helper.getSnapshot().target?.text).toBe("new");
+			env.executeJavaScript.mockResolvedValue({ ...event, sequence: 2, text: "fresh" });
+			await vi.advanceTimersByTimeAsync(150);
+			expect(env.helper.getSnapshot().target?.text).toBe("fresh");
+			env.adapter.stop();
+		},
+	);
+
+	it("does not revive a pending read after helper dismissal and releases lookup", async () => {
+		const env = setup();
+		env.adapter.start();
+		await flush();
+		env.executeJavaScript.mockResolvedValue(event);
+		await vi.advanceTimersByTimeAsync(150);
+		env.helper.beginLookup();
+		let resolve!: (value: unknown) => void;
+		env.executeJavaScript.mockReturnValueOnce(
+			new Promise((done) => {
+				resolve = done;
+			}),
+		);
+		await vi.advanceTimersByTimeAsync(150);
+		env.helper.dismiss();
+		expect(env.lookupDispose).toHaveBeenCalledOnce();
+		resolve({ ...event, sequence: 2 });
+		await flush();
+		expect(env.helper.getSnapshot().visible).toBe(false);
+		env.executeJavaScript.mockResolvedValue({ ...event, sequence: 2 });
+		await vi.advanceTimersByTimeAsync(150);
+		expect(env.helper.getSnapshot().visible).toBe(false);
+		env.adapter.stop();
+	});
+
+	it("lets a new page read while an old page hangs and preserves new single-flight state", async () => {
+		const env = setup();
+		env.adapter.start();
+		await flush();
+		let resolveOld!: (value: unknown) => void;
+		env.executeJavaScript.mockReturnValueOnce(
+			new Promise((done) => {
+				resolveOld = done;
+			}),
+		);
+		await vi.advanceTimersByTimeAsync(150);
+		env.executeJavaScript.mockResolvedValue(true);
+		env.handlers.get("dom-ready")?.();
+		await flush();
+		env.executeJavaScript.mockResolvedValue(event);
+		await vi.advanceTimersByTimeAsync(150);
+		const target = env.helper.getSnapshot().target;
+		expect(target?.text).toBe("hello");
+		let resolveNew!: (value: unknown) => void;
+		env.executeJavaScript.mockReturnValueOnce(
+			new Promise((done) => {
+				resolveNew = done;
+			}),
+		);
+		await vi.advanceTimersByTimeAsync(150);
+		resolveOld({ ...event, text: "", sequence: 2 });
+		await flush();
+		expect(env.helper.getSnapshot().target).toBe(target);
+		const calls = env.executeJavaScript.mock.calls.length;
+		await vi.advanceTimersByTimeAsync(450);
+		expect(env.executeJavaScript).toHaveBeenCalledTimes(calls);
+		resolveNew({ ...event, text: "new", sequence: 2 });
+		await flush();
+		expect(env.helper.getSnapshot().target?.text).toBe("new");
+		env.adapter.stop();
+	});
+
+	it("keeps installation alive across host interaction and cleans only an obsolete page key", async () => {
+		const env = setup();
+		let resolveOld!: (value: unknown) => void;
+		env.executeJavaScript.mockReturnValueOnce(
+			new Promise((done) => {
+				resolveOld = done;
+			}),
+		);
+		env.adapter.start();
+		const oldKey = env.executeJavaScript.mock.calls[0]![0].match(
+			/window\.(__studyStudioSelectionCollector_\w+)/,
+		)![1];
+		env.executeJavaScript.mockResolvedValue(true);
+		env.handlers.get("dom-ready")?.();
+		await flush();
+		env.hostHandlers.get("mousedown")?.();
+		resolveOld(true);
+		await flush();
+		expect(env.executeJavaScript).toHaveBeenLastCalledWith(
+			expect.stringContaining(`delete window.${oldKey}`),
+		);
+		env.executeJavaScript.mockResolvedValue(event);
+		await vi.advanceTimersByTimeAsync(150);
+		expect(env.helper.getSnapshot().target?.text).toBe("hello");
+		env.adapter.stop();
+	});
+	it.each(["guest clear", "failure", "stop"])(
+		"releases an owned lookup on %s",
+		async (reason) => {
+			const env = setup();
+			env.adapter.start();
+			await flush();
+			env.executeJavaScript.mockResolvedValue(event);
+			await vi.advanceTimersByTimeAsync(150);
+			env.helper.beginLookup();
+			if (reason === "stop") env.adapter.stop();
+			else {
+				if (reason === "failure")
+					env.executeJavaScript.mockRejectedValueOnce(new Error("gone"));
+				else env.executeJavaScript.mockResolvedValue({ ...event, sequence: 2, text: "" });
+				await vi.advanceTimersByTimeAsync(150);
+			}
+			expect(env.lookupDispose).toHaveBeenCalledOnce();
+			expect(env.helper.getSnapshot().visible).toBe(false);
+			env.adapter.stop();
+		},
+	);
+
+	it("finishes a pending installation across a host interruption", async () => {
+		const env = setup();
+		let resolve!: (value: unknown) => void;
+		env.executeJavaScript.mockReturnValueOnce(
+			new Promise((done) => {
+				resolve = done;
+			}),
+		);
+		env.adapter.start();
+		env.hostHandlers.get("focusin")?.();
+		resolve(true);
+		await flush();
+		expect(env.onStatus).toHaveBeenLastCalledWith("available");
+		env.executeJavaScript.mockResolvedValue(event);
+		await vi.advanceTimersByTimeAsync(150);
+		expect(env.helper.getSnapshot().target?.text).toBe("hello");
+		env.adapter.stop();
+	});
+	it.each(["stop", "remove", "restart"])(
+		"ignores released source callbacks after %s",
+		async (release) => {
+			const env = setup();
+			env.adapter.start();
+			await flush();
+			const oldReady = env.handlers.get("dom-ready")!;
+			const oldNavigate = env.handlers.get("did-start-loading")!;
+			if (release === "remove") env.remove();
+			else env.adapter.stop();
+			if (release === "restart") {
+				env.adapter.start();
+				await flush();
+			}
+			const calls = env.executeJavaScript.mock.calls.length;
+			const sources = env.openSource.mock.calls.length;
+			oldReady();
+			oldNavigate();
+			await flush();
+			expect(env.executeJavaScript).toHaveBeenCalledTimes(calls);
+			expect(env.openSource).toHaveBeenCalledTimes(sources);
+			expect(env.helper.getSnapshot().visible).toBe(false);
+			if (release === "restart") {
+				env.executeJavaScript.mockResolvedValue(event);
+				await vi.advanceTimersByTimeAsync(150);
+				expect(env.helper.getSnapshot().target?.text).toBe("hello");
+			}
+			env.adapter.stop();
+		},
+	);
+
+	it("ignores a queued poll after stop", async () => {
+		const interval = vi.spyOn(globalThis, "setInterval");
+		const env = setup();
+		env.adapter.start();
+		await flush();
+		const queuedPoll = interval.mock.calls[interval.mock.calls.length - 1]![0] as () => void;
+		env.adapter.stop();
+		const calls = env.executeJavaScript.mock.calls.length;
+		const sourceCalls = env.openSource.mock.calls.length;
+		env.isEnabled.mockClear();
+		queuedPoll();
+		expect(env.isEnabled).not.toHaveBeenCalled();
+		expect(env.executeJavaScript).toHaveBeenCalledTimes(calls);
+		expect(env.openSource).toHaveBeenCalledTimes(sourceCalls);
+		interval.mockRestore();
+	});
+	it.each(["DOM", "input"])(
+		"dismisses a disconnected guest %s origin while preserving same-node snapshots",
+		async (kind) => {
+			const env = setup();
+			const handlers = new Map<string, (event: unknown) => void>();
+			const origin = {
+				isConnected: true,
+				nodeType: 1,
+				closest: () => null,
+				matches: () => true,
+				type: "text",
+				value: "hello",
+				textContent: "hello",
+				selectionStart: 0,
+				selectionEnd: 5,
+				getBoundingClientRect: () => ({ left: 20, bottom: 40 }),
+			};
+			let selectedText = "hello";
+			const guest = {
+				window: {
+					getSelection: () => ({
+						toString: () => selectedText,
+						anchorNode: origin,
+						rangeCount: 1,
+						getRangeAt: () => ({
+							getBoundingClientRect: () => ({ left: 20, bottom: 40 }),
+						}),
+					}),
+				} as Record<string, any>,
+				innerWidth: 200,
+				innerHeight: 150,
+				document: {
+					activeElement: kind === "input" ? origin : null,
+					hasFocus: () => true,
+					addEventListener: (type: string, callback: (event: unknown) => void) =>
+						handlers.set(type, callback),
+					removeEventListener: vi.fn(),
+				},
+			};
+			env.executeJavaScript.mockImplementation(async (code) => runInNewContext(code, guest));
+			env.adapter.start();
+			await flush();
+			handlers.get("mouseup")?.({});
+			const collector = Object.values(guest.window).find(
+				(value) => typeof value?.read === "function",
+			)!;
+			const initial = { ...collector.read() };
+			await vi.advanceTimersByTimeAsync(150);
+			env.helper.beginLookup();
+			origin.value = "changed";
+			origin.textContent = "changed";
+			selectedText = "changed";
+			expect(collector.read()).toMatchObject(initial);
+			selectedText = "";
+			handlers.get("copy")?.({});
+			expect(collector.read()).toMatchObject(initial);
+			await vi.advanceTimersByTimeAsync(150);
+			expect(env.helper.getSnapshot().target?.text).toBe("hello");
+			expect(env.lookupDispose).not.toHaveBeenCalled();
+			origin.isConnected = false;
+			const cleared = collector.read();
+			expect(cleared.text).toBe("");
+			expect(cleared.sequence).toBeGreaterThan(initial.sequence);
+			expect(collector.read().sequence).toBe(cleared.sequence);
+			await vi.advanceTimersByTimeAsync(150);
+			expect(env.helper.getSnapshot().visible).toBe(false);
+			expect(env.lookupDispose).toHaveBeenCalledOnce();
+			env.adapter.stop();
+		},
+	);
+
+	it("does not let a pending disconnected guest origin dismiss a newer source", async () => {
+		const env = setup();
+		const handlers = new Map<string, (event: unknown) => void>();
+		const origin = { isConnected: true, nodeType: 1, closest: () => null };
+		const guest = {
+			window: {
+				getSelection: () => ({
+					toString: () => "hello",
+					anchorNode: origin,
+					rangeCount: 1,
+					getRangeAt: () => ({ getBoundingClientRect: () => ({ left: 20, bottom: 40 }) }),
+				}),
+			},
+			innerWidth: 200,
+			innerHeight: 150,
+			document: {
+				activeElement: null,
+				hasFocus: () => true,
+				addEventListener: (type: string, callback: (event: unknown) => void) =>
+					handlers.set(type, callback),
+				removeEventListener: vi.fn(),
+			},
+		};
+		env.executeJavaScript.mockImplementation(async (code) => runInNewContext(code, guest));
+		env.adapter.start();
+		await flush();
+		handlers.get("mouseup")?.({});
+		await vi.advanceTimersByTimeAsync(150);
+		env.helper.beginLookup();
+		let resolve!: () => void;
+		env.executeJavaScript.mockImplementationOnce(
+			(code) =>
+				new Promise((done) => {
+					resolve = () => done(runInNewContext(code, guest));
+				}),
+		);
+		await vi.advanceTimersByTimeAsync(150);
+		origin.isConnected = false;
+		env.helper
+			.openSource({})
+			.capture()
+			.submit({ ...event, text: "new", eligibleContext: true });
+		expect(env.lookupDispose).toHaveBeenCalledOnce();
+		env.helper.beginLookup();
+		resolve();
+		await flush();
+		expect(env.helper.getSnapshot().target?.text).toBe("new");
+		expect(env.helper.getSnapshot().mode).toBe("dictionary");
+		expect(env.lookupDispose).toHaveBeenCalledOnce();
+		await vi.advanceTimersByTimeAsync(150);
+		expect(env.helper.getSnapshot().target?.text).toBe("new");
+		env.adapter.stop();
+		expect(env.lookupDispose).toHaveBeenCalledOnce();
 	});
 });

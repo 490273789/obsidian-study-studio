@@ -10,7 +10,6 @@ vi.mock("../obsidian/selectionListener", () => ({
 		start = vi.fn();
 		stop = vi.fn();
 		refresh = vi.fn();
-		submit = vi.fn();
 		constructor(public deps: any) {
 			instances.listeners.push(this);
 		}
@@ -67,10 +66,11 @@ describe("selection windows", () => {
 		events.get("window-open")?.({}, { document: later });
 		events.get("window-open")?.({}, { document: later });
 		expect(instances.listeners).toHaveLength(3);
-		instances.webs[2].deps.onSelection({ text: "hello" });
-		expect(instances.listeners[2].submit).toHaveBeenCalledWith({ text: "hello" });
 		const helper = instances.listeners[2].deps.helper;
-		helper.handleSelection({
+		const lease = instances.webs[2].deps.openSource();
+		expect(helper.ownsSource(instances.listeners[2].deps.owner, lease.reference)).toBe(true);
+		expect(helper.ownsSource(instances.listeners[1].deps.owner, lease.reference)).toBe(false);
+		const candidate = {
 			text: "hello",
 			x: 0,
 			y: 0,
@@ -78,21 +78,27 @@ describe("selection windows", () => {
 			altKey: true,
 			shiftKey: true,
 			ctrlOrMetaKey: true,
-			sourceId: "document-current",
-			generation: 0,
-		});
-		instances.webs[2].deps.onDismiss("webview-old", 0);
+		};
+		lease.capture().submit(candidate);
+		const pending = lease.capture();
+		instances.webs[2].deps.interrupt();
+		expect(pending.submit(candidate)).toBe(false);
 		expect(helper.getSnapshot().visible).toBe(true);
 		instances.webs[2].deps.onStatus("unavailable");
 		const compatibility = fake.sections.get("selectionPopup")?.presentation("zh").snapshot;
 		expect(JSON.stringify(compatibility)).toContain("部分网页无法接入");
-		instances.webs[2].deps.onDismiss("document-current", 0);
+		lease.dismiss();
 		expect(helper.getSnapshot().visible).toBe(false);
 		events.get("css-change")?.();
 		expect(instances.listeners[1].refresh).toHaveBeenCalledTimes(2);
 		events.get("window-close")?.({}, { document: popout });
 		expect(instances.listeners[1].stop).toHaveBeenCalledOnce();
 		expect(instances.webs[1].stop).toHaveBeenCalledOnce();
+		events.get("window-open")?.({}, { document: popout });
+		expect(instances.listeners).toHaveLength(4);
+		expect(instances.listeners[3].deps.owner).not.toBe(instances.listeners[1].deps.owner);
+		const reopened = instances.webs[3].deps.openSource();
+		expect(helper.ownsSource(instances.listeners[3].deps.owner, reopened.reference)).toBe(true);
 		module.stop();
 		for (const item of [...instances.listeners, ...instances.webs])
 			expect(item.stop).toHaveBeenCalledOnce();

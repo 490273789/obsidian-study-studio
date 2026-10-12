@@ -193,6 +193,67 @@ describe("SelectionListener", () => {
 		listener.stop();
 	});
 
+	it("rejects an earlier window's touch timer after another window selects", () => {
+		vi.useFakeTimers();
+		const first = environment();
+		const second = environment();
+		const shared = helper();
+		const a = listen(first, shared);
+		const b = listen(second, shared);
+		first.emit("touchend", touch(first.element));
+		second.setText("newer");
+		second.emit("mouseup", mouse(second.element));
+		vi.advanceTimersByTime(150);
+		expect(shared.getSnapshot().target?.text).toBe("newer");
+		a.stop();
+		b.stop();
+	});
+
+	it.each(["scroll", "Escape"])(
+		"fences another window's pending touch on %s while keeping its visible popup",
+		(action) => {
+			vi.useFakeTimers();
+			const first = environment();
+			const second = environment();
+			const shared = helper();
+			const a = listen(first, shared);
+			const b = listen(second, shared);
+			const dismissFromSecond = () => {
+				if (action === "scroll") second.emit("scroll", { target: second.element });
+				else second.emit("keydown", { key: "Escape" });
+			};
+			first.emit("touchend", touch(first.element));
+			dismissFromSecond();
+			vi.advanceTimersByTime(150);
+			expect(shared.getSnapshot().visible).toBe(false);
+			first.emit("touchend", touch(first.element));
+			vi.advanceTimersByTime(150);
+			expect(shared.getSnapshot().target?.text).toBe("hello");
+			dismissFromSecond();
+			expect(shared.getSnapshot().visible).toBe(true);
+			expect(shared.getSnapshot().target?.text).toBe("hello");
+			a.stop();
+			b.stop();
+		},
+	);
+
+	it("dismisses pending work without closing another window's popup", () => {
+		vi.useFakeTimers();
+		const first = environment();
+		const second = environment();
+		const shared = helper();
+		const a = listen(first, shared);
+		const b = listen(second, shared);
+		second.setText("current");
+		second.emit("mouseup", mouse(second.element));
+		first.emit("touchend", touch(first.element));
+		a.dismiss();
+		vi.advanceTimersByTime(150);
+		expect(shared.getSnapshot().target?.text).toBe("current");
+		a.stop();
+		b.stop();
+	});
+
 	it("keeps popup interactions open and dismisses source scrolling and Escape", () => {
 		const env = environment();
 		const shared = helper();
@@ -245,25 +306,39 @@ describe("SelectionListener", () => {
 		const listener = listen(env, shared);
 		child.emit("mouseup", mouse(child.element));
 		expect(shared.getSnapshot().target).toMatchObject({ text: "hello", x: 132, y: 264 });
-		const retired = shared.getSnapshot().target!;
+		const retired = shared.getSnapshot().target!.source;
 		frame.contentDocument = replacement.doc;
 		loads.get("load")?.();
 		expect(shared.getSnapshot().visible).toBe(false);
-		shared.handleSelection({
-			...retired,
-			eligibleContext: true,
-			altKey: false,
-			shiftKey: false,
-			ctrlOrMetaKey: false,
-		});
+		child.emit("mouseup", mouse(child.element));
 		expect(shared.getSnapshot().visible).toBe(false);
 		replacement.setText("world");
 		replacement.emit("mouseup", mouse(replacement.element));
 		expect(shared.getSnapshot().target?.text).toBe("world");
+		expect(shared.getSnapshot().target?.source).not.toBe(retired);
 		frames = [];
 		scan();
 		expect(shared.getSnapshot().visible).toBe(false);
 		expect(frame.removeEventListener).toHaveBeenCalledWith("load", expect.any(Function));
+		frames = [frame];
+		scan();
+		replacement.emit("mouseup", mouse(replacement.element));
+		env.setText("host");
+		env.emit("mouseup", mouse(env.element));
+		frames = [];
+		scan();
+		expect(shared.getSnapshot().target?.text).toBe("host");
+		replacement.emit("mouseup", mouse(replacement.element));
+		expect(shared.getSnapshot().target?.text).toBe("host");
+		const staleLoad = loads.get("load");
+		const beforeRemovalLoad = replacement.addEventListener.mock.calls.length;
+		staleLoad?.();
+		expect(replacement.addEventListener).toHaveBeenCalledTimes(beforeRemovalLoad);
+		listener.stop();
+		listener.start();
+		const registrations = replacement.addEventListener.mock.calls.length;
+		staleLoad?.();
+		expect(replacement.addEventListener).toHaveBeenCalledTimes(registrations);
 		listener.stop();
 	});
 
@@ -295,6 +370,56 @@ describe("SelectionListener", () => {
 		listener.stop();
 	});
 
+	it("keeps editing and copying within a connected source and accepts it after removal", () => {
+		const env = environment();
+		const shared = helper();
+		let mutation!: () => void;
+		Object.assign(env.element, { isConnected: true });
+		Object.assign(env.doc.defaultView!, {
+			MutationObserver: class {
+				constructor(callback: () => void) {
+					mutation = callback;
+				}
+				observe() {}
+				disconnect() {}
+			},
+		});
+		const listener = listen(env, shared);
+		env.emit("mouseup", mouse(env.element));
+		const source = shared.getSnapshot().target?.source;
+		env.setText("edited");
+		mutation();
+		env.emit("copy", { target: env.element });
+		expect(shared.getSnapshot().visible).toBe(true);
+		expect(shared.getSnapshot().target?.text).toBe("hello");
+		Object.assign(env.element, { isConnected: false });
+		mutation();
+		expect(shared.getSnapshot().visible).toBe(false);
+		Object.assign(env.element, { isConnected: true });
+		env.emit("mouseup", mouse(env.element));
+		expect(shared.getSnapshot().target?.text).toBe("edited");
+		expect(shared.getSnapshot().target?.source).toBe(source);
+		listener.stop();
+	});
+
+	it("opens a fresh document source when a window listener restarts", () => {
+		vi.useFakeTimers();
+		const env = environment();
+		const shared = helper();
+		const listener = listen(env, shared);
+		env.emit("mouseup", mouse(env.element));
+		const previous = shared.getSnapshot().target?.source;
+		env.emit("touchend", touch(env.element));
+		listener.stop();
+		listener.start();
+		vi.advanceTimersByTime(150);
+		expect(shared.getSnapshot().visible).toBe(false);
+		env.emit("mouseup", mouse(env.element));
+		expect(shared.getSnapshot().target?.source).not.toBe(previous);
+		expect(shared.getSnapshot().visible).toBe(true);
+		listener.stop();
+	});
+
 	it("cancels deferred work and rejects late external events after stop", () => {
 		vi.useFakeTimers();
 		const env = environment();
@@ -303,18 +428,7 @@ describe("SelectionListener", () => {
 		env.emit("touchend", touch(env.element));
 		listener.stop();
 		vi.advanceTimersByTime(150);
-		listener.submit({
-			text: "late",
-			x: 0,
-			y: 0,
-			sourceId: "external",
-			generation: 0,
-			trigger: "webview",
-			eligibleContext: true,
-			altKey: false,
-			shiftKey: false,
-			ctrlOrMetaKey: false,
-		});
+		env.emit("mouseup", mouse(env.element));
 		expect(shared.getSnapshot().visible).toBe(false);
 		expect(env.removeEventListener).toHaveBeenCalled();
 	});
