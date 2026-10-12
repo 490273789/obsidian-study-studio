@@ -126,7 +126,7 @@
 	transition: all 0.18s ease;
 
 	&:hover:not(:disabled) {
-		color: var(--fc-cyan);
+		color: var(--fc-text);
 		background: color-mix(in srgb, var(--fc-cyan) 8%, var(--fc-surface-card));
 		background-color: color-mix(in srgb, var(--fc-cyan) 8%, var(--fc-surface-card));
 		border-color: color-mix(in srgb, var(--fc-cyan) 30%, transparent);
@@ -135,7 +135,7 @@
 
 	&.active,
 	&[aria-pressed="true"] {
-		color: var(--fc-cyan);
+		color: var(--fc-text);
 		background: color-mix(in srgb, var(--fc-surface-card) 84%, var(--fc-cyan) 16%);
 		background-color: color-mix(in srgb, var(--fc-surface-card) 84%, var(--fc-cyan) 16%);
 		border-color: color-mix(in srgb, var(--fc-cyan) 48%, transparent);
@@ -145,7 +145,7 @@
 		font-weight: var(--fc-weight-semibold);
 
 		&:hover:not(:disabled) {
-			color: var(--fc-cyan);
+			color: var(--fc-text);
 			background: color-mix(in srgb, var(--fc-surface-card) 80%, var(--fc-cyan) 20%);
 			background-color: color-mix(in srgb, var(--fc-surface-card) 80%, var(--fc-cyan) 20%);
 			border-color: color-mix(in srgb, var(--fc-cyan) 58%, transparent);

@@ -59,7 +59,11 @@ const installCollector = `(() => {
 			ctrlOrMetaKey: !!(event?.ctrlKey || event?.metaKey) };
 	};
 	const clear = () => { origin = null; record('', 0, 0); };
+	// Losing focus suppresses selection replay, but the displayed snapshot still
+	// needs its origin tracked. Preserve pending expiry events as well.
+	const suppressSelection = () => { if (latest?.text) latest = null; };
 	const capture = (event) => {
+		if (!document.hasFocus()) return;
 		const active = document.activeElement;
 		origin = null;
 		let text = '', x = event?.clientX ?? 0, y = event?.clientY ?? 0;
@@ -108,12 +112,12 @@ const installCollector = `(() => {
 	bind('mouseup', capture);
 	bind('dblclick', capture);
 	bind('mousedown', clear);
-	bind('blur', clear);
+	bind('blur', suppressSelection);
 	bind('scroll', onScroll);
 	bind('keydown', (event) => { if (event.key === 'Escape') clear(); });
 	window.${collectorKey} = { read: () => {
-		if (!document.hasFocus()) { latest = null; origin = null; return null; }
 		if (origin?.isConnected === false) clear();
+		if (!document.hasFocus()) suppressSelection();
 		return latest;
 	}, dispose: () => {
 		for (const [type, callback] of handlers) document.removeEventListener(type, callback, true);

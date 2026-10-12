@@ -712,9 +712,13 @@ describe("WebviewSelectionAdapter", () => {
 		expect(env.openSource).toHaveBeenCalledTimes(sourceCalls);
 		interval.mockRestore();
 	});
-	it.each(["DOM", "input"])(
-		"dismisses a disconnected guest %s origin while preserving same-node snapshots",
-		async (kind) => {
+	it.each(
+		["DOM", "input"].flatMap((kind) =>
+			["focused", "unfocused", "blurred", "refocused"].map((focus) => ({ kind, focus })),
+		),
+	)(
+		"dismisses a disconnected guest $kind origin when $focus while preserving snapshots",
+		async ({ kind, focus }) => {
 			const env = setup();
 			const handlers = new Map<string, (event: unknown) => void>();
 			const origin = {
@@ -745,7 +749,7 @@ describe("WebviewSelectionAdapter", () => {
 				innerHeight: 150,
 				document: {
 					activeElement: kind === "input" ? origin : null,
-					hasFocus: () => true,
+					hasFocus: vi.fn(() => true),
 					addEventListener: (type: string, callback: (event: unknown) => void) =>
 						handlers.set(type, callback),
 					removeEventListener: vi.fn(),
@@ -771,10 +775,25 @@ describe("WebviewSelectionAdapter", () => {
 			await vi.advanceTimersByTimeAsync(150);
 			expect(env.helper.getSnapshot().target?.text).toBe("hello");
 			expect(env.lookupDispose).not.toHaveBeenCalled();
+			if (focus !== "focused") {
+				guest.document.hasFocus.mockReturnValue(false);
+				if (focus === "blurred" || focus === "refocused") handlers.get("blur")?.({});
+				env.hostHandlers.get("focusin")?.();
+				await vi.advanceTimersByTimeAsync(150);
+				if (focus === "refocused") {
+					guest.document.hasFocus.mockReturnValue(true);
+					await vi.advanceTimersByTimeAsync(150);
+				}
+				expect(env.helper.getSnapshot().mode).toBe("dictionary");
+				expect(env.helper.getSnapshot().target?.text).toBe("hello");
+				expect(env.lookupDispose).not.toHaveBeenCalled();
+				expect(env.selections).toHaveLength(1);
+			}
 			origin.isConnected = false;
 			const cleared = collector.read();
 			expect(cleared.text).toBe("");
 			expect(cleared.sequence).toBeGreaterThan(initial.sequence);
+			if (focus === "blurred") handlers.get("blur")?.({});
 			expect(collector.read().sequence).toBe(cleared.sequence);
 			await vi.advanceTimersByTimeAsync(150);
 			expect(env.helper.getSnapshot().visible).toBe(false);
