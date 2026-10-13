@@ -141,6 +141,23 @@ function renderedBody(): React.ReactElement<{ children: string }> {
 	return lastRenderedBoundary().props.children as React.ReactElement<{ children: string }>;
 }
 
+/** The i18n provider element the seam last rendered, for asserting its props. */
+function lastRenderedProvider(): React.ReactElement<{
+	language: string;
+	translator: (language: string) => unknown;
+	children: React.ReactNode;
+}> {
+	const root = env.roots[env.roots.length - 1]!;
+	const calls = root.render.mock.calls;
+	const tree = calls[calls.length - 1]![0] as React.ReactElement<{ children: React.ReactNode }>;
+	expect(tree.type).toBe(React.StrictMode);
+	return tree.props.children as React.ReactElement<{
+		language: string;
+		translator: (language: string) => unknown;
+		children: React.ReactNode;
+	}>;
+}
+
 describe("react item view seam", () => {
 	beforeEach(() => {
 		env.content.children = [];
@@ -200,6 +217,19 @@ describe("react item view seam", () => {
 		const root = env.roots[0]!;
 		expect(root.render).toHaveBeenCalledTimes(2);
 		expect(renderedBody().props.children).toBe("en:light");
+	});
+
+	it("keeps the same translator identity across renders so the provider's memo holds", async () => {
+		const view = buildView({ settings: () => settings({ language: "zh" }) });
+		await view.onOpen();
+		const first = lastRenderedProvider().props.translator;
+
+		view.updateSettings();
+
+		const second = lastRenderedProvider().props.translator;
+		// A fresh arrow per render would miss I18nProvider's [language, translator]
+		// memo and hand every consumer a new context value.
+		expect(second).toBe(first);
 	});
 
 	it("unmounts and runs the close hook", async () => {

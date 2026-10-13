@@ -109,6 +109,14 @@ export function createReactItemView<
 		private acquisitionFailed = false;
 		private theme: "dark" | "light" = "light";
 
+		/**
+		 * Stable across renders so `I18nProvider`'s memo on `[language, translator]`
+		 * actually holds. An inline arrow here would be a fresh identity every render,
+		 * miss the memo, and hand the whole view tree a new context value.
+		 */
+		private readonly translatorFor = (language: Language): Translator =>
+			options.translator?.(language) ?? createSharedTranslator(language);
+
 		getViewType(): string {
 			return options.type;
 		}
@@ -207,13 +215,7 @@ export function createReactItemView<
 			const context = this.context();
 			root.render(
 				<React.StrictMode>
-					<I18nProvider
-						language={context.language}
-						translator={() =>
-							options.translator?.(context.language) ??
-							createSharedTranslator(context.language)
-						}
-					>
+					<I18nProvider language={context.language} translator={this.translatorFor}>
 						<ReactViewErrorBoundary
 							viewType={options.type}
 							message={options.renderErrorMessage(context.language)}
@@ -231,12 +233,7 @@ export function createReactItemView<
 			const language = options.readSettings().language;
 			root.render(
 				<React.StrictMode>
-					<I18nProvider
-						language={language}
-						translator={() =>
-							options.translator?.(language) ?? createSharedTranslator(language)
-						}
-					>
+					<I18nProvider language={language} translator={this.translatorFor}>
 						<p className="fc-kicker">{options.renderErrorMessage(language)}</p>
 					</I18nProvider>
 				</React.StrictMode>,
