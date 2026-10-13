@@ -8,6 +8,8 @@ import {
 	useSensor,
 	useSensors,
 	type DragEndEvent,
+	type SensorDescriptor,
+	type SensorOptions,
 } from "@dnd-kit/core";
 import {
 	arrayMove,
@@ -65,9 +67,11 @@ interface DeckActionItem {
 	title?: string;
 }
 
+/** Stable identity so `DndContext` sees the same sensor list across renders. */
+const NO_SENSORS: SensorDescriptor<SensorOptions>[] = [];
+
 interface DeckCardProps {
 	deck: DeckHomeDeckSnapshot;
-	isReorderDisabled: boolean;
 	isRecentlyDropped: boolean;
 	isOverlayOpen: boolean;
 	onToggleOverlay: (deckId: string) => void;
@@ -83,7 +87,6 @@ interface DeckCardProps {
 
 const DeckCard = memo(function DeckCard({
 	deck,
-	isReorderDisabled,
 	isRecentlyDropped,
 	isOverlayOpen,
 	onToggleOverlay,
@@ -107,7 +110,7 @@ const DeckCard = memo(function DeckCard({
 		transition,
 	} = useSortable({
 		id: deck.id,
-		disabled: isReorderDisabled || isOverlayOpen,
+		disabled: isOverlayOpen,
 	});
 	const setDragNodeRef = useCallback(
 		(node: HTMLElement | null) => {
@@ -454,6 +457,14 @@ export const DeckList = React.memo(function DeckList({
 			coordinateGetter: sortableKeyboardCoordinates,
 		}),
 	);
+	/**
+	 * Disabling reordering belongs to the whole list, not to each card: DndContext
+	 * accepts no `disabled` prop, so an empty sensor set is what stops every
+	 * activator. Keeping it here leaves each memoized DeckCard's props untouched
+	 * when an overlay opens, instead of flipping a boolean on all of them.
+	 */
+	const reorderDisabled = isOrderSaving || activeOverlayDeckId !== null;
+	const activeSensors = reorderDisabled ? NO_SENSORS : sensors;
 
 	const persistDeckOrder = useCallback(
 		async (deckIds: string[]) => {
@@ -674,7 +685,7 @@ export const DeckList = React.memo(function DeckList({
 								</span>
 							</div>
 							<DndContext
-								sensors={sensors}
+								sensors={activeSensors}
 								collisionDetection={closestCenter}
 								onDragEnd={handleDragEnd}
 							>
@@ -687,9 +698,6 @@ export const DeckList = React.memo(function DeckList({
 											<DeckCard
 												key={deck.id}
 												deck={deck}
-												isReorderDisabled={
-													isOrderSaving || activeOverlayDeckId !== null
-												}
 												isRecentlyDropped={
 													recentlyDroppedDeckId === deck.id
 												}
