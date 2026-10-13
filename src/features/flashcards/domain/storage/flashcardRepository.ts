@@ -107,6 +107,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 	private dataLoaded = false;
 	private loadPromise: Promise<void> | null = null;
 	private authorityVersion = 0;
+	private persistedLearning: LearningStateDocument | undefined;
 	private authorityUnsubscribe: () => void;
 	private operationTail: Promise<void> = Promise.resolve();
 	private cacheWriteTail: Promise<void> = Promise.resolve();
@@ -473,7 +474,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 								cacheTags = nextAvailableTags;
 							},
 						};
-					});
+					}, true);
 					this.publishRevision();
 					if (cacheDecks) this.scheduleDeckIndexCacheWrite(cacheDecks, cacheTags);
 				});
@@ -533,6 +534,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 					discardLegacy: true,
 				});
 				this.authorityVersion = receipt.version;
+				this.persistedLearning = learning;
 			} catch (error) {
 				throw new FlashcardPersistenceError(
 					"migration-failed",
@@ -547,6 +549,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 
 		const learning = snapshot.content.learning ?? emptyLearningState();
 		await this.restoreLearningState(learning);
+		this.persistedLearning = snapshot.content.learning;
 		if (!initial && !this.dataLoaded) return;
 	}
 
@@ -562,7 +565,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 		const cache = await this.deckIndexCache?.load();
 		if (cache) this.restoreDeckIndexCache(cache, learning);
 		else this.restoreLearningPlaceholders(learning);
-		this.studyHistory = [...(learning.studyHistory ?? [])];
+		this.studyHistory = (learning.studyHistory ?? []).map((entry) => ({ ...entry }));
 		this.dailyLearningActivity = restoreDailyLearningActivity(learning.dailyLearningActivities);
 		this.spellingProgress = normalizeSpellingProgress(learning.spellingProgress);
 		this.challengeProgress = normalizeChallengeProgress(learning.challengeProgress);
@@ -583,14 +586,24 @@ export class FlashcardRepository implements DeckHomeRepository {
 		this.refreshDerivedState();
 	}
 
-	private async commitAuthority(build: () => AuthorityCandidate): Promise<void> {
+	private async commitAuthority(
+		build: () => AuthorityCandidate,
+		skipUnchanged = false,
+	): Promise<void> {
 		for (let attempt = 0; attempt < 3; attempt++) {
 			const candidate = build();
+			// Continuity also refreshes source-derived decks and tags. Install those
+			// even when the durable learning document needs no replacement.
+			if (skipUnchanged && equalLearningValue(candidate.learning, this.persistedLearning)) {
+				candidate.install();
+				return;
+			}
 			try {
 				const receipt = await this.authority.commit(this.authorityVersion, {
 					learning: candidate.learning,
 				});
 				this.authorityVersion = receipt.version;
+				this.persistedLearning = candidate.learning;
 				candidate.install();
 				return;
 			} catch (error) {
@@ -652,7 +665,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 		return {
 			cards,
 			decks: persistedDecks,
-			studyHistory: [...studyHistory],
+			studyHistory: studyHistory.map((entry) => ({ ...entry })),
 			dailyLearningActivities: dailyLearningActivity.toDocument(),
 			spellingProgress: { ...spellingProgress },
 			...(challengeProgress
@@ -940,7 +953,12 @@ function cloneContinuityState(
 ): PersistedCardIdentityContinuityState {
 	if (!state) return createEmptyContinuityState();
 	return {
-		sources: { ...state.sources },
+		sources: Object.fromEntries(
+			Object.entries(state.sources ?? {}).map(([path, condition]) => [
+				path,
+				{ ...condition },
+			]),
+		),
 		issues: (state.issues ?? []).map((issue) => ({
 			...issue,
 			affectedSources: [...issue.affectedSources],
@@ -989,6 +1007,33 @@ function normalizeSpellingProgress(
 		};
 	}
 	return normalized;
+}
+
+/** Compare JSON learning values structurally; record insertion order is irrelevant. */
+function equalLearningValue(left: unknown, right: unknown): boolean {
+	if (left === right) return true;
+	if (left === null || right === null || typeof left !== "object" || typeof right !== "object") {
+		return false;
+	}
+	if (Array.isArray(left) || Array.isArray(right)) {
+		return (
+			Array.isArray(left) &&
+			Array.isArray(right) &&
+			left.length === right.length &&
+			left.every((value, index) => equalLearningValue(value, right[index]))
+		);
+	}
+	const leftRecord = left as Record<string, unknown>;
+	const rightRecord = right as Record<string, unknown>;
+	const keys = Object.keys(leftRecord);
+	return (
+		keys.length === Object.keys(rightRecord).length &&
+		keys.every(
+			(key) =>
+				Object.prototype.hasOwnProperty.call(rightRecord, key) &&
+				equalLearningValue(leftRecord[key], rightRecord[key]),
+		)
+	);
 }
 
 function cloneDecksForTransition(
