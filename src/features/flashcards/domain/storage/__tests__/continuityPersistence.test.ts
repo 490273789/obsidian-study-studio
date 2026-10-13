@@ -84,6 +84,28 @@ async function fixture(cardCount = 2) {
 }
 
 describe("continuity learning persistence", () => {
+	it("rebuilds a missing deferred cache without losing FSRS or deck study metadata", async () => {
+		const f = await fixture();
+		const card = f.repo.getCard(PATH, ID)!;
+		await f.repo.commitSessionTransition({
+			cardUpdates: [{ deckId: PATH, cardId: ID, fsrsCard: { ...card.fsrsCard, reps: 3 } }],
+			spellingAttempts: [],
+			incrementStudyCountFor: [PATH],
+			historyEntries: [],
+		});
+		const before = structuredClone(f.store.getPartition("learning"));
+		f.repo.dispose();
+		f.cache.load.mockResolvedValueOnce(null);
+		const reopened = f.openRepository();
+		f.backend.saveData.mockClear();
+		expect((await reopened.identity.synchronize()).kind).toBe("current");
+		expect(reopened.repo.getDeck(PATH)?.studyCount).toBe(1);
+		expect(reopened.repo.getCard(PATH, ID)?.fsrsCard.reps).toBe(3);
+		expect(f.backend.saveData).not.toHaveBeenCalled();
+		expect(f.store.getPartition("learning")).toEqual(before);
+		reopened.repo.dispose();
+	});
+
 	it("keeps committed source conditions isolated from later state edits", async () => {
 		const f = await fixture();
 		const stateStore = f.repo.createContinuityStateStore();

@@ -177,7 +177,7 @@ describe("FlashcardRepository", () => {
 		expect(repo.getRevision()).toBe(1);
 	});
 
-	it("restores learning state and deck index cache on load", async () => {
+	it("restores learning first and reads the deck index only when requested", async () => {
 		const deck = makeDeck("deck-1", [
 			makeCard("c1", State.Review, new Date("2026-03-01T12:00:00.000Z"), 0),
 		]);
@@ -230,6 +230,11 @@ describe("FlashcardRepository", () => {
 		});
 
 		await repo.load();
+		expect(mockCacheStore.load).not.toHaveBeenCalled();
+		expect(repo.getAllDecks().flatMap((deck) => deck.cards)[0]?.fsrsCard.stability).toBe(5);
+		expect(repo.hasAvailableTagsSnapshot()).toBe(false);
+		await repo.loadDeckIndex();
+		expect(mockCacheStore.load).toHaveBeenCalledOnce();
 
 		const restoredDecks = repo.getAllDecks();
 		expect(restoredDecks).toHaveLength(1);
@@ -318,6 +323,7 @@ describe("FlashcardRepository", () => {
 		await repo.load();
 
 		const listener = vi.fn();
+		await repo.loadDeckIndex();
 		repo.subscribe(listener);
 
 		await repo.commitSessionTransition({

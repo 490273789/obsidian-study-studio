@@ -71,6 +71,8 @@ interface AuthorityCandidate {
 	install(): void;
 }
 
+const LEARNING_PLACEHOLDER_DECK_ID = "__markdown-rebuild__";
+
 export interface FlashcardRepositoryOptions {
 	authority: FlashcardAuthority;
 	deckIndexCache?: DeckIndexCacheStore<SerializedDeck> | null;
@@ -113,6 +115,8 @@ export class FlashcardRepository implements DeckHomeRepository {
 	private deckDueTimesValid = false;
 	private dataLoaded = false;
 	private loadPromise: Promise<void> | null = null;
+	private deckIndexRequested = false;
+	private deckIndexLoaded = false;
 	private authorityVersion = 0;
 	private persistedLearning: LearningStateDocument | undefined;
 	private authorityUnsubscribe: () => void;
@@ -154,6 +158,25 @@ export class FlashcardRepository implements DeckHomeRepository {
 			this.loadPromise = null;
 		});
 		return this.loadPromise;
+	}
+
+	/** Hydrate rebuildable source content only when a deck operation first needs it. */
+	async loadDeckIndex(): Promise<void> {
+		await this.load();
+		this.deckIndexRequested = true;
+		if (this.deckIndexLoaded) return;
+		await this.enqueueOperation(async () => {
+			if (this.deckIndexLoaded) return;
+			const cache = await this.deckIndexCache?.load();
+			if (this.disposed) return;
+			if (cache) {
+				this.decks = new Map();
+				this.restoreDeckIndexCache(cache, this.persistedLearning ?? emptyLearningState());
+				this.refreshDerivedState();
+			}
+			this.deckIndexLoaded = true;
+			if (cache) this.publishRevision();
+		});
 	}
 
 	getSettings(): FlashcardStudySettings {
@@ -328,7 +351,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 		startTimeMs: number,
 		endTimeMs: number,
 	): Promise<void> {
-		await this.load();
+		await this.loadDeckIndex();
 		const entry = createWordListHistoryEntry(deckId, deckName, startTimeMs, endTimeMs);
 		if (!entry) return;
 
@@ -366,7 +389,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 	async commitSessionTransition(
 		transition: SessionPersistenceTransition,
 	): Promise<SessionPersistenceReceipt> {
-		await this.load();
+		await this.loadDeckIndex();
 		let receipt!: SessionPersistenceReceipt;
 		await this.enqueueOperation(async () => {
 			let updatedDeckIds = new Set<string>();
@@ -461,7 +484,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 	createContinuityStateStore(): ContinuityStateStore {
 		return {
 			load: async (): Promise<CardIdentityContinuityState> => {
-				await this.load();
+				await this.loadDeckIndex();
 				return {
 					configuredTags: [...this.settings.flashcardTags],
 					...(this.hasAvailableTagsSnapshotValue
@@ -472,7 +495,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 				};
 			},
 			commit: async (state: CardIdentityContinuityState): Promise<void> => {
-				await this.load();
+				await this.loadDeckIndex();
 				await this.enqueueOperation(async () => {
 					let cacheDecks: ReadonlyMap<string, Deck> | null = null;
 					let cacheTags: readonly string[] = [];
@@ -509,7 +532,6 @@ export class FlashcardRepository implements DeckHomeRepository {
 	}
 
 	async commit(state: CardIdentityContinuityState): Promise<void> {
-		await this.load();
 		return this.createContinuityStateStore().commit(state);
 	}
 
@@ -580,6 +602,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 	}
 
 	private async restoreLearningState(learning: LearningStateDocument): Promise<void> {
+		this.deckIndexLoaded = false;
 		this.decks = new Map();
 		this.availableTags = [];
 		this.hasAvailableTagsSnapshotValue = false;
@@ -588,7 +611,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 		this.serializedFSRSCardCache = new WeakMap();
 		this.persistedCardStateCache = new WeakMap();
 		this.deckDueTimes = new Map();
-		const cache = await this.deckIndexCache?.load();
+		const cache = this.deckIndexRequested ? await this.deckIndexCache?.load() : null;
 		if (cache) this.restoreDeckIndexCache(cache, learning);
 		else this.restoreLearningPlaceholders(learning);
 		this.studyHistory = (learning.studyHistory ?? []).map((entry) => ({ ...entry }));
@@ -597,6 +620,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 		this.installChallengeProgress(normalizeChallengeProgress(learning.challengeProgress));
 		this.continuity = cloneContinuityState(learning.continuity);
 		this.refreshDerivedState();
+		this.deckIndexLoaded = this.deckIndexRequested || !this.deckIndexCache;
 	}
 
 	private restoreLegacyDocument(legacy: LegacyFlashcardDocument): void {
@@ -610,6 +634,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 		this.continuity = cloneContinuityState(legacy.continuity);
 		this.restoreAvailableTags(legacy.availableTags);
 		this.refreshDerivedState();
+		this.deckIndexLoaded = true;
 	}
 
 	private async commitAuthority(
@@ -679,10 +704,12 @@ export class FlashcardRepository implements DeckHomeRepository {
 		const persistedDecks: Record<string, PersistedDeckLearningState> = {};
 
 		for (const [deckId, deck] of decks) {
-			persistedDecks[deckId] = {
-				studyCount: deck.studyCount,
-				lastStudied: deck.lastStudied,
-			};
+			if (deckId !== LEARNING_PLACEHOLDER_DECK_ID) {
+				persistedDecks[deckId] = {
+					studyCount: deck.studyCount,
+					lastStudied: deck.lastStudied,
+				};
+			}
 			for (const card of deck.cards) {
 				cards[card.id] = this.getPersistedCardLearningState(card);
 			}
@@ -761,21 +788,23 @@ export class FlashcardRepository implements DeckHomeRepository {
 	}
 
 	private restoreLearningPlaceholders(learning: LearningStateDocument): void {
-		const decks = new Map<string, Deck>();
+		const placeholder = (deckId: string): Deck => ({
+			id: deckId,
+			name: deckId.split("/").pop()?.replace(/\.md$/i, "") ?? deckId,
+			filePath: deckId,
+			tag: "",
+			cards: [],
+			studyCount: learning.decks[deckId]?.studyCount ?? 0,
+			lastStudied: learning.decks[deckId]?.lastStudied ?? null,
+		});
+		// Current learning cards need not retain source paths. Keep deck metadata
+		// separately so Markdown rebuilding can reattach it by path.
+		const decks = new Map(Object.keys(learning.decks).map((id) => [id, placeholder(id)]));
 		for (const [cardId, state] of Object.entries(learning.cards)) {
-			const deckId = state.sourceFile ?? "__markdown-rebuild__";
+			const deckId = state.sourceFile ?? LEARNING_PLACEHOLDER_DECK_ID;
 			let deck = decks.get(deckId);
 			if (!deck) {
-				const persistedDeck = learning.decks[deckId];
-				deck = {
-					id: deckId,
-					name: deckId.split("/").pop()?.replace(/\.md$/i, "") ?? deckId,
-					filePath: deckId,
-					tag: "",
-					cards: [],
-					studyCount: persistedDeck?.studyCount ?? 0,
-					lastStudied: persistedDeck?.lastStudied ?? null,
-				};
+				deck = placeholder(deckId);
 				decks.set(deckId, deck);
 			}
 			deck.cards.push({
