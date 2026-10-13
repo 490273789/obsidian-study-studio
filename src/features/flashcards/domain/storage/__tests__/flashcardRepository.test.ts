@@ -103,6 +103,62 @@ function challengeProgress(id = "challenge-1"): ChallengeProgress {
 }
 
 describe("FlashcardRepository", () => {
+	it("reuses a deeply frozen spelling snapshot until committed progress changes", async () => {
+		const authority = new MemoryFlashcardAuthority(DEFAULT_SETTINGS);
+		const repo = new FlashcardRepository({ authority });
+		await repo.load();
+		const initial = repo.getSpellingProgress();
+		expect(repo.getSpellingProgress()).toBe(initial);
+		expect(Object.isFrozen(initial)).toBe(true);
+		await repo.commitSessionTransition({
+			cardUpdates: [],
+			incrementStudyCountFor: [],
+			historyEntries: [],
+			spellingAttempts: [{ cardId: "c1", correct: true, attemptedAt: 100 }],
+		});
+		const committed = repo.getSpellingProgress();
+		expect(committed).not.toBe(initial);
+		expect(repo.getSpellingProgress()).toBe(committed);
+		expect(Object.isFrozen(committed.c1)).toBe(true);
+		expect(Reflect.set(committed.c1!, "attempts", 999)).toBe(false);
+		expect(committed.c1?.attempts).toBe(1);
+		expect(initial).toEqual({});
+		authority.failNextCommit = true;
+		await expect(
+			repo.commitSessionTransition({
+				cardUpdates: [],
+				incrementStudyCountFor: [],
+				historyEntries: [],
+				spellingAttempts: [{ cardId: "c1", correct: false, attemptedAt: 200 }],
+			}),
+		).rejects.toMatchObject({ code: "authority-write-failed" });
+		expect(repo.getSpellingProgress()).toBe(committed);
+		repo.dispose();
+	});
+
+	it("replaces the spelling snapshot after external learning reloads", async () => {
+		const authority = new MemoryFlashcardAuthority(DEFAULT_SETTINGS);
+		const repo = new FlashcardRepository({ authority });
+		await repo.load();
+		const before = repo.getSpellingProgress();
+		const revision = repo.getRevision();
+		authority.replaceExternal(DEFAULT_SETTINGS, {
+			cards: {},
+			decks: {},
+			studyHistory: [],
+			spellingProgress: {
+				c1: { attempts: 3, correctAttempts: 2, correctStreak: 1, lastAttemptAt: 100 },
+			},
+			continuity: { sources: {}, issues: [], journal: null },
+		});
+		await vi.waitFor(() => expect(repo.getRevision()).toBeGreaterThan(revision));
+		const after = repo.getSpellingProgress();
+		expect(after).not.toBe(before);
+		expect(after.c1?.attempts).toBe(3);
+		expect(Object.isFrozen(after.c1)).toBe(true);
+		expect(repo.getSpellingProgress()).toBe(after);
+		repo.dispose();
+	});
 	it("initializes with empty decks and passes settings through from WorkbenchStore", async () => {
 		const backend = createMockBackend({
 			schemaVersion: 2,
@@ -447,6 +503,7 @@ describe("FlashcardRepository", () => {
 
 		const continuityStore = repo.createContinuityStateStore();
 		const initialContinuity = await continuityStore.load();
+		const previousProgress = repo.getSpellingProgress();
 		expect(initialContinuity.configuredTags).toEqual(DEFAULT_SETTINGS.flashcardTags);
 
 		// Commit new continuity where card c2 is removed
@@ -467,6 +524,8 @@ describe("FlashcardRepository", () => {
 		// c2 was deleted from decks, so spelling progress for c2 was pruned
 		expect(repo.getSpellingProgress()["c1"]).toBeDefined();
 		expect(repo.getSpellingProgress()["c2"]).toBeUndefined();
+		expect(repo.getSpellingProgress()).not.toBe(previousProgress);
+		expect(previousProgress.c2).toBeDefined();
 	});
 
 	it("records word list visits into study history and persists them", async () => {

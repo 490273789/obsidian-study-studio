@@ -17,7 +17,7 @@ import type {
 	PracticeResult,
 	PracticeSession,
 	SessionOriginDeckSnapshot,
-	SpellingCardProgress,
+	SpellingProgressSnapshot,
 	SpellingResult,
 	SpellingSelection,
 	SpellingSession,
@@ -507,14 +507,23 @@ export interface SessionPersistenceTransition {
 }
 
 export interface SessionLifecycleRepository extends StudyCardScheduler {
+	getRevision(): number;
 	getDeck(id: string): Deck | undefined;
 	getAllDecks(): readonly Deck[];
 	getCard(deckId: string, cardId: string): FlashCard | undefined;
 	getEffectiveStudySettings(deckId: string): StudySettings;
 	getSettings(): Pick<FlashcardStudySettings, "wordLearningDecks">;
-	getSpellingProgress(): Record<string, SpellingCardProgress>;
+	getSpellingProgress(): SpellingProgressSnapshot;
 	getChallengeProgress(): ChallengeProgress | null;
-	commitSessionTransition(transition: SessionPersistenceTransition): Promise<void>;
+	getChallengeProgressRevision(): number;
+	commitSessionTransition(
+		transition: SessionPersistenceTransition,
+	): Promise<SessionPersistenceReceipt>;
+}
+
+export interface SessionPersistenceReceipt {
+	/** Captured by the repository before announcing the committed revision. */
+	readonly challengeProgressRevision: number;
 }
 
 export interface SessionLifecycle {
@@ -567,6 +576,7 @@ type InternalActiveState =
 			key: string;
 			session: ChallengeSession;
 			progress: ChallengeProgress;
+			progressRevision: number;
 			setupDefaults: Extract<SessionStartRequest, { mode: "challenge" }>;
 	  };
 
@@ -652,6 +662,10 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 	private readonly now: () => number;
 	private readonly shuffle: (identities: string[]) => string[];
 	private readonly random: () => number;
+	private challengeCardsCache: {
+		revision: number;
+		cards: ReadonlyMap<string, { card: FlashCard; deck: Deck }>;
+	} | null = null;
 
 	constructor(
 		private readonly repository: SessionLifecycleRepository,
@@ -765,7 +779,9 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		}
 	}
 
-	private challengeCards(): Map<string, { card: FlashCard; deck: Deck }> {
+	private challengeCards(): ReadonlyMap<string, { card: FlashCard; deck: Deck }> {
+		const revision = this.repository.getRevision();
+		if (this.challengeCardsCache?.revision === revision) return this.challengeCardsCache.cards;
 		const decks = this.repository.getAllDecks();
 		const eligible = new Set(
 			selectEligibleChallengeCards(
@@ -773,13 +789,15 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 				this.repository.getSettings().wordLearningDecks,
 			).map((ref) => ref.identity),
 		);
-		return new Map(
+		const cards = new Map(
 			decks.flatMap((deck) =>
 				deck.cards
 					.filter((card) => eligible.has(card.id))
 					.map((card) => [card.id, { card, deck }] as const),
 			),
 		);
+		this.challengeCardsCache = { revision, cards };
+		return cards;
 	}
 
 	private async startChallenge(
@@ -825,7 +843,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			this.endChallengeBySourceChange(0);
 			return this.applied();
 		}
-		await this.commit({
+		const receipt = await this.commit({
 			...emptyTransition(),
 			challengeProgress: progress,
 			expectedChallengeProgress: saved,
@@ -836,6 +854,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			key: this.makeKey("challenge"),
 			session,
 			progress,
+			progressRevision: receipt.challengeProgressRevision,
 			setupDefaults: { ...request, expectedRoundId: session.roundId },
 		});
 		return this.applied();
@@ -857,8 +876,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 	private async revalidateActiveChallenge(
 		state: Extract<InternalActiveState, { mode: "challenge" }>,
 	): Promise<boolean> {
-		const persisted = this.repository.getChallengeProgress();
-		if (JSON.stringify(persisted) !== JSON.stringify(state.progress)) {
+		if (this.repository.getChallengeProgressRevision() !== state.progressRevision) {
 			this.endChallengeBySourceChange(state.session.attempts.length);
 			return true;
 		}
@@ -880,12 +898,15 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			this.endChallengeBySourceChange(state.session.attempts.length);
 			return true;
 		}
-		if (changed)
-			await this.commit({
+		let progressRevision = state.progressRevision;
+		if (changed) {
+			const receipt = await this.commit({
 				...emptyTransition(),
 				challengeProgress: progress,
 				expectedChallengeProgress: state.progress,
 			});
+			progressRevision = receipt.challengeProgressRevision;
+		}
 		const oldCard = this.snapshot.kind === "active" ? this.snapshot.currentCard : null;
 		const current = cards.get(session.queue[0]!.identity)!;
 		const contentChanged =
@@ -898,6 +919,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			this.publish({
 				...state,
 				progress,
+				progressRevision,
 				session: contentChanged ? { ...session, feedback: null } : session,
 			});
 			return true;
@@ -943,7 +965,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			submittedInput,
 			expectedAnswer,
 		});
-		await this.commit({
+		const receipt = await this.commit({
 			...emptyTransition(),
 			challengeProgress: step.progress,
 			expectedChallengeProgress: state.progress,
@@ -973,7 +995,13 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 				sourceChanged: false,
 				setupDefaults: state.setupDefaults,
 			});
-		} else this.publish({ ...state, progress: step.progress, session: step.session });
+		} else
+			this.publish({
+				...state,
+				progress: step.progress,
+				progressRevision: receipt.challengeProgressRevision,
+				session: step.session,
+			});
 		return this.applied();
 	}
 
@@ -1517,9 +1545,11 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		});
 	}
 
-	private async commit(transition: SessionPersistenceTransition): Promise<void> {
+	private async commit(
+		transition: SessionPersistenceTransition,
+	): Promise<SessionPersistenceReceipt> {
 		try {
-			await this.repository.commitSessionTransition(transition);
+			return await this.repository.commitSessionTransition(transition);
 		} catch (error) {
 			throw new PersistenceFailure(errorMessage(error));
 		}

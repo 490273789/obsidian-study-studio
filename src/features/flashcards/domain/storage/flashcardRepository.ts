@@ -4,6 +4,7 @@ import type {
 	DeckStats,
 	FlashCard,
 	SpellingCardProgress,
+	SpellingProgressSnapshot,
 	StudyHistoryEntry,
 	StudyRating,
 	StudySettings,
@@ -26,7 +27,10 @@ import type {
 	ContinuityStateStore,
 	PersistedCardIdentityContinuityState,
 } from "../identity/cardIdentityContinuity";
-import type { SessionPersistenceTransition } from "../sessions/sessionLifecycle";
+import type {
+	SessionPersistenceTransition,
+	SessionPersistenceReceipt,
+} from "../sessions/sessionLifecycle";
 import { appendStudyHistory, createWordListHistoryEntry } from "../history/studyHistory";
 import {
 	type DailyLearningActivity,
@@ -90,7 +94,10 @@ export class FlashcardRepository implements DeckHomeRepository {
 	private studyHistory: StudyHistoryEntry[] = [];
 	private dailyLearningActivity: DailyLearningActivity = restoreDailyLearningActivity(undefined);
 	private spellingProgress: Record<string, SpellingCardProgress> = {};
+	private spellingSnapshotSource: Record<string, SpellingCardProgress> | null = null;
+	private spellingSnapshot: SpellingProgressSnapshot = Object.freeze({});
 	private challengeProgress: ChallengeProgress | null = null;
+	private challengeProgressRevision = 0;
 	private availableTags: string[] = [];
 	private hasAvailableTagsSnapshotValue = false;
 	private continuity: PersistedCardIdentityContinuityState = createEmptyContinuityState();
@@ -269,17 +276,31 @@ export class FlashcardRepository implements DeckHomeRepository {
 		return this.dailyLearningActivity.footprint(now);
 	}
 
-	getSpellingProgress(): Record<string, SpellingCardProgress> {
-		return Object.fromEntries(
-			Object.entries(this.spellingProgress).map(([cardId, progress]) => [
-				cardId,
-				{ ...progress },
-			]),
+	getSpellingProgress(): SpellingProgressSnapshot {
+		if (this.spellingSnapshotSource === this.spellingProgress) return this.spellingSnapshot;
+		this.spellingSnapshot = Object.freeze(
+			Object.fromEntries(
+				Object.entries(this.spellingProgress).map(([cardId, progress]) => [
+					cardId,
+					Object.freeze({ ...progress }),
+				]),
+			),
 		);
+		this.spellingSnapshotSource = this.spellingProgress;
+		return this.spellingSnapshot;
 	}
 
 	getChallengeProgress(): ChallengeProgress | null {
 		return this.challengeProgress ? cloneChallengeProgress(this.challengeProgress) : null;
+	}
+
+	getChallengeProgressRevision(): number {
+		return this.challengeProgressRevision;
+	}
+
+	private installChallengeProgress(progress: ChallengeProgress | null): void {
+		if (!equalLearningValue(this.challengeProgress, progress)) this.challengeProgressRevision++;
+		this.challengeProgress = progress;
 	}
 
 	getScheduler(): FSRSScheduler {
@@ -342,8 +363,11 @@ export class FlashcardRepository implements DeckHomeRepository {
 		return this.recordWordListVisit(deckId, deckName, now - duration * 1000, now);
 	}
 
-	async commitSessionTransition(transition: SessionPersistenceTransition): Promise<void> {
+	async commitSessionTransition(
+		transition: SessionPersistenceTransition,
+	): Promise<SessionPersistenceReceipt> {
 		await this.load();
+		let receipt!: SessionPersistenceReceipt;
 		await this.enqueueOperation(async () => {
 			let updatedDeckIds = new Set<string>();
 			await this.commitAuthority(() => {
@@ -421,15 +445,17 @@ export class FlashcardRepository implements DeckHomeRepository {
 						this.studyHistory = nextHistory;
 						this.spellingProgress = nextSpellingProgress;
 						this.dailyLearningActivity = nextActivity;
-						this.challengeProgress = nextChallengeProgress;
+						this.installChallengeProgress(nextChallengeProgress);
 						for (const deckId of updatedDeckIds) {
 							this.refreshDeckDueTimes(deckId, nextDecks);
 						}
 					},
 				};
 			});
+			receipt = { challengeProgressRevision: this.challengeProgressRevision };
 			this.publishRevision();
 		});
+		return receipt;
 	}
 
 	createContinuityStateStore(): ContinuityStateStore {
@@ -568,7 +594,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 		this.studyHistory = (learning.studyHistory ?? []).map((entry) => ({ ...entry }));
 		this.dailyLearningActivity = restoreDailyLearningActivity(learning.dailyLearningActivities);
 		this.spellingProgress = normalizeSpellingProgress(learning.spellingProgress);
-		this.challengeProgress = normalizeChallengeProgress(learning.challengeProgress);
+		this.installChallengeProgress(normalizeChallengeProgress(learning.challengeProgress));
 		this.continuity = cloneContinuityState(learning.continuity);
 		this.refreshDerivedState();
 	}
@@ -580,7 +606,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 		this.studyHistory = [...(legacy.studyHistory ?? [])];
 		this.dailyLearningActivity = restoreDailyLearningActivity(undefined);
 		this.spellingProgress = normalizeSpellingProgress(legacy.spellingProgress);
-		this.challengeProgress = null;
+		this.installChallengeProgress(null);
 		this.continuity = cloneContinuityState(legacy.continuity);
 		this.restoreAvailableTags(legacy.availableTags);
 		this.refreshDerivedState();

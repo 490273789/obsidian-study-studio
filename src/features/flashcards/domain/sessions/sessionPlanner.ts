@@ -5,6 +5,7 @@ import type {
 	FlashCard,
 	PracticeSelection,
 	SpellingCardProgress,
+	SpellingProgressSnapshot,
 	SpellingSelection,
 	StudyDayInfo,
 	StudySettings,
@@ -91,7 +92,7 @@ export type SpellingShuffle = (cardIds: string[]) => string[];
 export interface SessionPlanningContext {
 	readonly settings: Pick<StudySettings, "dailyNewCards" | "dailyReviewCards" | "studyOrder">;
 	readonly isSpellingEnabled?: boolean;
-	readonly spellingProgress?: Readonly<Record<string, SpellingCardProgress>>;
+	readonly spellingProgress?: SpellingProgressSnapshot;
 	readonly shuffle?: (cardIds: string[]) => string[];
 	readonly now?: Date;
 }
@@ -244,7 +245,7 @@ export function getPracticeSetupPlan(
 
 export function getSpellingSetupPlan(
 	deck: Pick<Deck, "cards">,
-	progress: Readonly<Record<string, SpellingCardProgress>>,
+	progress: SpellingProgressSnapshot,
 	initialSelection?: SpellingSelection,
 ): SpellingSetupPlan {
 	const stats = getSpellingDeckProgressStats(deck.cards, progress);
@@ -302,7 +303,7 @@ export function evaluateSpellingDeckEligibility(
 
 export function getSpellingDeckProgressStats(
 	cards: readonly FlashCard[],
-	progress: Readonly<Record<string, SpellingCardProgress>>,
+	progress: SpellingProgressSnapshot,
 ): SpellingDeckProgressStats {
 	const eligibleCards = cards.filter((card) => extractSpellingWord(card.front) !== null);
 	let unpracticed = 0;
@@ -397,7 +398,7 @@ export function planIncorrectPracticeSession(params: {
 export function planSmartSpellingSession(params: {
 	deckId: string;
 	cards: FlashCard[];
-	progress: Readonly<Record<string, SpellingCardProgress>>;
+	progress: SpellingProgressSnapshot;
 	questionCount: number;
 	random?: () => number;
 }): SpellingSessionPlan {

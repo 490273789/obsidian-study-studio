@@ -409,6 +409,90 @@ describe("challenge lifecycle", () => {
 });
 
 describe("challenge reconciliation and concurrency", () => {
+	it("reuses the card index and checks progress revisions without cloning the round", async () => {
+		const h = await harness(2413);
+		await h.start();
+		const decks = vi.spyOn(h.repo, "getAllDecks");
+		const progress = vi.spyOn(h.repo, "getChallengeProgress");
+		for (let index = 0; index < 3; index++) await h.lifecycle.revalidateChallenge();
+		expect(decks).not.toHaveBeenCalled();
+		expect(progress).not.toHaveBeenCalled();
+		await act(h.lifecycle, { kind: "answer", correct: true });
+		expect(decks).toHaveBeenCalledOnce();
+		await h.lifecycle.revalidateChallenge();
+		expect(decks).toHaveBeenCalledOnce();
+		expect(progress).not.toHaveBeenCalled();
+		h.repo.dispose();
+	});
+
+	it("preserves an active challenge when external progress is structurally unchanged", async () => {
+		const h = await harness(2);
+		await h.start();
+		const original = await h.store.load();
+		const snapshot = await h.authority.read();
+		if (snapshot.content.kind !== "current") throw new Error("Expected current learning");
+		const progressRevision = h.repo.getChallengeProgressRevision();
+		const revision = h.repo.getRevision();
+		h.authority.replaceExternal(h.settings, snapshot.content.learning);
+		await vi.waitFor(() => expect(h.repo.getRevision()).toBeGreaterThan(revision));
+		// Restore source-derived decks after the cache-less external reload.
+		await h.store.commit(original);
+		expect(h.repo.getChallengeProgressRevision()).toBe(progressRevision);
+		await h.lifecycle.revalidateChallenge();
+		expect(active(h.lifecycle).currentCard.identity).toBe(card(0).id);
+		await act(h.lifecycle, { kind: "answer", correct: true });
+		h.repo.dispose();
+	});
+
+	it("ends a stale challenge when an external round replaces its checkpoint", async () => {
+		const h = await harness(2);
+		await h.start();
+		const snapshot = await h.authority.read();
+		if (snapshot.content.kind !== "current") throw new Error("Expected current learning");
+		const learning = snapshot.content.learning!;
+		learning.challengeProgress = {
+			...learning.challengeProgress!,
+			round: { ...learning.challengeProgress!.round!, id: "external-round" },
+		};
+		const revision = h.repo.getRevision();
+		h.authority.replaceExternal(h.settings, learning);
+		await vi.waitFor(() => expect(h.repo.getRevision()).toBeGreaterThan(revision));
+		const decks = vi.spyOn(h.repo, "getAllDecks");
+		await h.lifecycle.revalidateChallenge();
+		expect(h.lifecycle.getSnapshot()).toMatchObject({
+			kind: "idle",
+			lastEnd: { reason: "source-change" },
+		});
+		expect(decks).not.toHaveBeenCalled();
+		h.repo.dispose();
+	});
+
+	it("uses the committed receipt if another progress write finishes before start resumes", async () => {
+		const h = await harness(2);
+		const commit = h.repo.commitSessionTransition.bind(h.repo);
+		vi.spyOn(h.repo, "commitSessionTransition").mockImplementationOnce(async (transition) => {
+			const receipt = await commit(transition);
+			const saved = h.repo.getChallengeProgress()!;
+			const replacement = { ...saved, round: { ...saved.round!, id: "newer-round" } };
+			await commit({
+				cardUpdates: [],
+				spellingAttempts: [],
+				incrementStudyCountFor: [],
+				historyEntries: [],
+				challengeProgress: replacement,
+			});
+			return receipt;
+		});
+		await h.start();
+		await h.lifecycle.revalidateChallenge();
+		expect(h.lifecycle.getSnapshot()).toMatchObject({
+			kind: "idle",
+			lastEnd: { reason: "source-change" },
+		});
+		expect(h.repo.getChallengeProgress()?.round?.id).toBe("newer-round");
+		h.repo.dispose();
+	});
+
 	it("clears an ended checkpoint, retaining the last chosen mode", async () => {
 		const h = await harness(2);
 		await h.start("reversed");

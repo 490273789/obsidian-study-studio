@@ -349,6 +349,8 @@ export interface SpellingCardProgress {
 	lastIncorrectAt?: number;
 }
 
+export type SpellingProgressSnapshot = Readonly<Record<string, Readonly<SpellingCardProgress>>>;
+
 export type SpellingSessionPhase = "retrieval" | "correction";
 
 export interface SpellingFirstAttempt {

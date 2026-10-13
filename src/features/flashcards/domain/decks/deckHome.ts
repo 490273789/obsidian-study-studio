@@ -16,7 +16,7 @@ import {
 import type {
 	Deck,
 	DeckStats,
-	SpellingCardProgress,
+	SpellingProgressSnapshot,
 	StudyHistoryEntry,
 	StudySettings,
 } from "../../../../core/shared/types";
@@ -252,7 +252,7 @@ export interface DeckHomeRepository {
 	getDeckStats(deck: Deck, now?: Date): DeckStats;
 	getSettings(): FlashcardStudySettings;
 	getEffectiveStudySettings?(deckId: string): StudySettings;
-	getSpellingProgress?(): Readonly<Record<string, SpellingCardProgress>>;
+	getSpellingProgress?(): SpellingProgressSnapshot;
 	getStudyHistory?(): StudyHistoryEntry[];
 	getLearningFootprint(now: Date): LearningFootprintSnapshot;
 	recordWordListVisit?(
@@ -296,7 +296,7 @@ export interface DeckHome {
 	act(action: DeckHomeAction): Promise<DeckHomeOutcome>;
 	getDeck(deckId: string): Deck | undefined;
 	getEffectiveStudySettings(deckId: string): StudySettings;
-	getSpellingProgress(): Readonly<Record<string, SpellingCardProgress>>;
+	getSpellingProgress(): SpellingProgressSnapshot;
 	getStudyHistory(): StudyHistoryEntry[];
 	recordWordListVisit(deckId: string, startTimeMs: number, endTimeMs: number): Promise<void>;
 	dispose(): void;
@@ -440,7 +440,7 @@ class DefaultDeckHome implements DeckHome {
 		};
 	}
 
-	getSpellingProgress(): Readonly<Record<string, SpellingCardProgress>> {
+	getSpellingProgress(): SpellingProgressSnapshot {
 		return this.options.repository.getSpellingProgress?.() ?? {};
 	}
 

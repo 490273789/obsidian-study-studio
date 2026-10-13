@@ -12,6 +12,7 @@ import {
 	getRestartViewState,
 	type SessionLifecycleRepository,
 	type SessionPersistenceTransition,
+	type SessionPersistenceReceipt,
 } from "../sessionLifecycle";
 import type { LearningActivityRecord } from "../../history/dailyLearningActivity";
 
@@ -41,6 +42,12 @@ function makeDeck(cards: FlashCard[]): Deck {
 }
 
 class MemoryLifecycleRepository implements SessionLifecycleRepository {
+	getRevision() {
+		return this.commits.length;
+	}
+	getChallengeProgressRevision() {
+		return 0;
+	}
 	getAllDecks() {
 		return [...this.decks.values()];
 	}
@@ -109,7 +116,9 @@ class MemoryLifecycleRepository implements SessionLifecycleRepository {
 		};
 	}
 
-	async commitSessionTransition(transition: SessionPersistenceTransition): Promise<void> {
+	async commitSessionTransition(
+		transition: SessionPersistenceTransition,
+	): Promise<SessionPersistenceReceipt> {
 		if (this.failNextCommit) {
 			this.failNextCommit = false;
 			throw new Error("disk unavailable");
@@ -141,6 +150,7 @@ class MemoryLifecycleRepository implements SessionLifecycleRepository {
 		}
 		this.history.push(...transition.historyEntries);
 		if (transition.learningActivity) this.activity.push(transition.learningActivity);
+		return { challengeProgressRevision: 0 };
 	}
 }
 
