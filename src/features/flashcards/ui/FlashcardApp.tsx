@@ -278,6 +278,18 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 			viewState.initialSelection,
 		);
 	}, [deckHome, deckHomeSnapshot.revision, viewState]);
+	const studySetupPlan = useMemo(() => {
+		void deckHomeSnapshot.revision;
+		if (viewState.type !== "study-setup") return null;
+		const deck = deckHome.getDeck(viewState.deckId);
+		if (!deck) return null;
+		return getStudySetupPlan(
+			deck,
+			deckHome.getEffectiveStudySettings(viewState.deckId),
+			new Date(deckHomeSnapshot.evaluatedAt),
+			viewState.initialStudyOrder,
+		);
+	}, [deckHome, deckHomeSnapshot.revision, deckHomeSnapshot.evaluatedAt, viewState]);
 
 	const handleDeleteCardRequest = useCallback(
 		(deckId: string, cardId: string) => {
@@ -424,13 +436,14 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 				if (!deck) {
 					return renderHome();
 				}
-				const effectiveSettings = deckHome.getEffectiveStudySettings(viewState.deckId);
-				const plan = getStudySetupPlan(
-					deck,
-					effectiveSettings,
-					new Date(deckHomeSnapshot.evaluatedAt),
-					viewState.initialStudyOrder,
-				);
+				const plan =
+					studySetupPlan ??
+					getStudySetupPlan(
+						deck,
+						deckHome.getEffectiveStudySettings(viewState.deckId),
+						new Date(deckHomeSnapshot.evaluatedAt),
+						viewState.initialStudyOrder,
+					);
 				return (
 					<StudySetup
 						key={deck.id}
