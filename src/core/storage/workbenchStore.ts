@@ -44,6 +44,19 @@ export interface WorkbenchStoreMutationOptions {
 	readonly source?: object;
 }
 
+interface PendingMutation {
+	readonly build: (document: StoredWorkbenchDocument) => StoredWorkbenchDocument;
+	readonly change: WorkbenchStoreChangeInput;
+	readonly expectedRevision?: number;
+	readonly resolve: () => void;
+	readonly reject: (error: unknown) => void;
+}
+
+interface MutationBatch {
+	readonly keys: Set<string>;
+	readonly mutations: PendingMutation[];
+}
+
 export class WorkbenchStoreConflictError extends Error {
 	constructor(
 		readonly expectedRevision: number,
@@ -67,6 +80,7 @@ export class WorkbenchStore {
 	private document: StoredWorkbenchDocument;
 	/** One writer for data.json. Every write is sequenced after prior writes settle. */
 	private writeTail: Promise<void> = Promise.resolve();
+	private openBatch: MutationBatch | null = null;
 	private revision = 0;
 	private readonly revisionListeners = new Set<(change: WorkbenchStoreChange) => void>();
 	private loaded = false;
@@ -107,15 +121,17 @@ export class WorkbenchStore {
 		newSettings?: FlashcardSettings,
 		options: WorkbenchStoreMutationOptions = {},
 	): Promise<void> {
-		await this.enqueueWrite(async () => {
-			this.assertExpectedRevision(options.expectedRevision);
-			const next = cloneSettingsDocument(newSettings ?? this.settings);
-			const nextDocument = { ...this.document, settings: next };
-			await this.backend.saveData(nextDocument);
-			this.settings = next;
-			this.document = nextDocument;
-			this.publishRevision({ kind: "settings", source: options.source });
-		});
+		await this.enqueueMutation(
+			(document) => {
+				const next = cloneSettingsDocument(newSettings ?? document.settings);
+				return JSON.stringify(next) === JSON.stringify(document.settings)
+					? document
+					: { ...document, settings: next };
+			},
+			"settings",
+			{ kind: "settings", source: options.source },
+			options,
+		);
 	}
 
 	/** Returns a copy of the current committed settings document. */
@@ -138,17 +154,17 @@ export class WorkbenchStore {
 		partitionData: T,
 		options: WorkbenchStoreMutationOptions = {},
 	): Promise<void> {
-		await this.enqueueWrite(async () => {
-			this.assertExpectedRevision(options.expectedRevision);
-			const nextDocument = { ...this.document, [partitionKey]: partitionData };
-			await this.backend.saveData(nextDocument);
-			this.document = nextDocument;
-			this.publishRevision({
-				kind: "partition",
-				partitionKey,
-				source: options.source,
-			});
-		});
+		await this.enqueueMutation(
+			(document) =>
+				Object.prototype.hasOwnProperty.call(document, partitionKey) &&
+				(partitionData === null || typeof partitionData !== "object") &&
+				document[partitionKey] === partitionData
+					? document
+					: { ...document, [partitionKey]: partitionData },
+			partitionKey,
+			{ kind: "partition", partitionKey, source: options.source },
+			options,
+		);
 	}
 
 	/**
@@ -225,7 +241,67 @@ export class WorkbenchStore {
 		}
 	}
 
+	/**
+	 * Combine adjacent writes to disjoint keys before the writer starts.
+	 * Promises and notifications still wait for disk. A guarded write starts a new
+	 * batch; only unguarded, disjoint writes can join it. Overlapping keys,
+	 * full-document mutations, and reads are barriers, preserving ordering.
+	 */
+	private enqueueMutation(
+		build: PendingMutation["build"],
+		key: string,
+		change: WorkbenchStoreChangeInput,
+		options: WorkbenchStoreMutationOptions,
+	): Promise<void> {
+		let batch = this.openBatch;
+		if (!batch || batch.keys.has(key) || options.expectedRevision !== undefined) {
+			batch = { keys: new Set(), mutations: [] };
+			const queuedBatch = batch;
+			// enqueueWrite closes any preceding batch before creating this slot.
+			void this.enqueueWrite(() => this.commitBatch(queuedBatch));
+			this.openBatch = batch;
+		}
+		batch.keys.add(key);
+		return new Promise<void>((resolve, reject) => {
+			batch.mutations.push({
+				build,
+				change,
+				expectedRevision: options.expectedRevision,
+				resolve,
+				reject,
+			});
+		});
+	}
+
+	private async commitBatch(batch: MutationBatch): Promise<void> {
+		if (this.openBatch === batch) this.openBatch = null;
+		let nextDocument = this.document;
+		const prepared: { mutation: PendingMutation; document: StoredWorkbenchDocument }[] = [];
+		for (const mutation of batch.mutations) {
+			try {
+				this.assertExpectedRevision(mutation.expectedRevision);
+				nextDocument = mutation.build(nextDocument);
+				prepared.push({ mutation, document: nextDocument });
+			} catch (error) {
+				mutation.reject(error);
+			}
+		}
+		try {
+			if (nextDocument !== this.document) await this.backend.saveData(nextDocument);
+		} catch (error) {
+			for (const { mutation } of prepared) mutation.reject(error);
+			return;
+		}
+		for (const { mutation, document } of prepared) {
+			this.document = document;
+			this.settings = document.settings;
+			this.publishRevision(mutation.change);
+			mutation.resolve();
+		}
+	}
+
 	private enqueueWrite<T>(operation: () => Promise<T>): Promise<T> {
+		this.openBatch = null;
 		const pending = this.writeTail.then(operation, operation);
 		this.writeTail = pending.then(
 			() => undefined,

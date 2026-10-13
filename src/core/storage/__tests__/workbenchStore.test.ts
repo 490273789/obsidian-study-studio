@@ -99,6 +99,7 @@ describe("WorkbenchStore", () => {
 
 		expect(order).toEqual(["p1", "p2", "p3"]);
 		expect(store.getRevision()).toBe(3);
+		expect(backend.saveCalls).toBe(1);
 		expect((backend.data as any).part1).toBe("val1");
 		expect((backend.data as any).part2).toBe("val2");
 		expect((backend.data as any).settings.language).toBe("en");
@@ -188,5 +189,172 @@ describe("WorkbenchStore", () => {
 		expect(store.getPartition("learning")).toBeUndefined();
 		expect(store.getRevision()).toBe(0);
 		expect(listener).not.toHaveBeenCalled();
+	});
+	it("keeps a merged batch invisible until its durable write succeeds", async () => {
+		const backend = createMockBackend();
+		let release!: () => void;
+		const saved = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const save = backend.saveData.bind(backend);
+		const saveData = vi.fn(async (document: unknown) => {
+			await saved;
+			await save(document);
+		});
+		backend.saveData = saveData;
+		const store = new WorkbenchStore(backend);
+		const source = {};
+		const listener = vi.fn();
+		store.subscribe(listener);
+		const first = store.savePartition("learning", { cards: {} }, { source });
+		const second = store.saveSettings({ ...DEFAULT_SETTINGS, language: "en" });
+		await vi.waitFor(() => expect(saveData).toHaveBeenCalledOnce());
+		expect(store.getPartition("learning")).toBeUndefined();
+		expect(store.getSettings().language).toBe(DEFAULT_SETTINGS.language);
+		expect(store.getRevision()).toBe(0);
+		expect(listener).not.toHaveBeenCalled();
+		release();
+		await Promise.all([first, second]);
+		expect(listener.mock.calls.map(([change]) => change)).toEqual([
+			{ kind: "partition", partitionKey: "learning", source, revision: 1 },
+			{ kind: "settings", source: undefined, revision: 2 },
+		]);
+	});
+
+	it("rolls back every member of a failed batch and allows a later retry", async () => {
+		const backend = createMockBackend();
+		const store = new WorkbenchStore(backend);
+		backend.failNextSave = true;
+		const outcomes = await Promise.allSettled([
+			store.savePartition("learning", { cards: {} }),
+			store.saveSettings({ ...DEFAULT_SETTINGS, language: "en" }),
+		]);
+		expect(outcomes.map((outcome) => outcome.status)).toEqual(["rejected", "rejected"]);
+		expect(backend.saveCalls).toBe(1);
+		expect(store.getPartition("learning")).toBeUndefined();
+		expect(store.getSettings().language).toBe(DEFAULT_SETTINGS.language);
+		expect(store.getRevision()).toBe(0);
+		await store.savePartition("learning", { cards: { retry: true } });
+		expect(store.getRevision()).toBe(1);
+	});
+
+	it("keeps overlapping keys and revision-checked writes as separate durable boundaries", async () => {
+		const backend = createMockBackend();
+		const store = new WorkbenchStore(backend);
+		const first = store.savePartition("learning", 1);
+		const second = store.savePartition("learning", 2);
+		const guarded = store.savePartition("other", 3, { expectedRevision: 2 });
+		const stale = store.savePartition("stale", 4, { expectedRevision: 2 });
+		const outcomes = await Promise.allSettled([first, second, guarded, stale]);
+		expect(outcomes.map((outcome) => outcome.status)).toEqual([
+			"fulfilled",
+			"fulfilled",
+			"fulfilled",
+			"rejected",
+		]);
+		expect(store.getPartition("learning")).toBe(2);
+		expect(store.getPartition("other")).toBe(3);
+		expect(store.getPartition("stale")).toBeUndefined();
+		expect(store.getRevision()).toBe(3);
+		expect(backend.saveCalls).toBe(3);
+	});
+
+	it("flushes preceding writes before full-document mutations and external reloads", async () => {
+		const backend = createMockBackend();
+		const store = new WorkbenchStore(backend);
+		const first = store.savePartition("count", 1);
+		const mutation = store.mutateDocument((document) => {
+			document.count = Number(document.count) + 1;
+		});
+		const reload = store.reloadExternalSettings();
+		await Promise.all([first, mutation, reload]);
+		expect(store.getPartition("count")).toBe(2);
+		expect(store.getRevision()).toBe(3);
+		expect(backend.saveCalls).toBe(2);
+		expect(backend.loadCalls).toBe(1);
+	});
+
+	it("skips unchanged settings and unchanged primitive partitions while preserving revision echoes", async () => {
+		const backend = createMockBackend();
+		const store = new WorkbenchStore(backend);
+		const partition = 1;
+		await store.savePartition("learning", partition);
+		await Promise.all([
+			store.savePartition("learning", partition),
+			store.saveSettings(store.getSettings()),
+		]);
+		expect(backend.saveCalls).toBe(1);
+		expect(store.getRevision()).toBe(3);
+	});
+	it("merges a guarded learning write with a following unguarded settings write", async () => {
+		const backend = createMockBackend();
+		const store = new WorkbenchStore(backend);
+		await Promise.all([
+			store.savePartition("learning", { cards: {} }, { expectedRevision: 0 }),
+			store.saveSettings({ ...DEFAULT_SETTINGS, language: "en" }),
+		]);
+		expect(backend.saveCalls).toBe(1);
+		expect(store.getRevision()).toBe(2);
+	});
+
+	it("still persists a mutable partition when the caller saves the same reference again", async () => {
+		const backend = createMockBackend();
+		const store = new WorkbenchStore(backend);
+		const partition = { count: 1 };
+		await store.savePartition("learning", partition);
+		partition.count = 2;
+		await store.savePartition("learning", partition);
+		expect(backend.saveCalls).toBe(2);
+		expect((backend.data as any).learning.count).toBe(2);
+	});
+
+	it("does not add requests to an in-flight batch and serializes reentrant writes", async () => {
+		const backend = createMockBackend();
+		const store = new WorkbenchStore(backend);
+		let release!: () => void;
+		const pendingDisk = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const save = backend.saveData.bind(backend);
+		const saveData = vi.fn(async (document: unknown) => {
+			await pendingDisk;
+			await save(document);
+		});
+		backend.saveData = saveData;
+		const events: number[] = [];
+		let reentrant!: Promise<void>;
+		store.subscribe((change) => {
+			events.push(change.revision);
+			if (change.revision === 1) {
+				reentrant = store.savePartition("reentrant", true, { expectedRevision: 1 });
+			}
+		});
+		const first = store.savePartition("first", true);
+		await vi.waitFor(() => expect(saveData).toHaveBeenCalledOnce());
+		const second = store.savePartition("second", true);
+		release();
+		await Promise.all([first, second]);
+		await expect(reentrant).rejects.toMatchObject({
+			name: "WorkbenchStoreConflictError",
+			expectedRevision: 1,
+			actualRevision: 2,
+		});
+		expect(backend.saveCalls).toBe(2);
+		expect(events).toEqual([1, 2]);
+		expect(store.getPartition("reentrant")).toBeUndefined();
+	});
+
+	it("does not discard a following independent write when the first guard is stale", async () => {
+		const backend = createMockBackend();
+		const store = new WorkbenchStore(backend);
+		const outcomes = await Promise.allSettled([
+			store.savePartition("learning", {}, { expectedRevision: 1 }),
+			store.saveSettings({ ...DEFAULT_SETTINGS, language: "en" }),
+		]);
+		expect(outcomes.map((outcome) => outcome.status)).toEqual(["rejected", "fulfilled"]);
+		expect(store.getPartition("learning")).toBeUndefined();
+		expect(store.getSettings().language).toBe("en");
+		expect(store.getRevision()).toBe(1);
+		expect(backend.saveCalls).toBe(1);
 	});
 });
