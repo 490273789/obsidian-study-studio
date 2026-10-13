@@ -13,24 +13,29 @@ interface AudioCacheMetadata {
 
 interface AudioCacheRecord extends CachedPronunciationAudio, AudioCacheMetadata {}
 
+/** Memory entries are ordered by recency of use, so they need no timestamp. */
+interface MemoryAudioCacheRecord extends CachedPronunciationAudio {
+	key: string;
+	size: number;
+}
+
 const AUDIO_CACHE_DATABASE_VERSION = 2;
 const AUDIO_CACHE_METADATA_INDEX = "lastAccessAndSize";
 
 export class MemoryPronunciationAudioCache implements PronunciationAudioCache {
-	private records = new Map<string, AudioCacheRecord>();
+	private records = new Map<string, MemoryAudioCacheRecord>();
 	private usageBytes = 0;
 
-	constructor(
-		private readonly limitBytes = PRONUNCIATION_CACHE_LIMIT_BYTES,
-		private readonly now: () => number = Date.now,
-	) {}
+	constructor(private readonly limitBytes = PRONUNCIATION_CACHE_LIMIT_BYTES) {}
 
 	async get(key: string): Promise<CachedPronunciationAudio | null> {
 		const record = this.records.get(key);
 		if (!record) return null;
-		record.lastAccess = this.now();
+		// Re-insert so the map stays ordered from least to most recently used.
+		this.records.delete(key);
+		this.records.set(key, record);
 		return {
-			data: record.data.slice(0),
+			data: record.data,
 			mimeType: record.mimeType,
 		};
 	}
@@ -39,12 +44,12 @@ export class MemoryPronunciationAudioCache implements PronunciationAudioCache {
 		const size = audio.data.byteLength;
 		const previous = this.records.get(key);
 		if (previous) this.usageBytes -= previous.size;
+		this.records.delete(key);
 		this.records.set(key, {
 			key,
-			data: audio.data.slice(0),
+			data: audio.data,
 			mimeType: audio.mimeType,
 			size,
-			lastAccess: this.now(),
 		});
 		this.usageBytes += size;
 		this.evict();
@@ -61,12 +66,10 @@ export class MemoryPronunciationAudioCache implements PronunciationAudioCache {
 
 	private evict(): void {
 		if (this.usageBytes <= this.limitBytes) return;
-		const records = Array.from(this.records.values()).sort(
-			(left, right) => left.lastAccess - right.lastAccess,
-		);
-		for (const record of records) {
+		// Insertion order is the access order, so the oldest entry is simply first.
+		for (const [key, record] of this.records) {
 			if (this.usageBytes <= this.limitBytes) break;
-			this.records.delete(record.key);
+			this.records.delete(key);
 			this.usageBytes -= record.size;
 		}
 	}
@@ -106,8 +109,9 @@ export class IndexedDbPronunciationAudioCache implements PronunciationAudioCache
 			const now = Date.now();
 			this.pendingTouches.set(key, now);
 			this.scheduleTouchFlush();
+			// IndexedDB already deserialized a private copy of the buffer.
 			return {
-				data: record.data.slice(0),
+				data: record.data,
 				mimeType: record.mimeType,
 			};
 		} catch {
@@ -128,7 +132,8 @@ export class IndexedDbPronunciationAudioCache implements PronunciationAudioCache
 			const previousSize = this.memoryRecordSizes.get(key) ?? 0;
 			await putRecord(database, {
 				key,
-				data: audio.data.slice(0),
+				// IndexedDB structured-clones the record into the store.
+				data: audio.data,
 				mimeType: audio.mimeType,
 				size,
 				lastAccess: Date.now(),

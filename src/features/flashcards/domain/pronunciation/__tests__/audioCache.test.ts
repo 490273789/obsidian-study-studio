@@ -315,8 +315,7 @@ describe("pronunciation audio cache", () => {
 	});
 
 	it("evicts the least recently used audio at the configured limit", async () => {
-		let now = 1;
-		const cache = new MemoryPronunciationAudioCache(5, () => now++);
+		const cache = new MemoryPronunciationAudioCache(5);
 		await cache.put("first", {
 			data: new Uint8Array([1, 2, 3]).buffer,
 			mimeType: "audio/mpeg",
@@ -325,6 +324,7 @@ describe("pronunciation audio cache", () => {
 			data: new Uint8Array([4, 5]).buffer,
 			mimeType: "audio/mpeg",
 		});
+		// Reading promotes "first" past "second", so "second" is evicted first.
 		await cache.get("first");
 		await cache.put("third", {
 			data: new Uint8Array([6, 7]).buffer,
