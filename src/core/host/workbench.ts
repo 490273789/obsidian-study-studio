@@ -96,8 +96,8 @@ export interface WorkbenchItemView extends ItemView {
  * selection, re-rendering, and opening Obsidian settings.
  */
 export interface WorkbenchSettingsTab {
-	/** Re-renders the settings tab in place. */
-	refresh(): void;
+	/** Refreshes one section, or the entire tab when shared context changes. */
+	refresh(sectionId?: string): void;
 	/** Selects a section for the next render. */
 	select(sectionId: string): void;
 	/** Opens the plugin settings, optionally selecting a section first. */
@@ -204,7 +204,7 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 	let disposed = false;
 
 	const settingsTabCapability: WorkbenchSettingsTab = {
-		refresh: () => settingsTab?.refresh(),
+		refresh: (sectionId) => settingsTab?.refresh(sectionId),
 		select: (sectionId) => settingsTab?.select(sectionId),
 		open: (sectionId) => settingsTab?.open(sectionId),
 	};

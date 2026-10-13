@@ -314,7 +314,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 		refreshSection: boolean,
 	): Promise<void> => {
 		await host.settings.update(patch);
-		if (refreshSection) host.settingsTab.refresh();
+		if (refreshSection) host.settingsTab.refresh(FLASHCARD_SECTION_ID);
 	};
 
 	const ensureAvailableTagsLoaded = (): void => {
@@ -347,7 +347,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 		if (isLoadingTags) return;
 		const strings = t(host);
 		isLoadingTags = true;
-		host.settingsTab.refresh();
+		host.settingsTab.refresh(FLASHCARD_SECTION_ID);
 
 		try {
 			await activeServices().cardIdentityContinuity.synchronize();
@@ -373,7 +373,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 			new Notice(strings("settings.tagsRefreshFailed"));
 		} finally {
 			isLoadingTags = false;
-			host.settingsTab.refresh();
+			host.settingsTab.refresh(FLASHCARD_SECTION_ID);
 		}
 	};
 
@@ -521,7 +521,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 		activate: () => {
 			const { pronunciationRuntime } = activeServices();
 			pronunciationUnsubscribe ??= pronunciationRuntime.subscribe(() =>
-				host.settingsTab.refresh(),
+				host.settingsTab.refresh(FLASHCARD_SECTION_ID),
 			);
 			if (
 				!didRetryFailedCacheUsage &&

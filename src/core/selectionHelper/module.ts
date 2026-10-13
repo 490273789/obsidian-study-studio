@@ -48,11 +48,11 @@ export function createSelectionHelperModule(
 				{
 					setEnabled: async (enabled) => {
 						await commitSelectionSettings(host, { enabled });
-						host.settingsTab.refresh();
+						host.settingsTab.refresh(SELECTION_HELPER_SECTION_ID);
 					},
 					setModifier: async (modifier) => {
 						await commitSelectionSettings(host, { modifier });
-						host.settingsTab.refresh();
+						host.settingsTab.refresh(SELECTION_HELPER_SECTION_ID);
 					},
 					toggleDictionary: async (id, enabled) => {
 						const current = host.settings.read().selectionPopup.selectedDictionaries;
@@ -62,7 +62,7 @@ export function createSelectionHelperModule(
 							? Array.from(new Set([...base, id]))
 							: base.filter((item) => item !== id);
 						await commitSelectionSettings(host, { selectedDictionaries });
-						host.settingsTab.refresh();
+						host.settingsTab.refresh(SELECTION_HELPER_SECTION_ID);
 					},
 				},
 				language,
@@ -106,7 +106,7 @@ export function createSelectionHelperModule(
 							onStatus: (status) => {
 								if (webStatuses.get(doc) === status) return;
 								webStatuses.set(doc, status);
-								host.settingsTab.refresh();
+								host.settingsTab.refresh(SELECTION_HELPER_SECTION_ID);
 							},
 						})
 					: null;

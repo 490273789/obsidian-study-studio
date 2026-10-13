@@ -2,7 +2,7 @@ import "../styles/index.scss";
 import { Plugin } from "obsidian";
 import { createWorkbench, type Workbench } from "./workbench";
 import { createWorkbenchModules } from "../../features";
-import { createAiEngineSection } from "./aiEngineSection";
+import { AI_ENGINE_SECTION_ID, createAiEngineSection } from "./aiEngineSection";
 import { createObsidianAiService } from "./aiAdapter";
 import { normalizeAiSettings } from "../ai/configuration";
 import type { AiService, AiSettings } from "../ai";
@@ -56,7 +56,7 @@ export default class StudyStudioPlugin extends Plugin {
 		this.workbench.addSettingsSection(
 			createAiEngineSection({
 				ai: this.aiService,
-				refresh: () => this.workbench.settingsTab.refresh(),
+				refresh: () => this.workbench.settingsTab.refresh(AI_ENGINE_SECTION_ID),
 			}),
 		);
 

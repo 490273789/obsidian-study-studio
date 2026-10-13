@@ -117,7 +117,7 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 				translation,
 				deps.ai,
 				() => host.settings.read().language,
-				() => host.settingsTab.refresh(),
+				() => host.settingsTab.refresh(TRANSLATION_SECTION_ID),
 			);
 			let detachOpenView: (() => void) | null = null;
 			lifetime.defer(() => {

@@ -208,6 +208,7 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 				dictionary,
 				deps.ai,
 				() => host.settings.read().language,
+				// Source changes also affect the selection helper's dictionary choices.
 				() => host.settingsTab.refresh(),
 			);
 			lifetime.defer(() => {

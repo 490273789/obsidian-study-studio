@@ -15,6 +15,9 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 	private activeSectionId = "";
 	private sectionScrollPositions = new Map<string, number>();
 	private activePresentation: SettingsPresentation | null = null;
+	private renderedSectionId = "";
+	private renderedLanguage: Language | null = null;
+	private renderedNavigationKey = "";
 
 	constructor(app: App, plugin: FlashcardPlugin) {
 		super(app, plugin);
@@ -37,7 +40,20 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 		settingsManager.openTabById(this.plugin.manifest.id);
 	}
 
-	refresh(): void {
+	refresh(sectionId?: string): void {
+		if (sectionId && this.activePresentation) {
+			const sections = this.sections();
+			const language = this.getSelectedLanguage();
+			const activeSection = this.activeSection();
+			if (
+				sectionId !== activeSection?.id &&
+				this.renderedSectionId === activeSection?.id &&
+				this.renderedLanguage === language &&
+				this.renderedNavigationKey === this.navigationKey(sections, language)
+			) {
+				return;
+			}
+		}
 		this.refreshDefinitions();
 	}
 
@@ -56,6 +72,12 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 	/** The settings tab is a host-owned shell: it renders whatever sections are registered. */
 	private sections(): WorkbenchSettingsSection[] {
 		return (this.plugin.workbench?.settingsSections() ?? []).sort((a, b) => a.order - b.order);
+	}
+
+	private navigationKey(sections: WorkbenchSettingsSection[], language: Language): string {
+		return JSON.stringify(
+			sections.map((section) => [section.id, section.order, section.label(language)]),
+		);
 	}
 
 	private activeSection(): WorkbenchSettingsSection | undefined {
@@ -164,6 +186,9 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 		this.activePresentation = nextPresentation;
 
 		const sections = this.sections();
+		this.renderedSectionId = activeSectionId;
+		this.renderedLanguage = language;
+		this.renderedNavigationKey = this.navigationKey(sections, language);
 		const navEl = containerEl.createDiv({ cls: "fc-settings-tab-nav" });
 
 		for (const section of sections) {

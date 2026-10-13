@@ -534,6 +534,18 @@ describe("workbench", () => {
 		expect(commands.has("open-only")).toBe(false);
 	});
 
+	it("forwards section refresh sources and unscoped shared refreshes to the settings tab", () => {
+		const { workbench, host } = setup([feature("translation", () => {})]);
+		const tab = { refresh: vi.fn(), select: vi.fn(), open: vi.fn() };
+		workbench.setSettingsTab(tab);
+		workbench.refresh();
+
+		host("translation").settingsTab.refresh("translation");
+		workbench.settingsTab.refresh();
+		expect(tab.refresh).toHaveBeenNthCalledWith(1, "translation");
+		expect(tab.refresh).toHaveBeenNthCalledWith(2, undefined);
+	});
+
 	it("opens available feature directly or opens settings when unavailable via host.openFeature", () => {
 		const openAvailable = vi.fn();
 		const openUnavailable = vi.fn();

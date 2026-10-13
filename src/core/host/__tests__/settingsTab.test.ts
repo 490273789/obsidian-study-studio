@@ -384,6 +384,87 @@ describe("FlashcardSettingTab", () => {
 		expect(container.scrollTop).toBe(300);
 	});
 
+	it("preserves DOM and live actions for unrelated section refreshes, then expires them on a local refresh", async () => {
+		const plugin = createMockPlugin();
+		const onPress = vi.fn();
+		const presentation = vi.fn(() =>
+			defineSettings("flashcards", (page) => {
+				page.group("general", "Flashcards", (group) => {
+					group.button("action", { name: "Action" }, { label: "Run", onPress });
+				});
+			}),
+		);
+		plugin.flashcardsSection.presentation = presentation;
+		const tab = new FlashcardSettingTab({} as never, plugin as never);
+		tab.display();
+		const first = presentation.mock.results[0]!.value;
+		const control = first.snapshot.groups[0]!.rows[0]!.controls[0]!;
+		if (control.kind !== "button") throw new Error("Expected button");
+		const container = tab.containerEl as unknown as MockElement;
+		const children = container.children;
+		container.scrollTop = 300;
+
+		// A completion from another editor must not detach the current control.
+		await Promise.resolve();
+		tab.refresh("ai");
+		tab.refresh("dictionary");
+		expect(presentation).toHaveBeenCalledOnce();
+		expect(container.children).toBe(children);
+		expect(container.scrollTop).toBe(300);
+		expect(await first.invoke({ action: control.action, value: undefined })).toEqual({
+			status: "applied",
+		});
+
+		tab.refresh("flashcards");
+		expect(presentation).toHaveBeenCalledTimes(2);
+		expect(container.children).not.toBe(children);
+		expect(await first.invoke({ action: control.action, value: undefined })).toEqual({
+			status: "ignored",
+			reason: "stale",
+		});
+		expect(onPress).toHaveBeenCalledOnce();
+	});
+
+	it("refreshes shared language and navigation changes even for an unrelated source", () => {
+		const plugin = createMockPlugin();
+		const presentation = vi.spyOn(plugin.flashcardsSection, "presentation");
+		const tab = new FlashcardSettingTab({} as never, plugin as never);
+		tab.select("flashcards");
+		tab.display();
+		plugin.settings.language = "en";
+		tab.refresh("dictionary");
+		expect(presentation).toHaveBeenCalledTimes(2);
+		plugin.dictionarySection.label = () => "Dictionary";
+		tab.refresh("dictionary");
+		expect(presentation).toHaveBeenCalledTimes(3);
+		plugin.dictionarySection.order = -1;
+		tab.refresh("ai");
+		expect(presentation).toHaveBeenCalledTimes(4);
+	});
+
+	it("renders a pending section selection even when another section requested refresh", () => {
+		const plugin = createMockPlugin();
+		const presentation = vi.spyOn(plugin.dictionarySection, "presentation");
+		const tab = new FlashcardSettingTab({} as never, plugin as never);
+		tab.display();
+		tab.select("dictionary");
+		tab.refresh("ai");
+		expect(presentation).toHaveBeenCalledOnce();
+	});
+
+	it("rebuilds on display after hide even when unrelated refreshes were skipped", () => {
+		const plugin = createMockPlugin();
+		const presentation = vi.spyOn(plugin.flashcardsSection, "presentation");
+		const tab = new FlashcardSettingTab({} as never, plugin as never);
+		tab.display();
+		const firstDispose = vi.spyOn(presentation.mock.results[0]!.value, "dispose");
+		tab.refresh("ai");
+		tab.hide();
+		expect(firstDispose).toHaveBeenCalledOnce();
+		tab.display();
+		expect(presentation).toHaveBeenCalledTimes(2);
+	});
+
 	it("disposes replaced generations and preserves the installed pane when rebuilding fails", () => {
 		const plugin = createMockPlugin();
 		const first = defineSettings("flashcards", (page) => {
