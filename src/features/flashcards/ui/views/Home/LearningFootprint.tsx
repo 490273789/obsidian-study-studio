@@ -257,12 +257,30 @@ function DayDetails({ day }: { day: LearningFootprintDay }) {
 	);
 }
 
+/**
+ * Formatters are cached per language: the heatmap asks for one per cell on every
+ * render, and constructing an `Intl.DateTimeFormat` is far more expensive than
+ * formatting with an existing one.
+ */
+const ACTIVITY_DATE_FORMATTERS: Partial<Record<"zh" | "en", Intl.DateTimeFormat>> = {};
+const MONTH_LABEL_FORMATTERS: Partial<Record<"zh" | "en", Intl.DateTimeFormat>> = {};
+
+function getActivityDateFormatter(language: "zh" | "en"): Intl.DateTimeFormat {
+	return (ACTIVITY_DATE_FORMATTERS[language] ??= new Intl.DateTimeFormat(
+		language === "zh" ? "zh-CN" : "en-US",
+		{ month: "short", day: "numeric", weekday: "short" },
+	));
+}
+
+function getMonthLabelFormatter(language: "zh" | "en"): Intl.DateTimeFormat {
+	return (MONTH_LABEL_FORMATTERS[language] ??= new Intl.DateTimeFormat(
+		language === "zh" ? "zh-CN" : "en-US",
+		{ month: "short" },
+	));
+}
+
 function formatActivityDate(dateKey: string, language: "zh" | "en"): string {
-	return new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", {
-		month: "short",
-		day: "numeric",
-		weekday: "short",
-	}).format(new Date(`${dateKey}T00:00:00`));
+	return getActivityDateFormatter(language).format(new Date(`${dateKey}T00:00:00`));
 }
 
 function getDayAriaLabel(
@@ -305,8 +323,6 @@ export function calculateHeatmapMonthLabels(
 		lastWeekWithLabel = weekIndex;
 
 		const date = new Date(`${anchorDay.date}T00:00:00`);
-		return new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", {
-			month: "short",
-		}).format(date);
+		return getMonthLabelFormatter(language).format(date);
 	});
 }
