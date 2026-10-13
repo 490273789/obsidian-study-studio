@@ -144,7 +144,7 @@ export default defineConfig(({ mode }) => {
 				fileName: () => bundledFileName,
 			},
 			cssCodeSplit: false,
-			cssMinify: false,
+			cssMinify: isProduction,
 			minify: isProduction,
 			outDir,
 			rolldownOptions: {
