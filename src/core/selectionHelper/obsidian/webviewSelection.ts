@@ -2,6 +2,9 @@ import type { SelectionSourceLease } from "../domain/types";
 
 export type WebviewSelectionStatus = "idle" | "available" | "unavailable";
 
+/** Guest selections never reach the host, so an embedded page is polled on a timer. */
+const WEBVIEW_POLL_INTERVAL_MS = 150;
+
 interface WebviewElement extends HTMLElement {
 	executeJavaScript(code: string): Promise<unknown>;
 }
@@ -188,7 +191,6 @@ export class WebviewSelectionAdapter {
 				this.observer.observe(doc.body, { childList: true, subtree: true });
 			}
 		}
-		this.timer = setInterval(() => this.poll(), 150);
 	}
 
 	stop(): void {
@@ -196,8 +198,6 @@ export class WebviewSelectionAdapter {
 		this.running = false;
 		this.observer?.disconnect();
 		this.observer = null;
-		if (this.timer !== null) clearInterval(this.timer);
-		this.timer = null;
 		if (
 			this.docMouseDownHandler &&
 			typeof this.options.document.removeEventListener === "function"
@@ -218,6 +218,7 @@ export class WebviewSelectionAdapter {
 		}
 		for (const source of this.sources.values()) this.release(source);
 		this.sources.clear();
+		this.syncPolling();
 		this.publishStatus();
 	}
 
@@ -257,6 +258,7 @@ export class WebviewSelectionAdapter {
 			this.sources.set(element, source);
 			void this.install(source);
 		}
+		this.syncPolling();
 		this.publishStatus();
 	}
 
@@ -377,6 +379,22 @@ export class WebviewSelectionAdapter {
 	private release(source: Source): void {
 		this.disposePage(source, source.page);
 		source.cleanup();
+	}
+
+	/**
+	 * A document without embedded webviews has nothing to poll, so the timer only
+	 * runs while at least one source exists. `discover()` is still driven by the
+	 * `MutationObserver`, which is what notices appearing and disappearing pages.
+	 */
+	private syncPolling(): void {
+		const needed = this.running && this.sources.size > 0;
+		if (needed === (this.timer !== null)) return;
+		if (needed) {
+			this.timer = setInterval(() => this.poll(), WEBVIEW_POLL_INTERVAL_MS);
+			return;
+		}
+		if (this.timer !== null) clearInterval(this.timer);
+		this.timer = null;
 	}
 
 	private script(template: string, page: Page): string {
