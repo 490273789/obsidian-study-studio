@@ -481,6 +481,8 @@ export const DeckList = React.memo(function DeckList({
 
 	const handleDragEnd = useCallback(
 		(event: DragEndEvent) => {
+			// Removing activators does not cancel a sensor that already started.
+			if (reorderDisabled) return;
 			const { active, over } = event;
 			if (!over || active.id === over.id) return;
 			const activeIndex = visibleDeckIds.indexOf(String(active.id));
@@ -492,7 +494,7 @@ export const DeckList = React.memo(function DeckList({
 			requestAnimationFrame(() => setRecentlyDroppedDeckId(null));
 			void persistDeckOrder(nextOrder);
 		},
-		[persistDeckOrder, visibleDeckIds],
+		[persistDeckOrder, reorderDisabled, visibleDeckIds],
 	);
 
 	const handleCloseModal = useCallback(() => {
