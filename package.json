@@ -1,5 +1,5 @@
 {
-	"name": "StudyStudio",
+	"name": "study-studio",
 	"version": "6.0.0",
 	"description": "A flashcard learning plugin for Obsidian based on FSRS algorithm",
 	"keywords": [],

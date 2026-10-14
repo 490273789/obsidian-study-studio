@@ -224,7 +224,7 @@ export class WebviewSelectionAdapter {
 
 	private discover(): void {
 		if (!this.running) return;
-		const elements = new Set(this.options.document.querySelectorAll("webview"));
+		const elements = new Set(Array.from(this.options.document.querySelectorAll("webview")));
 		for (const [element, source] of this.sources) {
 			if (!elements.has(element)) {
 				this.release(source);
@@ -266,7 +266,7 @@ export class WebviewSelectionAdapter {
 		const lease = this.options.openSource();
 		return {
 			lease,
-			key: `${collectorKey}_${lease.reference.id.replaceAll(/[^A-Za-z0-9_]/g, "_")}_${++nextPage}`,
+			key: `${collectorKey}_${lease.reference.id.replace(/[^A-Za-z0-9_]/g, "_")}_${++nextPage}`,
 			sequence: 0,
 			ready: false,
 			failed: false,
