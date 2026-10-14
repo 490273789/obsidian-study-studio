@@ -60,6 +60,10 @@ interface ElementProps {
 	deck?: { id: string };
 	"data-state"?: string;
 	"aria-expanded"?: boolean;
+	ariaExpanded?: boolean;
+	onKeyDown?: (event: { key: string; preventDefault(): void }) => void;
+	right?: React.ReactNode;
+	badge?: React.ReactNode;
 	"aria-controls"?: string;
 	id?: string;
 	hidden?: boolean;
@@ -370,5 +374,74 @@ describe("deck row presentation state", () => {
 			(element) => element.props.className?.includes("flashcard-deck-action-study") === true,
 		);
 		expect(textOf(study.props.children)).toContain("home.review");
+	});
+});
+
+describe("mobile header collapse", () => {
+	it("defaults to collapsed with aria-expanded false and toggles on header click", () => {
+		const h = harness();
+		const getHeader = () =>
+			h.findElement(
+				h.tree(),
+				(element) => element.props.className?.includes("homeHeader") === true,
+			);
+
+		// Defaults to collapsed
+		const initialHeader = getHeader();
+		expect(initialHeader.props.ariaExpanded).toBe(false);
+		expect(initialHeader.props.className).toContain("isCollapsed");
+
+		// Clicking header toggles to expanded
+		initialHeader.props.onClick!({ stopPropagation: vi.fn() });
+		h.render();
+
+		const expandedHeader = getHeader();
+		expect(expandedHeader.props.ariaExpanded).toBe(true);
+		expect(expandedHeader.props.className).not.toContain("isCollapsed");
+
+		// Clicking again collapses
+		expandedHeader.props.onClick!({ stopPropagation: vi.fn() });
+		h.render();
+
+		const collapsedAgain = getHeader();
+		expect(collapsedAgain.props.ariaExpanded).toBe(false);
+		expect(collapsedAgain.props.className).toContain("isCollapsed");
+	});
+
+	it("toggles collapse state with Enter and Space keys", () => {
+		const h = harness();
+		const getHeader = () =>
+			h.findElement(
+				h.tree(),
+				(element) => element.props.className?.includes("homeHeader") === true,
+			);
+
+		const header = getHeader();
+		const preventDefault = vi.fn();
+		header.props.onKeyDown!({ key: "Enter", preventDefault });
+		expect(preventDefault).toHaveBeenCalled();
+		h.render();
+
+		expect(getHeader().props.ariaExpanded).toBe(true);
+
+		getHeader().props.onKeyDown!({ key: " ", preventDefault });
+		h.render();
+
+		expect(getHeader().props.ariaExpanded).toBe(false);
+	});
+
+	it("stops propagation when clicking the header action buttons container", () => {
+		const h = harness();
+		const header = h.findElement(
+			h.tree(),
+			(element) => element.props.className?.includes("homeHeader") === true,
+		);
+		const actions = h.findElement(
+			header.props.right,
+			(element) => element.props.className === "flashcard-header-actions",
+		);
+		const stopPropagation = vi.fn();
+		actions.props.onClick!({ stopPropagation });
+		expect(stopPropagation).toHaveBeenCalled();
 	});
 });

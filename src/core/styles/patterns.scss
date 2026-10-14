@@ -355,15 +355,24 @@
 @mixin fc-hero-stacked {
 	.fc-hero {
 		grid-template-columns: minmax(0, 1fr);
-		gap: var(--fc-space-4);
+		gap: var(--fc-space-3);
 		padding: var(--fc-space-4);
 	}
 
 	.fc-hero__side {
-		align-items: stretch;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--fc-space-3);
+		flex-wrap: wrap;
 
 		> .flashcard-btn {
-			width: 100%;
+			width: auto;
+			flex-shrink: 0;
+			--fc-button-height: var(--fc-control-md);
+			padding: var(--fc-space-2) var(--fc-space-4);
+			font-size: var(--fc-font-sm);
+			margin-left: auto;
 		}
 	}
 }
@@ -409,5 +418,9 @@
 }
 
 @media (max-width: 640px) {
+	@include fc-hero-stacked;
+}
+
+.is-phone {
 	@include fc-hero-stacked;
 }

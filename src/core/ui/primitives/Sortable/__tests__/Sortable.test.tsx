@@ -34,7 +34,7 @@ const sortable = vi.hoisted(() => ({
 	listeners: { onMouseDown: vi.fn(), onTouchStart: vi.fn(), onKeyDown: vi.fn() },
 	setNodeRef: vi.fn(),
 	setActivatorNodeRef: vi.fn(),
-	transform: { x: 0, y: 40, scaleX: 1, scaleY: 1 },
+	transform: { x: 0, y: 38, scaleX: 1, scaleY: 1 },
 	transition: "transform 200ms ease",
 	isDragging: false,
 }));
@@ -145,7 +145,7 @@ describe("shared sortable interaction", () => {
 	it("only the handle activates sorting and the row carries motion", () => {
 		const row = SortableRow({ id: "a", handleLabel: "排序 A", children: (handle) => handle });
 		expect(row.props).not.toHaveProperty("onMouseDown");
-		expect(row.props.style.transform).toContain("40px");
+		expect(row.props.style.transform).toContain("38px");
 		const handle = row.props.children as React.ReactElement<Record<string, unknown>>;
 		expect(handle.type).toBe("button");
 		expect(handle.props["aria-label"]).toBe("排序 A");

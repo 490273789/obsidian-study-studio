@@ -21,6 +21,18 @@ export interface FlashcardHeaderProps {
 	backTitle?: string;
 	/** Extra CSS class names appended to the header. */
 	className?: string;
+	/** Optional click handler for interactive headers. */
+	onClick?: (event: React.MouseEvent<HTMLElement>) => void;
+	/** Optional keyboard handler for interactive headers. */
+	onKeyDown?: (event: React.KeyboardEvent<HTMLElement>) => void;
+	/** Optional accessibility role (e.g. "button" for collapsible headers). */
+	role?: React.AriaRole;
+	/** Optional tabIndex. */
+	tabIndex?: number;
+	/** Optional aria-expanded state. */
+	ariaExpanded?: boolean;
+	/** Optional aria-controls id. */
+	ariaControls?: string;
 }
 
 /**
@@ -43,6 +55,12 @@ export const FlashcardHeader: React.FC<FlashcardHeaderProps> = ({
 	onBack,
 	backTitle,
 	className = "",
+	onClick,
+	onKeyDown,
+	role,
+	tabIndex,
+	ariaExpanded,
+	ariaControls,
 }) => {
 	const { t } = useI18n();
 	const navigationLabel = backTitle ?? t("common.back");
@@ -77,7 +95,16 @@ export const FlashcardHeader: React.FC<FlashcardHeaderProps> = ({
 		.join(" ");
 
 	return (
-		<header className={classes}>
+		// oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-static-element-interactions -- Interactive headers pass explicit click/keyboard handlers or aria roles when collapsible.
+		<header
+			className={classes}
+			onClick={onClick}
+			onKeyDown={onKeyDown}
+			role={role}
+			tabIndex={tabIndex}
+			aria-expanded={ariaExpanded}
+			aria-controls={ariaControls}
+		>
 			{(left || onBack) && (
 				<div className="flashcard-header-left">
 					{onBack && (

@@ -539,6 +539,18 @@ export const DeckList = React.memo(function DeckList({
 	const [recentlyDroppedDeckId, setRecentlyDroppedDeckId] = useState<string | null>(null);
 	const [activeOverlayDeckId, setActiveOverlayDeckId] = useState<string | null>(null);
 	const [isCompletedGroupOpen, setIsCompletedGroupOpen] = useState(false);
+	const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(true);
+
+	const handleToggleHeader = useCallback(() => {
+		setIsHeaderCollapsed((current) => !current);
+	}, []);
+
+	const handleHeaderKeyDown = useCallback((event: React.KeyboardEvent<HTMLElement>) => {
+		if (event.key === "Enter" || event.key === " ") {
+			event.preventDefault();
+			setIsHeaderCollapsed((current) => !current);
+		}
+	}, []);
 
 	const handleToggleOverlay = useCallback((deckId: string) => {
 		setActiveOverlayDeckId((current) => (current === deckId ? null : deckId));
@@ -681,11 +693,29 @@ export const DeckList = React.memo(function DeckList({
 		<>
 			<div className="flashcard-home fc-page fc-page--fill">
 				<FlashcardHeader
-					className={styles.homeHeader}
+					className={cls(styles.homeHeader, isHeaderCollapsed && styles.isCollapsed)}
 					icon={BookOpen}
 					title={t("home.title")}
+					badge={
+						<span
+							className={cls(
+								styles.collapseIcon,
+								!isHeaderCollapsed && styles.isExpanded,
+							)}
+							aria-hidden="true"
+						>
+							<ChevronDown size={16} />
+						</span>
+					}
+					onClick={handleToggleHeader}
+					onKeyDown={handleHeaderKeyDown}
+					ariaExpanded={!isHeaderCollapsed}
 					right={
-						<div className="flashcard-header-actions">
+						// oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- Header actions stop click propagation so clicking action buttons does not toggle header collapse.
+						<div
+							className="flashcard-header-actions"
+							onClick={(event) => event.stopPropagation()}
+						>
 							{(onOpenTranslation || onOpenDictionary || onOpenVideoPlayer) && (
 								<>
 									<div className={styles.headerGroup}>

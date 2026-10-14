@@ -21,7 +21,7 @@
 	gap: var(--fc-space-2);
 	padding: var(--fc-space-2) var(--fc-space-4);
 	border-radius: var(--fc-radius-md);
-	font: var(--fc-weight-regular) var(--fc-font-sm) / var(--fc-line-tight) var(--fc-font-ui);
+	font: var(--fc-weight-semibold) var(--fc-font-sm) / var(--fc-line-tight) var(--fc-font-ui);
 	text-align: center;
 	vertical-align: middle;
 	cursor: pointer;
@@ -70,7 +70,7 @@
 	&:where(.flashcard-btn-primary) {
 		--fc-button-bg: var(--fc-primary);
 		--fc-button-bg-hover: var(--fc-primary-hover);
-		--fc-button-border: color-mix(in srgb, var(--fc-primary) 86%, var(--fc-text));
+		--fc-button-border: color-mix(in srgb, var(--fc-primary) 90%, var(--fc-text));
 		--fc-button-border-hover: var(--fc-primary-hover);
 		--fc-button-text: var(--fc-primary-text);
 	}
@@ -109,11 +109,11 @@
 
 	@media (pointer: coarse) {
 		// Preserve compact desktop density while giving touch controls a real target.
-		min-height: max(var(--fc-button-height), 40px);
+		min-height: max(var(--fc-button-height), 38px);
 
 		&:where(.flashcard-btn-icon, .flashcard-btn-prev) {
-			min-width: max(var(--fc-button-height), 40px);
-			height: max(var(--fc-button-height), 40px);
+			min-width: max(var(--fc-button-height), 38px);
+			height: max(var(--fc-button-height), 38px);
 		}
 	}
 }
