@@ -118,11 +118,11 @@
 
 	@media (pointer: coarse) {
 		// Preserve compact desktop density while giving touch controls a real target.
-		min-height: max(var(--fc-button-height), 44px);
+		min-height: max(var(--fc-button-height), 40px);
 
 		&:where(.flashcard-btn-icon, .flashcard-btn-prev) {
-			min-width: max(var(--fc-button-height), 44px);
-			height: max(var(--fc-button-height), 44px);
+			min-width: max(var(--fc-button-height), 40px);
+			height: max(var(--fc-button-height), 40px);
 		}
 	}
 }

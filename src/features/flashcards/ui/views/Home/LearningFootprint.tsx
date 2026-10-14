@@ -33,7 +33,7 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 	const titleId = useId();
 	const panelBodyId = useId();
 	const heatmapId = useId();
-	const [isPanelOpen, setIsPanelOpen] = useState(true);
+	const [isPanelOpen, setIsPanelOpen] = useState(false);
 	const [isExpanded, setIsExpanded] = useState(false);
 	const scrollerRef = useRef<HTMLDivElement>(null);
 

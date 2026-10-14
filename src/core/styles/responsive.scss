@@ -204,13 +204,19 @@
 
 	.flashcard-deck-item .flashcard-deck-actions2 {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--fc-control-md);
+		grid-template-columns: repeat(2, minmax(0, 1fr)) var(
+				--fc-deck-tool-size,
+				var(--fc-control-md)
+			);
 		gap: var(--fc-space-2);
 		width: 100%;
 	}
 
 	.flashcard-deck-item .flashcard-deck-actions2.has-spelling {
-		grid-template-columns: repeat(3, minmax(0, 1fr)) var(--fc-control-md);
+		grid-template-columns: repeat(2, minmax(0, 1fr)) repeat(
+				2,
+				var(--fc-deck-tool-size, var(--fc-control-md))
+			);
 	}
 
 	/* On mobile the last deck card sits at the end of the scrollable list,
@@ -532,13 +538,19 @@
 
 	.flashcard-deck-item .flashcard-deck-actions2 {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--fc-control-md);
+		grid-template-columns: repeat(2, minmax(0, 1fr)) var(
+				--fc-deck-tool-size,
+				var(--fc-control-md)
+			);
 		gap: var(--fc-space-2);
 		width: 100%;
 	}
 
 	.flashcard-deck-item .flashcard-deck-actions2.has-spelling {
-		grid-template-columns: repeat(3, minmax(0, 1fr)) var(--fc-control-md);
+		grid-template-columns: repeat(2, minmax(0, 1fr)) repeat(
+				2,
+				var(--fc-deck-tool-size, var(--fc-control-md))
+			);
 	}
 
 	.flashcard-deck-list .flashcard-deck-item:last-child .flashcard-deck-more-actions {
@@ -603,12 +615,18 @@
 
 	.flashcard-deck-item .flashcard-deck-actions2 {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--fc-control-md);
+		grid-template-columns: repeat(2, minmax(0, 1fr)) var(
+				--fc-deck-tool-size,
+				var(--fc-control-md)
+			);
 		gap: var(--fc-space-2);
 		width: 100%;
 	}
 
 	.flashcard-deck-item .flashcard-deck-actions2.has-spelling {
-		grid-template-columns: repeat(3, minmax(0, 1fr)) var(--fc-control-md);
+		grid-template-columns: repeat(2, minmax(0, 1fr)) repeat(
+				2,
+				var(--fc-deck-tool-size, var(--fc-control-md))
+			);
 	}
 }

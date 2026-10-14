@@ -222,12 +222,16 @@ describe("learning footprint window disclosure", () => {
 		return { days, render, cells, toggle, panelToggle, selectedDate, tree: () => tree };
 	}
 
-	it("collapses the calendar and details while keeping the heading summary and selection", () => {
+	it("starts collapsed and preserves the heading summary and selection across toggles", () => {
 		const h = harness();
 		const body = () =>
 			elements(h.tree()).find(
 				(element) => element.props.id === h.panelToggle().props["aria-controls"],
 			)!;
+		expect(h.panelToggle().props["aria-expanded"]).toBe(false);
+		expect(body().props.hidden).toBe(true);
+		h.panelToggle().props.onClick!();
+		h.render();
 		expect(h.panelToggle().props["aria-expanded"]).toBe(true);
 		expect(body().props.hidden).toBe(false);
 		h.toggle().props.onClick!();
@@ -256,6 +260,8 @@ describe("learning footprint window disclosure", () => {
 
 	it("expands the recent 14 weeks without changing the selected date", () => {
 		const h = harness();
+		h.panelToggle().props.onClick!();
+		h.render();
 		expect(h.cells()).toHaveLength(14 * 7);
 		expect(h.toggle().props["aria-expanded"]).toBe(false);
 		expect(
@@ -279,6 +285,8 @@ describe("learning footprint window disclosure", () => {
 
 	it("keeps arrow-key focus navigation and clamps it at today", () => {
 		const h = harness();
+		h.panelToggle().props.onClick!();
+		h.render();
 		const previousWeek = h.cells().slice(-8)[0]!;
 		const focus = vi.fn();
 		previousWeek.props.ref!({ focus });

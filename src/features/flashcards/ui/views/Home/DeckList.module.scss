@@ -470,19 +470,31 @@
 	.homeHeader:global(.flashcard-common-header):global(.flashcard-navigation-header):not(
 			:global(.has-back)
 		) {
-		grid-template-columns: minmax(0, 1fr);
-		gap: var(--fc-space-3);
-		padding: var(--fc-space-3) var(--fc-space-4);
+		grid-template-columns: minmax(0, 1fr) auto;
+		gap: var(--fc-space-1);
+		padding: var(--fc-space-2);
 
 		:global(.flashcard-header-center) {
 			grid-column: 1;
 			grid-row: 1;
+
+			> svg {
+				display: none;
+			}
 		}
 
 		:global(.flashcard-header-right) {
-			grid-column: 1;
-			grid-row: 2;
-			justify-content: flex-start;
+			grid-column: 2;
+			grid-row: 1;
+			justify-content: flex-end;
+		}
+
+		:global(.flashcard-header-actions) {
+			gap: var(--fc-space-1);
+		}
+
+		.headerGroup {
+			gap: 0;
 		}
 	}
 }
@@ -555,7 +567,7 @@
 
 @media (pointer: coarse) {
 	.deckActions {
-		--fc-deck-tool-size: 44px;
+		--fc-deck-tool-size: 40px;
 	}
 }
 
