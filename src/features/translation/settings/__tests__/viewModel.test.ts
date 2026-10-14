@@ -100,8 +100,9 @@ describe("translation settings presentation", () => {
 			.find((control) => control.kind === "cards");
 		if (cards?.kind !== "cards") throw new Error("Expected cards");
 		expect(cards.items).toHaveLength(2);
-		const engineSelect = cards.items[0]?.fields.find((field) => field.key === "engine")
-			?.controls[0];
+		const providerField = cards.items[0]?.fields.find((field) => field.key === "provider");
+		expect(providerField?.controls).toHaveLength(2);
+		const engineSelect = providerField?.controls.find((control) => control.key === "engine");
 		if (engineSelect?.kind !== "select") throw new Error("Expected engine select");
 		expect(engineSelect.options.map((option) => option.value)).toEqual(["", "deepseek"]);
 	});
@@ -114,7 +115,9 @@ describe("translation settings presentation", () => {
 			.flatMap((row) => row.controls)
 			.find((control) => control.kind === "cards");
 		if (cards?.kind !== "cards") throw new Error("Expected cards");
-		const select = cards.items[0]?.fields.find((field) => field.key === "engine")?.controls[0];
+		const select = cards.items[0]?.fields
+			.find((field) => field.key === "provider")
+			?.controls.find((control) => control.key === "engine");
 		if (select?.kind !== "select") throw new Error("Expected engine select");
 		expect(select.options[0]).toEqual({
 			value: "deleted",

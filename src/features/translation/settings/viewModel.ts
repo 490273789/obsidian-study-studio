@@ -109,27 +109,27 @@ export function buildTranslationSettingsViewModel(
 								disabled: draft.profiles.length <= 1,
 								onPress: () => actions.removeProfile(profile.id),
 							});
-							card.field("provider", { name: t.provider }, (row) => {
-								row.select("kind", {
-									value: profile.kind,
-									options: [
-										{ value: "engine", label: t.engine },
-										{ value: "youdao", label: t.youdao },
-									],
-									onChange: (kind) => actions.patchProfile(profile.id, { kind }),
-								});
-							});
-							if (profile.kind === "engine") {
-								card.field(
-									"engine",
-									{
-										name: t.engineConfig,
-										description: aiConfigs.length
-											? undefined
-											: t.noEngineConfigs,
-									},
-									(row) => {
-										row.select("config", {
+							card.field(
+								"provider",
+								{
+									name: t.provider,
+									description:
+										profile.kind === "engine" && !aiConfigs.length
+											? t.noEngineConfigs
+											: undefined,
+								},
+								(row) => {
+									row.select("kind", {
+										value: profile.kind,
+										options: [
+											{ value: "engine", label: t.engine },
+											{ value: "youdao", label: t.youdao },
+										],
+										onChange: (kind) =>
+											actions.patchProfile(profile.id, { kind }),
+									});
+									if (profile.kind === "engine") {
+										row.select("engine", {
 											value: profile.configId,
 											options: [
 												{ value: "", label: t.selectEngine },
@@ -142,9 +142,9 @@ export function buildTranslationSettingsViewModel(
 											onChange: (configId) =>
 												actions.patchProfile(profile.id, { configId }),
 										});
-									},
-								);
-							}
+									}
+								},
+							);
 						},
 					})),
 				},

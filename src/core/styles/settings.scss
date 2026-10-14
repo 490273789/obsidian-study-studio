@@ -285,11 +285,11 @@
 	padding-top: 0 !important;
 	border-top: none !important;
 
-	.setting-item-info {
+	> .setting-item-info {
 		display: none;
 	}
 
-	.setting-item-control {
+	> .setting-item-control {
 		width: 100%;
 		display: block;
 	}
@@ -344,7 +344,7 @@
 	background: rgba(var(--fc-bg-elevated-rgb), 0.5);
 	border-bottom: 1px solid var(--fc-line-soft);
 	gap: var(--fc-space-3);
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 }
 
 .fc-profile-card-title-group {
@@ -389,20 +389,33 @@
 .fc-profile-card-actions {
 	display: flex;
 	align-items: center;
+	flex-shrink: 0;
 
 	.setting-item {
 		border-top: none !important;
 		padding: 0 !important;
+		display: flex !important;
+		flex-direction: row !important;
+		align-items: center !important;
 	}
 
 	.setting-item-info {
 		display: none;
 	}
 
+	.setting-item-control {
+		display: flex !important;
+		flex-direction: row !important;
+		flex-wrap: nowrap !important;
+		align-items: center !important;
+		gap: var(--fc-space-1);
+	}
+
 	.clickable-icon {
-		margin-left: var(--fc-space-1);
+		margin: 0;
 		color: var(--fc-muted);
 		transition: color 0.15s ease;
+		display: inline-flex !important;
 
 		&:hover:not(.is-disabled) {
 			color: var(--fc-text);
@@ -430,6 +443,14 @@
 			font-size: var(--fc-font-sm);
 			font-weight: var(--fc-weight-regular);
 			color: var(--fc-muted);
+		}
+
+		.setting-item-control {
+			display: flex;
+			align-items: center;
+			gap: var(--fc-space-2);
+			flex-wrap: wrap;
+			justify-content: flex-end;
 		}
 	}
 }
