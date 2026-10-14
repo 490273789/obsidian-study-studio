@@ -8,7 +8,7 @@ import {
 	createRangePracticeSession,
 	createRandomPracticeSession,
 	previousPracticeCard,
-} from "../sessionEngine";
+} from "../practiceSessionEngine";
 import type { FlashCard, PracticeSession } from "../../../../../core/shared/types";
 
 function makeCard(id: string, indexInFile: number): FlashCard {

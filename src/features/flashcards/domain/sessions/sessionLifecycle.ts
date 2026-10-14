@@ -38,7 +38,11 @@ import {
 	getStudyProgress,
 	undoStudyAnswer,
 } from "./studySessionEngine";
-import { answerPracticeCard, createPracticeSession, previousPracticeCard } from "./sessionEngine";
+import {
+	answerPracticeCard,
+	createPracticeSession,
+	previousPracticeCard,
+} from "./practiceSessionEngine";
 import {
 	answerSpellingCard,
 	createSpellingSession,

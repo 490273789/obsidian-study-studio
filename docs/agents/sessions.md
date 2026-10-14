@@ -38,7 +38,7 @@ Pure engines and planners under `src/features/flashcards/domain/sessions/` are i
 ## Practice and spelling
 
 - Session startup uses domain-owned `SessionStartRequest`, `PracticeSelection`, and `SpellingSelection` definitions; restarting a completed practice/spelling session routes via `getRestartViewState(setupDefaults)`.
-- Practice selection and queue planning belong in `sessionPlanner.ts`; transitions/results belong in `sessionEngine.ts` and are orchestrated by `SessionLifecycle`.
+- Practice selection and queue planning belong in `sessionPlanner.ts`; transitions/results belong in `practiceSessionEngine.ts` and are orchestrated by `SessionLifecycle`.
 - Spelling eligibility and answer normalization live in `src/features/flashcards/domain/cards/spellingWord.ts`. A spellable front is a single-line Latin word or phrase, optionally wrapped in one ATX heading or one Markdown emphasis wrapper.
 - Spelling queue planning and readiness evaluation live in `sessionPlanner.ts`; retrieval/correction transitions live in `spellingSessionEngine.ts`.
 - Spelling progress is keyed by stable card identity. Do not fall back to card position or bypass identity requirements.

@@ -14,33 +14,6 @@ import {
 	type ShuffleCardIds,
 } from "./sessionPlanner";
 
-export {
-	answerStudyCard,
-	canUndoStudyAnswer,
-	createStudySession,
-	finishStudySession,
-	getCurrentStudyCardId,
-	getStudyProgress,
-	undoStudyAnswer,
-} from "./studySessionEngine";
-export type {
-	StudyCardSchedule,
-	StudyCardScheduler,
-	StudyCardUpdateIntent,
-	StudySessionFinishIntent,
-} from "./studySessionEngine";
-export {
-	planDayPracticeSession,
-	planIncorrectPracticeSession,
-	planRangePracticeSession,
-	planRandomPracticeSession,
-} from "./sessionPlanner";
-export type {
-	PracticeSessionPlan,
-	PracticeSessionPlanSource,
-	ShuffleCardIds,
-} from "./sessionPlanner";
-
 export type PracticeSessionStep =
 	| {
 			type: "continue";

@@ -16,7 +16,7 @@ import {
 } from "../../../../core/storage/deckIndexCache";
 import type { FlashcardStudySettings } from "../../settings/slice";
 import { FSRSScheduler, toFSRSRating } from "../sessions/scheduler";
-import type { StudyCardSchedule } from "../sessions/sessionEngine";
+import type { StudyCardSchedule } from "../sessions/studySessionEngine";
 import {
 	cloneChallengeProgress,
 	normalizeChallengeProgress,
