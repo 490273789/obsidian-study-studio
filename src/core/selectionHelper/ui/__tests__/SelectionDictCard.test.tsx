@@ -2,7 +2,7 @@ import React from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { SelectionDictCard } from "../SelectionDictCard";
 import { selectionHelperStrings } from "../../strings/selectionPopup";
-import type { SelectionLookupSnapshot } from "../../domain/types";
+import type { SelectionLookupSession, SelectionLookupSnapshot } from "../../domain/types";
 
 describe("SelectionDictCard", () => {
 	const mockLookup: SelectionLookupSnapshot = {
@@ -26,6 +26,17 @@ describe("SelectionDictCard", () => {
 		],
 	};
 
+	const mockSession: SelectionLookupSession = {
+		getSnapshot: () => mockLookup,
+		subscribe: vi.fn(() => () => {}),
+		selectSource: vi.fn(),
+		selectSection: vi.fn(),
+		lookup: vi.fn().mockResolvedValue(undefined),
+		retry: vi.fn().mockResolvedValue(undefined),
+		generateAi: vi.fn().mockResolvedValue(undefined),
+		dispose: vi.fn(),
+	};
+
 	it("renders favorite button when onFavorite is provided", () => {
 		const onFavorite = vi.fn();
 		const strings = selectionHelperStrings("zh");
@@ -33,13 +44,9 @@ describe("SelectionDictCard", () => {
 			<SelectionDictCard
 				query="commercial"
 				lookup={mockLookup}
+				session={mockSession}
 				strings={strings}
 				theme="dark"
-				onSelectSource={vi.fn()}
-				onSelectSection={vi.fn()}
-				onLookup={vi.fn()}
-				onRetry={vi.fn()}
-				onGenerateAi={vi.fn()}
 				onOpenInMainTab={vi.fn()}
 				onFavorite={onFavorite}
 				onClose={vi.fn()}

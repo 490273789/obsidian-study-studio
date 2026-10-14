@@ -147,23 +147,29 @@ describe("SelectionHelper", () => {
 		expect(helper.getSnapshot().visible).toBe(true);
 	});
 
-	it("keeps the isolated session for entry navigation and chapter selection", async () => {
-		const { session, actions } = fakeSession();
+	it("exposes the active lookup session in dictionary mode and clears it upon dismissal", async () => {
+		const { session, actions, dispose } = fakeSession();
 		const startLookup = vi.fn(() => session);
 		const { helper } = setup({ startLookup });
 		select(helper, candidate("hello"));
+		expect(helper.getSnapshot().session).toBeNull();
+
 		helper.beginLookup();
-		helper.selectSource("b");
-		helper.selectSection("b", 2);
-		await helper.lookup("world");
+		const activeSession = helper.getSnapshot().session;
+		expect(activeSession).toBe(session);
+
+		activeSession?.selectSource("b");
+		activeSession?.selectSection("b", 2);
+		await activeSession?.lookup("world");
 		expect(startLookup).toHaveBeenCalledTimes(1);
 		expect(actions.selectSource).toHaveBeenCalledWith("b");
 		expect(actions.selectSection).toHaveBeenCalledWith("b", 2);
 		expect(actions.lookup).toHaveBeenCalledWith("world");
 		expect(helper.getSnapshot()).toMatchObject({ visible: true, mode: "dictionary" });
+
 		helper.dismiss();
-		await helper.lookup("later");
-		expect(actions.lookup).toHaveBeenCalledTimes(1);
+		expect(dispose).toHaveBeenCalledOnce();
+		expect(helper.getSnapshot().session).toBeNull();
 	});
 
 	it("ignores late session notifications after dismissal", () => {

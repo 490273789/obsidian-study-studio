@@ -126,4 +126,5 @@ export interface SelectionHelperSnapshot {
 	canLookup: boolean;
 	canTranslate: boolean;
 	lookup: SelectionLookupSnapshot | null;
+	session: SelectionLookupSession | null;
 }

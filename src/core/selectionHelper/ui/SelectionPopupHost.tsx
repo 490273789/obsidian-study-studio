@@ -98,18 +98,14 @@ export const SelectionPopupHost: React.FC<SelectionPopupHostProps> = ({
 					onTranslate={() => void helper.translate()}
 					onClose={() => helper.dismiss()}
 				/>
-			) : state.lookup ? (
+			) : state.lookup && state.session ? (
 				<SelectionDictCard
 					query={state.lookup.query}
 					lookup={state.lookup}
+					session={state.session}
 					theme={theme}
 					renderEmbeddedContent={renderEmbeddedContent}
 					strings={strings}
-					onSelectSource={(sourceId) => helper.selectSource(sourceId)}
-					onSelectSection={(sourceId, index) => helper.selectSection(sourceId, index)}
-					onLookup={(word) => void helper.lookup(word)}
-					onRetry={(sourceId) => void helper.retry(sourceId)}
-					onGenerateAi={() => void helper.generateAi()}
 					onOpenInMainTab={() => void helper.openDictionaryInMainTab()}
 					onFavorite={
 						helper.canFavorite ? (word) => void helper.openFavorite(word) : undefined

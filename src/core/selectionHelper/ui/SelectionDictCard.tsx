@@ -1,7 +1,11 @@
 import React, { useEffect, useRef } from "react";
 import { Bookmark, RotateCcw, Sparkles } from "lucide-react";
 import { cls } from "../../shared/classNames";
-import type { SelectionLookupSection, SelectionLookupSnapshot } from "../domain/types";
+import type {
+	SelectionLookupSection,
+	SelectionLookupSession,
+	SelectionLookupSnapshot,
+} from "../domain/types";
 import type { SelectionHelperStrings } from "../strings/selectionPopup";
 import type { SelectionEmbeddedContentRenderer } from "./types";
 import styles from "./SelectionPopup.module.scss";
@@ -9,14 +13,10 @@ import styles from "./SelectionPopup.module.scss";
 export interface SelectionDictCardProps {
 	query: string;
 	lookup: SelectionLookupSnapshot;
+	session: SelectionLookupSession;
 	strings: SelectionHelperStrings;
 	theme: "dark" | "light";
 	renderEmbeddedContent?: SelectionEmbeddedContentRenderer;
-	onSelectSource: (sourceId: string) => void;
-	onSelectSection: (sourceId: string, sectionIndex: number) => void;
-	onLookup: (word: string) => void;
-	onRetry: (sourceId: string) => void;
-	onGenerateAi: () => void;
 	onOpenInMainTab: (word: string) => void;
 	onFavorite?: (word: string) => void;
 	onClose: () => void;
@@ -67,7 +67,7 @@ function SectionContent({
 				title={title}
 				className={styles.embedded}
 				fitContent={fitContent}
-				onLookup={props.onLookup}
+				onLookup={(word) => void props.session.lookup(word)}
 				onClose={props.onClose}
 			/>
 		);
@@ -107,18 +107,7 @@ export function allowsMainTabShortcut(event: KeyboardEvent): boolean {
 export const SelectionDictCard = React.memo(function SelectionDictCard(
 	props: SelectionDictCardProps,
 ) {
-	const {
-		query,
-		lookup,
-		strings,
-		onSelectSource,
-		onSelectSection,
-		onRetry,
-		onGenerateAi,
-		onOpenInMainTab,
-		onFavorite,
-		onClose,
-	} = props;
+	const { query, lookup, session, strings, onOpenInMainTab, onFavorite, onClose } = props;
 	const cardRef = useRef<HTMLDialogElement | null>(null);
 	const activeWord = lookup.query || query;
 	const activeSource =
@@ -135,7 +124,8 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 		);
 	const rich = visible.some(({ section }) => section.kind === "embedded");
 	const retry = () =>
-		activeSource && (activeSource.kind === "ai" ? onGenerateAi() : onRetry(activeSource.id));
+		activeSource &&
+		void (activeSource.kind === "ai" ? session.generateAi() : session.retry(activeSource.id));
 
 	useEffect(() => {
 		const ownerWindow = cardRef.current?.ownerDocument.defaultView;
@@ -215,7 +205,7 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 									styles.tab,
 									source.id === activeSource?.id && styles.tabActive,
 								)}
-								onClick={() => onSelectSource(source.id)}
+								onClick={() => session.selectSource(source.id)}
 							>
 								{source.label}
 							</button>
@@ -235,7 +225,7 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 						<button
 							type="button"
 							className={styles.aiGenerateBtn}
-							onClick={onGenerateAi}
+							onClick={() => void session.generateAi()}
 						>
 							<Sparkles size={14} aria-hidden="true" />
 							<span>{strings.aiGenerate}</span>
@@ -279,7 +269,8 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 												styles.tabActive,
 										)}
 										onClick={() =>
-											activeSource && onSelectSection(activeSource.id, index)
+											activeSource &&
+											session.selectSection(activeSource.id, index)
 										}
 									>
 										{section.title}

@@ -149,6 +149,7 @@ export class SelectionHelper {
 			canLookup,
 			canTranslate,
 			lookup: null,
+			session: null,
 		});
 		return true;
 	}
@@ -174,28 +175,12 @@ export class SelectionHelper {
 		this.lookupUnsubscribe = session.subscribe(() => {
 			if (this.lookupSession === session) this.publishLookup();
 		});
-		this.publish({ ...this.snapshot, mode: "dictionary", lookup: session.getSnapshot() });
-	}
-
-	selectSource(sourceId: string): void {
-		this.lookupSession?.selectSource(sourceId);
-	}
-
-	selectSection(sourceId: string, sectionIndex: number): void {
-		this.lookupSession?.selectSection(sourceId, sectionIndex);
-	}
-
-	async lookup(word: string): Promise<void> {
-		if (this.disposed || !this.snapshot.visible) return;
-		await this.lookupSession?.lookup(word);
-	}
-
-	async retry(sourceId: string): Promise<void> {
-		await this.lookupSession?.retry(sourceId);
-	}
-
-	async generateAi(): Promise<void> {
-		await this.lookupSession?.generateAi();
+		this.publish({
+			...this.snapshot,
+			mode: "dictionary",
+			lookup: session.getSnapshot(),
+			session,
+		});
 	}
 
 	async translate(): Promise<void> {
@@ -278,6 +263,7 @@ const EMPTY_SNAPSHOT: SelectionHelperSnapshot = Object.freeze({
 	canLookup: false,
 	canTranslate: false,
 	lookup: null,
+	session: null,
 });
 
 function modifierMatches(
