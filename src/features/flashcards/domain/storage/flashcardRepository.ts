@@ -119,6 +119,8 @@ export class FlashcardRepository implements DeckHomeRepository {
 	private deckIndexLoaded = false;
 	private authorityVersion = 0;
 	private persistedLearning: LearningStateDocument | undefined;
+	/** Deck snapshot whose full card set is represented by persistedLearning.cards. */
+	private persistedCardDecks: ReadonlyMap<string, Deck> | null = null;
 	private authorityUnsubscribe: () => void;
 	private operationTail: Promise<void> = Promise.resolve();
 	private cacheWriteTail: Promise<void> = Promise.resolve();
@@ -370,6 +372,8 @@ export class FlashcardRepository implements DeckHomeRepository {
 						this.spellingProgress,
 						this.continuity,
 						nextActivity,
+						this.challengeProgress,
+						this.getCommittedCardStates(),
 					),
 					install: () => {
 						this.studyHistory = nextHistory;
@@ -406,6 +410,8 @@ export class FlashcardRepository implements DeckHomeRepository {
 					);
 				}
 				const nextDecks = cloneDecksForTransition(this.decks, transition, this.cardIndex);
+				const committedCards = this.getCommittedCardStates();
+				let nextCards = committedCards;
 				const nextSpellingProgress = cloneSpellingProgress(this.spellingProgress);
 				const nextChallengeProgress =
 					transition.challengeProgress === undefined
@@ -427,10 +433,16 @@ export class FlashcardRepository implements DeckHomeRepository {
 					);
 					if (!location) continue;
 					updatedDeckIds.add(location.deckId);
-					location.deck.cards[location.cardIndex] = {
+					const updatedCard = {
 						...location.deck.cards[location.cardIndex]!,
 						fsrsCard: update.fsrsCard,
 					};
+					location.deck.cards[location.cardIndex] = updatedCard;
+					if (nextCards) {
+						// Copy on the first actual update; unchanged transitions share the record.
+						if (nextCards === committedCards) nextCards = { ...committedCards };
+						nextCards[updatedCard.id] = this.getPersistedCardLearningState(updatedCard);
+					}
 				}
 				for (const deckId of transition.incrementStudyCountFor) {
 					const deck = nextDecks.get(deckId);
@@ -462,6 +474,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 						this.continuity,
 						nextActivity,
 						nextChallengeProgress,
+						nextCards,
 					),
 					install: () => {
 						this.decks = nextDecks;
@@ -583,6 +596,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 				});
 				this.authorityVersion = receipt.version;
 				this.persistedLearning = learning;
+				this.persistedCardDecks = this.decks;
 			} catch (error) {
 				throw new FlashcardPersistenceError(
 					"migration-failed",
@@ -602,6 +616,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 	}
 
 	private async restoreLearningState(learning: LearningStateDocument): Promise<void> {
+		this.persistedCardDecks = null;
 		this.deckIndexLoaded = false;
 		this.decks = new Map();
 		this.availableTags = [];
@@ -647,6 +662,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 			// even when the durable learning document needs no replacement.
 			if (skipUnchanged && equalLearningValue(candidate.learning, this.persistedLearning)) {
 				candidate.install();
+				this.persistedCardDecks = this.decks;
 				return;
 			}
 			try {
@@ -656,6 +672,7 @@ export class FlashcardRepository implements DeckHomeRepository {
 				this.authorityVersion = receipt.version;
 				this.persistedLearning = candidate.learning;
 				candidate.install();
+				this.persistedCardDecks = this.decks;
 				return;
 			} catch (error) {
 				if (error instanceof FlashcardAuthorityConflictError && attempt < 2) {
@@ -692,6 +709,12 @@ export class FlashcardRepository implements DeckHomeRepository {
 		return pending;
 	}
 
+	private getCommittedCardStates(): Record<string, PersistedCardLearningState> | undefined {
+		// Restored/cache-hydrated decks may contain identities absent from learning.
+		// Only reuse a baseline established by a complete successful build/install.
+		return this.persistedCardDecks === this.decks ? this.persistedLearning?.cards : undefined;
+	}
+
 	private buildLearningState(
 		decks: ReadonlyMap<string, Deck>,
 		studyHistory: StudyHistoryEntry[],
@@ -699,8 +722,9 @@ export class FlashcardRepository implements DeckHomeRepository {
 		continuity: PersistedCardIdentityContinuityState = this.continuity,
 		dailyLearningActivity: DailyLearningActivity = this.dailyLearningActivity,
 		challengeProgress: ChallengeProgress | null = this.challengeProgress,
+		committedCards?: Record<string, PersistedCardLearningState>,
 	): LearningStateDocument {
-		const cards: Record<string, PersistedCardLearningState> = {};
+		const cards: Record<string, PersistedCardLearningState> = committedCards ?? {};
 		const persistedDecks: Record<string, PersistedDeckLearningState> = {};
 
 		for (const [deckId, deck] of decks) {
@@ -710,8 +734,10 @@ export class FlashcardRepository implements DeckHomeRepository {
 					lastStudied: deck.lastStudied,
 				};
 			}
-			for (const card of deck.cards) {
-				cards[card.id] = this.getPersistedCardLearningState(card);
+			if (!committedCards) {
+				for (const card of deck.cards) {
+					cards[card.id] = this.getPersistedCardLearningState(card);
+				}
 			}
 		}
 
