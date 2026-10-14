@@ -372,7 +372,7 @@ const DeckCard = memo(function DeckCard({
 				>
 					<FlashcardButton
 						variant="primary"
-						size="sm"
+						size="md"
 						className="flashcard-deck-action-study"
 						icon={isDone ? RefreshCcw : Brain}
 						onClick={(event) => {
@@ -385,7 +385,7 @@ const DeckCard = memo(function DeckCard({
 					</FlashcardButton>
 					<FlashcardButton
 						variant="secondary"
-						size="sm"
+						size="md"
 						className="flashcard-deck-action-practice"
 						icon={Target}
 						onClick={(event) => {
@@ -399,7 +399,7 @@ const DeckCard = memo(function DeckCard({
 					{deck.spelling.enabled && (
 						<FlashcardButton
 							preset="icon"
-							variant="ghost"
+							variant="neutral"
 							className={cls("flashcard-deck-action-spelling", styles.actionSpelling)}
 							icon={Keyboard}
 							onClick={(event) => {
@@ -423,7 +423,7 @@ const DeckCard = memo(function DeckCard({
 					)}
 					<FlashcardButton
 						preset="icon"
-						variant="ghost"
+						variant="outline"
 						className={cls("flashcard-deck-action-more", styles.actionMore)}
 						icon={Ellipsis}
 						onClick={(event) => {
@@ -446,7 +446,7 @@ const DeckCard = memo(function DeckCard({
 						{moreActions.map((action) => (
 							<FlashcardButton
 								key={action.key}
-								variant="secondary"
+								variant="neutral"
 								size="sm"
 								className={cls(
 									"flashcard-deck-overlay-action",

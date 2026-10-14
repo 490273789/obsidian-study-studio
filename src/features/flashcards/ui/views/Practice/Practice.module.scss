@@ -244,64 +244,23 @@
 	justify-content: center;
 }
 
-.btnWrong {
-	min-height: 48px;
-	border-radius: var(--fc-radius-md);
-	border: 1px solid color-mix(in srgb, var(--fc-red) 35%, var(--fc-line-glow));
-	background: linear-gradient(
-		180deg,
-		color-mix(in srgb, var(--fc-red) 12%, var(--fc-surface-card)),
-		color-mix(in srgb, var(--fc-red) 6%, var(--fc-surface-card))
-	);
-	color: var(--fc-red);
-	box-shadow:
-		var(--fc-shadow-sm),
-		0 0 10px color-mix(in srgb, var(--fc-red) 8%, transparent);
+.btnWrong,
+.btnCorrect {
+	--fc-button-height: 48px;
+	--fc-button-bg: color-mix(in srgb, var(--fc-button-accent) 10%, var(--fc-surface-card));
+	--fc-button-bg-hover: color-mix(in srgb, var(--fc-button-accent) 18%, var(--fc-surface-card));
+	--fc-button-border: color-mix(in srgb, var(--fc-button-accent) 38%, var(--fc-line));
+	--fc-button-border-hover: var(--fc-button-accent);
+	--fc-button-text: var(--fc-button-ink);
 	font-weight: var(--fc-weight-semibold);
-	transition: all 0.18s ease;
+}
 
-	&:hover:not(:disabled) {
-		background: linear-gradient(
-			180deg,
-			color-mix(in srgb, var(--fc-red) 22%, var(--fc-surface-card)),
-			color-mix(in srgb, var(--fc-red) 12%, var(--fc-surface-card))
-		);
-		border-color: color-mix(in srgb, var(--fc-red) 60%, transparent);
-		box-shadow:
-			var(--fc-shadow-card-hover),
-			0 0 14px color-mix(in srgb, var(--fc-red) 20%, transparent);
-		transform: translateY(-1px);
-	}
+.btnWrong {
+	--fc-button-accent: var(--fc-red);
 }
 
 .btnCorrect {
-	min-height: 48px;
-	border-radius: var(--fc-radius-md);
-	border: 1px solid color-mix(in srgb, var(--fc-lime) 38%, var(--fc-line-glow));
-	background: linear-gradient(
-		180deg,
-		color-mix(in srgb, var(--fc-lime) 14%, var(--fc-surface-card)),
-		color-mix(in srgb, var(--fc-lime) 6%, var(--fc-surface-card))
-	);
-	color: var(--fc-lime);
-	box-shadow:
-		var(--fc-shadow-sm),
-		0 0 10px color-mix(in srgb, var(--fc-lime) 8%, transparent);
-	font-weight: var(--fc-weight-semibold);
-	transition: all 0.18s ease;
-
-	&:hover:not(:disabled) {
-		background: linear-gradient(
-			180deg,
-			color-mix(in srgb, var(--fc-lime) 24%, var(--fc-surface-card)),
-			color-mix(in srgb, var(--fc-lime) 14%, var(--fc-surface-card))
-		);
-		border-color: color-mix(in srgb, var(--fc-lime) 65%, transparent);
-		box-shadow:
-			var(--fc-shadow-card-hover),
-			0 0 14px color-mix(in srgb, var(--fc-lime) 20%, transparent);
-		transform: translateY(-1px);
-	}
+	--fc-button-accent: var(--fc-lime);
 }
 
 /* ── Summary View ────────────────────────────────────────────────────────── */

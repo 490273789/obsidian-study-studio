@@ -228,13 +228,14 @@
 /* ── Deck actions ────────────────────────────────────────────────────────── */
 
 .deckActions {
+	--fc-deck-tool-size: var(--fc-control-md);
 	display: flex;
 	align-items: center;
 	gap: var(--fc-space-2);
 	width: auto;
 
 	:global(.flashcard-btn) {
-		font-size: var(--fc-font-xs);
+		font-size: var(--fc-font-sm);
 		min-width: 0;
 		white-space: nowrap;
 	}
@@ -247,8 +248,8 @@
  */
 .actionSpelling,
 .actionMore {
-	width: var(--fc-control-md);
-	min-width: var(--fc-control-md);
+	width: var(--fc-deck-tool-size);
+	min-width: var(--fc-deck-tool-size);
 	padding-inline: 0;
 	flex: none;
 }
@@ -505,13 +506,13 @@
 		display: grid;
 		gap: var(--fc-space-2);
 		width: 100%;
-		grid-template-columns: repeat(auto-fit, minmax(0, 1fr)) var(--fc-control-md);
+		grid-template-columns: repeat(2, minmax(0, 1fr)) var(--fc-deck-tool-size);
 		justify-content: end;
 
 		&.hasSpelling {
 			grid-template-columns:
-				repeat(auto-fit, minmax(0, 1fr)) var(--fc-control-md)
-				var(--fc-control-md);
+				repeat(2, minmax(0, 1fr)) var(--fc-deck-tool-size)
+				var(--fc-deck-tool-size);
 		}
 
 		:global(.flashcard-btn) {
@@ -521,8 +522,8 @@
 		/* Icon slots keep their square so the grid columns stay aligned. */
 		.actionSpelling,
 		.actionMore {
-			width: var(--fc-control-md);
-			min-width: var(--fc-control-md);
+			width: var(--fc-deck-tool-size);
+			min-width: var(--fc-deck-tool-size);
 		}
 	}
 
@@ -550,6 +551,12 @@
 
 @media (max-width: 768px) {
 	@include home-actions-grid;
+}
+
+@media (pointer: coarse) {
+	.deckActions {
+		--fc-deck-tool-size: 44px;
+	}
 }
 
 @container flashcard-page (max-width: 960px) {

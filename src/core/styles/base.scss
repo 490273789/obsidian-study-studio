@@ -297,7 +297,7 @@
 /* Reset Obsidian default button shadow */
 .flashcard-root,
 .flashcard-settings-tab {
-	button:not(.clickable-icon) {
+	button:not(.clickable-icon):not(.flashcard-btn) {
 		box-shadow: none;
 	}
 }

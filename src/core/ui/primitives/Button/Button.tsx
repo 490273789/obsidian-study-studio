@@ -5,14 +5,14 @@ import type { LucideIcon } from "lucide-react";
  * Visual variant for the button.
  * Maps directly to CSS classes: `flashcard-btn-{variant}`
  */
-export type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
+export type ButtonVariant = "primary" | "secondary" | "neutral" | "outline" | "ghost" | "danger";
 
 export type ButtonSize = "sm" | "md" | "lg";
 
 /**
  * Special button presets that override the default shape / behavior.
  * - `"icon"`       — compact square icon-only button
- * - `"show"`       — full-width "Show Answer" button with sheen animation
+ * - `"show"`       — full-width "Show Answer" button
  * - `"prev"`       — undo / previous-card button (square)
  * - `"rating"`     — FSRS rating button (used inside rating grid)
  * - `"practice-wrong"`  — practice wrong-answer button
@@ -36,14 +36,13 @@ const PRESET_CLASSES: Record<ButtonPreset, string> = {
 	"practice-correct": "flashcard-practice-btn-correct",
 };
 
-/** Presets that render a compact square icon-only control. */
 /** Default icon size in pixels when not explicitly provided. */
 const DEFAULT_ICON_SIZE = 16;
 
 export interface FlashcardButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-	/** Semantic visual variant. Colors the button; combined with preset when both are set. */
+	/** Visual hierarchy. Defaults to neutral, or ghost for icon/previous controls. */
 	variant?: ButtonVariant;
-	/** Control size. Defaults to the 36px medium control. */
+	/** Control size. Defaults to the 32px medium control; icon presets respect this size. */
 	size?: ButtonSize;
 	/** Special shape / behavior preset. Class generation combines preset and variant. */
 	preset?: ButtonPreset;
@@ -95,14 +94,16 @@ export const FlashcardButton = React.forwardRef<HTMLButtonElement, FlashcardButt
 		},
 		ref,
 	) {
-		// Build class list
-		const classes: string[] = ["flashcard-btn", `flashcard-btn-${size}`];
+		const resolvedVariant =
+			variant ?? (preset === "icon" || preset === "prev" ? "ghost" : "neutral");
+		const classes: string[] = [
+			"flashcard-btn",
+			`flashcard-btn-${size}`,
+			`flashcard-btn-${resolvedVariant}`,
+		];
 
 		if (preset) {
 			classes.push(PRESET_CLASSES[preset]);
-		}
-		if (variant) {
-			classes.push(`flashcard-btn-${variant}`);
 		}
 		if (rating !== undefined) {
 			classes.push(`flashcard-rating-${rating}`);
