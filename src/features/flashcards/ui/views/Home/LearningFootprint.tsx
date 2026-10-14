@@ -260,7 +260,8 @@ function DayDetails({ day }: { day: LearningFootprintDay }) {
 /**
  * Formatters are cached per language: the heatmap asks for one per cell on every
  * render, and constructing an `Intl.DateTimeFormat` is far more expensive than
- * formatting with an existing one.
+ * formatting with an existing one. Date keys are calendar dates, so parse and
+ * format in UTC to keep them independent of the host time zone.
  */
 const ACTIVITY_DATE_FORMATTERS: Partial<Record<"zh" | "en", Intl.DateTimeFormat>> = {};
 const MONTH_LABEL_FORMATTERS: Partial<Record<"zh" | "en", Intl.DateTimeFormat>> = {};
@@ -268,19 +269,19 @@ const MONTH_LABEL_FORMATTERS: Partial<Record<"zh" | "en", Intl.DateTimeFormat>> 
 function getActivityDateFormatter(language: "zh" | "en"): Intl.DateTimeFormat {
 	return (ACTIVITY_DATE_FORMATTERS[language] ??= new Intl.DateTimeFormat(
 		language === "zh" ? "zh-CN" : "en-US",
-		{ month: "short", day: "numeric", weekday: "short" },
+		{ month: "short", day: "numeric", weekday: "short", timeZone: "UTC" },
 	));
 }
 
 function getMonthLabelFormatter(language: "zh" | "en"): Intl.DateTimeFormat {
 	return (MONTH_LABEL_FORMATTERS[language] ??= new Intl.DateTimeFormat(
 		language === "zh" ? "zh-CN" : "en-US",
-		{ month: "short" },
+		{ month: "short", timeZone: "UTC" },
 	));
 }
 
 function formatActivityDate(dateKey: string, language: "zh" | "en"): string {
-	return getActivityDateFormatter(language).format(new Date(`${dateKey}T00:00:00`));
+	return getActivityDateFormatter(language).format(new Date(`${dateKey}T00:00:00Z`));
 }
 
 function getDayAriaLabel(
@@ -322,7 +323,7 @@ export function calculateHeatmapMonthLabels(
 		lastMonthKey = monthKey;
 		lastWeekWithLabel = weekIndex;
 
-		const date = new Date(`${anchorDay.date}T00:00:00`);
+		const date = new Date(`${anchorDay.date}T00:00:00Z`);
 		return getMonthLabelFormatter(language).format(date);
 	});
 }
