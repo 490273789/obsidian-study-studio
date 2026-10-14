@@ -81,8 +81,15 @@ class MockElement {
 		this.ownerDocument = document;
 	}
 
-	addClass(value: string): this {
-		this.addClasses(value);
+	addClass(...classes: string[]): this {
+		for (const value of classes) {
+			if (value.includes(" ")) {
+				throw new Error(
+					`Failed to execute 'add' on 'DOMTokenList': The token provided ('${value}') contains HTML space characters, which are not valid in tokens.`,
+				);
+			}
+			this.classList.add(value);
+		}
 		return this;
 	}
 	removeClass(value: string): this {

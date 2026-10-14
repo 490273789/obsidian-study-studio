@@ -132,7 +132,11 @@ class SettingsControlRenderer {
 					: control.tone === "warning" || control.tone === "danger"
 						? "danger"
 						: "neutral";
-			button.buttonEl.addClass(`flashcard-btn flashcard-btn-md flashcard-btn-${variant}`);
+			button.buttonEl.addClass(
+				"flashcard-btn",
+				"flashcard-btn-md",
+				`flashcard-btn-${variant}`,
+			);
 			button
 				.setButtonText(control.label)
 				.setDisabled(control.disabled)
