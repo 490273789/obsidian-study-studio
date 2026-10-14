@@ -56,18 +56,19 @@ describe("DictionaryLookupModal", () => {
 		const onSubmit = vi.fn();
 		const strings = dictionaryStrings("zh");
 		const modal = new DictionaryLookupModal({} as App, onSubmit, strings, "test");
+		const addContainerClass = vi.spyOn(modal.containerEl, "addClass");
+		const removeContainerClass = vi.spyOn(modal.containerEl, "removeClass");
+		const addModalClass = vi.spyOn(modal.modalEl, "addClass");
 
 		modal.onOpen();
 
-		expect(modal.containerEl.addClass).toHaveBeenCalledWith(
-			"study-studio-dictionary-prompt-container",
-		);
-		expect(modal.modalEl.addClass).toHaveBeenCalledWith("prompt");
-		expect(modal.modalEl.addClass).toHaveBeenCalledWith("study-studio-dictionary-prompt");
+		expect(addContainerClass).toHaveBeenCalledWith("study-studio-dictionary-prompt-container");
+		expect(addModalClass).toHaveBeenCalledWith("prompt");
+		expect(addModalClass).toHaveBeenCalledWith("study-studio-dictionary-prompt");
 
 		modal.close();
 
-		expect(modal.containerEl.removeClass).toHaveBeenCalledWith(
+		expect(removeContainerClass).toHaveBeenCalledWith(
 			"study-studio-dictionary-prompt-container",
 		);
 	});
