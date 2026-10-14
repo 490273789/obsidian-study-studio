@@ -1,12 +1,8 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { FloatingRect, VideoMediaPort, VideoPlayerStateStore } from "../../domain/types";
+import type { FloatingRect, VideoPlayerStateStore } from "../../domain/types";
 import { VideoPlayerRuntime, emptyPlaybackState } from "../../domain/videoPlayerRuntime";
 import type { VideoPlayerPresentationStateStore } from "../../domain/localVideoPlayerState";
-import {
-	PlayerViewInteraction,
-	type PlayerViewDomAdapter,
-	type PlayerViewDomMount,
-} from "../playerViewInteraction";
+import { PlayerViewInteraction } from "../playerViewInteraction";
 
 class MemoryPlaybackStore implements VideoPlayerStateStore {
 	state = emptyPlaybackState();
@@ -36,47 +32,143 @@ class MemoryPresentationStore implements VideoPlayerPresentationStateStore {
 	};
 }
 
-class Media implements VideoMediaPort {
-	currentTime = 0;
-	duration = 100;
-	paused = true;
-	playbackRate = 1;
-	src = "";
-	pause = vi.fn(() => {
-		this.paused = true;
-	});
-	play = vi.fn(async () => {
-		this.paused = false;
-	});
-	load = vi.fn();
-	addEventListener = vi.fn();
-	removeEventListener = vi.fn();
+interface TestElement {
+	tagName: string;
+	className: string;
+	parentElement: TestElement | null;
+	children: TestElement[];
+	paused: boolean;
+	currentTime: number;
+	duration: number;
+	playbackRate: number;
+	src: string;
+	playsInline: boolean;
+	preload: string;
+	tabIndex: number;
+	append(child: TestElement): void;
+	remove(): void;
+	focus: ReturnType<typeof vi.fn>;
+	pause: ReturnType<typeof vi.fn>;
+	play: ReturnType<typeof vi.fn>;
+	load: ReturnType<typeof vi.fn>;
+	addEventListener(type: string, listener: (event: any) => void): void;
+	removeEventListener(type: string, listener: (event: any) => void): void;
+	dispatchEvent(event: any): boolean;
 }
 
-class MemoryDomMount implements PlayerViewDomMount {
-	readonly media = new Media();
-	readonly refs = {
-		focusSurface: vi.fn(),
-		mediaHost: vi.fn(),
-		floatingHeader: vi.fn(),
-		resizeLeft: vi.fn(),
-		resizeRight: vi.fn(),
+function createTestElement(tagName: string): TestElement {
+	const listeners = new Map<string, Set<(event: any) => void>>();
+	const element: TestElement = {
+		tagName: tagName.toUpperCase(),
+		className: "",
+		parentElement: null,
+		children: [],
+		paused: true,
+		currentTime: 0,
+		duration: 100,
+		playbackRate: 1,
+		src: "",
+		playsInline: false,
+		preload: "metadata",
+		tabIndex: -1,
+		append(child: TestElement) {
+			child.parentElement = element;
+			element.children.push(child);
+		},
+		remove() {
+			if (element.parentElement) {
+				const index = element.parentElement.children.indexOf(element);
+				if (index >= 0) element.parentElement.children.splice(index, 1);
+				element.parentElement = null;
+			}
+		},
+		focus: vi.fn(),
+		pause: vi.fn(() => {
+			element.paused = true;
+			element.dispatchEvent({ type: "pause" });
+		}),
+		play: vi.fn(async () => {
+			element.paused = false;
+			element.dispatchEvent({ type: "play" });
+		}),
+		load: vi.fn(),
+		addEventListener(type: string, listener: (event: any) => void) {
+			if (!listeners.has(type)) listeners.set(type, new Set());
+			listeners.get(type)!.add(listener);
+		},
+		removeEventListener(type: string, listener: (event: any) => void) {
+			listeners.get(type)?.delete(listener);
+		},
+		dispatchEvent(event: any): boolean {
+			const set = listeners.get(event.type);
+			if (set) {
+				for (const listener of set) listener(event);
+			}
+			return true;
+		},
 	};
-	focus = vi.fn(() => true);
-	getViewport = vi.fn(() => ({ width: 1000, height: 800 }));
-	setActive = vi.fn();
-	dispose = vi.fn();
+	return element;
 }
 
-class MemoryDomAdapter implements PlayerViewDomAdapter {
-	readonly mounts: MemoryDomMount[] = [];
-	readonly inputs: Parameters<PlayerViewDomAdapter["mount"]>[0][] = [];
-	mount(input: Parameters<PlayerViewDomAdapter["mount"]>[0]): MemoryDomMount {
-		this.inputs.push(input);
-		const mount = new MemoryDomMount();
-		this.mounts.push(mount);
-		return mount;
-	}
+interface TestDocument {
+	readonly defaultView: {
+		innerWidth: number;
+		innerHeight: number;
+		requestAnimationFrame(callback: FrameRequestCallback): number;
+		cancelAnimationFrame(handle: number): void;
+		addEventListener(type: string, listener: (event: any) => void): void;
+		removeEventListener(type: string, listener: (event: any) => void): void;
+		dispatchEvent(event: any): boolean;
+	};
+	readonly createdElements: TestElement[];
+	createElement(tagName: string): TestElement;
+}
+
+function createTestDocument(viewport = { width: 1000, height: 800 }): TestDocument {
+	const windowListeners = new Map<string, Set<(event: any) => void>>();
+	const createdElements: TestElement[] = [];
+	let frameId = 0;
+	const activeFrames = new Map<number, FrameRequestCallback>();
+
+	const defaultView = {
+		innerWidth: viewport.width,
+		innerHeight: viewport.height,
+		requestAnimationFrame(callback: FrameRequestCallback): number {
+			const id = ++frameId;
+			activeFrames.set(id, callback);
+			// Synchronously flush for immediate deterministic assertions
+			callback(0);
+			activeFrames.delete(id);
+			return id;
+		},
+		cancelAnimationFrame(handle: number) {
+			activeFrames.delete(handle);
+		},
+		addEventListener(type: string, listener: (event: any) => void) {
+			if (!windowListeners.has(type)) windowListeners.set(type, new Set());
+			windowListeners.get(type)!.add(listener);
+		},
+		removeEventListener(type: string, listener: (event: any) => void) {
+			windowListeners.get(type)?.delete(listener);
+		},
+		dispatchEvent(event: any): boolean {
+			const set = windowListeners.get(event.type);
+			if (set) {
+				for (const listener of set) listener(event);
+			}
+			return true;
+		},
+	};
+
+	return {
+		defaultView,
+		createdElements,
+		createElement(tagName: string) {
+			const element = createTestElement(tagName);
+			createdElements.push(element);
+			return element;
+		},
+	};
 }
 
 describe("PlayerViewInteraction", () => {
@@ -84,29 +176,31 @@ describe("PlayerViewInteraction", () => {
 		const playback = new MemoryPlaybackStore();
 		const runtime = new VideoPlayerRuntime({ state: playback, toMediaUrl: (path) => path });
 		runtime.addSources([{ id: "one", path: "/one.mp4", name: "one.mp4" }]);
-		const dom = new MemoryDomAdapter();
-		const interaction = new PlayerViewInteraction({
-			runtime,
-			presentation: new MemoryPresentationStore(),
-			dom,
-		});
+		const presentation = new MemoryPresentationStore();
+		const interaction = new PlayerViewInteraction({ runtime, presentation });
 
-		const first = interaction.mount({ ownerDocument: {} as Document });
-		const second = interaction.mount({ ownerDocument: {} as Document });
-		const third = interaction.mount({ ownerDocument: {} as Document });
+		const doc1 = createTestDocument();
+		const doc2 = createTestDocument();
+		const doc3 = createTestDocument();
+
+		const first = interaction.mount({ ownerDocument: doc1 as unknown as Document });
+		const second = interaction.mount({ ownerDocument: doc2 as unknown as Document });
+		const third = interaction.mount({ ownerDocument: doc3 as unknown as Document });
 
 		expect(first.getSnapshot().role).toBe("presenter");
 		expect(second.getSnapshot().role).toBe("waiting");
 		expect(third.getSnapshot().role).toBe("waiting");
 
+		const video1 = doc1.createdElements.find((el) => el.tagName === "VIDEO")!;
+		expect(video1).toBeDefined();
+
 		runtime.togglePlayback();
 		await Promise.resolve();
-		expect(dom.mounts[0]!.media.paused).toBe(false);
+		expect(video1.play).toHaveBeenCalled();
 
 		first.dispose();
 
-		expect(dom.mounts[0]!.media.pause).toHaveBeenCalled();
-		expect(dom.mounts[0]!.dispose).toHaveBeenCalledOnce();
+		expect(video1.pause).toHaveBeenCalled();
 		expect(second.getSnapshot().role).toBe("presenter");
 		expect(third.getSnapshot().role).toBe("waiting");
 	});
@@ -116,12 +210,10 @@ describe("PlayerViewInteraction", () => {
 			state: new MemoryPlaybackStore(),
 			toMediaUrl: (path) => path,
 		});
-		const interaction = new PlayerViewInteraction({
-			runtime,
-			presentation: new MemoryPresentationStore(),
-			dom: new MemoryDomAdapter(),
-		});
-		const view = interaction.mount({ ownerDocument: {} as Document });
+		const presentation = new MemoryPresentationStore();
+		const interaction = new PlayerViewInteraction({ runtime, presentation });
+		const doc = createTestDocument();
+		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
 
 		expect(view.act({ type: "enter-floating" })).toEqual({ kind: "applied" });
 		expect(view.getSnapshot().presentation).toEqual({
@@ -145,23 +237,22 @@ describe("PlayerViewInteraction", () => {
 			state: new MemoryPlaybackStore(),
 			toMediaUrl: (path) => path,
 		});
-		const dom = new MemoryDomAdapter();
-		const interaction = new PlayerViewInteraction({
-			runtime,
-			presentation: new MemoryPresentationStore(),
-			dom,
-		});
-		const view = interaction.mount({ ownerDocument: {} as Document });
+		const presentation = new MemoryPresentationStore();
+		const interaction = new PlayerViewInteraction({ runtime, presentation });
+		const doc = createTestDocument();
+		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
+		const focusSurfaceEl = createTestElement("div");
 
 		view.act({ type: "enter-floating" });
-		expect(dom.mounts[0]!.focus).not.toHaveBeenCalled();
-		dom.inputs[0]!.focusReady();
-		expect(dom.mounts[0]!.focus).toHaveBeenCalledOnce();
+		expect(focusSurfaceEl.focus).not.toHaveBeenCalled();
+
+		view.refs.focusSurface(focusSurfaceEl as unknown as HTMLElement);
+		expect(focusSurfaceEl.focus).toHaveBeenCalledOnce();
 
 		view.act({ type: "dock-and-pause" });
-		expect(dom.mounts[0]!.focus).toHaveBeenCalledOnce();
-		dom.inputs[0]!.focusReady();
-		expect(dom.mounts[0]!.focus).toHaveBeenCalledTimes(2);
+		// When transitioning, pendingFocus is set. When the surface ref re-registers:
+		view.refs.focusSurface(focusSurfaceEl as unknown as HTMLElement);
+		expect(focusSurfaceEl.focus).toHaveBeenCalledTimes(2);
 	});
 
 	it("opens a docked Player view, focuses a Floating player, and persists queue disclosure", async () => {
@@ -170,13 +261,16 @@ describe("PlayerViewInteraction", () => {
 			toMediaUrl: (path) => path,
 		});
 		const presentation = new MemoryPresentationStore();
-		const dom = new MemoryDomAdapter();
-		const interaction = new PlayerViewInteraction({ runtime, presentation, dom });
+		const interaction = new PlayerViewInteraction({ runtime, presentation });
+		const doc = createTestDocument();
 		const activate = vi.fn(async () => undefined);
 
 		await interaction.open(activate);
-		const view = interaction.mount({ ownerDocument: {} as Document });
-		expect(dom.mounts[0]!.focus).toHaveBeenCalledOnce();
+		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
+		const focusSurfaceEl = createTestElement("div");
+		view.refs.focusSurface(focusSurfaceEl as unknown as HTMLElement);
+
+		expect(focusSurfaceEl.focus).toHaveBeenCalledOnce();
 		expect(activate).toHaveBeenCalledOnce();
 
 		view.act({ type: "set-queue-expanded", expanded: false });
@@ -186,7 +280,34 @@ describe("PlayerViewInteraction", () => {
 		view.act({ type: "enter-floating" });
 		await interaction.open(activate);
 		expect(activate).toHaveBeenCalledOnce();
-		expect(dom.mounts[0]!.focus).toHaveBeenCalledTimes(2);
+		expect(focusSurfaceEl.focus).toHaveBeenCalledTimes(2);
+	});
+
+	it("creates one owner-document media element and reparents it across player surfaces", () => {
+		const runtime = new VideoPlayerRuntime({
+			state: new MemoryPlaybackStore(),
+			toMediaUrl: (path) => path,
+		});
+		const presentation = new MemoryPresentationStore();
+		const interaction = new PlayerViewInteraction({ runtime, presentation });
+		const doc = createTestDocument();
+		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
+
+		const video = doc.createdElements.find((el) => el.tagName === "VIDEO")!;
+		expect(video).toBeDefined();
+
+		const dockedHost = createTestElement("div");
+		const floatingHost = createTestElement("div");
+
+		view.refs.mediaHost(dockedHost as unknown as HTMLElement);
+		expect(video.parentElement).toBe(dockedHost);
+
+		view.refs.mediaHost(floatingHost as unknown as HTMLElement);
+		expect(video.parentElement).toBe(floatingHost);
+
+		view.dispose();
+		expect(video.pause).toHaveBeenCalled();
+		expect(video.parentElement).toBeNull();
 	});
 
 	it("demotes a maximized Floating player during drag and persists only the committed rect", () => {
@@ -195,14 +316,31 @@ describe("PlayerViewInteraction", () => {
 			toMediaUrl: (path) => path,
 		});
 		const presentation = new MemoryPresentationStore();
-		const dom = new MemoryDomAdapter();
-		const interaction = new PlayerViewInteraction({ runtime, presentation, dom });
-		const view = interaction.mount({ ownerDocument: {} as Document });
+		const interaction = new PlayerViewInteraction({ runtime, presentation });
+		const doc = createTestDocument();
+		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
+		const header = createTestElement("div");
+		view.refs.floatingHeader(header as unknown as HTMLElement);
+
 		view.act({ type: "enter-floating" });
 		view.act({ type: "toggle-maximized" });
 
-		dom.inputs[0]!.beginPointer("move", { x: 500, y: 20 });
-		dom.inputs[0]!.movePointer({ x: 550, y: 70 });
+		// Trigger pointerdown on header
+		header.dispatchEvent({
+			type: "pointerdown",
+			clientX: 500,
+			clientY: 20,
+			pointerId: 1,
+			preventDefault: vi.fn(),
+		});
+
+		// Trigger pointermove on window
+		doc.defaultView.dispatchEvent({
+			type: "pointermove",
+			clientX: 550,
+			clientY: 70,
+			pointerId: 1,
+		});
 
 		expect(view.getSnapshot().presentation).toMatchObject({
 			kind: "floating",
@@ -210,9 +348,79 @@ describe("PlayerViewInteraction", () => {
 		});
 		expect(presentation.state.floatingRect).toBeNull();
 
-		dom.inputs[0]!.finishPointer();
+		// Trigger pointerup on window to commit
+		doc.defaultView.dispatchEvent({
+			type: "pointerup",
+			clientX: 550,
+			clientY: 70,
+			pointerId: 1,
+		});
+
 		expect(presentation.state.floatingRect).toEqual(
 			expect.objectContaining({ width: 480, height: 320 }),
 		);
+	});
+
+	it("toggles maximized on double clicking header or media surface", () => {
+		const runtime = new VideoPlayerRuntime({
+			state: new MemoryPlaybackStore(),
+			toMediaUrl: (path) => path,
+		});
+		const presentation = new MemoryPresentationStore();
+		const interaction = new PlayerViewInteraction({ runtime, presentation });
+		const doc = createTestDocument();
+		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
+
+		const header = createTestElement("div");
+		const mediaHost = createTestElement("div");
+		view.refs.floatingHeader(header as unknown as HTMLElement);
+		view.refs.mediaHost(mediaHost as unknown as HTMLElement);
+
+		view.act({ type: "enter-floating" });
+		expect(view.getSnapshot().presentation).toMatchObject({
+			kind: "floating",
+			maximized: false,
+		});
+
+		header.dispatchEvent({ type: "dblclick", preventDefault: vi.fn() });
+		expect(view.getSnapshot().presentation).toMatchObject({
+			kind: "floating",
+			maximized: true,
+		});
+
+		mediaHost.dispatchEvent({ type: "dblclick", preventDefault: vi.fn() });
+		expect(view.getSnapshot().presentation).toMatchObject({
+			kind: "floating",
+			maximized: false,
+		});
+	});
+
+	it("toggles maximized on Escape key when floating and maximized", () => {
+		const runtime = new VideoPlayerRuntime({
+			state: new MemoryPlaybackStore(),
+			toMediaUrl: (path) => path,
+		});
+		const presentation = new MemoryPresentationStore();
+		const interaction = new PlayerViewInteraction({ runtime, presentation });
+		const doc = createTestDocument();
+		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
+
+		view.act({ type: "enter-floating" });
+		view.act({ type: "toggle-maximized" });
+		expect(view.getSnapshot().presentation).toMatchObject({
+			kind: "floating",
+			maximized: true,
+		});
+
+		doc.defaultView.dispatchEvent({
+			type: "keydown",
+			key: "Escape",
+			preventDefault: vi.fn(),
+		});
+
+		expect(view.getSnapshot().presentation).toMatchObject({
+			kind: "floating",
+			maximized: false,
+		});
 	});
 });

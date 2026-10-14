@@ -1,6 +1,7 @@
 import type { VideoPlayerPresentationStateStore } from "../domain/localVideoPlayerState";
-import type { FloatingRect, VideoMediaPort } from "../domain/types";
+import type { FloatingRect } from "../domain/types";
 import type { VideoPlayerRuntime } from "../domain/videoPlayerRuntime";
+import styles from "./VideoPlayer.module.scss";
 
 export type PlayerViewPresentation =
 	| { readonly kind: "docked" }
@@ -45,31 +46,6 @@ export interface PlayerViewMount {
 	dispose(): void;
 }
 
-export interface PlayerViewDomMount {
-	readonly media: VideoMediaPort;
-	readonly refs: PlayerViewRefs;
-	focus(): boolean;
-	getViewport(): { readonly width: number; readonly height: number };
-	setActive(active: boolean): void;
-	dispose(): void;
-}
-
-export interface PlayerViewDomAdapter {
-	mount(input: {
-		readonly ownerDocument: Document;
-		readonly getSnapshot: () => PlayerViewSnapshot;
-		readonly act: (action: PlayerViewAction) => PlayerViewActionResult;
-		readonly focusReady: () => void;
-		readonly beginPointer: (
-			kind: "move" | "resize-left" | "resize-right",
-			point: PointerPoint,
-		) => void;
-		readonly movePointer: (point: PointerPoint) => void;
-		readonly finishPointer: () => void;
-		readonly viewportChanged: () => void;
-	}): PlayerViewDomMount;
-}
-
 export interface PointerPoint {
 	readonly x: number;
 	readonly y: number;
@@ -78,20 +54,28 @@ export interface PointerPoint {
 export interface PlayerViewInteractionOptions {
 	readonly runtime: VideoPlayerRuntime;
 	readonly presentation: VideoPlayerPresentationStateStore;
-	readonly dom: PlayerViewDomAdapter;
 }
 
+type PointerKind = "move" | "resize-left" | "resize-right";
+
 interface Registration {
-	dom: PlayerViewDomMount | null;
-	mediaRelease: (() => void) | null;
-	snapshot: PlayerViewSnapshot;
+	readonly ownerDocument: Document;
+	readonly media: HTMLVideoElement;
+	readonly refs: PlayerViewRefs;
 	readonly listeners: Set<() => void>;
+	readonly refCleanups: Map<keyof PlayerViewRefs, () => void>;
+	focusNode: HTMLElement | null;
+	mediaHostNode: HTMLElement | null;
+	pointerCleanup: (() => void) | null;
+	snapshot: PlayerViewSnapshot;
+	mediaRelease: (() => void) | null;
+	active: boolean;
 	released: boolean;
 }
 
 interface PointerGesture {
 	readonly registration: Registration;
-	readonly kind: "move" | "resize-left" | "resize-right";
+	readonly kind: PointerKind;
 	readonly origin: PointerPoint;
 	start: FloatingRect;
 	moved: boolean;
@@ -142,37 +126,48 @@ export class PlayerViewInteraction {
 	}
 
 	mount(input: { readonly ownerDocument: Document }): PlayerViewMount {
+		const doc = input.ownerDocument;
+		const media = doc.createElement("video");
+		media.className = styles.video;
+		media.playsInline = true;
+		media.preload = "metadata";
+		media.tabIndex = -1;
+
 		const registration: Registration = {
-			dom: null,
-			mediaRelease: null,
-			snapshot: this.snapshotFor("waiting"),
+			ownerDocument: doc,
+			media,
+			refs: {
+				focusSurface: (node) => this.setFocusNode(registration, node),
+				mediaHost: (node) => this.setMediaHost(registration, node),
+				floatingHeader: (node) =>
+					this.bindPointerRef(registration, "floatingHeader", node, "move", true),
+				resizeLeft: (node) =>
+					this.bindPointerRef(registration, "resizeLeft", node, "resize-left", false),
+				resizeRight: (node) =>
+					this.bindPointerRef(registration, "resizeRight", node, "resize-right", false),
+			},
 			listeners: new Set(),
+			refCleanups: new Map(),
+			focusNode: null,
+			mediaHostNode: null,
+			pointerCleanup: null,
+			snapshot: this.snapshotFor("waiting"),
+			mediaRelease: null,
+			active: false,
 			released: false,
 		};
-		const getSnapshot = () => registration.snapshot;
-		const act = (action: PlayerViewAction) => this.act(registration, action);
+
 		const handle: PlayerViewMount = {
-			getSnapshot,
+			getSnapshot: () => registration.snapshot,
 			subscribe: (listener) => {
 				registration.listeners.add(listener);
 				return () => registration.listeners.delete(listener);
 			},
-			get refs() {
-				return registration.dom!.refs;
-			},
-			act,
+			refs: registration.refs,
+			act: (action) => this.act(registration, action),
 			dispose: () => this.release(registration),
 		};
-		registration.dom = this.options.dom.mount({
-			ownerDocument: input.ownerDocument,
-			getSnapshot,
-			act,
-			focusReady: () => this.consumePendingFocus(),
-			beginPointer: (kind, point) => this.beginPointer(registration, kind, point),
-			movePointer: (point) => this.movePointer(point),
-			finishPointer: () => this.finishPointer(),
-			viewportChanged: () => this.viewportChanged(registration),
-		});
+
 		this.registrations.push(registration);
 		if (this.registrations.length === 1) this.activate(registration);
 		this.publish();
@@ -197,7 +192,7 @@ export class PlayerViewInteraction {
 				this.presentation = {
 					kind: "floating",
 					maximized: false,
-					rect: saved ?? defaultFloatingRect(registration.dom!.getViewport()),
+					rect: saved ?? defaultFloatingRect(this.getViewport(registration)),
 				};
 				this.pendingFocus = true;
 				this.publish();
@@ -235,14 +230,12 @@ export class PlayerViewInteraction {
 		if (registration.released) return;
 		const wasPresenter = registration === this.presenter();
 		registration.released = true;
-		if (wasPresenter) {
-			this.options.runtime.pause();
-			this.presentation = { kind: "docked" };
-			registration.mediaRelease?.();
-			registration.dom?.setActive(false);
-		}
-		registration.dom?.dispose();
+		this.setActive(registration, false);
+		for (const cleanup of registration.refCleanups.values()) cleanup();
+		registration.refCleanups.clear();
 		registration.listeners.clear();
+		registration.focusNode = null;
+		registration.mediaHostNode = null;
 		const index = this.registrations.indexOf(registration);
 		if (index >= 0) this.registrations.splice(index, 1);
 		if (wasPresenter) {
@@ -253,11 +246,33 @@ export class PlayerViewInteraction {
 	}
 
 	private activate(registration: Registration): void {
-		const dom = registration.dom;
-		if (!dom) return;
-		dom.setActive(true);
-		registration.mediaRelease = this.options.runtime.bindMedia(dom.media);
+		this.setActive(registration, true);
+		registration.mediaRelease = this.options.runtime.bindMedia(registration.media);
 		this.consumePendingFocus();
+	}
+
+	private setActive(registration: Registration, active: boolean): void {
+		if (registration.active === active) return;
+		registration.active = active;
+		const win = registration.ownerDocument.defaultView;
+		if (active) {
+			if (
+				registration.mediaHostNode &&
+				registration.media.parentElement !== registration.mediaHostNode
+			) {
+				registration.mediaHostNode.append(registration.media);
+			}
+			win?.addEventListener("resize", this.handleViewportChange);
+			win?.addEventListener("keydown", this.handleKeyDown);
+		} else {
+			win?.removeEventListener("resize", this.handleViewportChange);
+			win?.removeEventListener("keydown", this.handleKeyDown);
+			this.clearPointer(registration);
+			registration.mediaRelease?.();
+			registration.mediaRelease = null;
+			registration.media.pause();
+			registration.media.remove();
+		}
 	}
 
 	private presenter(): Registration | undefined {
@@ -284,21 +299,145 @@ export class PlayerViewInteraction {
 
 	private consumePendingFocus(): void {
 		if (!this.pendingFocus) return;
-		if (this.presenter()?.dom?.focus()) this.pendingFocus = false;
+		const presenter = this.presenter();
+		if (presenter && this.focus(presenter)) this.pendingFocus = false;
 	}
 
-	private beginPointer(
+	private focus(registration: Registration): boolean {
+		const node = registration.focusNode;
+		if (!node || registration.released || this.disposed) return false;
+		const win = registration.ownerDocument.defaultView;
+		if (win?.requestAnimationFrame) win.requestAnimationFrame(() => node.focus());
+		else node.focus();
+		return true;
+	}
+
+	private getViewport(registration: Registration): { width: number; height: number } {
+		return {
+			width: registration.ownerDocument.defaultView?.innerWidth ?? 1024,
+			height: registration.ownerDocument.defaultView?.innerHeight ?? 768,
+		};
+	}
+
+	private setFocusNode(registration: Registration, node: HTMLElement | null): void {
+		registration.focusNode = node;
+		if (node) this.consumePendingFocus();
+	}
+
+	private setMediaHost(registration: Registration, node: HTMLElement | null): void {
+		this.clearRef(registration, "mediaHost");
+		registration.mediaHostNode = node;
+		if (node && registration.active && registration.media.parentElement !== node) {
+			node.append(registration.media);
+		}
+		if (!node) return;
+		const onDoubleClick = (event: MouseEvent) => {
+			if (!isInteractiveTarget(event.target)) {
+				event.preventDefault();
+				this.act(registration, { type: "toggle-maximized" });
+			}
+		};
+		node.addEventListener("dblclick", onDoubleClick);
+		registration.refCleanups.set("mediaHost", () => {
+			node.removeEventListener("dblclick", onDoubleClick);
+		});
+	}
+
+	private bindPointerRef(
 		registration: Registration,
-		kind: PointerGesture["kind"],
-		point: PointerPoint,
+		key: "floatingHeader" | "resizeLeft" | "resizeRight",
+		node: HTMLElement | null,
+		kind: PointerKind,
+		ignoreInteractive: boolean,
 	): void {
-		if (registration !== this.presenter() || this.presentation.kind !== "floating") return;
+		this.clearRef(registration, key);
+		if (!node) return;
+		const onPointerDown = (event: PointerEvent) => {
+			if (ignoreInteractive && isInteractiveTarget(event.target)) return;
+			event.preventDefault();
+			this.beginPointer(registration, kind, event);
+		};
+		const onDoubleClick = (event: MouseEvent) => {
+			if (kind !== "move" || (ignoreInteractive && isInteractiveTarget(event.target))) return;
+			event.preventDefault();
+			this.act(registration, { type: "toggle-maximized" });
+		};
+		node.addEventListener("pointerdown", onPointerDown);
+		node.addEventListener("dblclick", onDoubleClick);
+		registration.refCleanups.set(key, () => {
+			node.removeEventListener("pointerdown", onPointerDown);
+			node.removeEventListener("dblclick", onDoubleClick);
+		});
+	}
+
+	private beginPointer(registration: Registration, kind: PointerKind, event: PointerEvent): void {
+		if (
+			!registration.active ||
+			registration !== this.presenter() ||
+			this.presentation.kind !== "floating"
+		)
+			return;
+		this.clearPointer(registration);
+		const win = registration.ownerDocument.defaultView;
+		if (!win) return;
+		const originPoint = point(event);
 		this.pointerGesture = {
 			registration,
 			kind,
-			origin: point,
+			origin: originPoint,
 			start: this.presentation.rect,
 			moved: false,
+		};
+		let frame: number | null = null;
+		let pending: PointerPoint | null = null;
+		let furthest: PointerPoint | null = null;
+		let furthestDistance = -1;
+		const pointerId = event.pointerId;
+		const flush = () => {
+			if (frame !== null) win.cancelAnimationFrame(frame);
+			frame = null;
+			const next = pending;
+			const excursion = furthest;
+			pending = null;
+			furthest = null;
+			furthestDistance = -1;
+			if (excursion && excursion !== next) this.movePointer(excursion);
+			if (next) this.movePointer(next);
+		};
+		const move = (next: PointerEvent) => {
+			if (next.pointerId !== pointerId) return;
+			pending = point(next);
+			const distance = (pending.x - originPoint.x) ** 2 + (pending.y - originPoint.y) ** 2;
+			if (distance > furthestDistance) {
+				furthest = pending;
+				furthestDistance = distance;
+			}
+			if (!win.requestAnimationFrame) {
+				flush();
+			} else if (frame === null) {
+				frame = win.requestAnimationFrame(() => {
+					frame = null;
+					flush();
+				});
+			}
+		};
+		const finish = (next: PointerEvent) => {
+			if (next.pointerId !== pointerId) return;
+			flush();
+			this.finishPointer();
+			this.clearPointer(registration);
+		};
+		win.addEventListener("pointermove", move);
+		win.addEventListener("pointerup", finish);
+		win.addEventListener("pointercancel", finish);
+		registration.pointerCleanup = () => {
+			if (frame !== null) win.cancelAnimationFrame(frame);
+			frame = null;
+			pending = null;
+			furthest = null;
+			win.removeEventListener("pointermove", move);
+			win.removeEventListener("pointerup", finish);
+			win.removeEventListener("pointercancel", finish);
 		};
 	}
 
@@ -314,12 +453,12 @@ export class PlayerViewInteraction {
 				gesture.start = demotedDragStart(
 					gesture.origin,
 					this.presentation.rect,
-					gesture.registration.dom!.getViewport(),
+					this.getViewport(gesture.registration),
 				);
 				this.presentation = { ...this.presentation, maximized: false, rect: gesture.start };
 			}
 		}
-		const viewport = gesture.registration.dom!.getViewport();
+		const viewport = this.getViewport(gesture.registration);
 		const rect =
 			gesture.kind === "resize-left"
 				? resizeFromLeft(gesture.start, rawDx, rawDy, viewport)
@@ -351,9 +490,20 @@ export class PlayerViewInteraction {
 		});
 	}
 
-	private viewportChanged(registration: Registration): void {
-		if (registration !== this.presenter() || this.presentation.kind !== "floating") return;
-		const rect = clampFloatingRect(this.presentation.rect, registration.dom!.getViewport());
+	private clearPointer(registration: Registration): void {
+		registration.pointerCleanup?.();
+		registration.pointerCleanup = null;
+	}
+
+	private clearRef(registration: Registration, key: keyof PlayerViewRefs): void {
+		registration.refCleanups.get(key)?.();
+		registration.refCleanups.delete(key);
+	}
+
+	private readonly handleViewportChange = (): void => {
+		const presenter = this.presenter();
+		if (!presenter || this.presentation.kind !== "floating") return;
+		const rect = clampFloatingRect(this.presentation.rect, this.getViewport(presenter));
 		this.presentation = { ...this.presentation, rect };
 		this.publish();
 		if (!this.presentation.maximized) {
@@ -362,7 +512,18 @@ export class PlayerViewInteraction {
 				floatingRect: rect,
 			});
 		}
-	}
+	};
+
+	private readonly handleKeyDown = (event: KeyboardEvent): void => {
+		const presenter = this.presenter();
+		if (!presenter) return;
+		const presentation = presenter.snapshot.presentation;
+		if (event.key !== "Escape" || presentation.kind !== "floating" || !presentation.maximized) {
+			return;
+		}
+		event.preventDefault();
+		this.act(presenter, { type: "toggle-maximized" });
+	};
 }
 
 function defaultFloatingRect(viewport: {
@@ -435,4 +596,16 @@ function demotedDragStart(
 
 function clamp(value: number, min: number, max: number): number {
 	return Math.min(max, Math.max(min, value));
+}
+
+function point(event: PointerEvent): PointerPoint {
+	return { x: event.clientX, y: event.clientY };
+}
+
+function isInteractiveTarget(target: EventTarget | null): boolean {
+	return Boolean(
+		(target as { closest?: (selector: string) => Element | null } | null)?.closest?.(
+			"button, input, select, textarea, a, [role='button']",
+		),
+	);
 }

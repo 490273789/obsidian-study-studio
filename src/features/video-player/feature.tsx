@@ -18,7 +18,6 @@ import { buildVideoPlayerSettingsViewModel } from "./settings/viewModel";
 import { hasDuplicateShortcuts, type VideoPlayerShortcuts } from "./settings/keyboardShortcut";
 import type { VideoPlayerSettings, VideoSkipInterval } from "./settings/slice";
 import { videoPlayerStrings } from "./strings/videoPlayer";
-import { BrowserPlayerViewDomAdapter } from "./ui/playerViewDomAdapter";
 import { PlayerViewInteraction } from "./ui/playerViewInteraction";
 import { VideoPlayerView } from "./ui/VideoPlayerView";
 
@@ -50,7 +49,6 @@ export function createVideoPlayerFeature(): WorkbenchModule<"videoPlayer"> {
 				new PlayerViewInteraction({
 					runtime,
 					presentation: localState.presentation,
-					dom: new BrowserPlayerViewDomAdapter(),
 				}),
 			);
 			const open = async (): Promise<void> => {
