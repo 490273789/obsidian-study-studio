@@ -80,7 +80,9 @@
 	gap: var(--fc-space-3);
 }
 
-.cell {
+/* Outrank the host's button:not(.clickable-icon) in every interaction state. */
+.cell,
+:global(.flashcard-root) button.cell {
 	height: auto;
 	min-height: 0;
 	max-height: none;
@@ -107,14 +109,15 @@
 	}
 
 	&:hover {
-		border-color: rgba(var(--fc-cyan-rgb), 0.46);
+		background: var(--fc-surface-card);
+		border-color: var(--fc-line-strong);
 		outline: none;
 	}
 
 	&:focus-visible {
-		border-color: rgba(var(--fc-cyan-rgb), 0.46);
-		box-shadow: var(--fc-glow-cyan);
-		outline: none;
+		border-color: var(--fc-primary);
+		outline: 2px solid var(--fc-primary);
+		outline-offset: -2px;
 	}
 
 	&:active {

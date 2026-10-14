@@ -64,9 +64,11 @@
 	--fc-amber: var(--color-yellow);
 	--fc-red: var(--color-red);
 	--fc-orange: var(--color-orange);
-	--fc-primary: #00b8c4;
-	--fc-primary-hover: #00a0ab;
-	--fc-primary-text: color-mix(in srgb, rgb(var(--fc-black-rgb)) 92%, var(--fc-primary));
+	/* 强调色用于文字和轮廓，操作底色单独轻染，避免大面积高亮。 */
+	--fc-primary: color-mix(in srgb, var(--interactive-accent) 60%, var(--fc-text));
+	--fc-primary-bg: color-mix(in srgb, var(--interactive-accent) 18%, var(--fc-surface-card));
+	--fc-primary-hover: color-mix(in srgb, var(--interactive-accent) 26%, var(--fc-surface-card));
+	--fc-primary-text: var(--fc-text);
 	--fc-danger: var(--fc-red);
 
 	/* ── 表面层级（画布 → 区块 → 卡片 → 浮层 → 控件）───────────── */
@@ -76,7 +78,7 @@
 		var(--background-secondary) 30%,
 		var(--background-primary) 70%
 	);
-	--fc-bg-panel-soft: color-mix(in srgb, var(--interactive-normal) 80%, var(--text-normal) 20%);
+	--fc-bg-panel-soft: color-mix(in srgb, var(--fc-surface-card) 92%, var(--fc-text));
 
 	/* 画布保持纯粹的系统底层色 */
 	--fc-surface-canvas: var(--background-secondary);
@@ -91,7 +93,7 @@
 	--fc-surface-raised: color-mix(in srgb, var(--background-primary) 82%, var(--text-normal) 18%);
 
 	/* 控件底色加深，增强轮廓识别度 */
-	--fc-surface-control: color-mix(in srgb, var(--interactive-normal) 85%, var(--text-normal) 15%);
+	--fc-surface-control: color-mix(in srgb, var(--fc-surface-card) 94%, var(--fc-text));
 	--fc-surface-header-status: color-mix(
 		in srgb,
 		var(--background-modifier-hover) 80%,
@@ -121,7 +123,7 @@
 
 	/* ── 控件表面与边框 ──────────────────────────────────────── */
 	--fc-control-bg: var(--fc-surface-control);
-	--fc-control-bg-hover: var(--interactive-hover);
+	--fc-control-bg-hover: color-mix(in srgb, var(--fc-surface-card) 89%, var(--fc-text));
 	--fc-control-border: var(--fc-line);
 	--fc-control-border-hover: color-mix(
 		in srgb,
@@ -142,9 +144,9 @@
 	--fc-input-border-focus: var(--fc-control-border-selected);
 
 	/* ── 首页主操作（学习 / 刷题）────────────────────────────── */
-	--fc-action-study-start: var(--interactive-accent);
-	--fc-action-study-end: var(--interactive-accent-hover);
-	--fc-action-study-text: var(--text-on-accent);
+	--fc-action-study-start: var(--fc-primary-bg);
+	--fc-action-study-end: var(--fc-primary-hover);
+	--fc-action-study-text: var(--fc-primary-text);
 	/* 第二主题色（刷题按钮文字/描边）：取主题自带的 --secondary-color，随主题色联动；
 	   未定义该变量的主题退回“主题蓝淡化”的淡蓝 */
 	--fc-secondary: var(
@@ -201,7 +203,6 @@
 	/* ── 亮色模式微调：降低阴影浓度，轻微通透不显脏重 ─────────────────── */
 	.theme-light &,
 	&.theme-light {
-		--fc-primary-text: color-mix(in srgb, var(--fc-text) 96%, rgb(var(--fc-black-rgb)));
 		--fc-shadow-sm: 0 1px 2px rgba(var(--fc-black-rgb), 0.03);
 		--fc-shadow-card:
 			0 1px 3px rgba(var(--fc-black-rgb), 0.04), 0 1px 2px rgba(var(--fc-black-rgb), 0.02);

@@ -67,12 +67,12 @@
 		font-weight: var(--fc-weight-semibold);
 	}
 
-	// Solid: one clear focal point per action group.
+	// Primary: a restrained theme tint with a clear accent edge.
 	&:where(.flashcard-btn-primary) {
-		--fc-button-bg: var(--fc-primary);
+		--fc-button-bg: var(--fc-primary-bg);
 		--fc-button-bg-hover: var(--fc-primary-hover);
-		--fc-button-border: color-mix(in srgb, var(--fc-primary) 86%, var(--fc-text));
-		--fc-button-border-hover: var(--fc-primary-hover);
+		--fc-button-border: color-mix(in srgb, var(--fc-primary) 48%, var(--fc-line));
+		--fc-button-border-hover: var(--fc-primary);
 		--fc-button-text: var(--fc-primary-text);
 		--fc-button-shadow:
 			var(--fc-shadow-sm), inset 0 1px 0 rgba(var(--fc-white-rgb), 0.18),

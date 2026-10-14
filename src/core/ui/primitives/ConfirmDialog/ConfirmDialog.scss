@@ -118,12 +118,12 @@
 
 		&-primary {
 			border-color: var(--fc-primary);
-			background: var(--fc-primary);
+			background: var(--fc-primary-bg);
 			color: var(--fc-primary-text);
 
 			&:hover:not(:disabled),
 			&:focus-visible {
-				border-color: var(--fc-primary-hover);
+				border-color: var(--fc-primary);
 				background: var(--fc-primary-hover);
 				color: var(--fc-primary-text);
 			}
