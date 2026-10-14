@@ -51,6 +51,33 @@ function activity(
 }
 
 describe("daily learning activity", () => {
+	it("shares one deeply frozen footprint per local date and invalidates for activity, date, and timezone", () => {
+		const now = new Date(2026, 9, 14, 12);
+		const activity = restoreDailyLearningActivity(undefined);
+		const first = activity.footprint(now);
+		expect(activity.footprint(new Date(2026, 9, 14, 23))).toBe(first);
+		expect(Object.isFrozen(first)).toBe(true);
+		expect(Object.isFrozen(first.today.answers)).toBe(true);
+		expect(Object.isFrozen(first.weeks[0]!.days[0]!.activity.seconds)).toBe(true);
+		expect(Reflect.set(first.today.seconds, "study", 999)).toBe(false);
+		expect(Reflect.set(first.weeks[0]!.days[0]!, "level", 4)).toBe(false);
+		const updated = activity.record({
+			kind: "word-list",
+			durationSeconds: 10,
+			occurredAt: now.getTime(),
+		});
+		expect(updated.footprint(now)).not.toBe(first);
+		expect(updated.footprint(now).todayTotalSeconds).toBe(10);
+		expect(first.todayTotalSeconds).toBe(0);
+		const nextDay = activity.footprint(new Date(2026, 9, 15));
+		expect(nextDay).not.toBe(first);
+		expect(nextDay.today.date).toBe("2026-10-15");
+		const changedZone = new Date(now);
+		changedZone.getTimezoneOffset = () => now.getTimezoneOffset() + 60;
+		const beforeZone = activity.footprint(now);
+		expect(activity.footprint(changedZone)).not.toBe(beforeZone);
+	});
+
 	it("records a completed session as an immutable Daily learning activity candidate", () => {
 		const current = restoreDailyLearningActivity([]);
 		const next = current.record({

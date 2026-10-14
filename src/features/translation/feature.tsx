@@ -119,11 +119,11 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 				() => host.settings.read().language,
 				() => host.settingsTab.refresh(TRANSLATION_SECTION_ID),
 			);
-			let detachOpenView: (() => void) | null = null;
+			const openViews = new Set<() => void>();
 			lifetime.defer(() => {
 				editor.hide();
-				detachOpenView?.();
-				detachOpenView = null;
+				for (const detach of openViews) detach();
+				openViews.clear();
 				active = null;
 			});
 
@@ -136,12 +136,15 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 					readSettings: () => host.settings.read(),
 					renderErrorMessage: (language) =>
 						createSharedTranslator(language)("notice.viewRenderFailed"),
-					onOpen: () => {
-						detachOpenView = translation.attachView();
-					},
-					onClose: () => {
-						detachOpenView?.();
-						detachOpenView = null;
+					acquire: () => {
+						const detach = translation.attachView();
+						openViews.add(detach);
+						return {
+							resource: undefined,
+							dispose: () => {
+								if (openViews.delete(detach)) detach();
+							},
+						};
 					},
 					render: ({ language }) => (
 						<TranslatorView

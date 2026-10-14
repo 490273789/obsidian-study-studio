@@ -303,7 +303,7 @@ class DictionaryQuerySessionModule implements DictionaryQuerySession {
 				text: this.state.query,
 			});
 			if (generation !== this.requestGeneration || this.disposed) return;
-			sourceState.result = result;
+			sourceState.result = freezeDictionaryResult(result);
 			const activeSection = result.sections.findIndex(
 				(section) => section.presentation === "tab",
 			);
@@ -335,7 +335,7 @@ class DictionaryQuerySessionModule implements DictionaryQuerySession {
 				id: source.id,
 				kind: source.kind,
 				label: source.label,
-				result: result ? freezeDictionaryResult(result) : null,
+				result,
 				status: source.status,
 			};
 		});

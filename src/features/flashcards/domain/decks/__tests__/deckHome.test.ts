@@ -213,6 +213,87 @@ describe("DeckHome", () => {
 		events = [];
 	});
 
+	it("counts only learned, stable, spellable challenge identities", () => {
+		const deck = makeDeck();
+		deck.cards = [
+			deck.cards[0]!,
+			{ ...deck.cards[0]!, id: "legacy::0" },
+			{ ...deck.cards[1]!, fsrsCard: { ...deck.cards[1]!.fsrsCard, state: State.Review } },
+			{ ...deck.cards[1]!, front: "valid" },
+		];
+		const repository = new MemoryRepository(
+			[deck],
+			makeSettings({ wordLearningDecks: { [deck.id]: true } }),
+		);
+		const home = createDeckHome({
+			repository,
+			identity: makeIdentity(),
+			saveSettingsPatch: vi.fn(),
+			exportDeck: vi.fn(),
+			report: vi.fn(),
+		});
+		expect(home.getSnapshot().challenge.eligibleCount).toBe(1);
+		home.dispose();
+	});
+
+	it("reuses challenge counts across local publications and invalidates changed decks and enable flags", async () => {
+		const changed = makeDeck("notes/changed.md");
+		const untouched = makeDeck("notes/untouched.md");
+		let untouchedFrontReads = 0;
+		const front = untouched.cards[0]!.front;
+		Object.defineProperty(untouched.cards[0]!, "front", {
+			enumerable: true,
+			get: () => {
+				untouchedFrontReads++;
+				return front;
+			},
+		});
+		const repository = new MemoryRepository(
+			[changed, untouched],
+			makeSettings({
+				wordLearningDecks: { [changed.id]: true, [untouched.id]: true },
+			}),
+		);
+		const home = createDeckHome({
+			repository,
+			identity: makeIdentity(),
+			saveSettingsPatch: vi.fn(),
+			exportDeck: vi.fn(),
+			report: vi.fn(),
+		});
+		expect(home.getSnapshot().challenge.eligibleCount).toBe(2);
+		untouchedFrontReads = 0;
+		for (let index = 0; index < 20; index++) {
+			await home.act({ kind: "release-owner", ownerId: "test" });
+		}
+		expect(untouchedFrontReads).toBe(0);
+		repository.commit(() => {
+			repository.decks = [
+				{
+					...changed,
+					cards: changed.cards.map((card) => ({
+						...card,
+						fsrsCard: { ...card.fsrsCard, state: State.New },
+					})),
+				},
+				untouched,
+			];
+		});
+		expect(home.getSnapshot().challenge.eligibleCount).toBe(1);
+		expect(untouchedFrontReads).toBe(0);
+		repository.commit(() => {
+			repository.settings = makeSettings({ wordLearningDecks: {} });
+		});
+		expect(home.getSnapshot().challenge.eligibleCount).toBe(0);
+		repository.commit(() => {
+			repository.decks = [untouched];
+			repository.settings = makeSettings({ wordLearningDecks: { [untouched.id]: true } });
+		});
+		expect(home.getSnapshot().challenge.eligibleCount).toBe(1);
+		expect(untouchedFrontReads).toBeGreaterThan(0);
+		home.dispose();
+	});
+
 	it("publishes a purpose-built home read model with centralized spelling readiness", () => {
 		const deck = makeDeck();
 		const repository = new MemoryRepository(

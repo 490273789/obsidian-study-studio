@@ -10,6 +10,68 @@ import {
 } from "../types";
 
 describe("dictionary query session", () => {
+	it("keeps large immutable results out of input snapshot work", async () => {
+		const sources = ["first", "second", "third"].map((id) => ({
+			id,
+			kind: "local" as const,
+			label: id,
+			enabled: true,
+		}));
+		const settings = dictionarySettings(sources);
+		const session = createDictionaryQuerySession({
+			settings: settings.store,
+			notify: vi.fn(),
+			aiEngineInfo: () => ({ configId: null, name: null }),
+			resolveSource: (source) =>
+				dictionarySource(source.id, source.kind, source.label, async (word) => ({
+					...result(source.id, source.label, word),
+					sections: [
+						{
+							title: "Definitions",
+							presentation: "stack",
+							content: {
+								kind: "ai-definitions",
+								definitions: Array.from({ length: 50 }, (_, i) => ({
+									partOfSpeech: "noun",
+									meaning: `${i}`,
+									explanation: "Meaning",
+									synonyms: ["term"],
+									antonyms: [],
+									examples: Array.from({ length: 10 }, () => ({
+										sentence: word,
+										translation: "词",
+									})),
+								})),
+							},
+						},
+					],
+				})),
+		});
+		await session.send({ type: "lookup", query: "word" });
+		const first = session.getSnapshot();
+		const freeze = vi.spyOn(Object, "freeze");
+		try {
+			for (let i = 0; i < 20; i++)
+				await session.send({ type: "change-input", value: `word${i}` });
+			console.info(
+				`dictionary input benchmark: 3 sources × 50 senses × 10 examples × 20 inputs: ${freeze.mock.calls.length} freezes`,
+			);
+			expect(freeze.mock.calls.length).toBe(20 * (sources.length + 3));
+		} finally {
+			freeze.mockRestore();
+		}
+		const latest = session.getSnapshot();
+		expect(latest.input).toBe("word19");
+		for (let i = 0; i < sources.length; i++) {
+			expect(latest.sources[i]?.result).toBe(first.sources[i]?.result);
+			const section = latest.sources[i]!.result!.sections[0]!;
+			expect(Object.isFrozen(section.content)).toBe(true);
+			if (section.content.kind === "ai-definitions") {
+				expect(Object.isFrozen(section.content.definitions[0]?.examples[0])).toBe(true);
+			}
+		}
+	});
+
 	it("retires the old entry before history saves, preserves the chosen source, and resets chapters", async () => {
 		const settings = dictionarySettings([
 			{ enabled: true, id: "first", kind: "local", label: "First" },

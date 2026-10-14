@@ -127,14 +127,19 @@ export class DictionaryRuntime {
 			(source) => source.enabled && selected.has(source.id),
 		);
 		if (frozenSources.length === 0) return null;
+		// Snapshot configuration once for the accepted selection. Query sessions read
+		// this configuration; their only mutation (history) goes through the live store.
+		const copiedDictionary = structuredClone(currentDictionary);
 		const frozenDictionary: DictionarySettings = {
-			...structuredClone(currentDictionary),
-			sources: structuredClone(frozenSources),
+			...copiedDictionary,
+			sources: copiedDictionary.sources.filter(
+				(source) => source.enabled && selected.has(source.id),
+			),
 		};
 
 		const scopedSettings: DictionarySettingsStore = {
 			getDictionarySettings: () => ({
-				...structuredClone(frozenDictionary),
+				...frozenDictionary,
 				history: [...this.settings.getDictionarySettings().history],
 			}),
 			updateDictionarySettings: (mutate) => this.settings.updateDictionarySettings(mutate),

@@ -23,6 +23,8 @@ import type {
 	SynthesizedAudio,
 } from "./types";
 
+const CACHE_KEY_MEMO_LIMIT = 128;
+
 interface ActivePlayback {
 	cancel(): void;
 }
@@ -102,6 +104,7 @@ export function createPronunciationRuntime(
 
 class BrowserPronunciationRuntime implements PronunciationRuntime {
 	private settings: PronunciationSettings;
+	private readonly cacheKeys = new Map<string, Promise<string | null>>();
 	private readonly listeners = new Set<() => void>();
 	private voices: SpeechSynthesisVoice[] = [];
 	private voicesLoaded = false;
@@ -192,6 +195,7 @@ class BrowserPronunciationRuntime implements PronunciationRuntime {
 
 				this.stop();
 				this.settings = nextSettings;
+				this.cacheKeys.clear();
 				this.providerBlockedUntil.clear();
 				this.clearProviderCooldownTimers();
 				this.bump();
@@ -456,6 +460,7 @@ class BrowserPronunciationRuntime implements PronunciationRuntime {
 
 	dispose(): void {
 		this.stop();
+		this.cacheKeys.clear();
 		this.dependencies.speechSynthesis?.removeEventListener(
 			"voiceschanged",
 			this.voiceChangeListener,
@@ -717,14 +722,32 @@ class BrowserPronunciationRuntime implements PronunciationRuntime {
 		this.providerCooldownTimers.clear();
 	}
 
-	private async tryCreateCacheKey(
-		descriptor: PronunciationRequestDescriptor,
-	): Promise<string | null> {
-		try {
-			return await createPronunciationCacheKey(descriptor);
-		} catch {
-			return null;
+	private tryCreateCacheKey(descriptor: PronunciationRequestDescriptor): Promise<string | null> {
+		// Cache only the immutable descriptor hash. Audio presence, credentials and
+		// provider availability must still be checked on every call.
+		const identity = JSON.stringify([
+			descriptor.provider,
+			descriptor.variant,
+			descriptor.accent,
+			descriptor.rate,
+			descriptor.text,
+		]);
+		const cached = this.cacheKeys.get(identity);
+		if (cached) {
+			this.cacheKeys.delete(identity);
+			this.cacheKeys.set(identity, cached);
+			return cached;
 		}
+		const pending = createPronunciationCacheKey(descriptor).catch(() => {
+			// Missing Web Crypto or a transient failure must be retried next time.
+			if (this.cacheKeys.get(identity) === pending) this.cacheKeys.delete(identity);
+			return null;
+		});
+		this.cacheKeys.set(identity, pending);
+		if (this.cacheKeys.size > CACHE_KEY_MEMO_LIMIT) {
+			this.cacheKeys.delete(this.cacheKeys.keys().next().value!);
+		}
+		return pending;
 	}
 
 	private requestCacheUsageRefresh(): void {

@@ -47,13 +47,25 @@ export function selectEligibleChallengeCards(
 	return decks.flatMap((deck) => {
 		if (!wordLearningDecks[deck.id]) return [];
 		return deck.cards.flatMap((card) =>
-			card.fsrsCard.state !== State.New &&
-			isStableCardIdentity(card.id) &&
-			extractSpellingWord(card.front)
-				? [{ identity: card.id, originDeckId: deck.id }]
-				: [],
+			isEligibleChallengeCard(card) ? [{ identity: card.id, originDeckId: deck.id }] : [],
 		);
 	});
+}
+
+/** Count readiness without allocating a question reference for every eligible card. */
+export function countEligibleChallengeCards(deck: Deck, enabled: boolean): number {
+	if (!enabled) return 0;
+	let count = 0;
+	for (const card of deck.cards) if (isEligibleChallengeCard(card)) count++;
+	return count;
+}
+
+function isEligibleChallengeCard(card: FlashCard): boolean {
+	return (
+		card.fsrsCard.state !== State.New &&
+		isStableCardIdentity(card.id) &&
+		Boolean(extractSpellingWord(card.front))
+	);
 }
 
 export interface ChallengeFeedback {
@@ -610,7 +622,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object";
 }
 import { State } from "ts-fsrs";
-import type { Deck } from "../../../../core/shared/types";
+import type { Deck, FlashCard } from "../../../../core/shared/types";
 import { extractSpellingWord } from "../cards/spellingWord";
 import { isStableCardIdentity } from "../identity/cardIdentity";
 import type { LearningActivityRecord } from "../history/dailyLearningActivity";

@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState, useSyncExternalStore } from "react";
+import React, { memo, useCallback, useRef, useState, useSyncExternalStore } from "react";
 import { Bookmark, Copy, Play, RotateCcw, Search, Settings2, Sparkles, Trash2 } from "lucide-react";
 import type { DictionaryQuerySession } from "../domain/querySession";
 import type {
@@ -189,7 +189,7 @@ function AiSense({
 	);
 }
 
-function SectionContent({
+const SectionContent = memo(function SectionContent({
 	content,
 	word,
 	theme,
@@ -236,7 +236,7 @@ function SectionContent({
 			onLookup={onLookup}
 		/>
 	);
-}
+});
 
 export function DictionaryView({
 	query,
@@ -267,10 +267,13 @@ export function DictionaryView({
 		}
 	};
 
-	const lookupWord = (word: string): void => {
-		setCopyStatus(null);
-		void query.send({ type: "lookup", query: word });
-	};
+	const lookupWord = useCallback(
+		(word: string): void => {
+			setCopyStatus(null);
+			void query.send({ type: "lookup", query: word });
+		},
+		[query],
+	);
 
 	return (
 		<main

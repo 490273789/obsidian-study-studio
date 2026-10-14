@@ -306,6 +306,12 @@ export function restoreDailyLearningActivity(value: unknown): DailyLearningActiv
 }
 
 class ImmutableDailyLearningActivity implements DailyLearningActivity {
+	private cachedFootprint: {
+		date: string;
+		offset: number;
+		snapshot: LearningFootprintSnapshot;
+	} | null = null;
+
 	constructor(private readonly days: readonly DailyLearningActivityDay[]) {}
 
 	record(entry: LearningActivityRecord): DailyLearningActivity {
@@ -315,12 +321,40 @@ class ImmutableDailyLearningActivity implements DailyLearningActivity {
 
 	footprint(now: Date): LearningFootprintSnapshot {
 		if (!Number.isFinite(now.getTime())) throw new RangeError("Invalid footprint date");
-		return buildLearningFootprint(this.days, now);
+		const date = formatLocalDateKey(now);
+		const offset = now.getTimezoneOffset();
+		if (this.cachedFootprint?.date === date && this.cachedFootprint.offset === offset) {
+			return this.cachedFootprint.snapshot;
+		}
+		const snapshot = freezeLearningFootprint(buildLearningFootprint(this.days, now));
+		this.cachedFootprint = { date, offset, snapshot };
+		return snapshot;
 	}
 
 	toDocument(): DailyLearningActivityDay[] {
 		return this.days.map(cloneDailyLearningActivity);
 	}
+}
+
+function freezeLearningFootprint(snapshot: LearningFootprintSnapshot): LearningFootprintSnapshot {
+	const freezeActivity = (activity: DailyLearningActivityDay) => {
+		Object.freeze(activity.answers);
+		Object.freeze(activity.seconds);
+		Object.freeze(activity.completedAnswers);
+		Object.freeze(activity.completedSessions);
+		Object.freeze(activity);
+	};
+	freezeActivity(snapshot.today);
+	for (const week of snapshot.weeks) {
+		for (const day of week.days) {
+			freezeActivity(day.activity);
+			Object.freeze(day);
+		}
+		Object.freeze(week.days);
+		Object.freeze(week);
+	}
+	Object.freeze(snapshot.weeks);
+	return Object.freeze(snapshot);
 }
 
 function assertValidTimestamp(value: number): void {

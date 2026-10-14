@@ -3,6 +3,7 @@ import { DEFAULT_SETTINGS } from "../../../core/host/settingsSlices";
 import { translationStrings } from "../strings/translation";
 import { translationSettingsStrings } from "../strings/settings";
 import { Notice } from "obsidian";
+import { createReactItemView } from "../../../core/host/reactItemView";
 import { createTranslationFeature } from "../feature";
 import { createFakeWorkbenchHost } from "../../../core/host/__tests__/fakeWorkbenchHost";
 
@@ -12,11 +13,16 @@ vi.mock("obsidian", () => ({
 	requestUrl: vi.fn(),
 }));
 
+vi.mock("../../../core/host/reactItemView", () => ({
+	createReactItemView: vi.fn(() => () => ({})),
+}));
+
 const runtimeSpies = vi.hoisted(() => ({ instances: [] as unknown[] }));
 
 vi.mock("../domain/translationRuntime", () => ({
 	TranslationRuntime: class {
 		readonly prefill = vi.fn();
+		readonly attachView = vi.fn(() => vi.fn());
 		readonly dispose = vi.fn();
 		readonly subscribe = vi.fn(() => () => {});
 		readonly configure = vi.fn();
@@ -201,4 +207,38 @@ describe("translation feature", () => {
 				.calls,
 		).toHaveLength(1);
 	});
+});
+
+describe("translation view ownership", () => {
+	it.each([false, true])(
+		"releases both open views exactly once (close first = %s)",
+		(closeFirst) => {
+			const feature = createTranslationFeature({ ai: {} as never, net: {} as never });
+			const fake = createFakeWorkbenchHost("translation", enabledSettings);
+			feature.render(fake.host);
+			const calls = vi.mocked(createReactItemView).mock.calls;
+			const options = calls[calls.length - 1]![0];
+			const open = () => {
+				if (options.acquire) return options.acquire({} as never);
+				options.onOpen?.({} as never);
+				return { dispose: () => options.onClose?.() };
+			};
+			const first = open();
+			const second = open();
+			const runtime = runtimeSpies.instances[runtimeSpies.instances.length - 1] as {
+				attachView: ReturnType<typeof vi.fn>;
+			};
+			const [detachFirst, detachSecond] = runtime.attachView.mock.results.map(
+				(result) => result.value,
+			);
+			if (closeFirst) first.dispose();
+			expect(detachFirst).toHaveBeenCalledTimes(closeFirst ? 1 : 0);
+			expect(detachSecond).not.toHaveBeenCalled();
+			feature.stop();
+			first.dispose();
+			second.dispose();
+			expect(detachFirst).toHaveBeenCalledOnce();
+			expect(detachSecond).toHaveBeenCalledOnce();
+		},
+	);
 });

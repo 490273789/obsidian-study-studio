@@ -651,3 +651,145 @@ describe("pronunciation runtime order and resilience", () => {
 		runtime.dispose();
 	});
 });
+
+describe("pronunciation cache key reuse", () => {
+	it("reuses one digest for 100 capability checks without local voices", async () => {
+		const digest = vi.spyOn(crypto.subtle, "digest");
+		const cache = new MemoryPronunciationAudioCache();
+		const get = vi.spyOn(cache, "get");
+		const runtime = createPronunciationRuntime(makeApp(), makeSettings(), {
+			speechSynthesis: null,
+			cache,
+		});
+		try {
+			for (let index = 0; index < 100; index++) {
+				// oxlint-disable-next-line no-await-in-loop -- measures repeated settled UI checks.
+				expect(await runtime.canSpeak("hello")).toBe(true);
+			}
+			expect(digest).toHaveBeenCalledTimes(1);
+			expect(get).toHaveBeenCalledTimes(100);
+		} finally {
+			runtime.dispose();
+			digest.mockRestore();
+		}
+	});
+});
+
+it("shares in-flight hashes while reading live credentials, connectivity and audio cache", async () => {
+	const digest = vi.spyOn(crypto.subtle, "digest");
+	const cache = new MemoryPronunciationAudioCache();
+	let secret: string | null = "secret";
+	let online = true;
+	const runtime = createPronunciationRuntime(makeApp(), makeSettings(), {
+		speechSynthesis: null,
+		cache,
+		net: { ...makeApp(), readSecret: () => secret },
+		isOnline: () => online,
+		createAudio: makeAudioFactory(),
+		createObjectUrl: () => "blob:test",
+		revokeObjectUrl: vi.fn(),
+	});
+	try {
+		expect(
+			await Promise.all(Array.from({ length: 20 }, () => runtime.canSpeak("hello"))),
+		).toEqual(Array(20).fill(true));
+		expect(digest).toHaveBeenCalledTimes(1);
+		secret = null;
+		expect(await runtime.canSpeak("hello")).toBe(false);
+		secret = "replacement";
+		online = false;
+		expect(await runtime.canSpeak("hello")).toBe(false);
+		online = true;
+		expect(await runtime.speak("hello", "manual")).toEqual({
+			status: "success",
+			source: "azure",
+		});
+		online = false;
+		expect(await runtime.canSpeak("hello")).toBe(true);
+		expect(await runtime.speak("hello", "manual")).toEqual({
+			status: "success",
+			source: "cache",
+		});
+		await runtime.clearCache();
+		expect(await runtime.canSpeak("hello")).toBe(false);
+		expect(digest).toHaveBeenCalledTimes(1);
+	} finally {
+		runtime.dispose();
+		digest.mockRestore();
+	}
+});
+
+it("uses distinct descriptor hashes for text, system accent and committed settings", async () => {
+	const digest = vi.spyOn(crypto.subtle, "digest");
+	let language = "en-US";
+	const runtime = createPronunciationRuntime(makeApp(), makeSettings({ accent: "system" }), {
+		speechSynthesis: null,
+		getSystemLanguage: () => language,
+	});
+	try {
+		await runtime.canSpeak("hello");
+		await runtime.canSpeak("world");
+		language = "en-GB";
+		await runtime.canSpeak("hello");
+		await runtime.configure({ rate: "slow" });
+		await runtime.canSpeak("hello");
+		await runtime.configure({ onlineProvider: "openai", openaiSecretId: "openai-flashcard" });
+		await runtime.canSpeak("hello");
+		expect(digest).toHaveBeenCalledTimes(5);
+	} finally {
+		runtime.dispose();
+		digest.mockRestore();
+	}
+});
+
+it("retries a failed hash and bounds retained descriptors", async () => {
+	const digest = vi.spyOn(crypto.subtle, "digest");
+	digest.mockRejectedValueOnce(new Error("temporary crypto failure"));
+	const runtime = createPronunciationRuntime(makeApp(), makeSettings(), {
+		speechSynthesis: null,
+	});
+	try {
+		expect(await runtime.canSpeak("hello")).toBe(true);
+		expect(await runtime.canSpeak("hello")).toBe(true);
+		expect(digest).toHaveBeenCalledTimes(2);
+		for (let index = 0; index < 128; index++) {
+			// oxlint-disable-next-line no-await-in-loop -- fills the bounded memo in access order.
+			await runtime.canSpeak(
+				`word${String.fromCharCode(65 + Math.floor(index / 26))}${String.fromCharCode(65 + (index % 26))}`,
+			);
+		}
+		await runtime.canSpeak("hello");
+		expect(digest).toHaveBeenCalledTimes(131);
+	} finally {
+		runtime.dispose();
+		digest.mockRestore();
+	}
+});
+
+it("keeps the committed descriptor after configuration fails and rereads cache after clear fails", async () => {
+	const digest = vi.spyOn(crypto.subtle, "digest");
+	const cache = new MemoryPronunciationAudioCache();
+	const runtime = createPronunciationRuntime(makeApp(), makeSettings(), {
+		speechSynthesis: null,
+		cache,
+		persistSettings: async () => {
+			throw new Error("storage unavailable");
+		},
+	});
+	try {
+		expect(await runtime.canSpeak("hello")).toBe(true);
+		expect(await runtime.configure({ rate: "slow" })).toEqual({
+			status: "failed",
+			reason: "persistence",
+		});
+		expect(runtime.getSnapshot().settings.rate).toBe(makeSettings().rate);
+		expect(await runtime.canSpeak("hello")).toBe(true);
+		vi.spyOn(cache, "clear").mockRejectedValueOnce(new Error("cache unavailable"));
+		expect(await runtime.clearCache()).toEqual({ status: "failed", reason: "storage" });
+		expect(await runtime.canSpeak("hello")).toBe(true);
+		expect(digest).toHaveBeenCalledTimes(1);
+	} finally {
+		runtime.dispose();
+		digest.mockRestore();
+	}
+});

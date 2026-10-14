@@ -1,5 +1,5 @@
 import {
-	selectEligibleChallengeCards,
+	countEligibleChallengeCards,
 	type ChallengeMode,
 	type ChallengeProgress,
 } from "../sessions/challengeSessionEngine";
@@ -352,6 +352,8 @@ class DefaultDeckHome implements DeckHome {
 		string,
 		{ deck: Deck; enabled: boolean; eligibility: SpellingDeckEligibility }
 	>();
+
+	private readonly challengeCountCache = new WeakMap<Deck, { enabled: boolean; count: number }>();
 
 	constructor(private readonly options: CreateDeckHomeOptions) {
 		this.clock = options.clock ?? systemClock;
@@ -889,7 +891,15 @@ class DefaultDeckHome implements DeckHome {
 		const resumable = round && round.completedLevelCount < round.levels.length;
 		const challenge: ChallengeReadiness = Object.freeze({
 			savedRoundId: round?.id ?? null,
-			eligibleCount: selectEligibleChallengeCards(decks, settings.wordLearningDecks).length,
+			eligibleCount: decks.reduce(
+				(count, deck) =>
+					count +
+					this.getChallengeCountCached(
+						deck,
+						settings.wordLearningDecks[deck.id] === true,
+					),
+				0,
+			),
 			lastMode: challengeProgress?.lastMode ?? "random",
 			round: resumable
 				? Object.freeze({
@@ -942,6 +952,14 @@ class DefaultDeckHome implements DeckHome {
 		const eligibility = evaluateSpellingDeckEligibility(deck, enabled);
 		this.deckEligibilityCache.set(deck.id, { deck, enabled, eligibility });
 		return eligibility;
+	}
+
+	private getChallengeCountCached(deck: Deck, enabled: boolean): number {
+		const cached = this.challengeCountCache.get(deck);
+		if (cached?.enabled === enabled) return cached.count;
+		const count = countEligibleChallengeCards(deck, enabled);
+		this.challengeCountCache.set(deck, { enabled, count });
+		return count;
 	}
 
 	private buildSettingsDraftSnapshot(
@@ -1073,6 +1091,8 @@ function areStringArraysEqual(left: readonly string[], right: readonly string[])
 	return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
+const frozenLearningFootprints = new WeakSet<LearningFootprintSnapshot>();
+
 function freezeDeckHomeSnapshot(snapshot: DeckHomeSnapshot): DeckHomeSnapshot {
 	for (const deck of snapshot.decks) {
 		Object.freeze(deck.stats);
@@ -1081,25 +1101,28 @@ function freezeDeckHomeSnapshot(snapshot: DeckHomeSnapshot): DeckHomeSnapshot {
 	}
 	Object.freeze(snapshot.decks);
 	Object.freeze(snapshot.totals);
-	Object.freeze(snapshot.learningFootprint.today.answers);
-	Object.freeze(snapshot.learningFootprint.today.seconds);
-	Object.freeze(snapshot.learningFootprint.today.completedAnswers);
-	Object.freeze(snapshot.learningFootprint.today.completedSessions);
-	Object.freeze(snapshot.learningFootprint.today);
-	for (const week of snapshot.learningFootprint.weeks) {
-		for (const day of week.days) {
-			Object.freeze(day.activity.answers);
-			Object.freeze(day.activity.seconds);
-			Object.freeze(day.activity.completedAnswers);
-			Object.freeze(day.activity.completedSessions);
-			Object.freeze(day.activity);
-			Object.freeze(day);
+	if (!frozenLearningFootprints.has(snapshot.learningFootprint)) {
+		Object.freeze(snapshot.learningFootprint.today.answers);
+		Object.freeze(snapshot.learningFootprint.today.seconds);
+		Object.freeze(snapshot.learningFootprint.today.completedAnswers);
+		Object.freeze(snapshot.learningFootprint.today.completedSessions);
+		Object.freeze(snapshot.learningFootprint.today);
+		for (const week of snapshot.learningFootprint.weeks) {
+			for (const day of week.days) {
+				Object.freeze(day.activity.answers);
+				Object.freeze(day.activity.seconds);
+				Object.freeze(day.activity.completedAnswers);
+				Object.freeze(day.activity.completedSessions);
+				Object.freeze(day.activity);
+				Object.freeze(day);
+			}
+			Object.freeze(week.days);
+			Object.freeze(week);
 		}
-		Object.freeze(week.days);
-		Object.freeze(week);
+		Object.freeze(snapshot.learningFootprint.weeks);
+		Object.freeze(snapshot.learningFootprint);
+		frozenLearningFootprints.add(snapshot.learningFootprint);
 	}
-	Object.freeze(snapshot.learningFootprint.weeks);
-	Object.freeze(snapshot.learningFootprint);
 	if (snapshot.migration) Object.freeze(snapshot.migration);
 	Object.freeze(snapshot.mutation);
 	Object.freeze(snapshot.export);

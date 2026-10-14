@@ -153,15 +153,56 @@ class BrowserPlayerViewDomMount implements PlayerViewDomMount {
 		const win = this.input.ownerDocument.defaultView;
 		if (!win) return;
 		this.input.beginPointer(kind, point(event));
-		const move = (next: PointerEvent) => this.input.movePointer(point(next));
-		const finish = () => {
+		let frame: number | null = null;
+		let pending: PointerPoint | null = null;
+		let furthest: PointerPoint | null = null;
+		let furthestDistance = -1;
+		const origin = point(event);
+		const pointerId = event.pointerId;
+		const flush = () => {
+			if (frame !== null) win.cancelAnimationFrame(frame);
+			frame = null;
+			const next = pending;
+			const excursion = furthest;
+			pending = null;
+			furthest = null;
+			furthestDistance = -1;
+			// Preserve a threshold-crossing excursion even if the pointer returned
+			// to its origin within this frame. The interaction owns the threshold.
+			if (excursion && excursion !== next) this.input.movePointer(excursion);
+			if (next) this.input.movePointer(next);
+		};
+		const move = (next: PointerEvent) => {
+			if (next.pointerId !== pointerId) return;
+			pending = point(next);
+			const distance = (pending.x - origin.x) ** 2 + (pending.y - origin.y) ** 2;
+			if (distance > furthestDistance) {
+				furthest = pending;
+				furthestDistance = distance;
+			}
+			if (!win.requestAnimationFrame) {
+				flush();
+			} else if (frame === null) {
+				frame = win.requestAnimationFrame(() => {
+					frame = null;
+					flush();
+				});
+			}
+		};
+		const finish = (next: PointerEvent) => {
+			if (next.pointerId !== pointerId) return;
+			flush();
 			this.input.finishPointer();
 			this.clearPointer();
 		};
 		win.addEventListener("pointermove", move);
-		win.addEventListener("pointerup", finish, { once: true });
-		win.addEventListener("pointercancel", finish, { once: true });
+		win.addEventListener("pointerup", finish);
+		win.addEventListener("pointercancel", finish);
 		this.pointerCleanup = () => {
+			if (frame !== null) win.cancelAnimationFrame(frame);
+			frame = null;
+			pending = null;
+			furthest = null;
 			win.removeEventListener("pointermove", move);
 			win.removeEventListener("pointerup", finish);
 			win.removeEventListener("pointercancel", finish);
