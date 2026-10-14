@@ -1,0 +1,413 @@
+@use "./mixins.scss" as *;
+
+/*
+ * Shared UI patterns.
+ *
+ * The workbench had two recurring shapes that every view was rebuilding by hand:
+ * a "lead" block that carries the page's single headline figure, and a list row
+ * whose state is readable before its text. Both are defined once here so pages
+ * stay consistent as they are migrated, and so a view stylesheet only keeps what
+ * is genuinely specific to that view.
+ *
+ * Consumer contract:
+ *   .fc-hero                 page lead block; owns the one large number
+ *   .fc-hero__label          eyebrow above the figure
+ *   .fc-hero__num            the figure itself (tabular)
+ *   .fc-hero__summary        supporting sentence under the figure
+ *   .fc-hero__side           trailing column for streaks / the primary action
+ *   .fc-num                  any other tabular figure
+ *   .fc-meter                thin ratio bar; set --meter-value (0-100)
+ *   .fc-meta > .fc-meta__text .fc-meta__dot   inline metadata with dot separators
+ *   .fc-rail-row[data-state] state rail: active | fresh | done
+ *   .fc-disclosure           collapsed-group header
+ *
+ * State is expressed as `data-state`, never as an extra class, so a row's
+ * semantics survive className composition.
+ */
+
+/* ── Hero (page lead) ────────────────────────────────────────────────────── */
+
+/*
+ * Exactly one of these per page. Its headline figure is the only element that
+ * gets display-scale type; everything else stays at `xs`-`sm` so the page has a
+ * single entry point. No shadow: hierarchy comes from the tinted surface and the
+ * accent border, per the flat-surface rule for in-flow blocks.
+ */
+.fc-hero {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--fc-space-6);
+	flex: none;
+	padding: var(--fc-space-5) var(--fc-space-6);
+	border: 1px solid rgba(var(--fc-cyan-rgb), 0.22);
+	border-radius: var(--fc-radius-lg);
+	background:
+		radial-gradient(120% 180% at 0% 0%, rgba(var(--fc-cyan-rgb), 0.1), transparent 62%),
+		var(--fc-surface-card);
+}
+
+.fc-hero__label {
+	color: var(--fc-muted);
+	font-size: var(--fc-font-xs);
+	letter-spacing: 0.04em;
+}
+
+.fc-hero__num {
+	display: flex;
+	align-items: baseline;
+	gap: var(--fc-space-2);
+	margin: var(--fc-space-half) 0 var(--fc-space-1);
+
+	b {
+		color: var(--fc-text);
+		font-family: var(--fc-font-data);
+		font-size: var(--fc-font-focus);
+		font-weight: var(--fc-weight-semibold);
+		font-variant-numeric: tabular-nums;
+		letter-spacing: -0.01em;
+		line-height: 1;
+	}
+
+	span {
+		color: var(--fc-muted);
+		font-size: var(--fc-font-sm);
+	}
+}
+
+.fc-hero__summary {
+	min-width: 0;
+	color: var(--fc-muted);
+	font-size: var(--fc-font-sm);
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.fc-hero__side {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: var(--fc-space-4);
+	flex: none;
+}
+
+/* ── Figures ─────────────────────────────────────────────────────────────── */
+
+/* Tabular so stacked rows line up on the decimal. Never carries colour alone. */
+.fc-num {
+	font-family: var(--fc-font-data);
+	font-variant-numeric: tabular-nums;
+	font-weight: var(--fc-weight-semibold);
+	line-height: 1.05;
+}
+
+/* ── Meter (ratio bar) ───────────────────────────────────────────────────── */
+
+/*
+ * Length carries the ratio so the accompanied numbers can stay small. Reach for
+ * this instead of an `a / b` fraction: a bare fraction gives both sides equal
+ * weight and reads as neither progress nor a count.
+ */
+.fc-meter {
+	--meter-width: 88px;
+	--meter-height: 4px;
+
+	width: var(--meter-width);
+	height: var(--meter-height);
+	border-radius: var(--fc-radius-pill);
+	background: color-mix(in srgb, var(--fc-text) 8%, transparent);
+	overflow: hidden;
+	flex: none;
+
+	> i {
+		display: block;
+		height: 100%;
+		border-radius: inherit;
+		background: var(--fc-primary);
+		transition: var(--fc-transition-progress);
+	}
+
+	&[data-tone="done"] > i {
+		background: var(--fc-lime);
+	}
+}
+
+/* ── Meta line ───────────────────────────────────────────────────────────── */
+
+.fc-meta {
+	display: flex;
+	align-items: center;
+	gap: var(--fc-space-2);
+	min-width: 0;
+	color: var(--fc-muted);
+	font-size: var(--fc-font-xs);
+}
+
+.fc-meta__text {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+.fc-meta__dot {
+	width: 3px;
+	height: 3px;
+	border-radius: 50%;
+	background: color-mix(in srgb, var(--fc-muted) 60%, transparent);
+	flex: none;
+}
+
+/* ── State rail row ──────────────────────────────────────────────────────── */
+
+/*
+ * A row's state must be legible before its text is read, so each state gets its
+ * own rail colour and level of de-emphasis. `active` is the working set; `fresh`
+ * has not started; `done` is finished and drops one visual level while staying
+ * interactive, because a finished row still owns its reviews.
+ */
+.fc-rail-row {
+	position: relative;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto auto;
+	align-items: center;
+	gap: var(--fc-space-4);
+	min-width: 0;
+	padding: var(--fc-space-3) var(--fc-space-3) var(--fc-space-3) var(--fc-space-4);
+	border: 1px solid var(--fc-line-soft);
+	border-radius: var(--fc-radius-md);
+	background: var(--fc-surface-card);
+	transition: var(--fc-transition-lift);
+
+	&::before {
+		content: "";
+		position: absolute;
+		inset-block: var(--fc-space-4);
+		inset-inline-start: 0;
+		width: 3px;
+		border-start-end-radius: 3px;
+		border-end-end-radius: 3px;
+		background: var(--fc-line);
+		transition: background var(--fc-motion-quick) ease;
+	}
+
+	&:hover {
+		border-color: var(--fc-line);
+		background: var(--fc-surface-raised);
+		transform: translateY(-1px);
+
+		&::before {
+			background: var(--fc-primary);
+		}
+	}
+
+	&:active {
+		transform: translateY(0);
+	}
+
+	&:focus-visible {
+		@include fc-focus-ring;
+	}
+}
+
+.fc-rail-row[data-state="active"]::before {
+	background: var(--fc-primary);
+}
+
+.fc-rail-row[data-state="fresh"]::before {
+	background: color-mix(in srgb, var(--fc-muted) 55%, transparent);
+}
+
+.fc-rail-row[data-state="done"] {
+	background: color-mix(in srgb, var(--fc-surface-card) 93%, transparent);
+
+	&::before {
+		background: var(--fc-lime);
+	}
+
+	.fc-rail-row__title {
+		color: var(--fc-muted);
+		font-weight: var(--fc-weight-medium);
+	}
+}
+
+/* The row's leading text block: title line, then its meta line. */
+.fc-rail-row__main {
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--fc-space-2);
+}
+
+.fc-rail-row__title {
+	min-width: 0;
+	color: var(--fc-text);
+	font-size: var(--fc-font-md);
+	font-weight: var(--fc-weight-semibold);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* The action-quantity column, e.g. "529 to learn". */
+.fc-rail-row__count {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 1px;
+	flex: none;
+	min-width: 64px;
+
+	b {
+		color: var(--fc-text);
+		font-family: var(--fc-font-data);
+		font-size: var(--fc-font-xl);
+		font-weight: var(--fc-weight-semibold);
+		font-variant-numeric: tabular-nums;
+		line-height: 1.05;
+	}
+
+	span {
+		color: var(--fc-faint);
+		font-size: var(--fc-font-2xs);
+		letter-spacing: 0.06em;
+	}
+}
+
+/* An untouched row's backlog is real but not yet pressing. */
+.fc-rail-row[data-state="fresh"] .fc-rail-row__count b {
+	color: var(--fc-muted);
+}
+
+.fc-rail-row__badge {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--fc-space-1);
+	color: var(--fc-lime);
+	font-size: var(--fc-font-xs);
+	font-weight: var(--fc-weight-medium);
+	white-space: nowrap;
+
+	svg {
+		flex: none;
+	}
+}
+
+/* Action cluster; stops the row's own click from firing. */
+.fc-rail-row__actions {
+	z-index: 2;
+	align-self: center;
+	display: flex;
+	align-items: center;
+	gap: var(--fc-space-2);
+	flex: none;
+
+	> .flashcard-btn {
+		font-size: var(--fc-font-xs);
+		min-width: 0;
+		white-space: nowrap;
+	}
+}
+
+/* ── Disclosure (collapsed group) ────────────────────────────────────────── */
+
+.fc-disclosure {
+	@include fc-button-reset;
+	@include fc-flex-row-center;
+
+	gap: var(--fc-space-2);
+	width: 100%;
+	padding: var(--fc-space-2) 1px;
+	color: var(--fc-muted);
+	font-size: var(--fc-font-xs);
+
+	&:hover {
+		color: var(--fc-text);
+	}
+
+	&:focus-visible {
+		@include fc-focus-ring;
+	}
+
+	svg {
+		flex: none;
+	}
+}
+
+/* Header row for a group of rows that sits below the working set. */
+.fc-group {
+	margin-top: var(--fc-space-2);
+	padding-top: var(--fc-space-2);
+	border-top: 1px solid var(--fc-line-soft);
+}
+
+.fc-group__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fc-space-2);
+	padding-top: var(--fc-space-2);
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+
+/* The lead block stacks before the rows do: its action must stay reachable. */
+@mixin fc-hero-stacked {
+	.fc-hero {
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--fc-space-4);
+		padding: var(--fc-space-4);
+	}
+
+	.fc-hero__side {
+		align-items: stretch;
+
+		> .flashcard-btn {
+			width: 100%;
+		}
+	}
+}
+
+/* Rows become two lines: identity + backlog, then a full-width action cluster. */
+@mixin fc-rail-row-stacked {
+	.fc-rail-row {
+		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-areas:
+			"main count"
+			"actions actions";
+		row-gap: var(--fc-space-3);
+		padding: var(--fc-space-3);
+	}
+
+	.fc-rail-row__main {
+		grid-area: main;
+	}
+
+	.fc-rail-row__count {
+		grid-area: count;
+		min-width: 0;
+	}
+
+	.fc-rail-row__actions {
+		grid-area: actions;
+		width: 100%;
+		align-self: stretch;
+		justify-content: flex-end;
+	}
+}
+
+@container flashcard-page (max-width: 768px) {
+	@include fc-rail-row-stacked;
+}
+
+@media (max-width: 768px) {
+	@include fc-rail-row-stacked;
+}
+
+@container flashcard-page (max-width: 640px) {
+	@include fc-hero-stacked;
+}
+
+@media (max-width: 640px) {
+	@include fc-hero-stacked;
+}

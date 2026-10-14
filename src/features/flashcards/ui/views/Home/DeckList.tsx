@@ -18,10 +18,14 @@ import {
 	Brain,
 	Calculator,
 	ChartNoAxesColumn,
+	Check,
+	ChevronDown,
+	ChevronRight,
 	CirclePlay,
 	Ellipsis,
 	FileDown,
 	FileText,
+	Flame,
 	Inbox,
 	Keyboard,
 	Languages,
@@ -32,6 +36,7 @@ import {
 	Settings,
 	Sparkles,
 	Target,
+	Trophy,
 	TriangleAlert,
 	X,
 	type LucideIcon,
@@ -63,8 +68,33 @@ interface DeckActionItem {
 /** Stable identity so `DndContext` sees the same sensor list across renders. */
 const NO_SENSORS: SensorDescriptor<SensorOptions>[] = [];
 
+/**
+ * A deck's presentation state, derived only from the shared snapshot:
+ * - `done`   — nothing left to learn; the deck keeps its reviews.
+ * - `fresh`  — untouched, so progress is not worth rendering as a bar.
+ * - `active` — partly learned; the row leads with progress.
+ */
+type DeckVisualState = "active" | "fresh" | "done";
+
+function getDeckVisualState(deck: DeckHomeDeckSnapshot): DeckVisualState {
+	if (deck.stats.newCards <= 0) return "done";
+	if (deck.studyCount === 0 && deck.stats.newCards === deck.stats.totalCards) return "fresh";
+	return "active";
+}
+
+/** Counts are rendered in every row; cache the formatter the way the heatmap does. */
+const COUNT_FORMATTERS: Partial<Record<"zh" | "en", Intl.NumberFormat>> = {};
+
+function formatCount(language: "zh" | "en", value: number): string {
+	return (COUNT_FORMATTERS[language] ??= new Intl.NumberFormat(
+		language === "zh" ? "zh-CN" : "en-US",
+	)).format(value);
+}
+
 interface DeckCardProps {
 	deck: DeckHomeDeckSnapshot;
+	state: DeckVisualState;
+	language: "zh" | "en";
 	isRecentlyDropped: boolean;
 	isOverlayOpen: boolean;
 	onToggleOverlay: (deckId: string) => void;
@@ -80,6 +110,8 @@ interface DeckCardProps {
 
 const DeckCard = memo(function DeckCard({
 	deck,
+	state,
+	language,
 	isRecentlyDropped,
 	isOverlayOpen,
 	onToggleOverlay,
@@ -114,7 +146,11 @@ const DeckCard = memo(function DeckCard({
 	);
 	const totalCards = deck.stats.totalCards;
 	const newCards = deck.stats.newCards;
+	const learnedCards = Math.max(0, totalCards - newCards);
+	const progressPercent = totalCards > 0 ? Math.min(100, (learnedCards / totalCards) * 100) : 0;
 	const spellingReady = deck.spelling.ready;
+	const isDone = state === "done";
+
 	const moreActions: DeckActionItem[] = [
 		{
 			key: "export",
@@ -146,28 +182,54 @@ const DeckCard = memo(function DeckCard({
 		},
 	];
 
+	/**
+	 * The row itself is the pointer affordance. Drag activation needs 6px of
+	 * travel (`useSortableSensors`), so a plain click never starts a drag and
+	 * reaches this handler; the action cluster stops propagation.
+	 *
+	 * Keyboard deliberately stays with dnd-kit: `listeners` binds Space/Enter to
+	 * drag activation on this same element, so an `onKeyDown` here would either
+	 * be overridden or break keyboard reordering. The 学习 button below is the
+	 * keyboard path to the same destination.
+	 */
+	const handleOpenDeck = useCallback(() => {
+		if (isOverlayOpen) return;
+		onNavigate("study", deck.id);
+	}, [isOverlayOpen, onNavigate, deck.id]);
+
 	return (
+		// oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- dnd-kit owns the keyboard contract here: it supplies role="button", tabIndex and Space/Enter drag handling via `attributes`/`listeners`, and the 学习 button is the keyboard route to the same destination.
 		<article
 			ref={setDragNodeRef}
 			className={cls(
-				"flashcard-deck-item fc-lift",
+				"flashcard-deck-item fc-rail-row",
 				styles.deckItem,
 				isOverlayOpen && styles.isOverlayOpen,
 				isDragging && styles.isDragging,
 			)}
 			data-deck-id={deck.id}
+			data-state={state}
 			style={{
 				transform: CSS.Transform.toString(transform),
 				transition: getDeckCardTransition(isDragging, isRecentlyDropped, transition),
 			}}
-			aria-label={t("home.reorderDeck", { deckName: deck.name })}
+			/* dnd-kit supplies `role="button"`, `tabIndex` and its drag keyboard
+			   handling here; spreading last would clobber `onClick`, so spread
+			   first and keep only the additions below. */
 			{...attributes}
 			{...listeners}
+			aria-label={t("home.openDeck", { deckName: deck.name })}
+			onClick={handleOpenDeck}
 		>
-			<div className={cls("flashcard-deck-main", styles.deckMain)}>
+			<div className={cls("flashcard-deck-main fc-rail-row__main", styles.deckMain)}>
 				<div className={cls("flashcard-deck-headline", styles.deckHeadline)}>
 					<div className={cls("flashcard-deck-name-wrapper", styles.deckNameWrapper)}>
-						<span className={cls("flashcard-deck-name", styles.deckName)}>
+						<span
+							className={cls(
+								"flashcard-deck-name fc-rail-row__title",
+								styles.deckName,
+							)}
+						>
 							{deck.name}
 						</span>
 						<span className={cls("flashcard-deck-tag", styles.deckTag)}>
@@ -180,56 +242,126 @@ const DeckCard = memo(function DeckCard({
 									styles.wordLearningBadge,
 									!spellingReady && styles.isInvalid,
 								)}
+								title={
+									spellingReady
+										? t("home.wordLearningDeck")
+										: t("home.wordLearningNeedsRepair")
+								}
 							>
 								{spellingReady ? (
-									<Keyboard size={13} />
+									<Keyboard size={12} />
 								) : (
-									<TriangleAlert size={13} />
+									<TriangleAlert size={12} />
 								)}
 								{spellingReady
-									? t("home.wordLearningDeck")
+									? t("home.supportsSpelling")
 									: t("home.wordLearningNeedsRepair")}
 							</span>
 						)}
 					</div>
-					<div className={cls("flashcard-deck-stats", styles.deckStats)}>
-						<div className={cls("flashcard-deck-stat", styles.deckStat)}>
-							<span
-								className={cls(
-									"flashcard-deck-stat-value blue",
-									styles.deckStatValue,
+
+					<div className={cls("flashcard-deck-meta fc-meta", styles.deckMeta)}>
+						{state === "active" && (
+							<>
+								<span
+									className={cls("fc-meter", styles.deckBar)}
+									aria-hidden="true"
+								>
+									<i style={{ width: `${progressPercent}%` }} />
+								</span>
+								<span className={cls("fc-meta__text", styles.deckMetaText)}>
+									{t("home.deckLearnedProgress", {
+										learned: formatCount(language, learnedCards),
+										total: formatCount(language, totalCards),
+									})}
+								</span>
+								{deck.studyCount > 0 && (
+									<>
+										<span
+											className={cls("fc-meta__dot", styles.dot)}
+											aria-hidden="true"
+										/>
+										<span className={cls("fc-meta__text", styles.deckMetaText)}>
+											{t("home.studyCountValue", {
+												count: deck.studyCount,
+											})}
+										</span>
+									</>
 								)}
-							>
-								{newCards}
-							</span>
-							/
-							<span
-								className={cls(
-									"flashcard-deck-stat-value orange",
-									styles.deckStatValue,
+							</>
+						)}
+						{state === "fresh" && (
+							<>
+								<span className={cls("fc-meta__text", styles.deckMetaText)}>
+									{t("home.deckNotStarted")}
+								</span>
+								<span
+									className={cls("fc-meta__dot", styles.dot)}
+									aria-hidden="true"
+								/>
+								<span className={cls("fc-meta__text", styles.deckMetaText)}>
+									{t("home.deckTotalCards", {
+										count: formatCount(language, totalCards),
+									})}
+								</span>
+							</>
+						)}
+						{state === "done" && (
+							<>
+								<span
+									className={cls("fc-meter", styles.deckBar)}
+									data-tone="done"
+									aria-hidden="true"
+								>
+									<i style={{ width: "100%" }} />
+								</span>
+								<span className={cls("fc-meta__text", styles.deckMetaText)}>
+									{t("home.deckLearnedProgress", {
+										learned: formatCount(language, totalCards),
+										total: formatCount(language, totalCards),
+									})}
+								</span>
+								{deck.studyCount > 0 && (
+									<>
+										<span
+											className={cls("fc-meta__dot", styles.dot)}
+											aria-hidden="true"
+										/>
+										<span className={cls("fc-meta__text", styles.deckMetaText)}>
+											{t("home.studyCountValue", {
+												count: deck.studyCount,
+											})}
+										</span>
+									</>
 								)}
-							>
-								{totalCards}
-							</span>
-						</div>
-						<div className={cls("flashcard-deck-stat", styles.deckStat)}>
-							<span
-								className={cls("flashcard-deck-stat-label", styles.deckStatLabel)}
-							>
-								{t("home.studyCountValue", {
-									count: deck.studyCount,
-								})}
-							</span>
-						</div>
+							</>
+						)}
 					</div>
 				</div>
 			</div>
 
+			<div className={cls("flashcard-deck-count fc-rail-row__count", styles.deckCount)}>
+				{isDone ? (
+					<span
+						className={cls("flashcard-deck-done fc-rail-row__badge", styles.deckDone)}
+					>
+						<Check size={13} aria-hidden="true" />
+						{t("home.deckCompleted")}
+					</span>
+				) : (
+					<>
+						<b className={styles.deckCountValue}>{formatCount(language, newCards)}</b>
+						<span className={styles.deckCountLabel}>{t("home.deckPending")}</span>
+					</>
+				)}
+			</div>
+
 			<div
-				className={cls("flashcard-deck-side", styles.deckSide)}
+				className={cls("flashcard-deck-side fc-rail-row__actions", styles.deckSide)}
 				role="presentation"
 				onMouseDown={(event) => event.stopPropagation()}
 				onTouchStart={(event) => event.stopPropagation()}
+				onClick={(event) => event.stopPropagation()}
 			>
 				<div
 					className={cls(
@@ -241,18 +373,20 @@ const DeckCard = memo(function DeckCard({
 				>
 					<FlashcardButton
 						variant="primary"
+						size="sm"
 						className="flashcard-deck-action-study"
-						icon={Brain}
+						icon={isDone ? RefreshCcw : Brain}
 						onClick={(event) => {
 							event.stopPropagation();
 							onNavigate("study", deck.id);
 						}}
-						title={t("home.studyModeTitle")}
+						title={isDone ? t("home.review") : t("home.studyModeTitle")}
 					>
-						<span>{t("home.study")}</span>
+						<span>{isDone ? t("home.review") : t("home.study")}</span>
 					</FlashcardButton>
 					<FlashcardButton
 						variant="secondary"
+						size="sm"
 						className="flashcard-deck-action-practice"
 						icon={Target}
 						onClick={(event) => {
@@ -265,8 +399,9 @@ const DeckCard = memo(function DeckCard({
 					</FlashcardButton>
 					{deck.spelling.enabled && (
 						<FlashcardButton
-							variant="secondary"
-							className="flashcard-deck-action-spelling"
+							preset="icon"
+							variant="ghost"
+							className={cls("flashcard-deck-action-spelling", styles.actionSpelling)}
 							icon={Keyboard}
 							onClick={(event) => {
 								event.stopPropagation();
@@ -284,9 +419,8 @@ const DeckCard = memo(function DeckCard({
 											count: deck.spelling.issueCount,
 										})
 							}
-						>
-							<span>{t("home.spelling")}</span>
-						</FlashcardButton>
+							aria-label={t("home.spelling")}
+						/>
 					)}
 					<FlashcardButton
 						preset="icon"
@@ -304,12 +438,17 @@ const DeckCard = memo(function DeckCard({
 			</div>
 
 			{isOverlayOpen && (
-				<div className={cls("flashcard-deck-overlay", styles.deckOverlay)}>
+				// oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- The overlay only stops the row's click from firing underneath it; every action inside is a real button and Escape is handled on the window.
+				<div
+					className={cls("flashcard-deck-overlay", styles.deckOverlay)}
+					onClick={(event) => event.stopPropagation()}
+				>
 					<div className={cls("flashcard-deck-overlay-actions", styles.overlayActions)}>
 						{moreActions.map((action) => (
 							<FlashcardButton
 								key={action.key}
 								variant="secondary"
+								size="sm"
 								className={cls(
 									"flashcard-deck-overlay-action",
 									styles.overlayActionBtn,
@@ -399,6 +538,7 @@ export const DeckList = React.memo(function DeckList({
 	const [isOrderSaving, setIsOrderSaving] = useState(false);
 	const [recentlyDroppedDeckId, setRecentlyDroppedDeckId] = useState<string | null>(null);
 	const [activeOverlayDeckId, setActiveOverlayDeckId] = useState<string | null>(null);
+	const [isCompletedGroupOpen, setIsCompletedGroupOpen] = useState(false);
 
 	const handleToggleOverlay = useCallback((deckId: string) => {
 		setActiveOverlayDeckId((current) => (current === deckId ? null : deckId));
@@ -433,11 +573,28 @@ export const DeckList = React.memo(function DeckList({
 		};
 	}, [activeOverlayDeckId]);
 
-	const snapshotDeckIds = useMemo(() => snapshot.decks.map((deck) => deck.id), [snapshot.decks]);
-	const visibleDeckIds = previewDeckIds ?? snapshotDeckIds;
+	/**
+	 * Finished decks leave the sortable list so the working set stays readable.
+	 * The split is presentation only: `deckOrder` still holds every deck id, and
+	 * `persistDeckOrder` writes the reordered working set back with the finished
+	 * decks appended in their existing order.
+	 */
+	const { sortableDecks, completedDecks } = useMemo(() => {
+		const sortable: DeckHomeDeckSnapshot[] = [];
+		const completed: DeckHomeDeckSnapshot[] = [];
+		for (const deck of snapshot.decks) {
+			if (getDeckVisualState(deck) === "done") completed.push(deck);
+			else sortable.push(deck);
+		}
+		return { sortableDecks: sortable, completedDecks: completed };
+	}, [snapshot.decks]);
+
+	const sortableDeckIds = useMemo(() => sortableDecks.map((deck) => deck.id), [sortableDecks]);
+	const completedDeckIds = useMemo(() => completedDecks.map((deck) => deck.id), [completedDecks]);
+	const visibleDeckIds = previewDeckIds ?? sortableDeckIds;
 	const visibleDecks = useMemo(
-		() => orderDeckSnapshots(snapshot.decks, visibleDeckIds),
-		[snapshot.decks, visibleDeckIds],
+		() => orderDeckSnapshots(sortableDecks, visibleDeckIds),
+		[sortableDecks, visibleDeckIds],
 	);
 	const sensors = useSortableSensors();
 	/**
@@ -453,13 +610,13 @@ export const DeckList = React.memo(function DeckList({
 		async (deckIds: string[]) => {
 			setIsOrderSaving(true);
 			try {
-				await home.act({ kind: "reorder", deckIds });
+				await home.act({ kind: "reorder", deckIds: [...deckIds, ...completedDeckIds] });
 			} finally {
 				setPreviewDeckIds(null);
 				setIsOrderSaving(false);
 			}
 		},
-		[home],
+		[home, completedDeckIds],
 	);
 
 	const handleDragEnd = useCallback(
@@ -498,6 +655,28 @@ export const DeckList = React.memo(function DeckList({
 		[home, ownerId],
 	);
 
+	/**
+	 * The hero leads with the deck a returning learner should resume: a deck that
+	 * has been started outranks an untouched one, and the largest backlog wins
+	 * inside each tier.
+	 */
+	const nextDeck = useMemo(() => {
+		let started: DeckHomeDeckSnapshot | null = null;
+		let untouched: DeckHomeDeckSnapshot | null = null;
+		for (const deck of sortableDecks) {
+			if (deck.stats.newCards <= 0) continue;
+			if (deck.studyCount > 0) {
+				if (!started || deck.stats.newCards > started.stats.newCards) started = deck;
+			} else if (!untouched || deck.stats.newCards > untouched.stats.newCards) {
+				untouched = deck;
+			}
+		}
+		return started ?? untouched;
+	}, [sortableDecks]);
+
+	const learnedCards = snapshot.totals.totalCards - snapshot.totals.newCards;
+	const streak = snapshot.learningFootprint;
+
 	return (
 		<>
 			<div className="flashcard-home fc-page fc-page--fill">
@@ -508,63 +687,78 @@ export const DeckList = React.memo(function DeckList({
 						<span
 							className={styles.totalBadge}
 							title={t("home.totalCardsTooltip", {
-								count: snapshot.totals.totalCards,
+								count: formatCount(language, snapshot.totals.totalCards),
 							})}
 						>
 							<Calculator size={12} className={styles.totalBadgeIcon} />
 							<span>
 								{t("home.totalCardsBadge", {
-									count: snapshot.totals.totalCards,
+									count: formatCount(language, snapshot.totals.totalCards),
 								})}
 							</span>
 						</span>
 					}
 					right={
 						<div className="flashcard-header-actions">
-							{onOpenTranslation && (
+							{(onOpenTranslation || onOpenDictionary || onOpenVideoPlayer) && (
+								<>
+									<div className={styles.headerGroup}>
+										{onOpenTranslation && (
+											<FlashcardButton
+												preset="icon"
+												icon={Languages}
+												onClick={onOpenTranslation}
+												title={t("home.aiTranslationTitle")}
+												aria-label={t("home.aiTranslationTitle")}
+											/>
+										)}
+										{onOpenDictionary && (
+											<FlashcardButton
+												preset="icon"
+												icon={BookA}
+												onClick={onOpenDictionary}
+												title={t("home.dictionaryTitle")}
+												aria-label={t("home.dictionaryTitle")}
+											/>
+										)}
+										{onOpenVideoPlayer && (
+											<FlashcardButton
+												preset="icon"
+												icon={CirclePlay}
+												onClick={onOpenVideoPlayer}
+												title={t("home.videoPlayerTitle")}
+												aria-label={t("home.videoPlayerTitle")}
+											/>
+										)}
+									</div>
+									<span className={styles.headerDivider} aria-hidden="true" />
+								</>
+							)}
+							<div className={styles.headerGroup}>
 								<FlashcardButton
 									preset="icon"
-									icon={Languages}
-									onClick={onOpenTranslation}
-									title={t("home.aiTranslationTitle")}
+									icon={ChartNoAxesColumn}
+									onClick={onOpenStats}
+									title={t("home.statsTitle")}
+									aria-label={t("home.statsTitle")}
 								/>
-							)}
-							{onOpenDictionary && (
 								<FlashcardButton
 									preset="icon"
-									icon={BookA}
-									onClick={onOpenDictionary}
-									title={t("home.dictionaryTitle")}
+									icon={RefreshCcw}
+									onClick={() => void home.act({ kind: "refresh" })}
+									disabled={isMutationBusy}
+									title={t("home.refreshTitle")}
+									aria-label={t("home.refreshTitle")}
+									iconClassName={isLoading ? "spinning" : ""}
 								/>
-							)}
-							{onOpenVideoPlayer && (
 								<FlashcardButton
 									preset="icon"
-									icon={CirclePlay}
-									onClick={onOpenVideoPlayer}
-									title={t("home.videoPlayerTitle")}
+									icon={Settings}
+									onClick={onOpenSettings}
+									title={t("home.pluginSettingsTitle")}
+									aria-label={t("home.pluginSettingsTitle")}
 								/>
-							)}
-							<FlashcardButton
-								preset="icon"
-								icon={ChartNoAxesColumn}
-								onClick={onOpenStats}
-								title={t("home.statsTitle")}
-							/>
-							<FlashcardButton
-								preset="icon"
-								icon={RefreshCcw}
-								onClick={() => void home.act({ kind: "refresh" })}
-								disabled={isMutationBusy}
-								title={t("home.refreshTitle")}
-								iconClassName={isLoading ? "spinning" : ""}
-							/>
-							<FlashcardButton
-								preset="icon"
-								icon={Settings}
-								onClick={onOpenSettings}
-								title={t("home.pluginSettingsTitle")}
-							/>
+							</div>
 						</div>
 					}
 				/>
@@ -608,128 +802,275 @@ export const DeckList = React.memo(function DeckList({
 					</section>
 				)}
 
-				<LearningFootprint
-					key={snapshot.learningFootprint.today.date}
-					footprint={snapshot.learningFootprint}
-				/>
-
-				{snapshot.decks.length === 0 ? (
-					<div className={cls("flashcard-empty", styles.empty)}>
-						<div className={cls("flashcard-empty-icon", styles.emptyIcon)}>
-							<Inbox size={48} />
-						</div>
-						<p>{t("home.emptyTitle")}</p>
-						<p className={cls("flashcard-empty-hint", styles.emptyHint)}>
-							{t("home.emptyHint", { tag: "#wordTag" })}
-						</p>
-						<div className={styles.homeActions}>
-							<FlashcardButton
-								variant="secondary"
-								className={cls("flashcard-home-add-card", styles.addCardBtn)}
-								icon={Plus}
-								onClick={onOpenAddCard}
-							>
-								{t("cardEditor.addCardTitle")}
-							</FlashcardButton>
-							<FlashcardButton
-								variant="primary"
-								icon={Target}
-								onClick={onOpenChallenge}
-							>
-								{t("challenge.title")}
-							</FlashcardButton>
-						</div>
-					</div>
-				) : (
-					<div className={cls("flashcard-home-workspace", styles.workspace)}>
-						<section
-							className={cls("flashcard-deck-index", styles.deckIndex)}
-							aria-label={t("home.deckIndex")}
-						>
-							<div
-								className={cls(
-									"flashcard-deck-index-heading",
-									styles.deckIndexHeading,
-								)}
-							>
-								<span
-									className={cls(
-										"flashcard-deck-index-desktop-title",
-										styles.desktopTitle,
-									)}
-								>
-									{t("home.deckIndex")}
-								</span>
-								<span
-									className={cls(
-										"flashcard-deck-index-mobile-title",
-										styles.mobileTitle,
-									)}
-								>
-									{t("home.otherDecks")}
-								</span>
+				<div className="fc-page__body">
+					{snapshot.decks.length > 0 && (
+						<section className={cls("flashcard-home-hero fc-hero", styles.hero)}>
+							<div className={styles.heroMain}>
+								<div className={cls("fc-hero__label", styles.heroLabel)}>
+									{t("home.heroLabel")}
+								</div>
+								<div className={cls("fc-hero__num", styles.heroNum)}>
+									<b>{formatCount(language, snapshot.totals.newCards)}</b>
+									<span>{t("home.heroUnit")}</span>
+								</div>
+								<div className={cls("fc-hero__summary", styles.heroSummary)}>
+									{nextDeck
+										? t("home.heroSummary", {
+												decks: snapshot.totals.deckCount,
+												learned: formatCount(language, learnedCards),
+												deck: nextDeck.name,
+											})
+										: t("home.heroSummaryNoTarget", {
+												decks: snapshot.totals.deckCount,
+												learned: formatCount(language, learnedCards),
+											})}
+								</div>
 							</div>
-							<DndContext
-								sensors={activeSensors}
-								collisionDetection={closestCenter}
-								accessibility={sortableAccessibility(language, visibleDeckIds)}
-								onDragEnd={handleDragEnd}
-							>
-								<SortableContext
-									items={visibleDeckIds}
-									strategy={rectSortingStrategy}
+							<div className={cls("fc-hero__side", styles.heroSide)}>
+								<span className={styles.heroStreak}>
+									<Flame size={14} aria-hidden="true" />
+									<b>
+										{t("footprint.currentStreak", {
+											count: streak.currentStreak,
+										})}
+									</b>
+									<span
+										className={cls("fc-meta__dot", styles.dot)}
+										aria-hidden="true"
+									/>
+									<Trophy size={12} aria-hidden="true" />
+									{t("footprint.bestStreak", { count: streak.bestStreak })}
+								</span>
+								<FlashcardButton
+									variant="primary"
+									size="lg"
+									icon={Brain}
+									disabled={!nextDeck}
+									onClick={() => nextDeck && onNavigate("study", nextDeck.id)}
 								>
-									<div className={cls("flashcard-deck-list", styles.deckList)}>
-										{visibleDecks.map((deck) => (
-											<DeckCard
-												key={deck.id}
-												deck={deck}
-												isRecentlyDropped={
-													recentlyDroppedDeckId === deck.id
-												}
-												isOverlayOpen={activeOverlayDeckId === deck.id}
-												onToggleOverlay={handleToggleOverlay}
-												onCloseOverlay={handleCloseOverlay}
-												onNavigate={onNavigate}
-												onExportDeck={handleExportDeck}
-												onOpenSourceFile={onOpenSourceFile}
-												onOpenSettings={handleOpenDeckSettings}
-												isExporting={
-													snapshot.export.kind === "exporting" &&
-													snapshot.export.deckId === deck.id
-												}
-												isExportBusy={snapshot.export.kind === "exporting"}
-												isSettingsLocked={
-													snapshot.settingsDraft !== null &&
-													snapshot.settingsDraft.ownerId !== ownerId &&
-													(snapshot.settingsDraft.ownerId !== "" ||
-														snapshot.settingsDraft.deckId !== deck.id)
-												}
-											/>
-										))}
-									</div>
-								</SortableContext>
-							</DndContext>
+									{t("home.continueStudy")}
+								</FlashcardButton>
+							</div>
 						</section>
-						<div className={styles.homeActions}>
-							<FlashcardButton
-								variant="secondary"
-								className={cls("flashcard-home-add-card", styles.addCardBtn)}
-								icon={Plus}
-								onClick={onOpenAddCard}
-							>
-								{t("cardEditor.addCardTitle")}
-							</FlashcardButton>
-							<FlashcardButton
-								variant="primary"
-								icon={Target}
-								onClick={onOpenChallenge}
-							>
-								{t("challenge.title")}
-							</FlashcardButton>
+					)}
+
+					<LearningFootprint
+						key={snapshot.learningFootprint.today.date}
+						footprint={snapshot.learningFootprint}
+					/>
+
+					{snapshot.decks.length === 0 ? (
+						<div className={cls("flashcard-empty", styles.empty)}>
+							<div className={cls("flashcard-empty-icon", styles.emptyIcon)}>
+								<Inbox size={48} />
+							</div>
+							<p>{t("home.emptyTitle")}</p>
+							<p className={cls("flashcard-empty-hint", styles.emptyHint)}>
+								{t("home.emptyHint", { tag: "#wordTag" })}
+							</p>
+							<div className={styles.homeActions}>
+								<FlashcardButton
+									variant="secondary"
+									className={cls("flashcard-home-add-card", styles.addCardBtn)}
+									icon={Plus}
+									onClick={onOpenAddCard}
+								>
+									{t("cardEditor.addCardTitle")}
+								</FlashcardButton>
+								<FlashcardButton
+									variant="primary"
+									icon={Target}
+									onClick={onOpenChallenge}
+								>
+									{t("challenge.title")}
+								</FlashcardButton>
+							</div>
 						</div>
-					</div>
-				)}
+					) : (
+						<div className={cls("flashcard-home-workspace", styles.workspace)}>
+							<section
+								className={cls("flashcard-deck-index", styles.deckIndex)}
+								aria-label={t("home.deckIndex")}
+							>
+								<div
+									className={cls(
+										"flashcard-deck-index-heading",
+										styles.deckIndexHeading,
+									)}
+								>
+									<h2>{t("home.deckSectionTitle")}</h2>
+									<span className={styles.deckIndexCount}>
+										{t("home.deckCountValue", {
+											count: snapshot.totals.deckCount,
+										})}
+									</span>
+								</div>
+
+								<DndContext
+									sensors={activeSensors}
+									collisionDetection={closestCenter}
+									accessibility={sortableAccessibility(language, visibleDeckIds)}
+									onDragEnd={handleDragEnd}
+								>
+									<SortableContext
+										items={visibleDeckIds}
+										strategy={rectSortingStrategy}
+									>
+										<div
+											className={cls("flashcard-deck-list", styles.deckList)}
+										>
+											{visibleDecks.map((deck) => (
+												<DeckCard
+													key={deck.id}
+													deck={deck}
+													state={getDeckVisualState(deck)}
+													language={language}
+													isRecentlyDropped={
+														recentlyDroppedDeckId === deck.id
+													}
+													isOverlayOpen={activeOverlayDeckId === deck.id}
+													onToggleOverlay={handleToggleOverlay}
+													onCloseOverlay={handleCloseOverlay}
+													onNavigate={onNavigate}
+													onExportDeck={handleExportDeck}
+													onOpenSourceFile={onOpenSourceFile}
+													onOpenSettings={handleOpenDeckSettings}
+													isExporting={
+														snapshot.export.kind === "exporting" &&
+														snapshot.export.deckId === deck.id
+													}
+													isExportBusy={
+														snapshot.export.kind === "exporting"
+													}
+													isSettingsLocked={
+														snapshot.settingsDraft !== null &&
+														snapshot.settingsDraft.ownerId !==
+															ownerId &&
+														(snapshot.settingsDraft.ownerId !== "" ||
+															snapshot.settingsDraft.deckId !==
+																deck.id)
+													}
+												/>
+											))}
+
+											{completedDecks.length > 0 && (
+												<div
+													className={cls(
+														"fc-group",
+														styles.completedGroup,
+													)}
+												>
+													<button
+														type="button"
+														className={cls(
+															"flashcard-completed-group-toggle fc-disclosure",
+															styles.completedGroupHead,
+														)}
+														aria-expanded={isCompletedGroupOpen}
+														onClick={() =>
+															setIsCompletedGroupOpen(
+																(current) => !current,
+															)
+														}
+													>
+														{isCompletedGroupOpen ? (
+															<ChevronDown
+																size={13}
+																aria-hidden="true"
+															/>
+														) : (
+															<ChevronRight
+																size={13}
+																aria-hidden="true"
+															/>
+														)}
+														{t("home.completedGroup", {
+															count: completedDecks.length,
+														})}
+													</button>
+													{isCompletedGroupOpen && (
+														<div
+															className={cls(
+																"fc-group__body",
+																styles.completedGroupBody,
+															)}
+														>
+															{completedDecks.map((deck) => (
+																<DeckCard
+																	key={deck.id}
+																	deck={deck}
+																	state="done"
+																	language={language}
+																	isRecentlyDropped={false}
+																	isOverlayOpen={
+																		activeOverlayDeckId ===
+																		deck.id
+																	}
+																	onToggleOverlay={
+																		handleToggleOverlay
+																	}
+																	onCloseOverlay={
+																		handleCloseOverlay
+																	}
+																	onNavigate={onNavigate}
+																	onExportDeck={handleExportDeck}
+																	onOpenSourceFile={
+																		onOpenSourceFile
+																	}
+																	onOpenSettings={
+																		handleOpenDeckSettings
+																	}
+																	isExporting={
+																		snapshot.export.kind ===
+																			"exporting" &&
+																		snapshot.export.deckId ===
+																			deck.id
+																	}
+																	isExportBusy={
+																		snapshot.export.kind ===
+																		"exporting"
+																	}
+																	isSettingsLocked={
+																		snapshot.settingsDraft !==
+																			null &&
+																		snapshot.settingsDraft
+																			.ownerId !== ownerId &&
+																		(snapshot.settingsDraft
+																			.ownerId !== "" ||
+																			snapshot.settingsDraft
+																				.deckId !== deck.id)
+																	}
+																/>
+															))}
+														</div>
+													)}
+												</div>
+											)}
+										</div>
+									</SortableContext>
+								</DndContext>
+							</section>
+
+							<div className={styles.homeActions}>
+								<FlashcardButton
+									variant="secondary"
+									className={cls("flashcard-home-add-card", styles.addCardBtn)}
+									icon={Plus}
+									onClick={onOpenAddCard}
+								>
+									{t("cardEditor.addCardTitle")}
+								</FlashcardButton>
+								<FlashcardButton
+									variant="primary"
+									icon={Target}
+									onClick={onOpenChallenge}
+								>
+									{t("challenge.title")}
+								</FlashcardButton>
+							</div>
+						</div>
+					)}
+				</div>
 			</div>
 
 			{draft && (

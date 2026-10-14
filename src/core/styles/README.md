@@ -12,6 +12,7 @@
 
 - `mixins.scss`：高频 SCSS 混入（如 `fc-focus-ring`、`fc-flex-center`、`fc-truncate`、`fc-scrollbar` 等）。
 - `layout.scss`：**布局模块**，页面外壳、面板与视图容器的唯一实现（见下）。
+- `patterns.scss`：**通用 UI 模式**，跨视图复用的结构配方（hero 主区、状态行、比率条、折叠组，见下）。
 - `base.scss`：设计 token（唯一来源，`--fc-*`）、根容器框架（`.flashcard-root` 的定义与表面归一）。
 - `settings.scss`：Obsidian 设置面板与设置弹窗相关的样式。
 - `motion.scss`：全局动画与关键帧（尊重 `prefers-reduced-motion`）。
@@ -103,6 +104,104 @@
 - `.workspace-leaf-content .flashcard-container`：挂载接缝为每个视图添加的唯一容器类。
 
 布局模块自带 720px / 640px / `pointer: coarse` 三组媒体查询，因此新视图无需再写外壳级响应式。功能样式在布局层之后加载，可以覆盖个别数值（例如统计页保留自己的内边距）。
+
+## 通用 UI 模式 (`patterns.scss`)
+
+`layout.scss` 管的是"页面怎么摆"，`patterns.scss` 管的是"页面里的内容长什么样"。后者收录跨视图重复出现的结构配方；视图在自己的类名旁叠加这些类名消费，不重写配方。**新增页面时优先复用这里的模式**，只有确实不复用时才在视图样式里新写。
+
+**每个模式只负责结构，不负责内容。** 视图决定放几个按钮、显示哪些字段；模式决定它们如何排列、间距多大、状态如何表达。
+
+### 页面主区（Hero）
+
+一个页面**最多一个** hero，它承载该页唯一的 headline 数字。
+
+| 类名                | 作用                                    |
+| ------------------- | --------------------------------------- |
+| `.fc-hero`          | 网格容器；左侧文本列 + 右侧动作列       |
+| `.fc-hero__label`   | 数字上方的小标签（eyebrow）             |
+| `.fc-hero__num`     | 数字本体，`--fc-font-focus`（32px）等宽 |
+| `.fc-hero__summary` | 数字下方的说明句                        |
+| `.fc-hero__side`    | 右侧列，放连续天数一类的状态与主按钮    |
+
+关键约束：**一个页面只允许一个大号数字**。hero 之外的所有数值保持 `xs`–`sm`，否则页面失去入口。hero 不使用阴影，层级由 tinted 表面与强调边框建立。
+
+```tsx
+<section className={cls("fc-hero", styles.hero)}>
+	<div>
+		<div className="fc-hero__label">{t("home.heroLabel")}</div>
+		<div className="fc-hero__num">
+			<b>{total}</b>
+			<span>{t("home.heroUnit")}</span>
+		</div>
+		<div className="fc-hero__summary">{summary}</div>
+	</div>
+	<div className="fc-hero__side">{action}</div>
+</section>
+```
+
+### 状态行（Rail row）
+
+列表中"状态先于文字被读懂"的行。状态通过 `data-state` 表达，**不额外加类名**，这样组合类名时语义不会丢失。
+
+| `data-state` | 含义           | 轨道色         | 处理                   |
+| ------------ | -------------- | -------------- | ---------------------- |
+| `active`     | 进行中，工作集 | `--fc-primary` | 最高权重               |
+| `fresh`      | 未开始         | muted 55%      | 数字降为 muted         |
+| `done`       | 已完成         | `--fc-lime`    | 整体降一级，但仍可交互 |
+
+```tsx
+<article className={cls("fc-rail-row", styles.deckItem)} data-state="active">
+	<div className="fc-rail-row__main">
+		<span className="fc-rail-row__title">{name}</span>
+		<div className="fc-meta">…</div>
+	</div>
+	<div className="fc-rail-row__count">
+		<b>{pending}</b>
+		<span>{t("home.deckPending")}</span>
+	</div>
+	<div className="fc-rail-row__actions">{/* 阻止冒泡的动作区 */}</div>
+</article>
+```
+
+`.fc-rail-row__actions` 已带 `z-index` 与 `align-self`，但**不自动阻止冒泡** —— 行本身可点击时，视图需在动作区自行 `stopPropagation`。
+
+行的堆叠重排由 `fc-rail-row-stacked` 混入统一处理，已在 768px 容器与视口断点自动生效。
+
+### 比率条（Meter）
+
+用长度表达比例，取代 `a / b` 这类分数写法。裸分数会让两侧数字权重相同，读起来既不像进度也不像计数。
+
+```tsx
+<span className="fc-meter" aria-hidden="true">
+	<i style={{ width: `${percent}%` }} />
+</span>
+```
+
+宽度通过 `--meter-width`（默认 88px）调整；完成态加 `data-tone="done"` 切换为绿色。
+
+### 元信息行（Meta）
+
+行内元信息与点分隔符，替代手写的 `·` 文本与独立 `::before` 伪元素。
+
+```tsx
+<div className="fc-meta">
+	<span className="fc-meta__text">{progress}</span>
+	<span className="fc-meta__dot" aria-hidden="true" />
+	<span className="fc-meta__text">{count}</span>
+</div>
+```
+
+### 折叠组（Disclosure / Group）
+
+列表下方的次级分组（如"已学完的卡组"），默认收起。
+
+- `.fc-group`：分隔线与上边距
+- `.fc-disclosure`：可点击的组标题（已含按钮重置与焦点环），配合 `aria-expanded`
+- `.fc-group__body`：展开后的内容容器
+
+### 何时不该复用
+
+模式是**结构**契约，不是外观契约。若某个视图的行需要三列以上的独立信息、或状态多于三种，说明它有自己的信息密度，应当在视图样式里单独实现，而不是往模式里加特例。
 
 ## Token 使用规则
 

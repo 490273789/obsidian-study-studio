@@ -12,6 +12,10 @@
 @use "./layout.scss";
 @use "./cardStack.scss";
 
+// 1c. 通用 UI 模式：hero 主区、状态行、比率条、折叠组
+//     （跨视图复用的结构配方，功能样式可覆盖它）
+@use "./patterns.scss";
+
 // 2. 基础 UI 组件样式 (UI Primitives)
 @use "../ui/primitives/Button/Button.scss";
 @use "../ui/primitives/Input/Input.scss";

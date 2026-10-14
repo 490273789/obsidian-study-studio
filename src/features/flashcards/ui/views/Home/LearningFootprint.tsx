@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from "react";
-import { BookOpen, Clock3, Flame, Keyboard, Target, Trophy } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import type {
 	LearningFootprintDay,
 	LearningFootprintSnapshot,
@@ -15,26 +15,47 @@ interface LearningFootprintProps {
 }
 
 const DAYS_PER_WEEK = 7;
+/** Weeks shown before the learner asks for the full year. */
+const RECENT_WEEKS = 14;
 
+/**
+ * The year grid is ~40% of the first screen and, for a new learner, it is 53
+ * columns of empty cells. Collapsing to the recent window keeps the panel's
+ * height in proportion to how much there is to say; expanding restores the full
+ * grid from the same data.
+ *
+ * Streaks are not rendered here: the home hero owns that number already.
+ */
 export const LearningFootprint = React.memo(function LearningFootprint({
 	footprint,
 }: LearningFootprintProps) {
 	const { t, language } = useFlashcardI18n();
 	const titleId = useId();
-	const days = useMemo(() => footprint.weeks.flatMap((week) => week.days), [footprint.weeks]);
+	const [isExpanded, setIsExpanded] = useState(false);
+	const scrollerRef = useRef<HTMLDivElement>(null);
+
+	const visibleWeeks = useMemo(
+		() =>
+			isExpanded
+				? footprint.weeks
+				: footprint.weeks.slice(Math.max(0, footprint.weeks.length - RECENT_WEEKS)),
+		[footprint.weeks, isExpanded],
+	);
+
+	const days = useMemo(() => visibleWeeks.flatMap((week) => week.days), [visibleWeeks]);
 	const todayIndex = Math.max(
 		0,
 		days.findIndex((day) => day.date === footprint.today.date),
 	);
 	const [activeIndex, setActiveIndex] = useState(todayIndex);
-	const scrollerRef = useRef<HTMLDivElement>(null);
 	const cellRefs = useRef<Array<HTMLButtonElement | null>>([]);
 	const activeDay = days[activeIndex] ?? days[todayIndex];
 
+	// The window always opens on today, which is the last column.
 	useEffect(() => {
 		const scroller = scrollerRef.current;
 		if (scroller) scroller.scrollLeft = scroller.scrollWidth;
-	}, []);
+	}, [isExpanded]);
 
 	const moveFocus = (nextIndex: number) => {
 		const bounded = Math.max(0, Math.min(todayIndex, nextIndex));
@@ -42,100 +63,79 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 		cellRefs.current[bounded]?.focus();
 	};
 
-	const todayMetrics = [
-		{
-			key: "study",
-			icon: BookOpen,
-			value: footprint.today.answers.study,
-			label: t("footprint.studyAnswers"),
-		},
+	/** Answer counts and duration read as one line of text, not five tiles. */
+	const summaryItems = [
+		{ key: "study", label: t("footprint.studyAnswers"), value: footprint.today.answers.study },
 		{
 			key: "practice",
-			icon: Target,
-			value: footprint.today.answers.practice,
 			label: t("footprint.practiceAnswers"),
+			value: footprint.today.answers.practice,
 		},
 		{
 			key: "spelling",
-			icon: Keyboard,
-			value: footprint.today.answers.spelling,
 			label: t("footprint.spellingAnswers"),
+			value: footprint.today.answers.spelling,
 		},
 		{
 			key: "challenge",
-			icon: Target,
-			value: footprint.today.answers.challenge,
 			label: t("challenge.title"),
-		},
-		{
-			key: "duration",
-			icon: Clock3,
-			value: formatCompactDuration(language, footprint.todayTotalSeconds),
-			label: t("footprint.totalDuration"),
-			subtitle: t("footprint.wordListDuration", {
-				duration: formatCompactDuration(language, footprint.today.seconds["word-list"]),
-			}),
+			value: footprint.today.answers.challenge,
 		},
 	];
 
+	const activeDayCount = useMemo(() => days.filter((day) => day.hasActivity).length, [days]);
+
 	const monthLabels = useMemo(
-		() => calculateHeatmapMonthLabels(footprint.weeks, language),
-		[footprint.weeks, language],
+		() => calculateHeatmapMonthLabels(visibleWeeks, language),
+		[visibleWeeks, language],
 	);
 
 	return (
-		<section className={styles.panel} aria-labelledby={titleId}>
+		<section
+			className={cls(styles.panel, !isExpanded && styles.isCollapsed)}
+			aria-labelledby={titleId}
+		>
 			<header className={styles.header}>
 				<h2 id={titleId} className={styles.title}>
 					{t("footprint.title")}
 				</h2>
-				<div className={styles.streaks}>
-					<div className={styles.streakPrimary}>
-						<Flame size={16} aria-hidden="true" />
-						<span>
-							{t("footprint.currentStreak", { count: footprint.currentStreak })}
+				<div className={styles.summary}>
+					{summaryItems.map((item) => (
+						<span key={item.key} className={styles.summaryItem}>
+							<span className={styles.summaryLabel}>{item.label}</span>
+							<b className={styles.summaryValue}>{item.value}</b>
+							<span className={styles.summaryLabel}>{t("footprint.times")}</span>
 						</span>
-					</div>
-					<div className={styles.streakBest}>
-						<Trophy size={13} aria-hidden="true" />
-						<span>{t("footprint.bestStreak", { count: footprint.bestStreak })}</span>
-					</div>
+					))}
+					<span className={styles.summaryItem}>
+						<span className={styles.summaryLabel}>{t("footprint.totalDuration")}</span>
+						<b className={styles.summaryValue}>
+							{formatCompactDuration(language, footprint.todayTotalSeconds)}
+						</b>
+					</span>
+					<span className={styles.summaryItem}>
+						<span className={styles.summaryLabel}>
+							{t("footprint.wordListDuration", {
+								duration: formatCompactDuration(
+									language,
+									footprint.today.seconds["word-list"],
+								),
+							})}
+						</span>
+					</span>
 				</div>
 			</header>
 
-			<div className={styles.metrics}>
-				{todayMetrics.map(({ key, icon: Icon, value, label, subtitle }) => {
-					const isDuration = key === "duration";
-					return (
-						<div
-							key={key}
-							className={cls(
-								styles.metric,
-								isDuration ? styles.metricDuration : styles.metricCount,
-								styles[`metric_${key}`],
-							)}
-						>
-							<div className={styles.metricHeader}>
-								<Icon size={14} className={styles.metricIcon} aria-hidden="true" />
-								<div className={styles.metricValue}>
-									{value}
-									{!isDuration && <span>{t("footprint.times")}</span>}
-								</div>
-							</div>
-							<div className={styles.metricLabelRow}>
-								<span className={styles.metricLabel}>{label}</span>
-								{subtitle && (
-									<span className={styles.metricSubtitle}>{subtitle}</span>
-								)}
-							</div>
-						</div>
-					);
-				})}
-			</div>
-
 			<div className={styles.heatmapSection}>
 				<div className={styles.heatmapHeading}>
-					<span>{t("footprint.pastYear")}</span>
+					<span>
+						{isExpanded
+							? t("footprint.pastYear")
+							: t("footprint.recentWindow", {
+									weeks: visibleWeeks.length,
+									days: activeDayCount,
+								})}
+					</span>
 					<div className={styles.legend} aria-label={t("footprint.legendLabel")}>
 						<span>{t("footprint.less")}</span>
 						{[0, 1, 2, 3, 4].map((level) => (
@@ -160,14 +160,21 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 						<span />
 					</div>
 					<div ref={scrollerRef} className={styles.scroller}>
-						<div className={styles.heatmapContent}>
+						<div
+							className={styles.heatmapContent}
+							style={
+								{
+									"--fc-heatmap-weeks": visibleWeeks.length,
+								} as React.CSSProperties
+							}
+						>
 							<div className={styles.months} aria-hidden="true">
 								{monthLabels.map((label, index) => (
 									<span key={index}>{label}</span>
 								))}
 							</div>
 							<div className={styles.grid} aria-label={t("footprint.gridLabel")}>
-								{footprint.weeks.map((week, weekIndex) => (
+								{visibleWeeks.map((week, weekIndex) => (
 									<div
 										key={week.days[0]?.date ?? weekIndex}
 										className={styles.week}
@@ -183,6 +190,7 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 													type="button"
 													tabIndex={index === activeIndex ? 0 : -1}
 													disabled={day.future}
+													data-heatmap-day={day.date}
 													className={cls(
 														styles.cell,
 														styles[`level${day.level}`],
@@ -217,6 +225,16 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 				</div>
 
 				{activeDay && <DayDetails day={activeDay} />}
+
+				<button
+					type="button"
+					className={styles.toggle}
+					aria-expanded={isExpanded}
+					onClick={() => setIsExpanded((current) => !current)}
+				>
+					{isExpanded ? t("footprint.collapseYear") : t("footprint.expandYear")}
+					<ChevronDown size={13} aria-hidden="true" />
+				</button>
 			</div>
 		</section>
 	);

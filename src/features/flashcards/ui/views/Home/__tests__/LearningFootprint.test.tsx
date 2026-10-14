@@ -64,8 +64,13 @@ function ariaLabels(footprint: LearningFootprintSnapshot): string[] {
 			const element = child as React.ReactElement<{
 				children?: React.ReactNode;
 				"aria-label"?: string;
+				"data-heatmap-day"?: string;
 			}>;
-			if (element.type === "button") labels.push(element.props["aria-label"]!);
+			// Only day cells: the panel also renders a window toggle, and the
+			// assertion is about date labelling across time zones.
+			if (element.type === "button" && element.props["data-heatmap-day"] !== undefined) {
+				labels.push(element.props["aria-label"]!);
+			}
 			visit(element.props.children);
 		});
 	}

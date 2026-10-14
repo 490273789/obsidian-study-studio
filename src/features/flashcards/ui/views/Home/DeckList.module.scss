@@ -1,6 +1,73 @@
 @use "../../../../../core/styles/mixins.scss" as *;
 
-/* DeckList (Home View) Styles */
+/*
+ * DeckList (Home View) styles.
+ *
+ * The shared structure lives in `core/styles/patterns.scss` and is consumed by
+ * class name: `fc-hero`, `fc-rail-row`, `fc-meter`, `fc-meta`, `fc-group`,
+ * `fc-disclosure`. This file keeps only what is specific to the deck home —
+ * header composition, the deck identity line, the secondary-action overlay, and
+ * the empty / migration blocks — plus the few Home-only adjustments on top of
+ * the shared row.
+ */
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.totalBadge {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--fc-space-1);
+}
+
+.totalBadgeIcon {
+	color: var(--fc-primary);
+	flex-shrink: 0;
+}
+
+/*
+ * Two kinds of header destination: sibling views (dictionary / video /
+ * translation) and page actions (stats / refresh / settings). One divider keeps
+ * them from reading as a single run of six equal icons.
+ */
+.headerGroup {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--fc-space-half);
+}
+
+.headerDivider {
+	width: 1px;
+	height: var(--fc-space-6);
+	margin: 0 var(--fc-space-2);
+	background: var(--fc-line);
+	flex: none;
+}
+
+/* ── Hero adjustments ────────────────────────────────────────────────────── */
+
+.heroMain {
+	min-width: 0;
+}
+
+.heroStreak {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--fc-space-1);
+	color: var(--fc-muted);
+	font-size: var(--fc-font-xs);
+	white-space: nowrap;
+
+	b {
+		color: var(--fc-amber);
+		font-weight: var(--fc-weight-semibold);
+	}
+
+	svg {
+		color: var(--fc-amber);
+	}
+}
+
+/* ── Workspace ───────────────────────────────────────────────────────────── */
 
 .workspace {
 	min-height: 0;
@@ -26,22 +93,23 @@
 }
 
 .deckIndexHeading {
+	display: flex;
+	align-items: baseline;
+	gap: var(--fc-space-2);
+	padding: var(--fc-space-3) var(--fc-space-4);
+	border-bottom: 1px solid var(--fc-line-soft);
+
+	h2 {
+		margin: 0;
+		color: var(--fc-text);
+		font-size: var(--fc-font-md);
+		font-weight: var(--fc-weight-semibold);
+	}
+}
+
+.deckIndexCount {
 	color: var(--fc-muted);
 	font-size: var(--fc-font-xs);
-	font-weight: var(--fc-weight-semibold);
-	letter-spacing: 0.08em;
-	text-transform: uppercase;
-	padding: var(--fc-space-3) var(--fc-space-4);
-	border-bottom: 1px solid var(--fc-line);
-	display: none;
-}
-
-.desktopTitle {
-	display: inline;
-}
-
-.mobileTitle {
-	display: none;
 }
 
 .deckList {
@@ -58,44 +126,20 @@
 	grid-template-columns: minmax(0, 1fr);
 	align-content: start;
 	-webkit-overflow-scrolling: touch;
+
+	@include fc-scrollbar;
 }
 
-.totalBadge {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--fc-space-1);
-}
+/* ── Deck row: Home-only parts ───────────────────────────────────────────── */
 
-.totalBadgeIcon {
-	color: var(--fc-primary);
-	flex-shrink: 0;
-}
-
+/*
+ * The row's box, state rail, hover and stacking come from `fc-rail-row`. The row
+ * is clickable here, which is a Home decision, so the cursor and its own minimum
+ * height live here.
+ */
 .deckItem {
-	position: relative;
-	min-height: 56px;
-	padding: var(--fc-space-2) var(--fc-space-3);
-	border: 1px solid color-mix(in srgb, var(--fc-text) 10%, transparent);
-	border-radius: var(--fc-radius-md);
-	background: var(--fc-surface-card);
-	box-shadow: none;
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--fc-space-3);
-	transition: all 0.18s ease;
-
-	&:hover {
-		transform: translateY(-1px);
-		background: color-mix(in srgb, var(--fc-surface-card) 97%, var(--fc-text));
-		border-color: color-mix(in srgb, var(--fc-text) 18%, transparent);
-		box-shadow: none;
-	}
-
-	&:active {
-		transform: translateY(0);
-		box-shadow: none;
-	}
+	cursor: pointer;
+	min-height: 60px;
 
 	&.isDragging {
 		opacity: 0.85;
@@ -106,7 +150,6 @@
 			rgba(var(--fc-bg-elevated-rgb), 0.84);
 	}
 
-	&.isActionsOpen,
 	&.isOverlayOpen {
 		z-index: 20;
 
@@ -116,19 +159,9 @@
 	}
 }
 
-.deckMain {
-	min-width: 0;
-	min-height: 0;
-	display: flex;
-	flex-direction: column;
-	gap: var(--fc-space-1);
-	flex: 1;
-}
-
 .deckHeadline {
 	min-width: 0;
 	display: block;
-	gap: var(--fc-space-1) var(--fc-space-2);
 }
 
 .deckNameWrapper {
@@ -139,15 +172,11 @@
 	min-width: 0;
 }
 
+/* `fc-rail-row__title` sets the type; the deck name only adds its own truncation. */
 .deckName {
 	min-width: 0;
 	max-width: 100%;
 	overflow: hidden;
-	color: var(--fc-text);
-	font-family: var(--fc-font-ui);
-	font-weight: var(--fc-weight-semibold);
-	font-size: var(--fc-font-md);
-	line-height: 1.3;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
@@ -157,9 +186,9 @@
 	width: fit-content;
 	padding: 1px var(--fc-space-2);
 	border-radius: var(--fc-radius-xs);
-	background: color-mix(in srgb, var(--fc-cyan) 10%, transparent);
-	border: 1px solid color-mix(in srgb, var(--fc-cyan) 22%, transparent);
-	color: var(--fc-cyan);
+	background: rgba(var(--fc-cyan-rgb), 0.09);
+	border: 1px solid rgba(var(--fc-cyan-rgb), 0.2);
+	color: var(--fc-primary);
 	font-family: var(--fc-font-ui);
 	font-size: var(--fc-font-xs);
 	font-weight: var(--fc-weight-medium);
@@ -173,13 +202,13 @@
 	display: inline-flex;
 	align-items: center;
 	gap: var(--fc-space-1);
-	padding: var(--fc-space-1) var(--fc-space-2);
+	padding: 0 var(--fc-space-2);
 	border: 1px solid rgba(var(--fc-lime-rgb), 0.3);
 	border-radius: var(--fc-radius-xs);
 	background: rgba(var(--fc-lime-rgb), 0.08);
 	color: var(--fc-lime);
-	font-family: var(--fc-font-data);
-	font-size: var(--fc-font-xs);
+	font-family: var(--fc-font-ui);
+	font-size: var(--fc-font-2xs);
 	font-weight: var(--fc-weight-semibold);
 	white-space: nowrap;
 	flex-shrink: 0;
@@ -191,76 +220,12 @@
 	}
 }
 
-.deckStats {
-	display: flex;
-	align-items: center;
-	gap: var(--fc-space-2) var(--fc-space-4);
-	min-width: 0;
-	flex-wrap: wrap;
-	color: var(--fc-muted);
-	margin-top: var(--fc-space-half);
+/* The ratio bar sits in a text line, so it takes the inline gap it needs. */
+.deckBar {
+	--meter-width: 88px;
 }
 
-.deckStat {
-	font-size: var(--fc-font-xs);
-	display: inline-flex;
-	align-items: center;
-	gap: var(--fc-space-1);
-	min-width: 0;
-	white-space: nowrap;
-
-	&:first-child {
-		font-family: var(--fc-font-data);
-	}
-
-	&:nth-child(2) {
-		display: inline-flex;
-		margin-top: 0;
-		color: var(--fc-muted);
-	}
-
-	&:not(:first-child)::before {
-		content: "";
-		width: 3px;
-		height: 3px;
-		margin-right: 3px;
-		border-radius: 50%;
-		background: rgba(var(--fc-cyan-rgb), 0.42);
-	}
-}
-
-.deckStatValue {
-	font-family: var(--fc-font-ui);
-	font-weight: var(--fc-weight-semibold);
-	font-variant-numeric: tabular-nums;
-	color: var(--fc-text);
-	line-height: 1;
-
-	&:global(.blue) {
-		color: var(--fc-cyan);
-	}
-
-	&:global(.orange) {
-		color: var(--fc-amber);
-	}
-}
-
-.deckStatLabel {
-	min-width: 0;
-	overflow: hidden;
-	color: var(--fc-muted);
-	text-overflow: ellipsis;
-}
-
-.deckSide {
-	z-index: 2;
-	align-self: center;
-	width: auto;
-	margin-top: 0;
-	display: flex;
-	align-items: center;
-	flex-shrink: 0;
-}
+/* ── Deck actions ────────────────────────────────────────────────────────── */
 
 .deckActions {
 	display: flex;
@@ -270,29 +235,25 @@
 
 	:global(.flashcard-btn) {
 		font-size: var(--fc-font-xs);
-		height: var(--fc-control-md);
 		min-width: 0;
-		min-height: var(--fc-control-md);
-		padding: 0 var(--fc-space-3);
-		border-radius: var(--fc-radius-sm);
-		transition: all 0.18s ease;
-
-		> span {
-			display: inline;
-		}
-	}
-
-	:global(.flashcard-deck-action-practice),
-	:global(.flashcard-deck-action-spelling) {
-		border: 1px solid color-mix(in srgb, var(--fc-primary) 60%, transparent);
+		white-space: nowrap;
 	}
 }
 
+/*
+ * Spelling is a mode toggle rather than a peer of 学习 / 刷题, so it holds an icon
+ * slot: rows with and without it keep the same button rhythm instead of shifting
+ * the primary action sideways.
+ */
+.actionSpelling,
 .actionMore {
-	width: 40px;
-	min-width: 40px;
+	width: var(--fc-control-md);
+	min-width: var(--fc-control-md);
 	padding-inline: 0;
+	flex: none;
 }
+
+/* ── Deck overlay (secondary actions) ────────────────────────────────────── */
 
 .deckOverlay {
 	position: absolute;
@@ -311,6 +272,8 @@
 	box-shadow: var(--fc-shadow-card-hover);
 	animation: var(--fc-motion-fade-in);
 	overflow: hidden;
+	/* The overlay is a control surface, not the row's click target. */
+	cursor: default;
 }
 
 .overlayActions {
@@ -320,40 +283,41 @@
 	min-width: 0;
 	flex: 1;
 	overflow-x: auto;
+
 	@include fc-hide-scrollbar;
 
 	:global(.flashcard-btn) {
 		font-size: var(--fc-font-xs);
-		height: var(--fc-control-md);
 		min-width: 0;
-		min-height: var(--fc-control-md);
-		padding: 0 var(--fc-space-3);
-		border-radius: var(--fc-radius-sm);
 		white-space: nowrap;
 		flex-shrink: 0;
-		transition: all 0.18s ease;
-
-		> span {
-			display: inline;
-		}
 	}
 }
 
 .overlayCloseBtn {
 	width: var(--fc-control-md);
 	min-width: var(--fc-control-md);
-	height: var(--fc-control-md);
-	min-height: var(--fc-control-md);
 	padding: 0;
 	flex-shrink: 0;
-	border-radius: var(--fc-radius-sm);
 }
+
+/* ── Completed group: Home-only parts ────────────────────────────────────── */
+
+/* `fc-group` supplies the divider and `fc-disclosure` the header button. */
+.completedGroupBody {
+	/* Wrapper exists so the group body can be tested/queried by role. */
+	display: flex;
+	flex-direction: column;
+	gap: var(--fc-space-2);
+	padding-top: var(--fc-space-2);
+}
+
+/* ── Home actions ────────────────────────────────────────────────────────── */
 
 button.addCardBtn,
 .addCardBtn {
 	border: 1px dashed color-mix(in srgb, var(--fc-primary) 60%, transparent);
 	width: 100%;
-	min-height: var(--fc-control-md);
 	margin: 0 auto;
 	flex: 0 0 auto;
 
@@ -372,18 +336,33 @@ button.addCardBtn,
 	}
 }
 
-/* ── Migration Card ──────────────────────────────────────────────────────── */
+.homeActions {
+	display: flex;
+	gap: var(--fc-space-3);
+	flex-shrink: 0;
+	width: 100%;
+
+	:global(.flashcard-btn),
+	button {
+		flex: 1 1 0;
+		width: 100%;
+		min-width: 0;
+		margin: 0;
+	}
+}
+
+/* ── Migration card ──────────────────────────────────────────────────────── */
 
 .migrationCard {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: var(--fc-space-3);
+	flex: none;
 	padding: var(--fc-space-3) var(--fc-space-4);
 	border: 1px solid rgba(var(--fc-cyan-rgb), 0.3);
 	border-radius: var(--fc-radius-md);
 	background: rgba(var(--fc-cyan-rgb), 0.06);
-	box-shadow: var(--fc-shadow-card);
 }
 
 .migrationCopy {
@@ -412,7 +391,7 @@ button.addCardBtn,
 	color: var(--fc-cyan);
 }
 
-/* ── Empty State ─────────────────────────────────────────────────────────── */
+/* ── Empty state ─────────────────────────────────────────────────────────── */
 
 .empty {
 	display: flex;
@@ -449,42 +428,37 @@ button.addCardBtn,
 	margin-bottom: var(--fc-space-4) !important;
 }
 
-/* ── Responsive Overrides ────────────────────────────────────────────────── */
+/* ── Responsive: Home-only wrappers ──────────────────────────────────────── */
 
-@mixin deck-stacked-layout {
-	.deckItem {
-		flex-direction: column;
-		align-items: stretch;
-		min-height: auto;
-		gap: var(--fc-space-3);
-		padding: var(--fc-space-3);
-	}
-
-	.deckMain {
-		width: 100%;
-		min-height: auto;
-		flex: none;
-	}
-
-	.deckSide {
-		width: 100%;
-		align-self: stretch;
-		margin-top: 0;
-		flex: none;
-	}
-
+/*
+ * Row stacking (main + count, then a full-width action cluster) lives in the
+ * `fc-rail-row-stacked` mixin. Home still has to lay its own action grid out,
+ * because only this view knows it renders up to two labelled buttons and two
+ * icon slots.
+ */
+@mixin home-actions-grid {
 	.deckActions {
 		display: grid;
 		gap: var(--fc-space-2);
 		width: 100%;
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--fc-control-md);
+		grid-template-columns: repeat(auto-fit, minmax(0, 1fr)) var(--fc-control-md);
+		justify-content: end;
 
 		&.hasSpelling {
-			grid-template-columns: repeat(3, minmax(0, 1fr)) var(--fc-control-md);
+			grid-template-columns:
+				repeat(auto-fit, minmax(0, 1fr)) var(--fc-control-md)
+				var(--fc-control-md);
 		}
 
 		:global(.flashcard-btn) {
 			width: 100%;
+		}
+
+		/* Icon slots keep their square so the grid columns stay aligned. */
+		.actionSpelling,
+		.actionMore {
+			width: var(--fc-control-md);
+			min-width: var(--fc-control-md);
 		}
 	}
 
@@ -507,11 +481,11 @@ button.addCardBtn,
 }
 
 @container flashcard-page (max-width: 768px) {
-	@include deck-stacked-layout;
+	@include home-actions-grid;
 }
 
 @media (max-width: 768px) {
-	@include deck-stacked-layout;
+	@include home-actions-grid;
 }
 
 @container flashcard-page (max-width: 960px) {
@@ -533,14 +507,6 @@ button.addCardBtn,
 		padding: var(--fc-space-3);
 	}
 
-	.desktopTitle {
-		display: none;
-	}
-
-	.mobileTitle {
-		display: inline;
-	}
-
 	.deckList {
 		overflow-y: auto;
 	}
@@ -548,20 +514,5 @@ button.addCardBtn,
 	.homeActions {
 		order: 3;
 		flex: 0 0 auto;
-	}
-}
-
-.homeActions {
-	display: flex;
-	gap: var(--fc-space-3);
-	flex-shrink: 0;
-	width: 100%;
-
-	:global(.flashcard-btn),
-	button {
-		flex: 1 1 0;
-		width: 100%;
-		min-width: 0;
-		margin: 0;
 	}
 }
