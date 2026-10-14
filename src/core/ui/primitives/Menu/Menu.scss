@@ -48,7 +48,7 @@
 			border: 1px solid var(--fc-line-soft);
 			border-radius: var(--fc-radius-xs);
 			background: color-mix(in srgb, var(--background-primary) 85%, var(--text-normal) 15%);
-			box-shadow: var(--fc-shadow-sm);
+			box-shadow: none;
 			color: var(--fc-text);
 			font: var(--fc-weight-medium) var(--fc-font-sm) / var(--fc-line-tight) var(--fc-font-ui);
 			text-align: left;
@@ -65,7 +65,7 @@
 					var(--interactive-accent) 25%,
 					var(--background-secondary) 75%
 				);
-				box-shadow: var(--fc-shadow-card);
+				box-shadow: none;
 				outline: none;
 			}
 

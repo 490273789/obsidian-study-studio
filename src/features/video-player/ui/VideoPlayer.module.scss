@@ -197,7 +197,7 @@
 	background: var(--interactive-accent) !important;
 	border-color: var(--interactive-accent) !important;
 	color: #ffffff !important;
-	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35) !important;
+	box-shadow: none !important;
 
 	svg {
 		stroke: #ffffff !important;
@@ -208,7 +208,7 @@
 		border-color: color-mix(in srgb, var(--interactive-accent) 85%, #ffffff) !important;
 		color: #ffffff !important;
 		transform: scale(1.06) !important;
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45) !important;
+		box-shadow: none !important;
 	}
 
 	&:active:not(:disabled) {

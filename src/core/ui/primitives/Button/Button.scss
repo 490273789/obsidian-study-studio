@@ -9,7 +9,6 @@
 	--fc-button-border: var(--fc-line-strong);
 	--fc-button-border-hover: color-mix(in srgb, var(--fc-surface-card) 70%, var(--fc-text));
 	--fc-button-text: var(--fc-text);
-	--fc-button-shadow: var(--fc-shadow-sm), inset 0 1px 0 var(--fc-line-glow);
 
 	box-sizing: border-box;
 	position: relative;
@@ -74,9 +73,6 @@
 		--fc-button-border: color-mix(in srgb, var(--fc-primary) 48%, var(--fc-line));
 		--fc-button-border-hover: var(--fc-primary);
 		--fc-button-text: var(--fc-primary-text);
-		--fc-button-shadow:
-			var(--fc-shadow-sm), inset 0 1px 0 rgba(var(--fc-white-rgb), 0.18),
-			inset 0 -1px 0 rgba(var(--fc-black-rgb), 0.08);
 		font-weight: var(--fc-weight-semibold);
 	}
 
@@ -87,14 +83,12 @@
 		--fc-button-border: color-mix(in srgb, var(--fc-primary) 36%, var(--fc-line));
 		--fc-button-border-hover: color-mix(in srgb, var(--fc-primary) 70%, var(--fc-line));
 		--fc-button-text: var(--fc-button-ink);
-		--fc-button-shadow: inset 0 1px 0 var(--fc-line-glow);
 	}
 
-	// Neutral is the base recipe: a quiet, raised utility surface.
+	// Neutral is the base recipe: a quiet utility surface.
 	&:where(.flashcard-btn-outline) {
 		--fc-button-bg: transparent;
 		--fc-button-bg-hover: var(--fc-surface-hover);
-		--fc-button-shadow: none;
 	}
 
 	&:where(.flashcard-btn-ghost) {
@@ -103,7 +97,6 @@
 		--fc-button-border: transparent;
 		--fc-button-border-hover: var(--fc-line);
 		--fc-button-text: var(--fc-muted);
-		--fc-button-shadow: none;
 	}
 
 	&:where(.flashcard-btn-danger) {
@@ -113,7 +106,6 @@
 		--fc-button-border: color-mix(in srgb, var(--fc-danger) 38%, var(--fc-line));
 		--fc-button-border-hover: var(--fc-danger);
 		--fc-button-text: var(--fc-button-ink);
-		--fc-button-shadow: none;
 	}
 
 	@media (pointer: coarse) {
@@ -134,7 +126,7 @@
 	appearance: none;
 	border: 1px solid var(--fc-button-border);
 	background: var(--fc-button-bg);
-	box-shadow: var(--fc-button-shadow);
+	box-shadow: none;
 	color: var(--fc-button-text);
 
 	&:hover:not(:disabled) {
@@ -148,7 +140,7 @@
 		border-color: color-mix(in srgb, var(--fc-button-accent) 65%, var(--fc-line));
 		background: color-mix(in srgb, var(--fc-button-accent) 18%, var(--fc-surface-card));
 		color: var(--fc-button-ink);
-		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fc-button-accent) 18%, transparent);
+		box-shadow: none;
 	}
 
 	&:focus-visible {
@@ -158,7 +150,7 @@
 
 	&:active:not(:disabled) {
 		transform: translateY(1px);
-		box-shadow: var(--fc-shadow-inset);
+		box-shadow: none;
 	}
 
 	&:disabled {

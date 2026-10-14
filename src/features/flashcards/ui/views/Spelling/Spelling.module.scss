@@ -193,12 +193,12 @@
 		min-height: 46px;
 		border-radius: var(--fc-radius-lg);
 		font-weight: var(--fc-weight-semibold);
-		box-shadow: var(--fc-shadow-card);
+		box-shadow: none;
 		transition: all 0.2s ease;
 
 		&:hover:not(:disabled) {
 			transform: translateY(-1px);
-			box-shadow: var(--fc-shadow-card-hover);
+			box-shadow: none;
 		}
 	}
 }

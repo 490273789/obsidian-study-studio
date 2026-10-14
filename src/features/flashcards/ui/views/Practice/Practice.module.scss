@@ -44,16 +44,12 @@
 		font-size: var(--fc-font-md);
 		font-weight: var(--fc-weight-semibold);
 		border-radius: var(--fc-radius-lg);
-		box-shadow:
-			0 0 16px color-mix(in srgb, var(--interactive-accent) 25%, transparent),
-			var(--fc-shadow-sm);
+		box-shadow: none;
 		transition: all 0.2s ease;
 
 		&:hover:not(:disabled) {
 			transform: translateY(-1px);
-			box-shadow:
-				0 0 24px color-mix(in srgb, var(--interactive-accent) 40%, transparent),
-				var(--fc-shadow-card-hover);
+			box-shadow: none;
 		}
 	}
 }
