@@ -3,8 +3,8 @@
 /*
  * LearningFootprint styles.
  *
- * The panel recipe is local because this view owns its own surface treatment
- * (gradient + card shadow) rather than the generic `fc-panel` header/body split.
+ * The panel recipe is local because this view owns its compact summary and
+ * calendar rather than the generic `fc-panel` header/body split.
  * Cell geometry is derived from `--fc-heatmap-cell` so the collapsed window and
  * the expanded year stay pixel-identical.
  */
@@ -15,7 +15,7 @@
 
 	flex: 0 0 auto;
 	padding: var(--fc-space-4) var(--fc-space-5) var(--fc-space-5);
-	border: 1px solid var(--fc-line-soft);
+	border: 0;
 	border-radius: var(--fc-radius-lg);
 	background: var(--fc-surface-section);
 	display: grid;
@@ -36,6 +36,40 @@
 	font-size: var(--fc-font-md);
 	font-weight: var(--fc-weight-semibold);
 	flex: none;
+}
+
+:global(.flashcard-root) button.panelToggle {
+	@include fc-button-reset;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--fc-space-2);
+	min-height: var(--fc-control-sm);
+	border: 0;
+	border-radius: var(--fc-radius-sm);
+	background: transparent;
+	box-shadow: none;
+	color: var(--fc-text);
+	font-size: inherit;
+	font-weight: inherit;
+
+	svg {
+		color: var(--fc-muted);
+		transition: transform var(--fc-motion-quick) ease;
+	}
+
+	&[aria-expanded="true"] svg {
+		transform: rotate(180deg);
+	}
+
+	&:hover,
+	&:active {
+		background: transparent;
+		box-shadow: none;
+	}
+
+	&:focus-visible {
+		@include fc-focus-ring;
+	}
 }
 
 /*
@@ -79,6 +113,10 @@
 	min-width: 0;
 	display: grid;
 	gap: var(--fc-space-2);
+
+	&[hidden] {
+		display: none;
+	}
 }
 
 .heatmapHeading {
@@ -89,6 +127,20 @@
 	color: var(--fc-text);
 	font-size: var(--fc-font-sm);
 	font-weight: var(--fc-weight-semibold);
+	flex-wrap: wrap;
+}
+
+.rangeControls {
+	display: flex;
+	align-items: center;
+	gap: var(--fc-space-2);
+	min-width: 0;
+
+	> span {
+		font-size: var(--fc-font-xs);
+		color: var(--fc-muted);
+		font-weight: var(--fc-weight-regular);
+	}
 }
 
 .legend {
@@ -98,6 +150,7 @@
 	color: var(--fc-muted);
 	font-size: var(--fc-font-xs);
 	font-weight: var(--fc-weight-regular);
+	margin-inline-start: auto;
 }
 
 .heatmapLayout {
@@ -253,20 +306,27 @@ button.cell:not(:disabled) {
 
 /* ── Window toggle ───────────────────────────────────────────────────────── */
 
-.toggle {
+:global(.flashcard-root) button.toggle {
 	@include fc-button-reset;
 	@include fc-flex-row-center;
 
 	gap: var(--fc-space-1);
 	width: fit-content;
+	min-height: var(--fc-control-sm);
+	flex: none;
 	padding: var(--fc-space-1) var(--fc-space-2);
+	border: 0;
 	border-radius: var(--fc-radius-sm);
+	background: transparent;
+	box-shadow: none;
 	color: var(--fc-muted);
 	font-size: var(--fc-font-xs);
+	white-space: nowrap;
 
 	&:hover {
 		background: var(--fc-surface-hover);
 		color: var(--fc-text);
+		box-shadow: none;
 	}
 
 	&:focus-visible {
@@ -324,7 +384,8 @@ button.cell:not(:disabled) {
 		scroll-behavior: auto;
 	}
 
-	.toggle svg {
+	.toggle svg,
+	.panelToggle svg {
 		transition: none;
 	}
 }

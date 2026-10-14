@@ -31,6 +31,9 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 }: LearningFootprintProps) {
 	const { t, language } = useFlashcardI18n();
 	const titleId = useId();
+	const panelBodyId = useId();
+	const heatmapId = useId();
+	const [isPanelOpen, setIsPanelOpen] = useState(true);
 	const [isExpanded, setIsExpanded] = useState(false);
 	const scrollerRef = useRef<HTMLDivElement>(null);
 
@@ -47,19 +50,21 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 		0,
 		days.findIndex((day) => day.date === footprint.today.date),
 	);
-	const [activeIndex, setActiveIndex] = useState(todayIndex);
+	const [activeDate, setActiveDate] = useState(footprint.today.date);
+	const selectedIndex = days.findIndex((day) => day.date === activeDate);
+	const activeIndex = selectedIndex >= 0 ? selectedIndex : todayIndex;
 	const cellRefs = useRef<Array<HTMLButtonElement | null>>([]);
 	const activeDay = days[activeIndex] ?? days[todayIndex];
 
 	// The window always opens on today, which is the last column.
 	useEffect(() => {
 		const scroller = scrollerRef.current;
-		if (scroller) scroller.scrollLeft = scroller.scrollWidth;
-	}, [isExpanded]);
+		if (scroller && isPanelOpen) scroller.scrollLeft = scroller.scrollWidth;
+	}, [isExpanded, isPanelOpen]);
 
 	const moveFocus = (nextIndex: number) => {
 		const bounded = Math.max(0, Math.min(todayIndex, nextIndex));
-		setActiveIndex(bounded);
+		setActiveDate(days[bounded]?.date ?? footprint.today.date);
 		cellRefs.current[bounded]?.focus();
 	};
 
@@ -91,13 +96,23 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 	);
 
 	return (
-		<section
-			className={cls(styles.panel, !isExpanded && styles.isCollapsed)}
-			aria-labelledby={titleId}
-		>
+		<section className={styles.panel} aria-labelledby={titleId}>
 			<header className={styles.header}>
 				<h2 id={titleId} className={styles.title}>
-					{t("footprint.title")}
+					<button
+						type="button"
+						className={styles.panelToggle}
+						aria-label={t("footprint.title")}
+						aria-expanded={isPanelOpen}
+						aria-controls={panelBodyId}
+						title={
+							isPanelOpen ? t("footprint.collapsePanel") : t("footprint.expandPanel")
+						}
+						onClick={() => setIsPanelOpen((current) => !current)}
+					>
+						{t("footprint.title")}
+						<ChevronDown size={14} aria-hidden="true" />
+					</button>
 				</h2>
 				<div className={styles.summary}>
 					{summaryItems.map((item) => (
@@ -126,16 +141,28 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 				</div>
 			</header>
 
-			<div className={styles.heatmapSection}>
+			<div id={panelBodyId} className={styles.heatmapSection} hidden={!isPanelOpen}>
 				<div className={styles.heatmapHeading}>
-					<span>
-						{isExpanded
-							? t("footprint.pastYear")
-							: t("footprint.recentWindow", {
-									weeks: visibleWeeks.length,
-									days: activeDayCount,
-								})}
-					</span>
+					<div className={styles.rangeControls}>
+						<span>
+							{isExpanded
+								? t("footprint.pastYear")
+								: t("footprint.recentWindow", {
+										weeks: visibleWeeks.length,
+										days: activeDayCount,
+									})}
+						</span>
+						<button
+							type="button"
+							className={styles.toggle}
+							aria-expanded={isExpanded}
+							aria-controls={heatmapId}
+							onClick={() => setIsExpanded((current) => !current)}
+						>
+							{isExpanded ? t("footprint.collapseYear") : t("footprint.expandYear")}
+							<ChevronDown size={13} aria-hidden="true" />
+						</button>
+					</div>
 					<div className={styles.legend} aria-label={t("footprint.legendLabel")}>
 						<span>{t("footprint.less")}</span>
 						{[0, 1, 2, 3, 4].map((level) => (
@@ -149,7 +176,7 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 					</div>
 				</div>
 
-				<div className={styles.heatmapLayout}>
+				<div id={heatmapId} className={styles.heatmapLayout}>
 					<div className={styles.weekdays} aria-hidden="true">
 						<span>{t("footprint.mondayShort")}</span>
 						<span />
@@ -197,11 +224,11 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 														index === activeIndex && styles.activeCell,
 													)}
 													aria-label={getDayAriaLabel(day, language, t)}
-													onFocus={() => setActiveIndex(index)}
+													onFocus={() => setActiveDate(day.date)}
 													onMouseEnter={() =>
-														!day.future && setActiveIndex(index)
+														!day.future && setActiveDate(day.date)
 													}
-													onClick={() => setActiveIndex(index)}
+													onClick={() => setActiveDate(day.date)}
 													onKeyDown={(event) => {
 														if (event.key === "ArrowLeft")
 															moveFocus(index - DAYS_PER_WEEK);
@@ -225,16 +252,6 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 				</div>
 
 				{activeDay && <DayDetails day={activeDay} />}
-
-				<button
-					type="button"
-					className={styles.toggle}
-					aria-expanded={isExpanded}
-					onClick={() => setIsExpanded((current) => !current)}
-				>
-					{isExpanded ? t("footprint.collapseYear") : t("footprint.expandYear")}
-					<ChevronDown size={13} aria-hidden="true" />
-				</button>
 			</div>
 		</section>
 	);

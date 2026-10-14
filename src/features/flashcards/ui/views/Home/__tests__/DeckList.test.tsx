@@ -22,6 +22,7 @@ vi.mock("react", async (original) => ({
 		];
 	},
 	useMemo: (build: () => unknown) => build(),
+	useId: () => "completed-decks",
 	useCallback: (callback: unknown) => callback,
 	useEffect: () => {},
 }));
@@ -59,6 +60,9 @@ interface ElementProps {
 	deck?: { id: string };
 	"data-state"?: string;
 	"aria-expanded"?: boolean;
+	"aria-controls"?: string;
+	id?: string;
+	hidden?: boolean;
 }
 
 /** Flattens rendered text so an assertion can name a button by its label. */
@@ -308,6 +312,34 @@ describe("deck reorder availability", () => {
 });
 
 describe("deck row presentation state", () => {
+	it("keeps completed decks collapsed and connects the disclosure to its group", () => {
+		const h = harness([
+			{ id: "new", totalCards: 10, newCards: 10 },
+			{ id: "finished", totalCards: 7, newCards: 0, studyCount: 1 },
+		]);
+		const toggle = () =>
+			h.findElement(h.tree(), (element) => element.props["aria-controls"] !== undefined);
+		const body = () =>
+			h.findElement(
+				h.tree(),
+				(element) => element.props.id === toggle().props["aria-controls"],
+			);
+
+		expect(toggle().props["aria-expanded"]).toBe(false);
+		expect(body().props.hidden).toBe(true);
+		expect(h.deckIds()).toEqual(["new"]);
+		expect(textOf(toggle().props.children)).toContain("home.completedGroupTitle");
+		h.clickTreeButton("flashcard-completed-group-toggle");
+		expect(toggle().props["aria-expanded"]).toBe(true);
+		expect(body().props.hidden).toBe(false);
+		expect(h.deckIds()).toEqual(["new", "finished"]);
+		h.clickTreeButton("flashcard-completed-group-toggle");
+		expect(toggle().props["aria-expanded"]).toBe(false);
+		expect(body().props.hidden).toBe(true);
+		expect(h.deckIds()).toEqual(["new"]);
+		expect(h.act).not.toHaveBeenCalled();
+	});
+
 	it("marks an untouched deck as fresh and a partly learned deck as active", () => {
 		const h = harness([
 			{ id: "untouched", totalCards: 10, newCards: 10 },

@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
+import React, { memo, useCallback, useEffect, useId, useMemo, useState } from "react";
 import {
 	closestCenter,
 	DndContext,
@@ -16,7 +16,6 @@ import {
 	BookA,
 	BookOpen,
 	Brain,
-	Calculator,
 	ChartNoAxesColumn,
 	Check,
 	ChevronDown,
@@ -528,6 +527,7 @@ export const DeckList = React.memo(function DeckList({
 }: DeckListProps) {
 	const { t, language } = useFlashcardI18n();
 	const isLoading = snapshot.mutation.kind === "refreshing";
+	const completedGroupId = useId();
 	const isMutationBusy = snapshot.mutation.kind !== "idle";
 	const isMigrating =
 		snapshot.mutation.kind === "preparing-migration" ||
@@ -681,23 +681,9 @@ export const DeckList = React.memo(function DeckList({
 		<>
 			<div className="flashcard-home fc-page fc-page--fill">
 				<FlashcardHeader
+					className={styles.homeHeader}
 					icon={BookOpen}
 					title={t("home.title")}
-					badge={
-						<span
-							className={styles.totalBadge}
-							title={t("home.totalCardsTooltip", {
-								count: formatCount(language, snapshot.totals.totalCards),
-							})}
-						>
-							<Calculator size={12} className={styles.totalBadgeIcon} />
-							<span>
-								{t("home.totalCardsBadge", {
-									count: formatCount(language, snapshot.totals.totalCards),
-								})}
-							</span>
-						</span>
-					}
 					right={
 						<div className="flashcard-header-actions">
 							{(onOpenTranslation || onOpenDictionary || onOpenVideoPlayer) && (
@@ -731,7 +717,6 @@ export const DeckList = React.memo(function DeckList({
 											/>
 										)}
 									</div>
-									<span className={styles.headerDivider} aria-hidden="true" />
 								</>
 							)}
 							<div className={styles.headerGroup}>
@@ -967,6 +952,10 @@ export const DeckList = React.memo(function DeckList({
 															styles.completedGroupHead,
 														)}
 														aria-expanded={isCompletedGroupOpen}
+														aria-controls={completedGroupId}
+														aria-label={t("home.completedGroup", {
+															count: completedDecks.length,
+														})}
 														onClick={() =>
 															setIsCompletedGroupOpen(
 																(current) => !current,
@@ -984,18 +973,28 @@ export const DeckList = React.memo(function DeckList({
 																aria-hidden="true"
 															/>
 														)}
-														{t("home.completedGroup", {
-															count: completedDecks.length,
-														})}
-													</button>
-													{isCompletedGroupOpen && (
-														<div
-															className={cls(
-																"fc-group__body",
-																styles.completedGroupBody,
-															)}
+														<span>{t("home.completedGroupTitle")}</span>
+														<span
+															className={styles.completedCount}
+															aria-hidden="true"
 														>
-															{completedDecks.map((deck) => (
+															{formatCount(
+																language,
+																completedDecks.length,
+															)}
+														</span>
+													</button>
+
+													<div
+														id={completedGroupId}
+														hidden={!isCompletedGroupOpen}
+														className={cls(
+															"fc-group__body",
+															styles.completedGroupBody,
+														)}
+													>
+														{isCompletedGroupOpen &&
+															completedDecks.map((deck) => (
 																<DeckCard
 																	key={deck.id}
 																	deck={deck}
@@ -1042,8 +1041,7 @@ export const DeckList = React.memo(function DeckList({
 																	}
 																/>
 															))}
-														</div>
-													)}
+													</div>
 												</div>
 											)}
 										</div>

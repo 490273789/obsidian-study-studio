@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useId, useMemo, useState } from "react";
-import { FilePlus2, Pencil, Sparkles, X } from "lucide-react";
+import { FilePlus2, Pencil, X } from "lucide-react";
 import { cls } from "../../../../../core/shared/classNames";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardTextarea } from "../../../../../core/ui/primitives/Input";
@@ -75,9 +75,6 @@ export const CardEditorModal = memo(function CardEditorModal({
 				<>
 					<div className="flashcard-modal-header">
 						<div className="flashcard-modal-heading">
-							<div className="flashcard-modal-kicker fc-kicker">
-								<Sparkles size={14} /> {t("cardEditor.kicker")}
-							</div>
 							<span id={titleId} className="flashcard-modal-title">
 								<Icon size={17} /> {title}
 							</span>

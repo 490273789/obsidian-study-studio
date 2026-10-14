@@ -66,7 +66,7 @@
 	--fc-orange: var(--color-orange);
 	--fc-primary: #00b8c4;
 	--fc-primary-hover: #00a0ab;
-	--fc-primary-text: #ffffff;
+	--fc-primary-text: color-mix(in srgb, rgb(var(--fc-black-rgb)) 92%, var(--fc-primary));
 	--fc-danger: var(--fc-red);
 
 	/* ── 表面层级（画布 → 区块 → 卡片 → 浮层 → 控件）───────────── */
@@ -106,26 +106,11 @@
 	--fc-opacity-disabled: 0.45;
 
 	/* ── 边框与分隔线 ────────────────────────────────────────── */
-	/* 极弱边框 (faint)：轻微混入正文色保证基础可见性 */
-	--fc-line-faint: color-mix(
-		in srgb,
-		var(--background-modifier-border) 95%,
-		var(--text-normal) 5%
-	);
-	/* 弱边框 (soft)：混入 12% 正文色（原 8%），适应加深的背景 */
-	--fc-line-soft: color-mix(
-		in srgb,
-		var(--background-modifier-border) 88%,
-		var(--text-normal) 12%
-	);
-	/* 基础边框 (line)：混入 22% 正文色（原 16%），确保基础轮廓足够清晰 */
-	--fc-line: color-mix(in srgb, var(--background-modifier-border) 78%, var(--text-normal) 22%);
-	/* 强边框 (strong)：混入 36% 正文色（原 28%），用于着重强调的面板或粗分割线 */
-	--fc-line-strong: color-mix(
-		in srgb,
-		var(--background-modifier-border) 64%,
-		var(--text-normal) 36%
-	);
+	/* 中性分隔线不继承主题可能带强调色的边框；焦点仍由专用令牌表达。 */
+	--fc-line-faint: color-mix(in srgb, var(--fc-surface-card) 95%, var(--fc-text));
+	--fc-line-soft: color-mix(in srgb, var(--fc-surface-card) 92%, var(--fc-text));
+	--fc-line: color-mix(in srgb, var(--fc-surface-card) 88%, var(--fc-text));
+	--fc-line-strong: color-mix(in srgb, var(--fc-surface-card) 82%, var(--fc-text));
 
 	/* ── 自定义滚动条 ────────────────────────────────────────── */
 	--fc-scrollbar-thumb: var(
@@ -216,6 +201,7 @@
 	/* ── 亮色模式微调：降低阴影浓度，轻微通透不显脏重 ─────────────────── */
 	.theme-light &,
 	&.theme-light {
+		--fc-primary-text: color-mix(in srgb, var(--fc-text) 96%, rgb(var(--fc-black-rgb)));
 		--fc-shadow-sm: 0 1px 2px rgba(var(--fc-black-rgb), 0.03);
 		--fc-shadow-card:
 			0 1px 3px rgba(var(--fc-black-rgb), 0.04), 0 1px 2px rgba(var(--fc-black-rgb), 0.02);

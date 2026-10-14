@@ -225,7 +225,9 @@
 	@include fc-scrollbar;
 }
 
-.tab {
+/* Outrank theme button rules so source tabs keep their quiet navigation surface. */
+.tabs > button.tab {
+	appearance: none;
 	display: inline-flex;
 	align-items: center;
 	gap: var(--fc-space-1);
@@ -233,16 +235,20 @@
 	padding: 0 var(--fc-space-2);
 	border: 1px solid var(--fc-line-soft);
 	border-radius: var(--fc-radius-sm);
-	background: transparent;
-	color: var(--fc-text);
+	background: var(--fc-surface-card);
+	box-shadow: none;
+	color: var(--fc-muted);
 	font-size: var(--fc-font-sm);
+	font-weight: var(--fc-weight-regular);
 	cursor: pointer;
 	transition:
 		background var(--fc-motion-quick) ease,
+		border-color var(--fc-motion-quick) ease,
 		color var(--fc-motion-quick) ease;
 
 	&:hover {
-		background: transparent;
+		border-color: var(--fc-line-strong);
+		background: var(--fc-surface-hover);
 		color: var(--fc-text);
 	}
 
@@ -251,8 +257,8 @@
 	}
 
 	&.isActive {
-		border-color: var(--fc-control-border-selected);
-		background: var(--fc-surface-selected);
+		border-color: color-mix(in srgb, var(--fc-cyan) 45%, var(--fc-line));
+		background: color-mix(in srgb, var(--fc-cyan) 8%, var(--fc-surface-card));
 		color: var(--fc-text);
 		font-weight: var(--fc-weight-medium);
 	}
@@ -272,6 +278,10 @@
 
 .tab.isSuccess .tabStatus {
 	background: var(--fc-primary);
+}
+
+.tab.isSuccess:not(.isActive) .tabStatus {
+	background: var(--fc-faint);
 }
 
 .tab.isEmpty .tabStatus {

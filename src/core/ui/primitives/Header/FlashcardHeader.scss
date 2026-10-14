@@ -4,20 +4,24 @@
 
 .flashcard-common-header {
 	display: grid;
-	grid-template-columns: auto minmax(0, 1fr) auto;
+	grid-template-columns: minmax(0, 1fr) auto;
 	align-items: center;
 	gap: var(--fc-space-3);
 	position: sticky;
 	top: 0;
 	z-index: 18;
+	flex: none;
 	border: 0;
-	border-bottom: 1px solid var(--fc-line-soft);
-	border-radius: 0;
-	background: color-mix(in srgb, var(--background-primary) 90%, transparent);
-	backdrop-filter: blur(12px);
-	-webkit-backdrop-filter: blur(12px);
-	min-height: var(--fc-header-height);
-	padding: 0 var(--fc-space-4);
+	border-radius: var(--fc-radius-lg);
+	background: var(--fc-surface-card);
+	box-shadow: none;
+	min-height: calc(var(--fc-header-height) + var(--fc-space-3));
+	margin-top: var(--fc-space-2);
+	padding: var(--fc-space-3) var(--fc-space-5);
+
+	&.has-left {
+		grid-template-columns: auto minmax(0, 1fr) auto;
+	}
 
 	.flashcard-header-left,
 	.flashcard-header-right {
@@ -28,6 +32,14 @@
 
 	.flashcard-header-right {
 		flex-shrink: 0;
+	}
+
+	.flashcard-header-left {
+		display: none;
+	}
+
+	&.has-left .flashcard-header-left {
+		display: flex;
 	}
 
 	.flashcard-header-actions {
@@ -41,15 +53,22 @@
 	.flashcard-header-center {
 		display: flex;
 		align-items: center;
-		gap: var(--fc-space-2);
+		gap: var(--fc-space-3);
 		min-width: 0;
 
 		> svg {
 			flex-shrink: 0;
+			box-sizing: border-box;
+			width: var(--fc-control-md);
+			height: var(--fc-control-md);
+			padding: 7px;
+			border-radius: var(--fc-radius-md);
+			background: color-mix(in srgb, var(--fc-primary) 8%, var(--fc-surface-card));
+			color: var(--fc-primary);
 		}
 
 		.flashcard-header-title-content {
-			font-size: var(--fc-font-md);
+			font-size: var(--fc-font-lg);
 			font-weight: var(--fc-weight-semibold);
 			color: var(--fc-text);
 			overflow: hidden;
@@ -65,10 +84,11 @@
 			flex-shrink: 0;
 			font-size: var(--fc-font-xs);
 			line-height: 1.2;
-			padding: 2px var(--fc-space-2);
-			border-radius: var(--fc-radius-pill);
-			background: var(--fc-surface-section);
-			border: 1px solid var(--fc-line-soft);
+			padding: 0;
+			margin-inline-start: var(--fc-space-2);
+			border-radius: 0;
+			background: transparent;
+			border: 0;
 			color: var(--fc-muted);
 		}
 	}
@@ -79,5 +99,15 @@
 
 	.flashcard-header-back-mobile {
 		display: none;
+	}
+}
+
+.flashcard-root .flashcard-common-header button.flashcard-btn-icon {
+	color: var(--fc-muted);
+	border-radius: var(--fc-radius-md);
+
+	&:hover:not(:disabled),
+	&:focus-visible {
+		color: var(--fc-text);
 	}
 }

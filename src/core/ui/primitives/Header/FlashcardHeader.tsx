@@ -70,6 +70,7 @@ export const FlashcardHeader: React.FC<FlashcardHeaderProps> = ({
 		"flashcard-common-header",
 		"flashcard-navigation-header",
 		onBack ? "has-back" : "",
+		left ? "has-left" : "",
 		className,
 	]
 		.filter(Boolean)
@@ -77,10 +78,14 @@ export const FlashcardHeader: React.FC<FlashcardHeaderProps> = ({
 
 	return (
 		<header className={classes}>
-			<div className="flashcard-header-left">
-				{onBack && <span className="flashcard-header-back-mobile">{mobileBackButton}</span>}
-				{left}
-			</div>
+			{(left || onBack) && (
+				<div className="flashcard-header-left">
+					{onBack && (
+						<span className="flashcard-header-back-mobile">{mobileBackButton}</span>
+					)}
+					{left}
+				</div>
+			)}
 			<div className="flashcard-header-center">
 				{Icon && <Icon size={18} />}
 				<div className="flashcard-header-title-content">{title}</div>
