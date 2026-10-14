@@ -65,10 +65,10 @@
 	--fc-red: var(--color-red);
 	--fc-orange: var(--color-orange);
 	/* 强调色用于文字和轮廓，操作底色单独轻染，避免大面积高亮。 */
-	--fc-primary: color-mix(in srgb, var(--interactive-accent) 60%, var(--fc-text));
+	--fc-primary: color-mix(in srgb, var(--interactive-accent) 100%, var(--fc-text));
 	--fc-primary-bg: color-mix(in srgb, var(--interactive-accent) 18%, var(--fc-surface-card));
-	--fc-primary-hover: color-mix(in srgb, var(--interactive-accent) 26%, var(--fc-surface-card));
-	--fc-primary-text: var(--fc-text);
+	--fc-primary-hover: color-mix(in srgb, var(--interactive-accent) 66%, var(--fc-surface-card));
+	--fc-primary-text: color-mix(in srgb, rgb(var(--fc-black-rgb)) 92%, var(--fc-primary));
 	--fc-danger: var(--fc-red);
 
 	/* ── 表面层级（画布 → 区块 → 卡片 → 浮层 → 控件）───────────── */

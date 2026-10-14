@@ -21,7 +21,7 @@
 	gap: var(--fc-space-2);
 	padding: var(--fc-space-2) var(--fc-space-4);
 	border-radius: var(--fc-radius-md);
-	font: var(--fc-weight-medium) var(--fc-font-sm) / var(--fc-line-tight) var(--fc-font-ui);
+	font: var(--fc-weight-regular) var(--fc-font-sm) / var(--fc-line-tight) var(--fc-font-ui);
 	text-align: center;
 	vertical-align: middle;
 	cursor: pointer;
@@ -68,12 +68,11 @@
 
 	// Primary: a restrained theme tint with a clear accent edge.
 	&:where(.flashcard-btn-primary) {
-		--fc-button-bg: var(--fc-primary-bg);
+		--fc-button-bg: var(--fc-primary);
 		--fc-button-bg-hover: var(--fc-primary-hover);
-		--fc-button-border: color-mix(in srgb, var(--fc-primary) 48%, var(--fc-line));
-		--fc-button-border-hover: var(--fc-primary);
+		--fc-button-border: color-mix(in srgb, var(--fc-primary) 86%, var(--fc-text));
+		--fc-button-border-hover: var(--fc-primary-hover);
 		--fc-button-text: var(--fc-primary-text);
-		font-weight: var(--fc-weight-semibold);
 	}
 
 	// Tinted: visibly actionable at rest, subordinate to the solid CTA.
@@ -122,7 +121,8 @@
 // Only appearance needs extra specificity against the host. Keep dimensions,
 // typography and variant tokens in the low-priority recipe above.
 .flashcard-btn,
-:is(.flashcard-root, .flashcard-settings-tab, .flashcard-modal-backdrop) button.flashcard-btn {
+:is(.flashcard-root, .flashcard-settings-tab, .flashcard-modal-backdrop)
+	:is(button.flashcard-btn, .setting-item button.flashcard-btn) {
 	appearance: none;
 	border: 1px solid var(--fc-button-border);
 	background: var(--fc-button-bg);
@@ -133,6 +133,18 @@
 		border-color: var(--fc-button-border-hover);
 		background: var(--fc-button-bg-hover);
 		color: var(--fc-button-text);
+	}
+
+	&:is(.mod-cta, .mod-warning) {
+		border-color: var(--fc-button-border);
+		background: var(--fc-button-bg);
+		color: var(--fc-button-text);
+
+		&:hover:not(:disabled) {
+			border-color: var(--fc-button-border-hover);
+			background: var(--fc-button-bg-hover);
+			color: var(--fc-button-text);
+		}
 	}
 
 	// Selection is independent of hover and remains visible for icon controls.

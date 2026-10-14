@@ -1,5 +1,5 @@
 import React, { memo, useId } from "react";
-import { Sparkles, TriangleAlert } from "lucide-react";
+import { Sparkles, TriangleAlert, X } from "lucide-react";
 import { cls } from "../../../../../core/shared/classNames";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardCheckbox } from "../../../../../core/ui/primitives/Checkbox";
@@ -91,15 +91,16 @@ export const DeckSettingsModal = memo(function DeckSettingsModal({
 								})}
 							</span>
 						</div>
-						<button
-							type="button"
+						<FlashcardButton
+							preset="icon"
+							variant="ghost"
+							size="md"
 							className="flashcard-modal-close"
 							onClick={requestClose}
 							disabled={isBusy}
 							aria-label={t("common.close")}
-						>
-							✕
-						</button>
+							icon={X}
+						/>
 					</div>
 
 					<div className="flashcard-modal-body">

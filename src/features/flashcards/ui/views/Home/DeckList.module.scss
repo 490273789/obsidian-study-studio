@@ -13,15 +13,67 @@
 
 /* ── Header ──────────────────────────────────────────────────────────────── */
 
-/* Tool groups share the header surface; spacing alone distinguishes their purpose. */
+.homeHeader:global(.flashcard-common-header) {
+	min-height: calc(var(--fc-header-height) + var(--fc-space-7));
+	box-sizing: border-box;
+	padding: var(--fc-space-3) var(--fc-space-6);
+	border: 1px solid color-mix(in srgb, var(--fc-primary) 24%, var(--fc-line));
+	background:
+		linear-gradient(
+			110deg,
+			color-mix(in srgb, var(--fc-primary) 10%, transparent),
+			transparent 55%
+		),
+		var(--fc-surface-section);
+	box-shadow: var(--fc-shadow-card);
+
+	:global(.flashcard-header-center) {
+		gap: var(--fc-space-4);
+
+		> svg {
+			width: var(--fc-control-lg);
+			height: var(--fc-control-lg);
+			padding: var(--fc-space-3);
+			border: 1px solid color-mix(in srgb, var(--fc-primary) 30%, transparent);
+			border-radius: var(--fc-radius-lg);
+			background: color-mix(in srgb, var(--fc-primary) 14%, var(--fc-surface-card));
+			color: var(--fc-primary);
+		}
+	}
+
+	:global(.flashcard-header-title-content) {
+		font-size: var(--fc-font-xl);
+		font-weight: var(--fc-weight-semibold);
+		letter-spacing: 0.03em;
+	}
+}
+
+/* Two quiet tool trays distinguish feature shortcuts from workspace controls. */
 .headerGroup {
 	display: inline-flex;
 	align-items: center;
 	gap: var(--fc-space-1);
+	padding: var(--fc-space-1);
+	border: 1px solid var(--fc-line-soft);
+	border-radius: var(--fc-radius-lg);
+	background: color-mix(in srgb, var(--fc-surface-canvas) 55%, transparent);
 }
 
 .homeHeader :global(.flashcard-header-actions) {
-	gap: var(--fc-space-6);
+	gap: var(--fc-space-3);
+}
+
+:global(.flashcard-root)
+	.homeHeader:global(.flashcard-common-header)
+	button:global(.flashcard-btn-icon) {
+	--fc-button-bg-hover: var(--fc-primary-bg);
+	--fc-button-border-hover: color-mix(in srgb, var(--fc-primary) 32%, var(--fc-line));
+	color: color-mix(in srgb, var(--fc-text) 72%, var(--fc-muted));
+
+	&:hover:not(:disabled),
+	&:focus-visible {
+		color: var(--fc-primary);
+	}
 }
 
 /* ── Hero adjustments ────────────────────────────────────────────────────── */
@@ -470,27 +522,25 @@
 	.homeHeader:global(.flashcard-common-header):global(.flashcard-navigation-header):not(
 			:global(.has-back)
 		) {
-		grid-template-columns: minmax(0, 1fr) auto;
-		gap: var(--fc-space-1);
-		padding: var(--fc-space-2);
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--fc-space-3);
+		padding: var(--fc-space-3) var(--fc-space-4);
 
 		:global(.flashcard-header-center) {
 			grid-column: 1;
 			grid-row: 1;
-
-			> svg {
-				display: none;
-			}
 		}
 
 		:global(.flashcard-header-right) {
-			grid-column: 2;
-			grid-row: 1;
-			justify-content: flex-end;
+			grid-column: 1;
+			grid-row: 2;
+			width: 100%;
 		}
 
 		:global(.flashcard-header-actions) {
-			gap: var(--fc-space-1);
+			width: 100%;
+			justify-content: space-between;
+			gap: var(--fc-space-2);
 		}
 
 		.headerGroup {

@@ -126,6 +126,13 @@ class SettingsControlRenderer {
 		presentation: SettingsPresentation,
 	): void {
 		setting.addButton((button) => {
+			const variant =
+				control.tone === "primary"
+					? "primary"
+					: control.tone === "warning" || control.tone === "danger"
+						? "danger"
+						: "neutral";
+			button.buttonEl.addClass(`flashcard-btn flashcard-btn-md flashcard-btn-${variant}`);
 			button
 				.setButtonText(control.label)
 				.setDisabled(control.disabled)
@@ -177,8 +184,9 @@ class SettingsControlRenderer {
 			});
 			for (const choice of control.choices) {
 				const tagBtn = tagsContainer.createEl("button", {
+					type: "button",
 					text: choice.label,
-					cls: "flashcard-tag-button",
+					cls: "flashcard-btn flashcard-btn-outline flashcard-btn-sm flashcard-tag-button",
 				});
 				tagBtn.disabled = control.disabled;
 				tagBtn.addEventListener("click", () =>
@@ -613,7 +621,7 @@ class SettingsControlRenderer {
 				const removeBtn = item.createEl("button", {
 					type: "button",
 					text: "✕",
-					cls: `fc-btn-remove ${options.removeButtonClass}`,
+					cls: `flashcard-btn flashcard-btn-icon flashcard-btn-danger flashcard-btn-md fc-btn-remove ${options.removeButtonClass}`,
 				});
 				removeBtn.setAttr("aria-label", options.removeAriaLabel);
 				removeBtn.disabled = options.disabled;
@@ -626,7 +634,7 @@ class SettingsControlRenderer {
 		const addBtn = listContainer.createEl("button", {
 			type: "button",
 			text: options.addLabel,
-			cls: `fc-btn-add ${options.addButtonClass}`,
+			cls: `flashcard-btn flashcard-btn-secondary flashcard-btn-md fc-btn-add ${options.addButtonClass}`,
 		});
 		addBtn.disabled = options.disabled;
 		addBtn.addEventListener("click", () => {

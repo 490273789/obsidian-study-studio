@@ -494,7 +494,10 @@ describe("renderSettingsControls", () => {
 		one(container, "mock-slider").emit("change");
 		integer!.value = "4";
 		integer!.emit("change");
-		named(container, "Run").click();
+		const runBtn = named(container, "Run");
+		expect(runBtn.classList.contains("flashcard-btn")).toBe(true);
+		expect(runBtn.classList.contains("flashcard-btn-neutral")).toBe(true);
+		runBtn.click();
 		await settle();
 
 		expect(changed.text).toHaveBeenCalledWith("new text");
@@ -577,9 +580,19 @@ describe("renderSettingsControls", () => {
 			true,
 		);
 		expect(named(container, "Add").classList.contains("fc-btn-add")).toBe(true);
+		expect(named(container, "Add").classList.contains("flashcard-btn")).toBe(true);
+		expect(named(container, "Add").classList.contains("flashcard-btn-secondary")).toBe(true);
 		expect(named(container, "Choose one").classList.contains("flashcard-tag-button")).toBe(
 			true,
 		);
+		expect(named(container, "Choose one").classList.contains("flashcard-btn")).toBe(true);
+		expect(named(container, "Choose one").classList.contains("flashcard-btn-outline")).toBe(
+			true,
+		);
+		const removeBtn = one(container, "fc-btn-remove");
+		expect(removeBtn.classList.contains("flashcard-btn")).toBe(true);
+		expect(removeBtn.classList.contains("flashcard-btn-icon")).toBe(true);
+		expect(removeBtn.classList.contains("flashcard-btn-danger")).toBe(true);
 	});
 
 	it("captures valid keybindings while cancelling Escape and reporting conflicts", async () => {

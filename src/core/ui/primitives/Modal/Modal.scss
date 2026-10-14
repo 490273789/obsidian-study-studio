@@ -89,7 +89,7 @@
 		padding: var(--fc-space-4);
 	}
 
-	&-close {
+	&-close:not(.flashcard-btn) {
 		width: var(--fc-control-md);
 		height: var(--fc-control-md);
 		display: inline-flex;

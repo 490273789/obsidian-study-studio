@@ -1,5 +1,5 @@
 import React, { memo, useId, useState } from "react";
-import { Flag, Target } from "lucide-react";
+import { Flag, Target, X } from "lucide-react";
 import { cls } from "../../../../../core/shared/classNames";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { ModalSurface } from "../../../../../core/ui/primitives/Modal";
@@ -66,15 +66,16 @@ export const ChallengeSetupModal = memo(function ChallengeSetupModal({
 									: t("challenge.noEligible")}
 							</span>
 						</div>
-						<button
-							type="button"
+						<FlashcardButton
+							preset="icon"
+							variant="ghost"
+							size="md"
 							className="flashcard-modal-close"
 							onClick={requestClose}
 							disabled={isStarting}
 							aria-label={t("common.close")}
-						>
-							✕
-						</button>
+							icon={X}
+						/>
 					</div>
 					<div className={cls("flashcard-modal-body", styles.setupBody)}>
 						{readiness.eligibleCount === 0 ? (

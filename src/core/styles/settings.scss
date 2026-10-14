@@ -172,34 +172,10 @@
 	font-size: var(--fc-font-xs);
 }
 
-.flashcard-tag-button,
-.fc-btn-add,
-.fc-btn-remove {
-	min-height: var(--fc-control-md);
-	border: 1px solid rgba(var(--fc-cyan-rgb), 0.28);
-	border-radius: var(--fc-radius-sm);
-	background: rgba(var(--fc-cyan-rgb), 0.08);
-	color: var(--fc-cyan);
-	cursor: pointer;
-}
-
-.flashcard-tag-button,
-.fc-btn-add {
-	padding: var(--fc-space-2) var(--fc-space-3);
-}
-
 .flashcard-tags-empty {
 	margin-top: var(--fc-space-3);
 	color: var(--fc-muted);
 	font-size: var(--fc-font-sm);
-}
-
-.fc-btn-remove {
-	width: var(--fc-control-md);
-	flex: 0 0 var(--fc-control-md);
-	color: var(--fc-red);
-	border-color: rgba(var(--fc-red-rgb), 0.3);
-	background: rgba(var(--fc-red-rgb), 0.08);
 }
 
 .flashcard-help {
