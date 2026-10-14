@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { DictionaryFavoriteController } from "../favorite-controller";
 import { normalizeDictionarySettings } from "../configuration";
-import type { DictionaryFavoriteFile, StoredDictionaryFavorite } from "../favorite-file";
+import type { StoredDictionaryFavorite } from "../favorite-file";
 import type { DictionarySettingsStore } from "../types";
 import type { FavoriteGeneratedDraft } from "../favorite-ai";
 import { TransportError } from "../../../../core/net/types";
@@ -40,12 +40,11 @@ function setup() {
 			return true;
 		}),
 	} as unknown as DictionarySettingsStore;
-	const controller = new DictionaryFavoriteController(
-		store,
-		file as unknown as DictionaryFavoriteFile,
-		vi.fn(),
-		{ generator: { generate }, language: () => "zh", engineKey: () => engine },
-	);
+	const controller = new DictionaryFavoriteController(store, file, vi.fn(), {
+		generator: { generate },
+		language: () => "zh",
+		engineKey: () => engine,
+	});
 	return {
 		controller,
 		file,

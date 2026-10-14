@@ -8,7 +8,7 @@ import {
 	DICTIONARY_FAVORITE_NOTE_MAX_LENGTH,
 	DICTIONARY_FAVORITE_PATH_MAX_LENGTH,
 } from "./favorite-limits";
-import type { DictionaryFavoriteFile } from "./favorite-file";
+import type { DictionaryFavoriteStore } from "./favorite-file";
 import { FavoriteSaveError } from "./favorite-save-error";
 import { isFavoriteAiWord, type FavoriteDraftGenerator } from "./favorite-ai";
 import { aiFailureCode } from "../../../core/ai";
@@ -25,8 +25,8 @@ interface FavoriteAiOptions {
 }
 
 /**
- * Shared favorite-form session consumed by the favorite sidebar. The vault file
- * is injected; settings persistence happens before any file write.
+ * Shared favorite-form session consumed by the favorite sidebar. The favorite
+ * store is injected; settings persistence happens before any file write.
  */
 export class DictionaryFavoriteController {
 	private lookupRevision = 0;
@@ -41,7 +41,7 @@ export class DictionaryFavoriteController {
 
 	constructor(
 		private readonly settings: DictionarySettingsStore,
-		private readonly file: DictionaryFavoriteFile,
+		private readonly store: DictionaryFavoriteStore,
 		private readonly notify: (message: string) => void,
 		private readonly ai: FavoriteAiOptions,
 	) {
@@ -51,7 +51,7 @@ export class DictionaryFavoriteController {
 			message: "",
 			note: "",
 			path,
-			pathSuggestions: file.suggestions(path),
+			pathSuggestions: store.suggestions(path),
 			savedPath: path,
 			status: "idle",
 			word: "",
@@ -236,7 +236,7 @@ export class DictionaryFavoriteController {
 				this.notify(dictionaryText().saveFailed);
 				throw new Error("favorite-path-persist-failed");
 			}
-			const savedPath = await this.file.save(entry);
+			const savedPath = await this.store.save(entry);
 			if (this.disposed || revision !== this.sessionRevision) return;
 			this.contentDirty = false;
 			this.pathDirty = false;
@@ -314,7 +314,7 @@ export class DictionaryFavoriteController {
 		if (this.disposed || this.isBusy()) return;
 		const revision = this.lookupRevision;
 		try {
-			const opened = await this.file.open(this.state.savedPath);
+			const opened = await this.store.open(this.state.savedPath);
 			if (this.disposed || this.isBusy() || revision !== this.lookupRevision || opened)
 				return;
 			this.state.message = dictionaryText().favoriteFileMissing;
@@ -356,7 +356,7 @@ export class DictionaryFavoriteController {
 		const path = this.settings.getDictionarySettings().favoritePath;
 		this.state.savedPath = path;
 		if (!this.pathDirty) this.state.path = path;
-		this.state.pathSuggestions = this.file.suggestions(path);
+		this.state.pathSuggestions = this.store.suggestions(path);
 	}
 
 	private async loadExisting(clearOnMissing: boolean): Promise<void> {
@@ -366,7 +366,7 @@ export class DictionaryFavoriteController {
 		const path = normalizeDictionaryFavoritePath(this.state.path, "");
 		if (!word || !path) return;
 		try {
-			const existing = await this.file.find(path, word);
+			const existing = await this.store.find(path, word);
 			if (revision !== this.lookupRevision || this.disposed) return;
 			if (existing) {
 				this.state.meaning = existing.meaning;

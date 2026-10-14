@@ -10,7 +10,6 @@ vi.mock("../local-administration", () => ({
 		cancelActiveOperations() {}
 	},
 }));
-vi.mock("../favorite-file", () => ({ DictionaryFavoriteFile: class {} }));
 vi.mock("../favorite-controller", () => ({
 	DictionaryFavoriteController: class {
 		refreshSettings() {}

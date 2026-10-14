@@ -1,10 +1,5 @@
-import { TFile, TFolder, normalizePath, type App } from "obsidian";
 import { normalizeDictionaryFavoritePath, normalizeDictionaryQuery } from "./configuration";
-import type {
-	CardSourceMutation,
-	CardSourceOperation,
-	SourceCard,
-} from "../../../core/shared/cardSourceMutation";
+import type { CardSourceOperation, SourceCard } from "../../../core/shared/cardSourceMutation";
 import { FavoriteSaveError } from "./favorite-save-error";
 
 export interface DictionaryFavoriteEntry {
@@ -19,6 +14,13 @@ export interface StoredDictionaryFavorite {
 	note: string;
 	path: string;
 	word: string;
+}
+
+export interface DictionaryFavoriteStore {
+	suggestions(currentPath: string): string[];
+	save(entry: DictionaryFavoriteEntry): Promise<string>;
+	find(path: string, word: string): Promise<StoredDictionaryFavorite | null>;
+	open(path: string): Promise<boolean>;
 }
 
 import {
@@ -96,7 +98,7 @@ function favoriteCardWord(card: SourceCard): string | null {
 	return match ? favoriteWordKey(match[1] ?? "") : null;
 }
 
-function favoriteSourceChanges(
+export function favoriteSourceChanges(
 	current: string,
 	entry: DictionaryFavoriteEntry,
 	cards: readonly SourceCard[],
@@ -176,88 +178,33 @@ export function dictionaryFavoriteSuggestions(
 	return [...pinned, ...existing].slice(0, DICTIONARY_FAVORITE_SUGGESTION_LIMIT);
 }
 
-export class DictionaryFavoriteFile {
-	constructor(
-		private readonly app: App,
-		private readonly sourceEdits?: CardSourceMutation,
-	) {}
-
-	suggestions(currentPath: string): string[] {
-		return dictionaryFavoriteSuggestions(
-			currentPath,
-			this.app.vault.getMarkdownFiles().map((file) => file.path),
-		);
-	}
-
-	async save(entry: DictionaryFavoriteEntry): Promise<string> {
-		const path = normalizePath(normalizeDictionaryFavoritePath(entry.path, ""));
-		if (!path) throw new Error("Favorite path is empty");
-		const favorite = formatDictionaryFavorite(entry);
-		await this.ensureParentFolder(path);
-		const existing = this.app.vault.getAbstractFileByPath(path);
-		if (!existing) {
-			await this.app.vault.create(path, favorite);
-			return path;
-		}
-		if (!(existing instanceof TFile)) throw new Error("Favorite path is not a file");
-		const expectedContent = await this.app.vault.read(existing);
-		const preparation = this.sourceEdits
-			? await this.sourceEdits.prepare(path, expectedContent)
-			: { kind: "unmanaged" as const };
-		if (preparation.kind === "ready") {
-			const outcome = await this.sourceEdits!.change({
-				path,
-				expectedContent,
-				changes: favoriteSourceChanges(expectedContent, entry, preparation.cards),
-			});
-			if (outcome.kind === "applied") return path;
-			if (outcome.kind === "blocked") throw new FavoriteSaveError(outcome.reason);
-			if (outcome.kind === "source-changing") throw new FavoriteSaveError("source-changing");
-			if (outcome.kind === "validation-failed") {
-				throw new FavoriteSaveError("invalid-card-content");
-			}
-			throw new Error("Favorite source update failed");
-		}
-		if (preparation.kind === "blocked") throw new FavoriteSaveError(preparation.reason);
-		if (preparation.kind === "source-changing") throw new FavoriteSaveError("source-changing");
-		if (preparation.kind === "failed") throw new Error("Favorite source preparation failed");
-		let written = false;
-		await this.app.vault.process(existing, (current) => {
-			if (current !== expectedContent) return current;
+/** Pure in-memory dictionary favorite store for tests and fallback execution. */
+export function createMemoryDictionaryFavoriteStore(
+	initialFiles: Record<string, string> = {},
+): DictionaryFavoriteStore {
+	const files = new Map<string, string>(Object.entries(initialFiles));
+	return {
+		suggestions(currentPath: string): string[] {
+			return dictionaryFavoriteSuggestions(currentPath, [...files.keys()]);
+		},
+		async save(entry: DictionaryFavoriteEntry): Promise<string> {
+			const path = normalizeDictionaryFavoritePath(entry.path, "");
+			if (!path) throw new Error("Favorite path is empty");
+			const current = files.get(path) ?? "";
 			const next = upsertDictionaryFavorite(current, entry);
-			written = true;
-			return next;
-		});
-		if (!written) throw new FavoriteSaveError("source-changing");
-		return path;
-	}
-
-	async find(path: string, word: string): Promise<StoredDictionaryFavorite | null> {
-		const normalizedPath = normalizePath(normalizeDictionaryFavoritePath(path, ""));
-		const file = normalizedPath ? this.app.vault.getFileByPath(normalizedPath) : null;
-		if (!file) return null;
-		const found = findDictionaryFavorite(await this.app.vault.cachedRead(file), word);
-		return found ? { ...found, path: normalizedPath } : null;
-	}
-
-	async open(path: string): Promise<boolean> {
-		const normalized = normalizePath(normalizeDictionaryFavoritePath(path, ""));
-		const file = normalized ? this.app.vault.getFileByPath(normalized) : null;
-		if (!file) return false;
-		await this.app.workspace.openLinkText(file.path, "", true);
-		return true;
-	}
-
-	private async ensureParentFolder(filePath: string): Promise<void> {
-		const parts = filePath.split("/").slice(0, -1);
-		let currentPath = "";
-		for (const part of parts) {
-			currentPath = currentPath ? `${currentPath}/${part}` : part;
-			const existing = this.app.vault.getAbstractFileByPath(currentPath);
-			if (existing instanceof TFolder) continue;
-			if (existing) throw new Error("Favorite parent path is not a folder");
-			// oxlint-disable-next-line no-await-in-loop -- child folders depend on their parents.
-			await this.app.vault.createFolder(currentPath);
-		}
-	}
+			files.set(path, next);
+			return path;
+		},
+		async find(path: string, word: string): Promise<StoredDictionaryFavorite | null> {
+			const normalizedPath = normalizeDictionaryFavoritePath(path, "");
+			const content = files.get(normalizedPath);
+			if (!content) return null;
+			const found = findDictionaryFavorite(content, word);
+			return found ? { ...found, path: normalizedPath } : null;
+		},
+		async open(path: string): Promise<boolean> {
+			const normalizedPath = normalizeDictionaryFavoritePath(path, "");
+			return files.has(normalizedPath);
+		},
+	};
 }

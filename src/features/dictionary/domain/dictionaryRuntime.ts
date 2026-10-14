@@ -9,7 +9,7 @@ import { CompiledDictionarySource } from "./compiled-source";
 import { createDictionaryQuerySession, type DictionaryQuerySession } from "./querySession";
 import { createFavoriteDraftGenerator } from "./favorite-ai";
 import { DictionaryFavoriteController } from "./favorite-controller";
-import { DictionaryFavoriteFile } from "./favorite-file";
+import { createMemoryDictionaryFavoriteStore, type DictionaryFavoriteStore } from "./favorite-file";
 import { HujiangDictionarySource } from "./hujiang";
 import { LocalDictionaryImporter } from "./importer";
 import { LocalDictionaryAdministrationModule } from "./local-administration";
@@ -29,6 +29,7 @@ export interface DictionaryRuntimeOptions {
 	sourceEdits?: CardSourceMutation;
 	ai: AiService;
 	app: App;
+	favoriteStore?: DictionaryFavoriteStore;
 	language: () => Language;
 	net: OutboundPort;
 	notify: (message: string) => void;
@@ -62,7 +63,7 @@ export class DictionaryRuntime {
 		this.dictionaryRoot = `${options.app.vault.configDir}/plugins/${options.plugin.manifest.id}/dictionaries`;
 		this.favoriteController = new DictionaryFavoriteController(
 			options.settings,
-			new DictionaryFavoriteFile(options.app, options.sourceEdits),
+			options.favoriteStore ?? createMemoryDictionaryFavoriteStore(),
 			options.notify,
 			{
 				generator: createFavoriteDraftGenerator(options.ai),

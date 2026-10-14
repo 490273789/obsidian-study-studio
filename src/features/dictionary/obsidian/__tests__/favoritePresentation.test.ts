@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { DictionaryFavoriteController } from "../../domain/favorite-controller";
 import { normalizeDictionarySettings } from "../../domain/configuration";
 import type { FavoriteGeneratedDraft } from "../../domain/favorite-ai";
-import type { DictionaryFavoriteFile, StoredDictionaryFavorite } from "../../domain/favorite-file";
+import type { StoredDictionaryFavorite } from "../../domain/favorite-file";
 import type { DictionaryFavoriteOpenMode, DictionarySettingsStore } from "../../domain/types";
 import { DictionaryFavoritePresentation } from "../favoritePresentation";
 
@@ -39,12 +39,11 @@ function setup() {
 	const generate = vi.fn(
 		async (_word: string, _config: string, _signal: AbortSignal) => generated,
 	);
-	const controller = new DictionaryFavoriteController(
-		store,
-		file as unknown as DictionaryFavoriteFile,
-		vi.fn(),
-		{ generator: { generate }, engineKey: () => "connection", language: () => "zh" },
-	);
+	const controller = new DictionaryFavoriteController(store, file, vi.fn(), {
+		generator: { generate },
+		engineKey: () => "connection",
+		language: () => "zh",
+	});
 	const unsubscribe = vi.fn();
 	const subscribe = controller.subscribe.bind(controller);
 	vi.spyOn(controller, "subscribe").mockImplementation((listener) => {

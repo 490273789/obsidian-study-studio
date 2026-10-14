@@ -13,6 +13,7 @@ import { playDictionaryAudio, stopDictionaryAudio } from "./ui/audio";
 import { DictionaryLookupModal } from "./obsidian/modals";
 import { DictionaryFavoriteModal } from "./obsidian/favoriteModal";
 import { DictionaryFavoritePresentation } from "./obsidian/favoritePresentation";
+import { ObsidianDictionaryFavoriteStore } from "./obsidian/favoriteStore";
 import { DictionarySettingsEditor } from "./obsidian/settingsEditor";
 import { createDictionarySettingsStore } from "./obsidian/settingsStore";
 import { createDictionarySelectionAdapter } from "./selectionAdapter";
@@ -162,6 +163,7 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 			const dictionary = lifetime.own(
 				new DictionaryRuntime({
 					sourceEdits: deps.sourceEdits,
+					favoriteStore: new ObsidianDictionaryFavoriteStore(host.app, deps.sourceEdits),
 					app: host.app,
 					plugin: deps.plugin,
 					settings: createDictionarySettingsStore({
