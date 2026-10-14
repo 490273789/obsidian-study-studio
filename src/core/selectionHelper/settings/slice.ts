@@ -9,6 +9,7 @@ export const DEFAULT_SELECTION_POPUP_SETTINGS: SelectionHelperSettings = {
 	enabled: true,
 	modifier: "none",
 	selectedDictionaries: [],
+	dictionaryOrder: [],
 };
 
 export function normalizeSelectionPopupModifier(value: unknown): SelectionHelperModifier {
@@ -20,7 +21,11 @@ export function normalizeSelectionPopupModifier(value: unknown): SelectionHelper
 
 export function normalizeSelectionPopupSettings(value: unknown): SelectionHelperSettings {
 	if (typeof value !== "object" || value === null) {
-		return { ...DEFAULT_SELECTION_POPUP_SETTINGS };
+		return {
+			...DEFAULT_SELECTION_POPUP_SETTINGS,
+			selectedDictionaries: [],
+			dictionaryOrder: [],
+		};
 	}
 	const candidate = value as Record<string, unknown>;
 	const selectedDictionaries = Array.isArray(candidate.selectedDictionaries)
@@ -31,6 +36,15 @@ export function normalizeSelectionPopupSettings(value: unknown): SelectionHelper
 		enabled: typeof candidate.enabled === "boolean" ? candidate.enabled : true,
 		modifier: normalizeSelectionPopupModifier(candidate.modifier),
 		selectedDictionaries,
+		dictionaryOrder: Array.isArray(candidate.dictionaryOrder)
+			? [
+					...new Set(
+						candidate.dictionaryOrder.filter(
+							(item): item is string => typeof item === "string" && item.length > 0,
+						),
+					),
+				]
+			: [],
 	};
 }
 
@@ -42,6 +56,7 @@ export const selectionPopupSettingsSlice: SettingsSlice<SelectionPopupSliceSetti
 		selectionPopup: {
 			...DEFAULT_SELECTION_POPUP_SETTINGS,
 			selectedDictionaries: [...DEFAULT_SELECTION_POPUP_SETTINGS.selectedDictionaries],
+			dictionaryOrder: [...DEFAULT_SELECTION_POPUP_SETTINGS.dictionaryOrder],
 		},
 	}),
 
@@ -53,6 +68,7 @@ export const selectionPopupSettingsSlice: SettingsSlice<SelectionPopupSliceSetti
 		selectionPopup: {
 			...document.selectionPopup,
 			selectedDictionaries: [...document.selectionPopup.selectedDictionaries],
+			dictionaryOrder: [...document.selectionPopup.dictionaryOrder],
 		},
 	}),
 };

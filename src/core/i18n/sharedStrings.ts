@@ -10,6 +10,11 @@ import { createTranslatorFactory, type TranslationDictionary, type Translator } 
  */
 export const sharedTranslations = {
 	zh: {
+		"sort.instructions": "按空格键提起，使用方向键调整顺序，再按空格键放下，或按 Escape 取消。",
+		"sort.pickedUp": "已提起第 {position} 项，共 {total} 项。",
+		"sort.moved": "移动至第 {position} 项，共 {total} 项。",
+		"sort.dropped": "已放到第 {position} 项。",
+		"sort.cancelled": "已取消排序。",
 		"main.ribbonOpenFlashcards": "打开闪卡",
 		"main.commandOpenFlashcards": "打开闪卡学习",
 		"main.commandSyncDecks": "同步闪卡题库",
@@ -72,6 +77,12 @@ export const sharedTranslations = {
 		"settings.tabAi": "AI 引擎设置",
 	},
 	en: {
+		"sort.instructions":
+			"Press Space to pick up, arrow keys to reorder, Space to drop, or Escape to cancel.",
+		"sort.pickedUp": "Picked up item {position} of {total}.",
+		"sort.moved": "Moved to position {position} of {total}.",
+		"sort.dropped": "Dropped at position {position}.",
+		"sort.cancelled": "Reordering cancelled.",
 		"main.ribbonOpenFlashcards": "Open flashcards",
 		"main.commandOpenFlashcards": "Open flashcard study",
 		"main.commandSyncDecks": "Sync flashcard decks",

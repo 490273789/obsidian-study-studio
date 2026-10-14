@@ -130,11 +130,17 @@ export class DictionaryRuntime {
 		// Snapshot configuration once for the accepted selection. Query sessions read
 		// this configuration; their only mutation (history) goes through the live store.
 		const copiedDictionary = structuredClone(currentDictionary);
+		const availableSources = new Map(
+			copiedDictionary.sources
+				.filter((source) => source.enabled)
+				.map((source) => [source.id, source]),
+		);
 		const frozenDictionary: DictionarySettings = {
 			...copiedDictionary,
-			sources: copiedDictionary.sources.filter(
-				(source) => source.enabled && selected.has(source.id),
-			),
+			sources: [...selected].flatMap((id) => {
+				const source = availableSources.get(id);
+				return source ? [source] : [];
+			}),
 		};
 
 		const scopedSettings: DictionarySettingsStore = {

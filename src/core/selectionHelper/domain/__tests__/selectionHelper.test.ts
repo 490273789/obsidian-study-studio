@@ -10,9 +10,38 @@ import type {
 } from "../types";
 
 describe("SelectionHelper", () => {
+	it.each([
+		{ selectedDictionaries: [] },
+		{ selectedDictionaries: ["a"] },
+		{ selectedDictionaries: ["a", "b"] },
+	])("looks up selected dictionaries in popup order (%j)", ({ selectedDictionaries }) => {
+		const startLookup = vi.fn(() => fakeSession().session);
+		const { helper } = setup({
+			settings: {
+				enabled: true,
+				modifier: "none",
+				selectedDictionaries,
+				dictionaryOrder: ["b", "missing", "b", "a"],
+			},
+			startLookup,
+		});
+		select(helper, candidate("hello"));
+		helper.beginLookup();
+		expect(startLookup).toHaveBeenCalledWith(
+			"hello",
+			selectedDictionaries.length === 1 ? ["a"] : ["b", "a"],
+		);
+		helper.dispose();
+	});
+
 	it("ignores desktop modifier for touch and invalidates only the destroyed source", () => {
 		const { helper } = setup({
-			settings: { enabled: true, modifier: "alt", selectedDictionaries: [] },
+			settings: {
+				enabled: true,
+				modifier: "alt",
+				dictionaryOrder: [],
+				selectedDictionaries: [],
+			},
 		});
 		const first = helper.openSource({});
 		first.capture().submit(candidate("touch", { trigger: "touch" }));
@@ -32,7 +61,12 @@ describe("SelectionHelper", () => {
 		const { session, dispose } = fakeSession();
 		const startLookup = vi.fn(() => session);
 		const { helper } = setup({
-			settings: { enabled: true, modifier: "none", selectedDictionaries: ["b", "a"] },
+			settings: {
+				enabled: true,
+				modifier: "none",
+				dictionaryOrder: [],
+				selectedDictionaries: ["b", "a"],
+			},
 			startLookup,
 		});
 
@@ -56,7 +90,12 @@ describe("SelectionHelper", () => {
 	it("keeps stale explicit source ids without falling back to all sources", () => {
 		const startLookup = vi.fn();
 		const { helper } = setup({
-			settings: { enabled: true, modifier: "none", selectedDictionaries: ["missing"] },
+			settings: {
+				enabled: true,
+				modifier: "none",
+				dictionaryOrder: [],
+				selectedDictionaries: ["missing"],
+			},
 			startLookup,
 		});
 
@@ -93,7 +132,12 @@ describe("SelectionHelper", () => {
 
 	it("honors the configured modifier and eligible note context", () => {
 		const { helper } = setup({
-			settings: { enabled: true, modifier: "alt", selectedDictionaries: [] },
+			settings: {
+				enabled: true,
+				modifier: "alt",
+				dictionaryOrder: [],
+				selectedDictionaries: [],
+			},
 		});
 		select(helper, candidate("hello", { altKey: false }));
 		expect(helper.getSnapshot().visible).toBe(false);
@@ -314,6 +358,7 @@ function setup(
 		({
 			enabled: true,
 			modifier: "none",
+			dictionaryOrder: [],
 			selectedDictionaries: [],
 		} satisfies SelectionHelperSettings);
 	const dictionary: SelectionDictionaryAdapter = {

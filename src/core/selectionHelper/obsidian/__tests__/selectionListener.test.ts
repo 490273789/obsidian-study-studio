@@ -63,7 +63,12 @@ function environment() {
 }
 function helper(modifier: "none" | "alt" = "none") {
 	return new SelectionHelper({
-		settings: () => ({ enabled: true, modifier, selectedDictionaries: [] }),
+		settings: () => ({
+			enabled: true,
+			modifier,
+			dictionaryOrder: [],
+			selectedDictionaries: [],
+		}),
 		dictionary: { sources: () => [], startLookup: () => null, openInMainTab: async () => {} },
 		translation: { available: () => true, openPrefilled: async () => {} },
 	});

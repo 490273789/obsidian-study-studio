@@ -2,6 +2,7 @@ import { Platform } from "obsidian";
 import { defineFeatureLifetime } from "../host/featureLifetime";
 import type { WorkbenchHost, WorkbenchModule, WorkbenchSettingsSection } from "../host/workbench";
 import { SelectionHelper } from "./domain/selectionHelper";
+import { orderSelectionDictionaries } from "./domain/dictionaryOrder";
 import type {
 	SelectionDictionaryAdapter,
 	SelectionHelperSettings,
@@ -27,6 +28,21 @@ type SelectionHelperWorkbenchHost = WorkbenchHost<"selectionHelper">;
 export function createSelectionHelperModule(
 	deps: SelectionHelperModuleDeps,
 ): WorkbenchModule<"selectionHelper"> {
+	let saving = false;
+	const save = async (
+		host: SelectionHelperWorkbenchHost,
+		patch: Partial<SelectionHelperSettings>,
+	) => {
+		if (saving) return;
+		saving = true;
+		host.settingsTab.refresh(SELECTION_HELPER_SECTION_ID);
+		try {
+			await commitSelectionSettings(host, patch);
+		} finally {
+			saving = false;
+			host.settingsTab.refresh(SELECTION_HELPER_SECTION_ID);
+		}
+	};
 	const webStatuses = new Map<Document, WebviewSelectionStatus>();
 	const webStatus = () =>
 		!Platform.isDesktopApp
@@ -46,13 +62,29 @@ export function createSelectionHelperModule(
 				host.settings.read().selectionPopup,
 				sources.map(({ id, label }) => ({ id, label })),
 				{
+					moveDictionary: async (fromIndex, toIndex) => {
+						const current = host.settings.read().selectionPopup;
+						const dictionaryOrder = orderSelectionDictionaries(
+							sources,
+							current.dictionaryOrder,
+						).map((source) => source.id);
+						const [moved] = dictionaryOrder.splice(fromIndex, 1);
+						if (!moved) return;
+						dictionaryOrder.splice(toIndex, 0, moved);
+						// Keep preferences for dictionaries that are temporarily unavailable.
+						const available = new Set(dictionaryOrder);
+						await save(host, {
+							dictionaryOrder: [
+								...dictionaryOrder,
+								...current.dictionaryOrder.filter((id) => !available.has(id)),
+							],
+						});
+					},
 					setEnabled: async (enabled) => {
-						await commitSelectionSettings(host, { enabled });
-						host.settingsTab.refresh(SELECTION_HELPER_SECTION_ID);
+						await save(host, { enabled });
 					},
 					setModifier: async (modifier) => {
-						await commitSelectionSettings(host, { modifier });
-						host.settingsTab.refresh(SELECTION_HELPER_SECTION_ID);
+						await save(host, { modifier });
 					},
 					toggleDictionary: async (id, enabled) => {
 						const current = host.settings.read().selectionPopup.selectedDictionaries;
@@ -61,12 +93,12 @@ export function createSelectionHelperModule(
 						const selectedDictionaries = enabled
 							? Array.from(new Set([...base, id]))
 							: base.filter((item) => item !== id);
-						await commitSelectionSettings(host, { selectedDictionaries });
-						host.settingsTab.refresh(SELECTION_HELPER_SECTION_ID);
+						await save(host, { selectedDictionaries });
 					},
 				},
 				language,
 				webStatus(),
+				saving,
 			);
 		},
 	});

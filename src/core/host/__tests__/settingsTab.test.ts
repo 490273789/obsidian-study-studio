@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { FlashcardSettingTab } from "../settingsTab";
 import { DEFAULT_SETTINGS } from "../settingsSlices";
 import { defineSettings } from "../../settings/presentation";
+import * as controlRenderer from "../settingsControlRenderer";
 
 class MockElement {
 	children: MockElement[] = [];
@@ -14,6 +15,20 @@ class MockElement {
 	scrollHeight = 1000;
 	clientHeight = 500;
 	style: Record<string, string> = {};
+	ownerDocument?: { activeElement: MockElement | null; body: MockElement };
+
+	getAttribute(name: string) {
+		return this.attributes[name] ?? null;
+	}
+	contains(element: MockElement): boolean {
+		return this === element || this.children.some((child) => child.contains(element));
+	}
+	querySelectorAll(): MockElement[] {
+		return this.children.flatMap((child) => [
+			...(child.attributes["data-sortable-id"] ? [child] : []),
+			...child.querySelectorAll(),
+		]);
+	}
 
 	setPlaceholder() {
 		return this;
@@ -154,6 +169,71 @@ vi.mock("obsidian", () => ({
 };
 
 describe("FlashcardSettingTab", () => {
+	it("restores the same dictionary handle across busy and saved generations for repeated keyboard sorting", () => {
+		const tab = new FlashcardSettingTab({} as never, createMockPlugin() as never);
+		const container = tab.containerEl as unknown as MockElement;
+		const body = new MockElement();
+		const document = { activeElement: body, body };
+		container.ownerDocument = document;
+		let busy = false;
+		const handles: MockElement[] = [];
+		const render = vi
+			.spyOn(controlRenderer, "renderSettingsControls")
+			.mockImplementation((_app, target) => {
+				if (!busy) {
+					const handle = (target as unknown as MockElement).createEl("button");
+					handle.attributes["data-sortable-id"] = "dictionary-a";
+					Object.assign(handle, {
+						focus: () => {
+							document.activeElement = handle;
+						},
+					});
+					handles.push(handle);
+				}
+				return () => {
+					document.activeElement = body;
+				};
+			});
+		try {
+			tab.display();
+			document.activeElement = handles[0]!;
+			for (let attempt = 0; attempt < 2; attempt++) {
+				busy = true;
+				tab.refresh();
+				expect(document.activeElement).toBe(body);
+				busy = false;
+				tab.refresh();
+				expect(document.activeElement).toBe(handles[handles.length - 1]);
+			}
+		} finally {
+			tab.hide();
+			render.mockRestore();
+		}
+	});
+
+	it("releases sorting roots before replacing settings and again when hidden", () => {
+		const first = vi.fn();
+		const second = vi.fn();
+		const render = vi
+			.spyOn(controlRenderer, "renderSettingsControls")
+			.mockReturnValueOnce(first)
+			.mockReturnValueOnce(second);
+		try {
+			const plugin = createMockPlugin();
+			const tab = new FlashcardSettingTab({} as never, plugin as never);
+			tab.display();
+			expect(first).not.toHaveBeenCalled();
+			tab.refresh();
+			expect(first).toHaveBeenCalledOnce();
+			expect(second).not.toHaveBeenCalled();
+			tab.hide();
+			tab.hide();
+			expect(second).toHaveBeenCalledOnce();
+		} finally {
+			render.mockRestore();
+		}
+	});
+
 	/**
 	 * The settings tab renders whatever sections are registered. The AI and
 	 * dictionary sections here stand in for the ones the composition root and the

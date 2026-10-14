@@ -455,12 +455,19 @@
 	}
 }
 
-.dragHandle {
+.queueItem .dragHandle {
+	appearance: none;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	box-shadow: none;
+	min-width: 0;
+	min-height: 0;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 14px;
-	height: 28px;
+	width: 28px;
+	height: 32px;
 	color: var(--text-faint);
 	cursor: grab;
 	flex-shrink: 0;
@@ -477,6 +484,12 @@
 
 	&:active {
 		cursor: grabbing;
+	}
+
+	&:focus-visible {
+		opacity: 1;
+		outline: 2px solid var(--interactive-accent);
+		outline-offset: 1px;
 	}
 }
 
@@ -722,7 +735,7 @@
 		max-height: 320px;
 	}
 
-	.dragHandle {
+	.queueItem .dragHandle {
 		opacity: 0.7;
 	}
 

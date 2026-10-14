@@ -26,6 +26,9 @@ export interface SelectionHelperStrings {
 	translationDisabled: string;
 	dictSelectionHeading: string;
 	dictSelectionDesc: string;
+	dictDrag: string;
+	dictMoveUp: string;
+	dictMoveDown: string;
 	noDictionariesAvailable: string;
 	aiGenerate: string;
 	aiGenerating: string;
@@ -65,7 +68,10 @@ const ZH_STRINGS: SelectionHelperStrings = {
 	translationDisabled: "AI 翻译未开启，请先在翻译设置中启用",
 	dictSelectionHeading: "划词展示字典",
 	dictSelectionDesc:
-		"选择在划词浮窗中展示哪些字典。若全部勾选或全部未选，则默认展示所有已启用的字典。",
+		"选择在划词浮窗中展示哪些字典，拖拽或使用上下按钮调整展示顺序。若全部勾选或全部未选，则默认展示所有已启用的字典。",
+	dictDrag: "拖拽调整划词字典顺序",
+	dictMoveUp: "上移",
+	dictMoveDown: "下移",
 	noDictionariesAvailable: "暂无可用的字典源，请先在「词典」设置中启用至少一个字典。",
 	aiGenerate: "生成 AI 释义",
 	aiGenerating: "正在生成 AI 释义…",
@@ -107,7 +113,10 @@ const EN_OVERRIDES: Partial<SelectionHelperStrings> = {
 	translationDisabled: "Translation is disabled in settings",
 	dictSelectionHeading: "Popup Dictionaries",
 	dictSelectionDesc:
-		"Select which dictionaries to display in the selection popup. If none are explicitly selected, all enabled dictionaries will be shown.",
+		"Select dictionaries for the popup. Drag or use the move buttons to change their display order. If none are explicitly selected, all enabled dictionaries will be shown.",
+	dictDrag: "Drag to reorder popup dictionaries",
+	dictMoveUp: "Move up",
+	dictMoveDown: "Move down",
 	noDictionariesAvailable:
 		"No dictionary sources available. Please enable at least one dictionary in Dictionary settings.",
 	aiGenerate: "Generate AI definitions",

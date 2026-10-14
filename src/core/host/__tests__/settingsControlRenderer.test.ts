@@ -1,5 +1,8 @@
 import { beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { defineSettings } from "../../settings/presentation";
+import { mountSettingsSorting } from "../settingsSorting";
+
+vi.mock("../settingsSorting", () => ({ mountSettingsSorting: vi.fn(() => vi.fn()) }));
 
 let renderSettingsControls: typeof import("../settingsControlRenderer").renderSettingsControls;
 
@@ -339,6 +342,85 @@ async function settle(): Promise<void> {
 }
 
 describe("renderSettingsControls", () => {
+	it("connects dictionary drag sorting to presentation actions and releases the binding", async () => {
+		const moved = vi.fn();
+		const presentation = defineSettings("example", (page) => {
+			page.group("general", "General", (group) => {
+				group.reorderable(
+					"sources",
+					{ name: "Sources" },
+					{
+						allowDrag: true,
+						items: ["first", "second"].map((id) => ({
+							id,
+							label: id,
+							kindLabel: "Local",
+							enabled: true,
+							onToggle: vi.fn(),
+						})),
+						onMove: moved,
+						tooltips: { drag: "Drag", moveUp: "Up", moveDown: "Down" },
+					},
+				);
+			});
+		});
+		const container = new MockElement("div", new MockDocument());
+		const dispose = renderSettingsControls({} as never, container as never, presentation, "en");
+		const call =
+			vi.mocked(mountSettingsSorting).mock.calls[
+				vi.mocked(mountSettingsSorting).mock.calls.length - 1
+			]!;
+		expect(call[1].map((row) => row.id)).toEqual(["first", "second"]);
+		expect(call[2]).toBe("en");
+		await call[3](0, 1);
+		expect(moved).toHaveBeenCalledExactlyOnceWith(0, 1);
+		presentation.dispose();
+		await call[3](1, 0);
+		expect(moved).toHaveBeenCalledTimes(1);
+		const unmount =
+			vi.mocked(mountSettingsSorting).mock.results[
+				vi.mocked(mountSettingsSorting).mock.results.length - 1
+			]!.value;
+		dispose();
+		dispose();
+		expect(unmount).toHaveBeenCalledTimes(1);
+	});
+
+	it.each([
+		{ allowDrag: false, disabled: false, count: 2 },
+		{ allowDrag: true, disabled: true, count: 2 },
+		{ allowDrag: true, disabled: false, count: 1 },
+	])("does not mount sorting for an unavailable list: %j", ({ allowDrag, disabled, count }) => {
+		vi.mocked(mountSettingsSorting).mockClear();
+		const presentation = defineSettings("example", (page) => {
+			page.group("general", "General", (group) => {
+				group.reorderable(
+					"sources",
+					{ name: "Sources" },
+					{
+						allowDrag,
+						disabled,
+						items: ["first", "second"].slice(0, count).map((id) => ({
+							id,
+							label: id,
+							kindLabel: "Local",
+							enabled: true,
+							onToggle: vi.fn(),
+						})),
+						onMove: vi.fn(),
+						tooltips: { drag: "Drag", moveUp: "Up", moveDown: "Down" },
+					},
+				);
+			});
+		});
+		renderSettingsControls(
+			{} as never,
+			new MockElement("div", new MockDocument()) as never,
+			presentation,
+		);
+		expect(mountSettingsSorting).not.toHaveBeenCalled();
+	});
+
 	it("renders settings controls and forwards their changed values through the presentation", async () => {
 		const changed = {
 			text: vi.fn(),

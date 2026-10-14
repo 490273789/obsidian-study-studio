@@ -3,16 +3,52 @@ import { RecordingSettingsAdapter } from "../../../settings/testing/recordingSet
 import { buildSelectionHelperSettingsViewModel } from "../viewModel";
 
 describe("selection helper settings presentation", () => {
+	it("presents saved popup order, appends new dictionaries and keeps selection independent", async () => {
+		const moveDictionary = vi.fn().mockResolvedValue(undefined);
+		const presentation = buildSelectionHelperSettingsViewModel(
+			{
+				enabled: true,
+				modifier: "none",
+				selectedDictionaries: ["a"],
+				dictionaryOrder: ["b", "missing", "a", "b"],
+			},
+			["a", "b", "new"].map((id) => ({ id, label: id })),
+			{
+				setEnabled: vi.fn(),
+				setModifier: vi.fn(),
+				toggleDictionary: vi.fn(),
+				moveDictionary,
+			},
+			"zh",
+		);
+		const list = presentation.snapshot.groups[0]!.rows[3]!.controls[0];
+		if (list?.kind !== "reorderable") throw new Error("Expected reorderable list");
+		expect(list.allowDrag).toBe(true);
+		expect(list.items.map(({ id, enabled }) => ({ id, enabled }))).toEqual([
+			{ id: "b", enabled: false },
+			{ id: "a", enabled: true },
+			{ id: "new", enabled: false },
+		]);
+		await presentation.invoke({ action: list.moveAction, value: { fromIndex: 0, toIndex: 2 } });
+		expect(moveDictionary).toHaveBeenCalledExactlyOnceWith(0, 2);
+	});
+
 	it("presents the common settings and dispatches semantic actions", async () => {
 		const actions = {
 			setEnabled: vi.fn().mockResolvedValue(undefined),
 			setModifier: vi.fn().mockResolvedValue(undefined),
+			moveDictionary: vi.fn().mockResolvedValue(undefined),
 			toggleDictionary: vi.fn().mockResolvedValue(undefined),
 		};
 		const adapter = new RecordingSettingsAdapter();
 		adapter.install(
 			buildSelectionHelperSettingsViewModel(
-				{ enabled: true, modifier: "alt", selectedDictionaries: ["local"] },
+				{
+					enabled: true,
+					modifier: "alt",
+					dictionaryOrder: [],
+					selectedDictionaries: ["local"],
+				},
 				[{ id: "local", label: "Local" }],
 				actions,
 				"zh",
@@ -26,11 +62,12 @@ describe("selection helper settings presentation", () => {
 			"触发修饰键",
 			"网页划词兼容状态",
 			"划词展示字典",
-			"Local",
 		]);
-		const toggle = group.rows[4]!.controls[0];
-		if (toggle?.kind !== "toggle") throw new Error("Expected toggle");
-		expect(await adapter.dispatch(toggle.action, false)).toEqual({ status: "applied" });
+		const list = group.rows[3]!.controls[0];
+		if (list?.kind !== "reorderable") throw new Error("Expected reorderable list");
+		expect(await adapter.dispatch(list.items[0]!.toggleAction, false)).toEqual({
+			status: "applied",
+		});
 		expect(actions.toggleDictionary).toHaveBeenCalledWith("local", false);
 	});
 
@@ -38,9 +75,14 @@ describe("selection helper settings presentation", () => {
 		"shows actionable %s web compatibility status",
 		(status) => {
 			const presentation = buildSelectionHelperSettingsViewModel(
-				{ enabled: true, modifier: "none", selectedDictionaries: [] },
+				{ enabled: true, modifier: "none", dictionaryOrder: [], selectedDictionaries: [] },
 				[],
-				{ setEnabled: vi.fn(), setModifier: vi.fn(), toggleDictionary: vi.fn() },
+				{
+					setEnabled: vi.fn(),
+					setModifier: vi.fn(),
+					moveDictionary: vi.fn().mockResolvedValue(undefined),
+					toggleDictionary: vi.fn(),
+				},
 				"zh",
 				status,
 			);
@@ -55,11 +97,12 @@ describe("selection helper settings presentation", () => {
 
 	it("omits dictionary rows when no dictionary adapter is available", () => {
 		const presentation = buildSelectionHelperSettingsViewModel(
-			{ enabled: false, modifier: "none", selectedDictionaries: [] },
+			{ enabled: false, modifier: "none", dictionaryOrder: [], selectedDictionaries: [] },
 			[],
 			{
 				setEnabled: vi.fn().mockResolvedValue(undefined),
 				setModifier: vi.fn().mockResolvedValue(undefined),
+				moveDictionary: vi.fn().mockResolvedValue(undefined),
 				toggleDictionary: vi.fn().mockResolvedValue(undefined),
 			},
 			"en",

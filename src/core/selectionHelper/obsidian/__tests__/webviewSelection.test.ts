@@ -49,7 +49,12 @@ function setup() {
 	};
 	const lookupDispose = vi.fn();
 	const helper = new SelectionHelper({
-		settings: () => ({ enabled: true, modifier: "none", selectedDictionaries: [] }),
+		settings: () => ({
+			enabled: true,
+			modifier: "none",
+			dictionaryOrder: [],
+			selectedDictionaries: [],
+		}),
 		dictionary: {
 			sources: () => [{ id: "local", label: "Local", kind: "dictionary" }],
 			startLookup: () => ({

@@ -68,17 +68,27 @@ describe("dictionary selection settings", () => {
 			net: {},
 		} as never);
 		const clone = vi.spyOn(globalThis, "structuredClone");
-		const session = runtime.createSelectionLookupSession("word", ["first", "second"])!;
+		const session = runtime.createSelectionLookupSession("word", [
+			"second",
+			"first",
+			"second",
+			"missing",
+		])!;
+		expect(dictionary.sources.map((source) => source.id)).toEqual(["first", "second"]);
 		// A committed catalog change must not retarget this already accepted lookup.
 		dictionary.sources[0]!.label = "Changed";
 		dictionary.sources[0]!.enabled = false;
 		dictionary.history = ["external"];
 		release();
 		await vi.waitFor(() => expect(session.getSnapshot().status).toBe("ready"));
+		expect(session.getSnapshot().sources.map((source) => source.id)).toEqual([
+			"second",
+			"first",
+		]);
 		await session.send({ type: "settings-changed" });
 		expect(session.getSnapshot().sources.map((source) => source.label)).toEqual([
-			"First",
 			"Second",
+			"First",
 		]);
 		expect(session.getSnapshot().history).toEqual(["word", "external"]);
 		console.info(

@@ -15,6 +15,8 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 	private activeSectionId = "";
 	private sectionScrollPositions = new Map<string, number>();
 	private activePresentation: SettingsPresentation | null = null;
+	private disposeControls: (() => void) | null = null;
+	private pendingSortFocus: string | null = null;
 	private renderedSectionId = "";
 	private renderedLanguage: Language | null = null;
 	private renderedNavigationKey = "";
@@ -65,6 +67,9 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 	hide(): void {
 		this.activePresentation?.dispose();
 		this.activePresentation = null;
+		this.disposeControls?.();
+		this.disposeControls = null;
+		this.pendingSortFocus = null;
 		for (const section of this.sections()) section.hide?.();
 		super.hide();
 	}
@@ -180,9 +185,18 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 			containerEl.style.minHeight = `${prevScrollHeight}px`;
 		}
 
+		const focused = containerEl.ownerDocument?.activeElement;
+		if (activeSectionId !== this.renderedSectionId) this.pendingSortFocus = null;
+		else if (focused && containerEl.contains(focused)) {
+			this.pendingSortFocus = focused.getAttribute("data-sortable-id");
+		} else if (focused && focused !== containerEl.ownerDocument.body) {
+			this.pendingSortFocus = null;
+		}
+		this.activePresentation?.dispose();
+		this.disposeControls?.();
+		this.disposeControls = null;
 		containerEl.empty();
 		containerEl.addClass("flashcard-settings-tab");
-		this.activePresentation?.dispose();
 		this.activePresentation = nextPresentation;
 
 		const sections = this.sections();
@@ -214,7 +228,22 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 
 		const contentEl = containerEl.createDiv({ cls: "fc-settings-tab-content" });
 
-		if (nextPresentation) renderSettingsControls(this.app, contentEl, nextPresentation);
+		if (nextPresentation)
+			this.disposeControls = renderSettingsControls(
+				this.app,
+				contentEl,
+				nextPresentation,
+				language,
+			);
+		if (this.pendingSortFocus) {
+			const handle = Array.from(
+				contentEl.querySelectorAll<HTMLButtonElement>("button[data-sortable-id]"),
+			).find((button) => button.getAttribute("data-sortable-id") === this.pendingSortFocus);
+			if (handle) {
+				handle.focus({ preventScroll: true });
+				this.pendingSortFocus = null;
+			}
+		}
 
 		this.restoreScroll(targetScrollTop);
 

@@ -255,14 +255,16 @@
 	border-radius: var(--fc-radius-sm);
 	padding: 0 var(--fc-space-2);
 	background: rgba(var(--fc-bg-elevated-rgb), 0.6);
+}
 
-	&.is-dragging {
-		opacity: 0.5;
-	}
+.fc-settings-sort-handle {
+	display: flex;
+	align-items: center;
+}
 
-	&.is-drag-over {
-		border-color: var(--interactive-accent);
-	}
+.fc-settings-sort-context {
+	// The React root owns portals and live announcements, not list layout.
+	display: contents;
 }
 
 .flashcard-dictionary-source-kind {

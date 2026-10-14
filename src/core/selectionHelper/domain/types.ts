@@ -7,6 +7,8 @@ export interface SelectionHelperSettings {
 	modifier: SelectionHelperModifier;
 	/** Persisted IDs of dictionary sources selected for inline lookup. */
 	selectedDictionaries: string[];
+	/** Popup-specific source order, independent of selection and the main dictionary catalog. */
+	dictionaryOrder: string[];
 }
 
 export interface SelectionSource {

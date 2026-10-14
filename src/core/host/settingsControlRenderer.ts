@@ -1,4 +1,6 @@
 import { App, SecretComponent, Setting } from "obsidian";
+import type { Language } from "../shared/types";
+import { mountSettingsSorting, type SortableSettingRow } from "./settingsSorting";
 import {
 	type SettingsActionRef,
 	type SettingsButtonSnapshot,
@@ -23,15 +25,30 @@ export function renderSettingsControls(
 	app: App,
 	container: HTMLElement,
 	presentation: SettingsPresentation,
-): void {
-	new SettingsControlRenderer(app, container.ownerDocument).render(container, presentation);
+	language: Language = "zh",
+): () => void {
+	const renderer = new SettingsControlRenderer(app, container.ownerDocument, language);
+	try {
+		renderer.render(container, presentation);
+	} catch (error) {
+		renderer.dispose();
+		throw error;
+	}
+	return () => renderer.dispose();
 }
 
 class SettingsControlRenderer {
+	private readonly disposers: (() => void)[] = [];
+
 	constructor(
 		private readonly app: App,
 		private readonly document: Document,
+		private readonly language: Language,
 	) {}
+
+	dispose(): void {
+		for (const dispose of this.disposers.splice(0).reverse()) dispose();
+	}
 
 	render(container: HTMLElement, presentation: SettingsPresentation): void {
 		for (const group of presentation.snapshot.groups) {
@@ -345,12 +362,7 @@ class SettingsControlRenderer {
 			return;
 		}
 
-		let draggedId: string | null = null;
-		const clearDragOver = (): void => {
-			for (const el of container.querySelectorAll(".is-drag-over")) {
-				el.removeClass("is-drag-over");
-			}
-		};
+		const sortableRows: SortableSettingRow[] = [];
 
 		control.items.forEach((item, index) => {
 			const row = new Setting(container);
@@ -362,42 +374,14 @@ class SettingsControlRenderer {
 				cls: "flashcard-dictionary-source-kind",
 			});
 
-			if (control.allowDrag && !control.disabled) {
-				row.addExtraButton((button) => {
-					button.setIcon("grip-vertical").setTooltip(control.tooltips.drag);
-					button.extraSettingsEl.draggable = true;
-					button.extraSettingsEl.addEventListener("dragstart", () => {
-						draggedId = item.id;
-						row.settingEl.addClass("is-dragging");
-					});
-					button.extraSettingsEl.addEventListener("dragend", () => {
-						draggedId = null;
-						row.settingEl.removeClass("is-dragging");
-						clearDragOver();
-					});
-				});
-				row.settingEl.addEventListener("dragover", (event) => {
-					if (!draggedId || draggedId === item.id) return;
-					event.preventDefault();
-					row.settingEl.addClass("is-drag-over");
-				});
-				row.settingEl.addEventListener("dragleave", () => {
-					row.settingEl.removeClass("is-drag-over");
-				});
-				row.settingEl.addEventListener("drop", (event) => {
-					event.preventDefault();
-					row.settingEl.removeClass("is-drag-over");
-					const sourceId = draggedId;
-					draggedId = null;
-					if (!sourceId || sourceId === item.id) return;
-					const fromIndex = control.items.findIndex(
-						(candidate) => candidate.id === sourceId,
-					);
-					if (fromIndex < 0) return;
-					this.dispatch(presentation, control.moveAction, {
-						fromIndex,
-						toIndex: index,
-					});
+			if (control.allowDrag && !control.disabled && control.items.length > 1) {
+				row.settingEl.addClass("fc-sortable-row");
+				const handleContainer = row.controlEl.createDiv({ cls: "fc-settings-sort-handle" });
+				sortableRows.push({
+					id: item.id,
+					label: `${control.tooltips.drag} · ${item.label}`,
+					element: row.settingEl,
+					handleContainer,
 				});
 			}
 
@@ -442,6 +426,24 @@ class SettingsControlRenderer {
 					.onChange((value) => this.dispatch(presentation, item.toggleAction, value));
 			});
 		});
+		if (sortableRows.length > 1) {
+			const host = container.createDiv({ cls: "fc-settings-sort-context" });
+			this.disposers.push(
+				mountSettingsSorting(
+					host,
+					sortableRows,
+					this.language,
+					async (fromIndex, toIndex) => {
+						const result = await presentation.invoke({
+							action: control.moveAction,
+							value: { fromIndex, toIndex },
+						});
+						if (result.status === "failed")
+							console.error("Settings action failed:", result.error);
+					},
+				),
+			);
+		}
 	}
 
 	private renderCardsControl(

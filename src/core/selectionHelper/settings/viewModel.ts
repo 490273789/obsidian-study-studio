@@ -1,11 +1,8 @@
-import {
-	defineSettings,
-	settingsKey,
-	type SettingsPresentation,
-} from "../../settings/presentation";
+import { defineSettings, type SettingsPresentation } from "../../settings/presentation";
 import type { Language } from "../../shared/types";
 import type { SelectionHelperModifier, SelectionHelperSettings } from "../domain/types";
 import { selectionHelperStrings } from "../strings/selectionPopup";
+import { orderSelectionDictionaries } from "../domain/dictionaryOrder";
 
 export interface AvailableDictionaryItem {
 	id: string;
@@ -16,6 +13,7 @@ export interface SelectionHelperSettingsActions {
 	setEnabled: (enabled: boolean) => Promise<void>;
 	setModifier: (modifier: SelectionHelperModifier) => Promise<void>;
 	toggleDictionary: (id: string, enabled: boolean) => Promise<void>;
+	moveDictionary: (fromIndex: number, toIndex: number) => Promise<void>;
 }
 
 export function buildSelectionHelperSettingsViewModel(
@@ -24,6 +22,7 @@ export function buildSelectionHelperSettingsViewModel(
 	actions: SelectionHelperSettingsActions,
 	language: Language,
 	webStatus: "idle" | "available" | "unavailable" | "mobile" = "idle",
+	saving = false,
 ): SettingsPresentation {
 	const strings = selectionHelperStrings(language);
 
@@ -32,13 +31,14 @@ export function buildSelectionHelperSettingsViewModel(
 			group.toggle(
 				"enabled",
 				{ name: strings.enablePopup, description: strings.enablePopupDesc },
-				{ value: settings.enabled, onChange: actions.setEnabled },
+				{ value: settings.enabled, disabled: saving, onChange: actions.setEnabled },
 			);
 			group.select(
 				"modifier",
 				{ name: strings.modifier, description: strings.modifierDesc },
 				{
 					value: settings.modifier,
+					disabled: saving,
 					options: [
 						{ value: "none", label: strings.modifierNone },
 						{ value: "alt", label: strings.modifierAlt },
@@ -55,26 +55,38 @@ export function buildSelectionHelperSettingsViewModel(
 			});
 
 			if (availableDictionaries.length === 0) return;
-			group.row("dictionary-selection", {
-				name: strings.dictSelectionHeading,
-				description: strings.dictSelectionDesc,
-			});
-
 			const selectedSet = new Set(
 				settings.selectedDictionaries.length > 0
 					? settings.selectedDictionaries
 					: availableDictionaries.map((dictionary) => dictionary.id),
 			);
-			for (const dictionary of availableDictionaries) {
-				group.toggle(
-					`dictionary-${settingsKey(dictionary.id)}`,
-					{ name: dictionary.label },
-					{
-						value: selectedSet.has(dictionary.id),
-						onChange: (enabled) => actions.toggleDictionary(dictionary.id, enabled),
+			group.reorderable(
+				"dictionary-selection",
+				{
+					name: strings.dictSelectionHeading,
+					description: strings.dictSelectionDesc,
+				},
+				{
+					allowDrag: true,
+					disabled: saving,
+					items: orderSelectionDictionaries(
+						availableDictionaries,
+						settings.dictionaryOrder,
+					).map((dictionary) => ({
+						id: dictionary.id,
+						label: dictionary.label,
+						kindLabel: "",
+						enabled: selectedSet.has(dictionary.id),
+						onToggle: (enabled) => actions.toggleDictionary(dictionary.id, enabled),
+					})),
+					onMove: actions.moveDictionary,
+					tooltips: {
+						drag: strings.dictDrag,
+						moveUp: strings.dictMoveUp,
+						moveDown: strings.dictMoveDown,
 					},
-				);
-			}
+				},
+			);
 		});
 	});
 }

@@ -10,6 +10,7 @@ import type {
 	SelectionTarget,
 	SelectionTranslationAdapter,
 } from "./types";
+import { orderSelectionDictionaries } from "./dictionaryOrder";
 
 export interface SelectionHelperOptions {
 	settings(): SelectionHelperSettings;
@@ -121,7 +122,7 @@ export class SelectionHelper {
 		}
 
 		const sources = selectedSources(
-			this.options.dictionary.sources(),
+			orderSelectionDictionaries(this.options.dictionary.sources(), settings.dictionaryOrder),
 			settings.selectedDictionaries,
 		);
 		const isEnglishWord = isEnglishWordOrPhrase(text);
@@ -154,9 +155,10 @@ export class SelectionHelper {
 
 	beginLookup(): void {
 		if (this.disposed || !this.snapshot.target || !this.snapshot.canLookup) return;
+		const settings = this.options.settings();
 		const sourceIds = selectedSources(
-			this.options.dictionary.sources(),
-			this.options.settings().selectedDictionaries,
+			orderSelectionDictionaries(this.options.dictionary.sources(), settings.dictionaryOrder),
+			settings.selectedDictionaries,
 		).map((source) => source.id);
 		if (sourceIds.length === 0) {
 			this.dismiss();

@@ -23,6 +23,7 @@ describe("selectionPopupSettingsSlice", () => {
 		).toEqual({
 			enabled: false,
 			modifier: "alt",
+			dictionaryOrder: [],
 			selectedDictionaries: ["youdao"],
 		});
 	});
@@ -35,6 +36,7 @@ describe("selectionPopupSettingsSlice", () => {
 		expect(normalizeSelectionPopupSettings({ enabled: "yes", modifier: "invalid" })).toEqual({
 			enabled: true,
 			modifier: "none",
+			dictionaryOrder: [],
 			selectedDictionaries: [],
 		});
 	});
@@ -52,6 +54,7 @@ describe("selectionPopupSettingsSlice", () => {
 			selectionPopup: {
 				enabled: true,
 				modifier: "alt" as const,
+				dictionaryOrder: ["youdao"],
 				selectedDictionaries: ["youdao"],
 			},
 		};
@@ -59,8 +62,24 @@ describe("selectionPopupSettingsSlice", () => {
 		expect(cloned).toEqual(original);
 		cloned.selectionPopup.enabled = false;
 		cloned.selectionPopup.selectedDictionaries.push("cambridge");
+		cloned.selectionPopup.dictionaryOrder.push("cambridge");
 		expect(original.selectionPopup.enabled).toBe(true);
 		expect(original.selectionPopup.selectedDictionaries).toEqual(["youdao"]);
+		expect(original.selectionPopup.dictionaryOrder).toEqual(["youdao"]);
+	});
+
+	it("restores valid popup order and safely normalizes legacy or malformed values", () => {
+		expect(
+			normalizeSelectionPopupSettings({ selectedDictionaries: ["youdao"] }).dictionaryOrder,
+		).toEqual([]);
+		expect(
+			normalizeSelectionPopupSettings({
+				dictionaryOrder: ["local", "youdao", "local", "", 1],
+			}).dictionaryOrder,
+		).toEqual(["local", "youdao"]);
+		expect(
+			normalizeSelectionPopupSettings({ dictionaryOrder: "local" }).dictionaryOrder,
+		).toEqual([]);
 	});
 
 	it("normalizes selectedDictionaries correctly", () => {

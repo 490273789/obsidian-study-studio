@@ -2,23 +2,16 @@ import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
 	closestCenter,
 	DndContext,
-	KeyboardSensor,
-	MouseSensor,
-	TouchSensor,
-	useSensor,
-	useSensors,
 	type DragEndEvent,
 	type SensorDescriptor,
 	type SensorOptions,
 } from "@dnd-kit/core";
-import {
-	arrayMove,
-	rectSortingStrategy,
-	sortableKeyboardCoordinates,
-	SortableContext,
-	useSortable,
-} from "@dnd-kit/sortable";
+import { arrayMove, rectSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import {
+	useSortableSensors,
+	sortableAccessibility,
+} from "../../../../../core/ui/primitives/Sortable/Sortable";
 import {
 	BookA,
 	BookOpen,
@@ -394,7 +387,7 @@ export const DeckList = React.memo(function DeckList({
 	onOpenDictionary,
 	onOpenVideoPlayer,
 }: DeckListProps) {
-	const { t } = useFlashcardI18n();
+	const { t, language } = useFlashcardI18n();
 	const isLoading = snapshot.mutation.kind === "refreshing";
 	const isMutationBusy = snapshot.mutation.kind !== "idle";
 	const isMigrating =
@@ -446,17 +439,7 @@ export const DeckList = React.memo(function DeckList({
 		() => orderDeckSnapshots(snapshot.decks, visibleDeckIds),
 		[snapshot.decks, visibleDeckIds],
 	);
-	const sensors = useSensors(
-		useSensor(MouseSensor, {
-			activationConstraint: { distance: 6 },
-		}),
-		useSensor(TouchSensor, {
-			activationConstraint: { delay: 1000, tolerance: 5 },
-		}),
-		useSensor(KeyboardSensor, {
-			coordinateGetter: sortableKeyboardCoordinates,
-		}),
-	);
+	const sensors = useSortableSensors();
 	/**
 	 * Disabling reordering belongs to the whole list, not to each card: DndContext
 	 * accepts no `disabled` prop, so an empty sensor set is what stops every
@@ -689,6 +672,7 @@ export const DeckList = React.memo(function DeckList({
 							<DndContext
 								sensors={activeSensors}
 								collisionDetection={closestCenter}
+								accessibility={sortableAccessibility(language, visibleDeckIds)}
 								onDragEnd={handleDragEnd}
 							>
 								<SortableContext
