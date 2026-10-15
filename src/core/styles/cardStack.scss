@@ -1,5 +1,3 @@
-@use "./mixins.scss" as *;
-
 /* Session reading surface; per-mode controls live in their CSS Modules. */
 .flashcard-complete {
 	height: 100%;
@@ -51,8 +49,7 @@
 	box-shadow: none;
 }
 .flashcard-question {
-	.flashcard-markdown,
-	.pronounceable-markdown-wrapper {
+	.flashcard-markdown {
 		font-size: var(--fc-font-xl);
 		font-weight: var(--fc-weight-semibold);
 		color: var(--fc-text);

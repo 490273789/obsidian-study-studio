@@ -1,3 +1,44 @@
+/* Shared deck layout for narrow viewports, panes, and Obsidian phones. */
+@mixin compact-deck-layout {
+	.flashcard-deck-list .flashcard-deck-item {
+		flex-direction: column;
+		min-height: auto;
+		gap: var(--fc-space-3);
+		padding: var(--fc-space-3);
+		align-items: stretch;
+	}
+
+	.flashcard-deck-item .flashcard-deck-main {
+		width: 100%;
+		min-height: auto;
+		flex: none;
+	}
+
+	.flashcard-deck-item .flashcard-deck-side {
+		width: 100%;
+		align-self: stretch;
+		margin-top: 0;
+		flex: none;
+	}
+
+	.flashcard-deck-item .flashcard-deck-actions2 {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr)) var(
+				--fc-deck-tool-size,
+				var(--fc-control-md)
+			);
+		gap: var(--fc-space-2);
+		width: 100%;
+	}
+
+	.flashcard-deck-item .flashcard-deck-actions2.has-spelling {
+		grid-template-columns: repeat(2, minmax(0, 1fr)) repeat(
+				2,
+				var(--fc-deck-tool-size, var(--fc-control-md))
+			);
+	}
+}
+
 /* Tablet and narrow panes */
 @media (max-width: 900px) {
 	.flashcard-root {
@@ -7,14 +48,6 @@
 
 	.flashcard-root:focus-within {
 		padding-bottom: var(--fc-space-3);
-	}
-
-	.flashcard-stats-session {
-		grid-template-columns: 1fr;
-	}
-
-	.flashcard-stats-session-right {
-		justify-content: space-between;
 	}
 }
 
@@ -29,21 +62,12 @@
 		padding-bottom: var(--fc-space-2);
 	}
 
-	.flashcard-deck-list,
-	.flashcard-stats-body {
+	.flashcard-deck-list {
 		padding-bottom: var(--fc-space-4);
 	}
 
 	.flashcard-home,
-	.flashcard-study,
-	.flashcard-practice-setup,
-	.flashcard-practice-summary,
-	.flashcard-stats-view,
-	.flashcard-word-list-view {
-		gap: var(--fc-space-2);
-	}
-
-	.flashcard-practice-summary-scroll {
+	.flashcard-study {
 		gap: var(--fc-space-2);
 	}
 
@@ -134,10 +158,6 @@
 		}
 	}
 
-	.flashcard-word-list-meta {
-		display: none;
-	}
-
 	.flashcard-common-header .flashcard-header-back-mobile {
 		display: inline-flex;
 	}
@@ -163,84 +183,12 @@
 		}
 	}
 
-	.flashcard-word-list-toolbar {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-	}
-
-	.flashcard-practice-range-inputs,
-	.flashcard-practice-quick-buttons,
-	.flashcard-practice-stat-row,
-	.flashcard-practice-summary-actions {
-		grid-template-columns: 1fr;
-	}
-
-	.flashcard-deck-list .flashcard-deck-item {
-		flex-direction: column;
-		min-height: auto;
-		gap: var(--fc-space-3);
-		padding: var(--fc-space-3);
-		align-items: stretch;
-	}
-
-	.flashcard-deck-item .flashcard-deck-main {
-		width: 100%;
-		min-height: auto;
-		flex: none;
-	}
-
-	.flashcard-deck-item .flashcard-deck-side {
-		width: 100%;
-		align-self: stretch;
-		margin-top: 0;
-		flex: none;
-	}
-
-	.flashcard-deck-item .flashcard-deck-actions2 {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr)) var(
-				--fc-deck-tool-size,
-				var(--fc-control-md)
-			);
-		gap: var(--fc-space-2);
-		width: 100%;
-	}
-
-	.flashcard-deck-item .flashcard-deck-actions2.has-spelling {
-		grid-template-columns: repeat(2, minmax(0, 1fr)) repeat(
-				2,
-				var(--fc-deck-tool-size, var(--fc-control-md))
-			);
-	}
-
-	/* On mobile the last deck card sits at the end of the scrollable list,
-	   so its more-actions menu opens upward instead of clipping below the
-	   fold. Desktop keeps every menu opening downward. */
-	.flashcard-deck-list .flashcard-deck-item:last-child .flashcard-deck-more-actions {
-		top: auto;
-		bottom: calc(100% + var(--fc-space-2));
-	}
-
-	.flashcard-practice-quick-buttons {
-		grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
-	}
+	@include compact-deck-layout;
 
 	.flashcard-setup-control-group {
 		grid-template-columns: 1fr;
 		gap: var(--fc-space-3);
 		padding: var(--fc-space-4);
-	}
-
-	.flashcard-practice-setup .flashcard-setup-control-group {
-		grid-template-columns: 1fr;
-		gap: var(--fc-space-3);
-		padding: var(--fc-space-4);
-
-		.flashcard-setup-control-copy {
-			padding: 0 0 var(--fc-space-3);
-			border-right: 0;
-			border-bottom: 1px solid var(--fc-line-faint);
-		}
 	}
 
 	.flashcard-setup-control-copy {
@@ -255,52 +203,6 @@
 		flex-basis: var(--fc-control-sm);
 	}
 
-	.flashcard-setup-control-detail .flashcard-practice-range-inputs {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-	}
-
-	.flashcard-setup-custom-field {
-		width: 100%;
-		margin-left: 0;
-		grid-template-columns: minmax(0, 1fr) 82px auto;
-	}
-
-	.flashcard-setup-range-field {
-		grid-template-columns: 1fr;
-	}
-
-	.flashcard-header-stats.columns-3,
-	.flashcard-header-stats.columns-4,
-	.flashcard-header-stats.columns-5 {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 0;
-	}
-
-	.flashcard-header-stat:nth-child(odd):last-child {
-		grid-column: 1 / -1;
-	}
-
-	.flashcard-header-stat {
-		justify-content: flex-start;
-		padding: var(--fc-space-3);
-	}
-
-	.flashcard-header-stat + .flashcard-header-stat {
-		border-left: 1px solid rgba(var(--fc-cyan-rgb), 0.24);
-	}
-
-	.flashcard-header-stat:nth-child(odd) {
-		border-left: 0;
-	}
-
-	.flashcard-header-stat:nth-child(n + 3) {
-		border-top: 1px solid var(--fc-line);
-	}
-
-	.flashcard-word-row {
-		grid-template-columns: 1fr;
-	}
-
 	.flashcard-markdown {
 		font-size: var(--fc-font-md);
 		line-height: var(--fc-line-reading);
@@ -308,10 +210,6 @@
 
 	.flashcard-study {
 		overflow: hidden;
-	}
-
-	.flashcard-card-editor-field textarea {
-		min-height: 126px;
 	}
 
 	.flashcard-modal-backdrop {
@@ -328,18 +226,10 @@
 		border-radius: var(--fc-radius-md);
 	}
 
-	.flashcard-deck-settings-modal,
 	.flashcard-card-editor-modal {
 		max-height: min(84vh, calc(100% - 24px));
-	}
-
-	.flashcard-card-editor-modal {
 		width: min(100%, 680px);
 		height: min(680px, 92vh, calc(100% - 16px));
-	}
-
-	.flashcard-card-editor-body {
-		overscroll-behavior: contain;
 	}
 
 	.flashcard-card-editor-modal .flashcard-modal-header,
@@ -369,167 +259,10 @@
 
 /* Respond to the Obsidian pane width, including desktop split panes and mobile phone views. */
 @container flashcard-page (max-width: 640px) {
-	/* Obsidian Mobile may keep a desktop-sized CSS viewport.  These setup
-	   controls therefore need to follow the page container, not just the
-	   viewport media query above. */
-	.flashcard-practice-setup .flashcard-setup-control-group {
-		grid-template-columns: minmax(0, 1fr);
-		gap: var(--fc-space-3);
-		padding: var(--fc-space-4);
-
-		.flashcard-setup-control-copy {
-			padding: 0 0 var(--fc-space-3);
-			border-right: 0;
-			border-bottom: 1px solid var(--fc-line-faint);
-		}
-
-		.flashcard-setup-control-body {
-			min-width: 0;
-		}
-	}
-
-	.flashcard-practice-setup .flashcard-setup-segmented {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		width: 100%;
-	}
-
-	.flashcard-practice-setup .flashcard-setup-segment-btn {
-		min-width: 0;
-		padding-inline: var(--fc-space-2);
-	}
-
-	.flashcard-practice-setup .flashcard-setup-segment-label {
-		overflow-wrap: anywhere;
-	}
-
-	.flashcard-header-stats.columns-3,
-	.flashcard-header-stats.columns-4,
-	.flashcard-header-stats.columns-5 {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-	}
-
-	.flashcard-header-stat {
-		justify-content: flex-start;
-		white-space: normal;
-	}
-
-	.flashcard-header-stat:nth-child(odd) {
-		border-left: 0;
-	}
-
-	.flashcard-deck-list .flashcard-deck-item {
-		flex-direction: column;
-		min-height: auto;
-		gap: var(--fc-space-3);
-		padding: var(--fc-space-3);
-		align-items: stretch;
-	}
-
-	.flashcard-deck-item .flashcard-deck-main {
-		width: 100%;
-		min-height: auto;
-		flex: none;
-	}
-
-	.flashcard-deck-item .flashcard-deck-side {
-		width: 100%;
-		align-self: stretch;
-		margin-top: 0;
-		flex: none;
-	}
-
-	.flashcard-deck-item .flashcard-deck-actions2 {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr)) var(
-				--fc-deck-tool-size,
-				var(--fc-control-md)
-			);
-		gap: var(--fc-space-2);
-		width: 100%;
-	}
-
-	.flashcard-deck-item .flashcard-deck-actions2.has-spelling {
-		grid-template-columns: repeat(2, minmax(0, 1fr)) repeat(
-				2,
-				var(--fc-deck-tool-size, var(--fc-control-md))
-			);
-	}
-
-	.flashcard-deck-list .flashcard-deck-item:last-child .flashcard-deck-more-actions {
-		top: auto;
-		bottom: calc(100% + var(--fc-space-2));
-	}
+	@include compact-deck-layout;
 }
 
 /* Explicit fallback for Obsidian mobile phone environment */
 .is-phone {
-	.flashcard-practice-setup .flashcard-setup-control-group {
-		grid-template-columns: minmax(0, 1fr);
-		gap: var(--fc-space-3);
-		padding: var(--fc-space-4);
-
-		.flashcard-setup-control-copy {
-			padding: 0 0 var(--fc-space-3);
-			border-right: 0;
-			border-bottom: 1px solid var(--fc-line-faint);
-		}
-
-		.flashcard-setup-control-body {
-			min-width: 0;
-		}
-	}
-
-	.flashcard-practice-setup .flashcard-setup-segmented {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		width: 100%;
-	}
-
-	.flashcard-practice-setup .flashcard-setup-segment-btn {
-		min-width: 0;
-		padding-inline: var(--fc-space-2);
-	}
-
-	.flashcard-practice-setup .flashcard-setup-segment-label {
-		overflow-wrap: anywhere;
-	}
-
-	.flashcard-deck-list .flashcard-deck-item {
-		flex-direction: column;
-		min-height: auto;
-		gap: var(--fc-space-3);
-		padding: var(--fc-space-3);
-		align-items: stretch;
-	}
-
-	.flashcard-deck-item .flashcard-deck-main {
-		width: 100%;
-		min-height: auto;
-		flex: none;
-	}
-
-	.flashcard-deck-item .flashcard-deck-side {
-		width: 100%;
-		align-self: stretch;
-		margin-top: 0;
-		flex: none;
-	}
-
-	.flashcard-deck-item .flashcard-deck-actions2 {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr)) var(
-				--fc-deck-tool-size,
-				var(--fc-control-md)
-			);
-		gap: var(--fc-space-2);
-		width: 100%;
-	}
-
-	.flashcard-deck-item .flashcard-deck-actions2.has-spelling {
-		grid-template-columns: repeat(2, minmax(0, 1fr)) repeat(
-				2,
-				var(--fc-deck-tool-size, var(--fc-control-md))
-			);
-	}
+	@include compact-deck-layout;
 }

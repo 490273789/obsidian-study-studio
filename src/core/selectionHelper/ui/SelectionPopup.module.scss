@@ -392,18 +392,6 @@
 		font-size: var(--fc-font-xs);
 		color: var(--text-muted);
 	}
-
-	.kbd {
-		display: inline-block;
-		padding: 1px 5px;
-		font-size: var(--fc-font-2xs);
-		font-family: var(--font-monospace);
-		background: var(--background-primary);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: var(--fc-radius-xs);
-		box-shadow: var(--fc-shadow-sm);
-		color: var(--text-muted);
-	}
 }
 
 @media (pointer: coarse) {

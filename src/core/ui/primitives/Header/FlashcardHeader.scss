@@ -13,7 +13,6 @@
 	flex: none;
 	border-bottom: 1px solid color-mix(in srgb, var(--fc-primary) 24%, var(--fc-line));
 	border-radius: var(--fc-radius-lg);
-	// background: var(--fc-surface-card);
 	background:
 		linear-gradient(
 			110deg,
@@ -23,7 +22,6 @@
 		var(--fc-surface-section);
 	box-shadow: none;
 	min-height: calc(var(--fc-header-height) + var(--fc-space-3));
-	// margin-top: var(--fc-space-2);
 	padding: var(--fc-space-3) var(--fc-space-5);
 
 	&.has-left {
@@ -32,12 +30,12 @@
 
 	.flashcard-header-left,
 	.flashcard-header-right {
-		display: flex;
 		align-items: center;
 		gap: var(--fc-space-2);
 	}
 
 	.flashcard-header-right {
+		display: flex;
 		flex-shrink: 0;
 	}
 

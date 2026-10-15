@@ -10,7 +10,7 @@
 
 ### 1. 全局样式体系 (`src/core/styles/`)
 
-- `mixins.scss`：高频 SCSS 混入（如 `fc-focus-ring`、`fc-flex-center`、`fc-truncate`、`fc-scrollbar` 等）。
+- `mixins.scss`：高频 SCSS 混入（如 `fc-focus-ring`、`fc-flex-row-center`、`fc-scrollbar` 等）。
 - `layout.scss`：**布局模块**，页面外壳、面板与视图容器的唯一实现（见下）。
 - `patterns.scss`：**通用 UI 模式**，跨视图复用的结构配方（hero 主区、状态行、比率条、折叠组，见下）。
 - `base.scss`：设计 token（唯一来源，`--fc-*`）、根容器框架（`.flashcard-root` 的定义与表面归一）。
@@ -60,7 +60,7 @@
 
 - `Button/` (`Button.scss`)、`Input/` (`Input.scss`)、`Select/` (`Select.scss`)、`Checkbox/` (`Checkbox.scss`)、`Slider/` (`Slider.scss`)
 - `Menu/` (`Menu.scss`)、`Modal/` (`Modal.scss`)、`ConfirmDialog/` (`ConfirmDialog.scss`)
-- `Header/` (`FlashcardHeader.scss`)、`SessionTimer/` (`SessionTimer.scss`)、`SessionToolbar/` (`SessionToolbar.scss`)、`SetupSelector/` (`SetupSelector.scss`)
+- `Header/` (`FlashcardHeader.scss`)、`SessionToolbar/` (`SessionToolbar.scss`)、`SetupSelector/` (`SetupSelector.scss`)
 - `Markdown/` (`Markdown.scss`)、`PronunciationButton/` (`PronunciationButton.scss`)
 
 只被闪卡使用的基元（`SessionToolbar`、`PronunciationButton`、`Markdown`）随功能放在 `src/features/flashcards/ui/primitives/`，规则同上。
@@ -98,8 +98,8 @@
 
 - `.fc-page`：页面根（flex 纵向、区块间距、`--fc-text`）。
 - `.fc-page--fill`：填满 leaf、内部滚动、带 `--fc-motion-page-enter` 进入动效。
-- `.fc-page__body` / `.fc-page__body--narrow`：可滚动正文区；`--narrow` 为 850px 阅读列。
-- `.fc-panel` + `.fc-panel > header|footer` + `.fc-panel__body` / `.fc-panel--scroll`：带边框的面板与其头/尾/正文语义。
+- `.fc-page__body`：可滚动正文区。
+- `.fc-panel` + `.fc-panel > header|footer`：带边框的面板与其头/尾语义。
 - `.workspace-leaf-content .flashcard-container`：挂载接缝为每个视图添加的唯一容器类。
 
 布局模块自带 720px / 640px / `pointer: coarse` 三组媒体查询，因此新视图无需再写外壳级响应式。功能样式在布局层之后加载，可以覆盖个别数值（例如统计页保留自己的内边距）。

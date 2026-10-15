@@ -14,7 +14,6 @@
 	--fc-font-md: 14px;
 	--fc-font-lg: 15px;
 	--fc-font-xl: 18px;
-	--fc-font-display: 20px;
 	--fc-font-hero: 24px;
 	--fc-font-focus: 28px;
 	--fc-weight-regular: 400;
@@ -40,8 +39,6 @@
 	--fc-space-6: 16px;
 	--fc-space-7: 20px;
 	--fc-space-8: 24px;
-	--fc-space-9: 28px;
-	--fc-space-10: 40px;
 
 	--fc-control-sm: 28px;
 	--fc-control-md: 36px;
@@ -63,7 +60,6 @@
 	/* ── 语义状态色（主色=青，危险=红；其余为无语义调色板）────────── */
 	--fc-cyan: var(--interactive-accent);
 	--fc-blue: var(--color-blue);
-	--fc-magenta: var(--color-pink);
 	--fc-violet: var(--color-purple);
 	--fc-lime: var(--color-green);
 	--fc-amber: var(--color-yellow);
@@ -72,20 +68,16 @@
 	/* 强调色用于文字和轮廓，操作底色单独轻染，避免大面积高亮。 */
 	--fc-primary: #00b8c4;
 	--fc-primary-hover: #00a0ab;
-	// --fc-primary: color-mix(in srgb, var(--interactive-accent) 100%, var(--fc-text));
 	--fc-primary-bg: color-mix(in srgb, var(--interactive-accent) 18%, var(--fc-surface-card));
-	// --fc-primary-hover: color-mix(in srgb, var(--interactive-accent) 66%, var(--fc-surface-card));
 	--fc-primary-text: color-mix(in srgb, rgb(var(--fc-black-rgb)) 92%, var(--fc-primary));
 	--fc-danger: var(--fc-red);
 
 	/* ── 表面层级（画布 → 区块 → 卡片 → 浮层 → 控件）───────────── */
-	--fc-bg-elevated: var(--background-primary);
 	--fc-bg-panel: color-mix(
 		in srgb,
 		var(--background-secondary) 30%,
 		var(--background-primary) 70%
 	);
-	--fc-bg-panel-soft: color-mix(in srgb, var(--fc-surface-card) 92%, var(--fc-text));
 
 	/* 画布保持纯粹的系统底层色 */
 	--fc-surface-canvas: var(--background-secondary);
@@ -101,16 +93,10 @@
 
 	/* 控件底色加深，增强轮廓识别度 */
 	--fc-surface-control: color-mix(in srgb, var(--fc-surface-card) 94%, var(--fc-text));
-	--fc-surface-header-status: color-mix(
-		in srgb,
-		var(--background-modifier-hover) 80%,
-		var(--text-normal) 20%
-	);
 
 	/* ── 交互状态表面（hover / 选中）与禁用透明度 ───────────────── */
 	--fc-surface-hover: var(--background-modifier-hover);
 	--fc-surface-selected: var(--background-modifier-active-hover);
-	--fc-surface-complete: rgba(var(--fc-lime-rgb), 0.1);
 	/* 禁用态统一用透明度表达，不再单独定义禁用表面色 */
 	--fc-opacity-disabled: 0.45;
 
@@ -129,16 +115,8 @@
 	--fc-scrollbar-thumb-hover: color-mix(in srgb, var(--text-normal) 35%, transparent);
 
 	/* ── 控件表面与边框 ──────────────────────────────────────── */
-	--fc-control-bg: var(--fc-surface-control);
-	--fc-control-bg-hover: color-mix(in srgb, var(--fc-surface-card) 89%, var(--fc-text));
 	--fc-control-border: var(--fc-line);
-	--fc-control-border-hover: color-mix(
-		in srgb,
-		var(--background-modifier-border-hover) 65%,
-		var(--text-normal) 35%
-	);
 	--fc-control-border-selected: var(--interactive-accent);
-	--fc-compact-control-border: var(--fc-line);
 
 	/* ── 输入框 ─────────────────────────────────────────────── */
 	--fc-input-bg: color-mix(
@@ -150,21 +128,6 @@
 	--fc-input-border: var(--fc-control-border);
 	--fc-input-border-focus: var(--fc-control-border-selected);
 
-	/* ── 首页主操作（学习 / 刷题）────────────────────────────── */
-	--fc-action-study-start: var(--fc-primary-bg);
-	--fc-action-study-end: var(--fc-primary-hover);
-	--fc-action-study-text: var(--fc-primary-text);
-	/* 第二主题色（刷题按钮文字/描边）：取主题自带的 --secondary-color，随主题色联动；
-	   未定义该变量的主题退回“主题蓝淡化”的淡蓝 */
-	--fc-secondary: var(
-		--secondary-color,
-		color-mix(in srgb, var(--fc-blue) 50%, rgb(var(--fc-white-rgb)))
-	);
-	/* 刷题（第二主题色）：第二主题色文字 + 同色系 tint 底，与学习（青）实底区分 */
-	--fc-action-practice-start: color-mix(in srgb, var(--fc-secondary) 18%, var(--fc-surface-card));
-	--fc-action-practice-end: color-mix(in srgb, var(--fc-secondary) 32%, var(--fc-surface-card));
-	--fc-action-practice-text: var(--fc-secondary);
-
 	/* ── RGB 通道（仅用于 rgba() 半透明 tint）──────────────────── */
 	--fc-bg-rgb: var(--mono-rgb-0);
 	--fc-bg-elevated-rgb: var(--mono-rgb-0);
@@ -174,18 +137,12 @@
 	--fc-cyan-rgb: var(--color-cyan-rgb);
 	--fc-blue-rgb: var(--color-blue-rgb);
 	--fc-magenta-rgb: var(--color-pink-rgb);
-	--fc-violet-rgb: var(--color-purple-rgb);
 	--fc-lime-rgb: var(--color-green-rgb);
-	--fc-amber-rgb: var(--color-yellow-rgb);
 	--fc-red-rgb: var(--color-red-rgb);
 	--fc-orange-rgb: var(--color-orange-rgb);
 	/* 固定纯黑/纯白，不随主题翻转：黑用于阴影与遮罩，白用于高光 sheen */
 	--fc-black-rgb: 0, 0, 0;
 	--fc-white-rgb: 255, 255, 255;
-
-	/* ── 遮罩（backdrop scrim）──────────────────────────────── */
-	--fc-overlay: rgba(var(--fc-black-rgb), 0.74);
-	--fc-overlay-heavy: rgba(var(--fc-black-rgb), 0.76);
 
 	--fc-font-ui:
 		ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -198,10 +155,6 @@
 	--fc-shadow-card-hover:
 		0 4px 16px rgba(var(--fc-black-rgb), 0.16), 0 2px 4px rgba(var(--fc-black-rgb), 0.08),
 		inset 0 1px 0 0 rgba(var(--fc-white-rgb), 0.08);
-	--fc-shadow-inset: inset 0 1px 3px rgba(var(--fc-black-rgb), 0.12);
-	--fc-line-glow: color-mix(in srgb, var(--text-normal) 8%, transparent);
-	--fc-shadow:
-		0 4px 12px rgba(var(--fc-black-rgb), 0.08), 0 1px 3px rgba(var(--fc-black-rgb), 0.04);
 	--fc-shadow-popover:
 		0 8px 24px rgba(var(--fc-black-rgb), 0.12), 0 2px 6px rgba(var(--fc-black-rgb), 0.08);
 	--fc-shadow-overlay:
@@ -215,17 +168,12 @@
 			0 1px 3px rgba(var(--fc-black-rgb), 0.04), 0 1px 2px rgba(var(--fc-black-rgb), 0.02);
 		--fc-shadow-card-hover:
 			0 4px 12px rgba(var(--fc-black-rgb), 0.05), 0 1px 3px rgba(var(--fc-black-rgb), 0.03);
-		--fc-shadow-inset: inset 0 1px 2px rgba(var(--fc-black-rgb), 0.03);
-		--fc-shadow:
-			0 2px 6px rgba(var(--fc-black-rgb), 0.04), 0 1px 2px rgba(var(--fc-black-rgb), 0.02);
 		--fc-shadow-popover:
 			0 4px 14px rgba(var(--fc-black-rgb), 0.05), 0 1px 3px rgba(var(--fc-black-rgb), 0.03);
 		--fc-shadow-overlay:
 			0 12px 32px rgba(var(--fc-black-rgb), 0.08), 0 2px 8px rgba(var(--fc-black-rgb), 0.04);
 	}
-	--fc-focus-ring: 0 0 0 3px rgba(var(--fc-cyan-rgb), 0.22);
 	--fc-glow-cyan: none;
-	--fc-glow-magenta: none;
 	--fc-motion-quick: 140ms;
 	--fc-motion-base: 180ms;
 	--fc-motion-page: 220ms;
@@ -239,10 +187,6 @@
 		transform var(--fc-motion-quick) var(--fc-ease-snap),
 		box-shadow var(--fc-motion-quick) ease, border-color var(--fc-motion-quick) ease,
 		background var(--fc-motion-quick) ease, color var(--fc-motion-quick) ease;
-	--fc-transition-card-switch:
-		opacity var(--fc-motion-base) ease, transform var(--fc-motion-base) var(--fc-ease-snap),
-		filter var(--fc-motion-base) ease, border-color var(--fc-motion-base) ease,
-		box-shadow var(--fc-motion-base) ease;
 	--fc-transition-progress:
 		width var(--fc-motion-page) var(--fc-ease-out), box-shadow var(--fc-motion-base) ease;
 	--fc-transition-word-cell:
@@ -252,20 +196,11 @@
 	--fc-transition-modal-control:
 		transform var(--fc-motion-quick) var(--fc-ease-out),
 		border-color var(--fc-motion-quick) ease, box-shadow var(--fc-motion-quick) ease;
-	--fc-transition-fast: var(--fc-motion-quick) var(--fc-ease-out);
 	--fc-motion-page-enter: fc-enter var(--fc-motion-page) var(--fc-ease-out) both;
 	--fc-motion-rise: fc-rise-in var(--fc-motion-page) var(--fc-ease-out) both;
-	--fc-motion-current-day: fc-rise-in var(--fc-motion-page) var(--fc-ease-out) both;
 	--fc-motion-answer: fc-answer-reveal var(--fc-motion-base) var(--fc-ease-out) both;
-	--fc-motion-divider: fc-divider-scan 820ms var(--fc-ease-out) both;
-	--fc-motion-active-glow: fc-active-glow var(--fc-motion-page) var(--fc-ease-out) both;
-	--fc-motion-choice-pulse: fc-choice-pulse 300ms var(--fc-ease-out) both;
-	--fc-motion-progress-scan: none;
-	--fc-motion-complete-pop: fc-complete-pop 420ms var(--fc-ease-out) both;
-	--fc-motion-soft-pulse: fc-soft-pulse 1.4s ease-out 1;
 	--fc-motion-fade-in: fc-fade-in var(--fc-motion-quick) ease-out both;
 	--fc-motion-modal-in: fc-modal-in 240ms var(--fc-ease-out) both;
-	--fc-motion-sheen: none;
 	--fc-motion-spin: fc-spin 1s linear infinite;
 
 	font-family: var(--fc-font-ui);

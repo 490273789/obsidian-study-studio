@@ -15,7 +15,6 @@
  *   .fc-hero__num            the figure itself (tabular)
  *   .fc-hero__summary        supporting sentence under the figure
  *   .fc-hero__side           trailing column for streaks / the primary action
- *   .fc-num                  any other tabular figure
  *   .fc-meter                thin ratio bar; set --meter-value (0-100)
  *   .fc-meta > .fc-meta__text .fc-meta__dot   inline metadata with dot separators
  *   .fc-rail-row[data-state] state rail: active | fresh | done
@@ -89,16 +88,6 @@
 	align-items: flex-end;
 	gap: var(--fc-space-4);
 	flex: none;
-}
-
-/* ── Figures ─────────────────────────────────────────────────────────────── */
-
-/* Tabular so stacked rows line up on the decimal. Never carries colour alone. */
-.fc-num {
-	font-family: var(--fc-font-data);
-	font-variant-numeric: tabular-nums;
-	font-weight: var(--fc-weight-semibold);
-	line-height: 1.05;
 }
 
 /* ── Meter (ratio bar) ───────────────────────────────────────────────────── */

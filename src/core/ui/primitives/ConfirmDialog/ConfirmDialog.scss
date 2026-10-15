@@ -2,11 +2,6 @@
 // ConfirmDialog Primitive Styles (SCSS)
 // =============================================================================
 
-.flashcard-confirm-backdrop {
-	background: rgba(var(--fc-black-rgb), 0.72);
-	backdrop-filter: blur(8px);
-}
-
 .flashcard-confirm-dialog {
 	--fc-confirm-rgb: var(--fc-cyan-rgb);
 	position: relative;
@@ -33,15 +28,6 @@
 }
 
 .flashcard-confirm-accent {
-	position: absolute;
-	top: 0;
-	left: 14%;
-	right: 14%;
-	z-index: 2;
-	height: 2px;
-	background: linear-gradient(90deg, transparent, rgba(var(--fc-confirm-rgb), 0.95), transparent);
-	box-shadow: 0 0 18px rgba(var(--fc-confirm-rgb), 0.55);
-	pointer-events: none;
 	display: none;
 }
 

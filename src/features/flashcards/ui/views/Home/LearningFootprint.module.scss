@@ -46,7 +46,6 @@
 	min-height: var(--fc-control-sm);
 	border: 0;
 	border-radius: var(--fc-radius-sm);
-	background: transparent;
 	box-shadow: none;
 	color: var(--fc-text);
 	font-size: inherit;
@@ -173,7 +172,6 @@
 	overflow-x: auto;
 	overflow-y: hidden;
 	overscroll-behavior-inline: contain;
-	scrollbar-width: thin;
 
 	@include fc-scrollbar;
 }
@@ -317,7 +315,6 @@ button.cell:not(:disabled) {
 	padding: var(--fc-space-1) var(--fc-space-2);
 	border: 0;
 	border-radius: var(--fc-radius-sm);
-	background: transparent;
 	box-shadow: none;
 	color: var(--fc-muted);
 	font-size: var(--fc-font-xs);
