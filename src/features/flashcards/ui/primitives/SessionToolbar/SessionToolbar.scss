@@ -2,7 +2,7 @@
 	flex-shrink: 0;
 	position: relative;
 	z-index: 24;
-	border: 1px solid color-mix(in srgb, var(--fc-primary) 18%, var(--fc-line-soft));
+	border-bottom: 1px solid color-mix(in srgb, var(--fc-primary) 18%, var(--fc-line-soft));
 	border-radius: var(--fc-radius-lg);
 	background:
 		linear-gradient(
@@ -90,15 +90,7 @@
 	font-size: var(--fc-font-xs);
 	font-variant-numeric: tabular-nums;
 }
-.flashcard-session-secondary {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--fc-space-2) var(--fc-space-5);
-	padding: 0 var(--fc-space-5) var(--fc-space-3);
-	font-size: var(--fc-font-xs);
-	color: var(--fc-muted);
-	overflow-wrap: anywhere;
-}
+
 @container session (max-width: 640px) {
 	.flashcard-session-header {
 		flex-wrap: wrap;

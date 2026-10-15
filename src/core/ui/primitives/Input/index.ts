@@ -9,4 +9,7 @@ export type {
 	FlashcardInputProps as InputProps,
 	FlashcardTextareaProps,
 	FlashcardTextareaProps as TextareaProps,
+	InputVariant,
+	InputSize,
+	TextareaVariant,
 } from "./Input";

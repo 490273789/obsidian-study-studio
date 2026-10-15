@@ -232,7 +232,8 @@
 	--fc-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 	--fc-ease-snap: cubic-bezier(0.2, 0.8, 0.2, 1);
 	--fc-transition-lift:
-		transform var(--fc-motion-base) var(--fc-ease-out), border-color var(--fc-motion-base) ease,
+		transform var(--fc-motion-base) var(--fc-ease-out),
+		scale var(--fc-motion-base) var(--fc-ease-out), border-color var(--fc-motion-base) ease,
 		box-shadow var(--fc-motion-base) ease, background var(--fc-motion-base) ease;
 	--fc-transition-button:
 		transform var(--fc-motion-quick) var(--fc-ease-snap),

@@ -73,39 +73,12 @@
 		background: var(--fc-input-bg);
 	}
 
-	.searchInput,
-	:global(.flashcard-input),
-	:global(input) {
+	.searchInput {
 		flex: 1 1 auto;
 		min-width: 0;
 		height: var(--fc-control-md);
 		min-height: var(--fc-control-md);
-		margin: 0;
 		padding: 0 var(--fc-space-2);
-		border: none !important;
-		border-radius: 0 !important;
-		background: transparent !important;
-		box-shadow: none !important;
-		outline: none !important;
-		color: var(--fc-text);
-
-		&:hover,
-		&:hover:not(:disabled):not([readonly]) {
-			border: none !important;
-			border-color: transparent !important;
-			background: transparent !important;
-			box-shadow: none !important;
-			outline: none !important;
-		}
-
-		&:focus,
-		&:focus-visible {
-			border: none !important;
-			border-color: transparent !important;
-			background: transparent !important;
-			outline: none !important;
-			box-shadow: none !important;
-		}
 	}
 
 	:global(.flashcard-btn) {

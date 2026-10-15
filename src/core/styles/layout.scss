@@ -44,6 +44,7 @@
 	display: flex;
 	flex: 1 1 auto;
 	flex-direction: column;
+	padding: 0 var(--fc-space-4);
 	// margin: 0 auto;
 	gap: var(--fc-space-4);
 	min-height: 0;

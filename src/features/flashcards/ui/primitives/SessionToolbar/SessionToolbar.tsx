@@ -127,7 +127,6 @@ export function SessionToolbar({
 					)}
 				</div>
 			</header>
-			{metrics && <div className="flashcard-session-secondary">{metrics}</div>}
 		</div>
 	);
 }

@@ -13,13 +13,14 @@
 	background: var(--fc-input-bg);
 	box-shadow: none;
 	color: var(--fc-text);
+	caret-color: var(--fc-cyan);
 	font: var(--fc-weight-regular) var(--fc-font-md) / var(--fc-line-body) var(--fc-font-ui);
 	transition:
 		border-color var(--fc-motion-quick) ease,
 		background var(--fc-motion-quick) ease,
 		box-shadow var(--fc-motion-quick) ease;
 
-	&:hover:not(:disabled) {
+	&:hover:not(:disabled):not([readonly]) {
 		border-color: var(--fc-control-border-hover);
 		background: var(--fc-input-bg-hover);
 	}
@@ -28,17 +29,25 @@
 	&:focus-visible {
 		border-color: var(--fc-input-border-focus);
 		background: var(--fc-input-bg);
+		box-shadow: var(--fc-focus-ring);
 		outline: none;
 	}
 
 	&:disabled {
 		opacity: var(--fc-opacity-disabled);
 		cursor: not-allowed;
+		border-color: var(--fc-line);
+		background: var(--fc-surface-section);
 	}
 
 	&.is-invalid,
 	&[aria-invalid="true"] {
 		border-color: var(--fc-danger);
+
+		&:focus,
+		&:focus-visible {
+			box-shadow: 0 0 0 2px color-mix(in srgb, var(--fc-red) 30%, transparent);
+		}
 	}
 
 	&::placeholder {
@@ -52,9 +61,54 @@
 	resize: vertical;
 }
 
-// ── Obsidian 宿主与设置页输入框统一处理 ──────────────────────────────────────────
-.flashcard-root,
-.flashcard-settings-tab {
+// ── 尺寸修饰符 (Input sizes) ──────────────────────────────────────────────────
+.flashcard-input--sm {
+	min-height: var(--fc-control-sm);
+	padding: var(--fc-space-1) var(--fc-space-2);
+	font-size: var(--fc-font-sm);
+}
+
+.flashcard-input--lg {
+	min-height: var(--fc-control-lg);
+	padding: var(--fc-space-2) var(--fc-space-4);
+	font-size: var(--fc-font-md);
+}
+
+// ── 布局修饰符 (Auto width) ──────────────────────────────────────────────────
+.flashcard-input--auto-width {
+	width: auto;
+	max-width: 100%;
+}
+
+// ── 变体修饰符 (Input variants) ───────────────────────────────────────────────
+.flashcard-input--unstyled,
+.flashcard-textarea--unstyled {
+	border: none;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	outline: none;
+
+	&:hover:not(:disabled):not([readonly]),
+	&:focus,
+	&:focus-visible {
+		border: none;
+		border-color: transparent;
+		background: transparent;
+		box-shadow: none;
+		outline: none;
+	}
+}
+
+.flashcard-input--quiz {
+	padding: var(--fc-space-1) var(--fc-space-4);
+	text-align: center;
+	font: var(--fc-weight-medium) var(--fc-font-xl) / var(--fc-line-body) var(--fc-font-data);
+	letter-spacing: 0.02em;
+}
+
+// ── Obsidian 宿主与设置页输入框统一处理 (使用 :where 保持 0 特异性) ──────────────
+:where(.flashcard-root, .flashcard-settings-tab) {
 	:is(
 		input:not(
 			[type="checkbox"],
@@ -69,19 +123,31 @@
 		),
 		textarea
 	) {
+		box-sizing: border-box;
+		min-height: var(--fc-control-md);
+		padding: var(--fc-space-2) var(--fc-space-3);
 		border: 1px solid var(--fc-input-border);
+		border-radius: var(--fc-radius-sm);
 		background: var(--fc-input-bg);
 		color: var(--fc-text);
 		caret-color: var(--fc-cyan);
+		font: var(--fc-weight-regular) var(--fc-font-md) / var(--fc-line-body) var(--fc-font-ui);
 		box-shadow: none;
 		transition:
 			border-color var(--fc-motion-quick) ease,
 			background var(--fc-motion-quick) ease,
 			box-shadow var(--fc-motion-quick) ease;
 
-		&:focus {
-			border-color: var(--fc-control-border-selected);
+		&:hover:not(:disabled):not([readonly]) {
+			border-color: var(--fc-control-border-hover);
+			background: var(--fc-input-bg-hover);
+		}
+
+		&:focus,
+		&:focus-visible {
+			border-color: var(--fc-input-border-focus);
 			background: var(--fc-input-bg);
+			box-shadow: var(--fc-focus-ring);
 			outline: none;
 		}
 
@@ -94,6 +160,7 @@
 			border-color: var(--fc-line);
 			background: var(--fc-surface-section);
 			opacity: var(--fc-opacity-disabled);
+			cursor: not-allowed;
 		}
 	}
 }

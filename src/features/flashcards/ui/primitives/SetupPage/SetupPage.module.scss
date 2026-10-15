@@ -93,14 +93,11 @@
 	font-size: var(--fc-font-xs);
 }
 .input {
-	box-sizing: border-box;
-	height: var(--fc-control-md);
-	padding-block: 0;
 	width: 100px;
 	max-width: 100%;
-	min-height: var(--fc-control-md);
 	font-family: var(--fc-font-data);
 	font-variant-numeric: tabular-nums;
+	text-align: center;
 }
 .rangeGroup,
 .rangeField {
@@ -185,15 +182,6 @@
 
 .header:global(.flashcard-common-header) {
 	flex: none;
-	border: 1px solid color-mix(in srgb, var(--fc-primary) 24%, var(--fc-line));
-	background:
-		linear-gradient(
-			110deg,
-			color-mix(in srgb, var(--fc-primary) 8%, transparent),
-			transparent 65%
-		),
-		var(--fc-surface-section);
-
 	:global(.flashcard-header-center) > svg {
 		width: var(--fc-control-md);
 		height: var(--fc-control-md);

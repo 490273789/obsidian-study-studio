@@ -10,13 +10,6 @@
 	background: var(--fc-surface-card);
 	color: var(--fc-muted);
 	font-size: var(--fc-font-sm);
-	input {
-		width: 100%;
-		min-height: var(--fc-control-md);
-		font-family: var(--fc-font-data);
-		font-size: var(--fc-font-xl);
-		padding-block: var(--fc-space-1);
-	}
 }
 .feedback {
 	display: flex;

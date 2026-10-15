@@ -11,9 +11,16 @@
 	top: 0;
 	z-index: 18;
 	flex: none;
-	border: 0;
+	border-bottom: 1px solid color-mix(in srgb, var(--fc-primary) 24%, var(--fc-line));
 	border-radius: var(--fc-radius-lg);
-	background: var(--fc-surface-card);
+	// background: var(--fc-surface-card);
+	background:
+		linear-gradient(
+			110deg,
+			color-mix(in srgb, var(--fc-primary) 8%, transparent),
+			transparent 65%
+		),
+		var(--fc-surface-section);
 	box-shadow: none;
 	min-height: calc(var(--fc-header-height) + var(--fc-space-3));
 	margin-top: var(--fc-space-2);

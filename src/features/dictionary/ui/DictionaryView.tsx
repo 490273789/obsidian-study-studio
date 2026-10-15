@@ -309,6 +309,7 @@ export function DictionaryView({
 							</legend>
 							<FlashcardInput
 								id="dictionary-query"
+								variant="unstyled"
 								className={cls(
 									"flashcard-dictionary-search-input",
 									styles.searchInput,

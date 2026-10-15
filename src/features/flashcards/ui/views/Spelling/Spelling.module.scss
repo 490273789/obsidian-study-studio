@@ -17,20 +17,6 @@
 	background: var(--fc-surface-card);
 	color: var(--fc-muted);
 	font-size: var(--fc-font-sm);
-	input {
-		box-sizing: border-box;
-		width: 100%;
-		min-height: var(--fc-control-md);
-		padding: var(--fc-space-1) var(--fc-space-4);
-		text-align: center;
-		background: var(--fc-input-bg);
-		font: var(--fc-weight-medium) var(--fc-font-xl) / var(--fc-line-body) var(--fc-font-data);
-		&:focus {
-			border-color: var(--fc-input-border-focus);
-			box-shadow: var(--fc-focus-ring);
-			outline: none;
-		}
-	}
 }
 .feedback {
 	display: flex;

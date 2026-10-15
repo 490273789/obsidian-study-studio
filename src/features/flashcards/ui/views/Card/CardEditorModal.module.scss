@@ -29,21 +29,6 @@
 		font-weight: var(--fc-weight-semibold);
 	}
 
-	select,
-	textarea {
-		width: 100%;
-		min-width: 0;
-		border-color: var(--fc-input-border);
-		border-radius: var(--fc-radius-sm);
-		background: var(--fc-input-bg);
-		color: var(--fc-text);
-	}
-
-	select {
-		min-height: var(--fc-control-md);
-		padding: var(--fc-space-2) var(--fc-space-3);
-	}
-
 	textarea {
 		height: clamp(112px, 16dvh, 150px);
 		min-height: 112px;

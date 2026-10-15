@@ -262,6 +262,7 @@ export const SpellingView = React.memo(function SpellingView({
 					<FlashcardInput
 						ref={inputRef}
 						type="text"
+						variant="quiz"
 						value={input}
 						onChange={(event) => setInput(event.target.value)}
 						onFocus={keepInputVisible}

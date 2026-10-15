@@ -211,6 +211,7 @@ export const CardView = React.memo(function CardView({
 								{ratingButtons.map((btn) => (
 									<FlashcardButton
 										key={btn.rating}
+										size="lg"
 										preset="rating"
 										rating={btn.rating}
 										className={cls(

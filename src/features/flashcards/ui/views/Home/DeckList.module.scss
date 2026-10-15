@@ -15,9 +15,8 @@
 
 .homeHeader:global(.flashcard-common-header) {
 	min-height: calc(var(--fc-header-height) + var(--fc-space-7));
-	box-sizing: border-box;
-	padding: var(--fc-space-3) var(--fc-space-6);
-	border: 1px solid color-mix(in srgb, var(--fc-primary) 24%, var(--fc-line));
+
+	border-bottom: 1px solid color-mix(in srgb, var(--fc-primary) 24%, var(--fc-line));
 	background:
 		linear-gradient(
 			110deg,
@@ -25,7 +24,6 @@
 			transparent 55%
 		),
 		var(--fc-surface-section);
-	box-shadow: var(--fc-shadow-card);
 
 	:global(.flashcard-header-badge) {
 		display: none;
@@ -219,6 +217,7 @@
 		background:
 			linear-gradient(90deg, rgba(var(--fc-cyan-rgb), 0.09), transparent 38%),
 			rgba(var(--fc-bg-elevated-rgb), 0.84);
+		scale: 0.98;
 	}
 
 	&.isOverlayOpen {

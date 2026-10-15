@@ -306,10 +306,6 @@
 		line-height: var(--fc-line-reading);
 	}
 
-	.flashcard-practice-input {
-		width: 100%;
-	}
-
 	.flashcard-study {
 		overflow: hidden;
 	}
@@ -360,7 +356,6 @@
 	.flashcard-root textarea,
 	.flashcard-root select,
 	.flashcard-control,
-	.flashcard-practice-input,
 	.flashcard-settings-tab input,
 	.flashcard-settings-tab textarea,
 	.flashcard-settings-tab select {

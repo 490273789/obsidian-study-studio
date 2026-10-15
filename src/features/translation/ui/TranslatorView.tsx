@@ -191,6 +191,7 @@ export const TranslatorView = React.memo(function TranslatorView({
 					<FlashcardTextarea
 						ref={inputRef}
 						id={`${viewId}-translator-input`}
+						variant="unstyled"
 						value={snapshot.input}
 						placeholder={strings.inputPlaceholder}
 						disabled={isLoading || !snapshot.settings.enabled}
@@ -239,6 +240,7 @@ export const TranslatorView = React.memo(function TranslatorView({
 								</header>
 								<FlashcardTextarea
 									id={`${viewId}-translator-output-${result.id}`}
+									variant="unstyled"
 									aria-label={formatTranslationString(strings.resultLabel, {
 										name: result.name,
 									})}

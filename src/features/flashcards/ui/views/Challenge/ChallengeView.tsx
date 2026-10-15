@@ -311,6 +311,7 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 						<span>{t("spelling.inputInstruction")}</span>
 						<FlashcardInput
 							ref={inputRef}
+							variant="quiz"
 							value={input}
 							onFocus={keepInputVisible}
 							onBlur={handleInputBlur}

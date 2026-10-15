@@ -102,22 +102,10 @@
 		min-height: 0;
 		height: 100%;
 		padding: var(--fc-space-4);
-		border: none !important;
 		border-radius: 0 0 var(--fc-radius-md) var(--fc-radius-md);
-		background: var(--fc-input-bg) !important;
+		background: var(--fc-input-bg);
 		line-height: var(--fc-line-body);
 		resize: none;
-		outline: none !important;
-		box-shadow: none !important;
-
-		&:hover,
-		&:focus,
-		&:focus-visible {
-			border: none !important;
-			background: var(--fc-input-bg) !important;
-			box-shadow: none !important;
-			outline: none !important;
-		}
 	}
 
 	> footer {

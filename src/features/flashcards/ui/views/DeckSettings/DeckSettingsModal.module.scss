@@ -106,14 +106,6 @@
 			color: var(--fc-text);
 		}
 	}
-
-	input,
-	select {
-		border-color: var(--fc-input-border);
-		border-radius: var(--fc-radius-sm);
-		background: var(--fc-input-bg);
-		color: var(--fc-text);
-	}
 }
 
 .summaryValue {
@@ -122,6 +114,10 @@
 
 .fieldRow {
 	align-items: flex-start;
+
+	:global(.flashcard-input) {
+		width: 120px;
+	}
 }
 
 .daysInputs {
@@ -129,6 +125,10 @@
 	align-items: center;
 	gap: var(--fc-space-2);
 	flex-wrap: wrap;
+
+	:global(.flashcard-input) {
+		width: 90px;
+	}
 }
 
 @media (max-width: 640px) {
