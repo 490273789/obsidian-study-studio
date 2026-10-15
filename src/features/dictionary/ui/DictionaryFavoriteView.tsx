@@ -33,7 +33,7 @@ export function DictionaryFavoriteView({
 	return (
 		<main
 			className={cls(
-				"flashcard-dictionary-favorite flashcard-dictionary-page fc-page fc-page--column",
+				"flashcard-dictionary-favorite flashcard-dictionary-page fc-page",
 				styles.page,
 				styles.favorite,
 			)}

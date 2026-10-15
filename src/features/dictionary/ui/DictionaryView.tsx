@@ -278,7 +278,7 @@ export function DictionaryView({
 	return (
 		<main
 			className={cls(
-				"flashcard-dictionary flashcard-dictionary-page fc-page fc-page--column",
+				"flashcard-dictionary flashcard-dictionary-page fc-page",
 				styles.page,
 				styles.dictionary,
 			)}

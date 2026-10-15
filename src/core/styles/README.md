@@ -97,7 +97,6 @@
 页面外壳、面板与视图容器只在这里实现一次。视图在自己的类名旁叠加布局类，不重写配方：
 
 - `.fc-page`：页面根（flex 纵向、区块间距、`--fc-text`）。
-- `.fc-page--column`：居中限宽（`min(1280px, 100%)`）并带页面内边距，滚动由视图自己决定。
 - `.fc-page--fill`：填满 leaf、内部滚动、带 `--fc-motion-page-enter` 进入动效。
 - `.fc-page__body` / `.fc-page__body--narrow`：可滚动正文区；`--narrow` 为 850px 阅读列。
 - `.fc-panel` + `.fc-panel > header|footer` + `.fc-panel__body` / `.fc-panel--scroll`：带边框的面板与其头/尾/正文语义。

@@ -22,12 +22,6 @@
 	color: var(--fc-text);
 }
 
-/* A page that centres a max-width column; the view decides its own scrolling. */
-.fc-page--column {
-	min-height: 100%;
-	padding: var(--fc-space-3);
-}
-
 /* A page that fills its leaf and scrolls inside its own body. */
 .fc-page--fill {
 	flex: 1 1 100%;
@@ -135,10 +129,6 @@
 
 /* Narrow panes tighten the shell without changing hierarchy or type scale. */
 @media (max-width: 720px) {
-	.fc-page--column {
-		padding: var(--fc-space-2);
-	}
-
 	.fc-panel > header,
 	.fc-panel > footer {
 		padding-inline: var(--fc-space-2);

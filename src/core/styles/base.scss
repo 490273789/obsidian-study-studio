@@ -293,7 +293,7 @@
 	flex-direction: column;
 	container-name: flashcard-page;
 	container-type: inline-size;
-	padding: 0 var(--fc-space-2) var(--fc-space-2);
+	padding: var(--fc-space-4);
 	border-radius: var(--fc-radius-md);
 	scrollbar-gutter: auto;
 }
