@@ -44,8 +44,13 @@
 	--fc-space-10: 40px;
 
 	--fc-control-sm: 28px;
-	--fc-control-md: 32px;
-	--fc-control-lg: 38px;
+	--fc-control-md: 36px;
+	--fc-control-lg: 40px;
+	--fc-control-touch: 40px;
+	@media (pointer: coarse) {
+		--fc-control-md: var(--fc-control-touch);
+		--fc-control-lg: var(--fc-control-touch);
+	}
 	--fc-header-height: 44px;
 	--fc-layout-max-width: 960px;
 	--fc-mobile-bottom-padding: 46px;

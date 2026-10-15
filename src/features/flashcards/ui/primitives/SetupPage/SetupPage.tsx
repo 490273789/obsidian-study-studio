@@ -84,25 +84,27 @@ export function SetupPage({
 						</div>
 					</section>
 					{children}
-					<div className={`${styles.action} ${afterAction ? styles.stickyAction : ""}`}>
-						<div className={styles.summary}>{summary}</div>
-						<div className={styles.startGroup}>
-							<FlashcardButton
-								className={styles.startButton}
-								size="lg"
-								variant="primary"
-								icon={Play}
-								disabled={disabled}
-								onClick={onStart}
-							>
-								{startLabel}
-							</FlashcardButton>
-							{!disabled && <kbd className={styles.shortcut}>Space</kbd>}
-						</div>
-					</div>
+
 					{afterAction}
 				</div>
 			</div>
+			<footer className={styles.footer}>
+				<div className={styles.action}>
+					<div className={styles.summary}>{summary}</div>
+					<div className={styles.startGroup}>
+						<FlashcardButton
+							size="lg"
+							variant="primary"
+							icon={Play}
+							disabled={disabled}
+							onClick={onStart}
+						>
+							{startLabel}
+						</FlashcardButton>
+						{!disabled && <kbd className={styles.shortcut}>Space</kbd>}
+					</div>
+				</div>
+			</footer>
 		</div>
 	);
 }

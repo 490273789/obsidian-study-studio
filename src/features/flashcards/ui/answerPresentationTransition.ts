@@ -59,7 +59,13 @@ export interface CardPresentationSnapshot {
 	readonly pronunciationWord: string | null;
 }
 
+export type CardMotion = {
+	readonly durationMs: number;
+	readonly direction: "forward" | "backward";
+} | null;
+
 export interface AnswerPresentationSnapshot {
+	readonly cardMotion: CardMotion;
 	readonly lifecycle: SessionLifecycleSnapshot;
 	readonly cardPresentation: CardPresentationSnapshot;
 	readonly activity:
@@ -133,6 +139,7 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 	private latestLifecycle: SessionLifecycleSnapshot;
 	private presentedLifecycle: SessionLifecycleSnapshot;
 	private activity: AnswerPresentationSnapshot["activity"] = { kind: "idle" };
+	private cardMotion: CardMotion = null;
 	private spellingFeedback: SpellingLifecycleFeedback | null = null;
 	private feedbackCardIdentity: string | null = null;
 	private snapshot: AnswerPresentationSnapshot;
@@ -232,6 +239,7 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 			}
 			const delay = await this.prepareSpellingAdvance(feedback);
 			if (!this.isCurrent(generation)) return { kind: "cancelled" };
+			this.beginCardExit(action.kind, outcome.snapshot, Math.max(0, delay));
 			if (!(await this.waitForDelay(Math.max(0, delay), generation))) {
 				return { kind: "cancelled" };
 			}
@@ -240,6 +248,7 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 		}
 
 		const delay = getTransitionDelay(action.kind, outcome.snapshot);
+		this.beginCardExit(action.kind, outcome.snapshot, delay);
 		if (!(await this.waitForDelay(delay, generation))) return { kind: "cancelled" };
 		this.settle();
 		return { kind: "applied", studyCompleted };
@@ -327,7 +336,32 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 		});
 	}
 
+	private beginCardExit(
+		action: AnswerPresentationActionKind,
+		next: SessionLifecycleSnapshot,
+		durationMs: number,
+	): void {
+		// Error feedback and correction remain on the current question.
+		if (
+			action === "challenge-reveal" ||
+			(action === "challenge-answer" &&
+				next.kind === "active" &&
+				next.mode === "challenge" &&
+				next.phase === "feedback")
+		)
+			return;
+		this.cardMotion = Object.freeze({
+			durationMs: Number.isFinite(durationMs) ? durationMs : 0,
+			direction:
+				action === "study-previous" || action === "practice-previous"
+					? "backward"
+					: "forward",
+		});
+		this.publish();
+	}
+
 	private settle(): void {
+		this.cardMotion = null;
 		this.presentLatestLifecycle();
 		this.activity = { kind: "idle" };
 		this.clearFeedbackForDifferentCard();
@@ -453,6 +487,7 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 	}
 
 	private cancelPendingTransition(): void {
+		this.cardMotion = null;
 		this.generation++;
 		this.pronunciationRuntime?.stop();
 		if (this.cancelPendingSpellingAdvance) {
@@ -536,6 +571,7 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 		const activity = Object.freeze({ ...this.activity });
 		return Object.freeze({
 			lifecycle: this.presentedLifecycle,
+			cardMotion: this.cardMotion,
 			cardPresentation: Object.freeze(this.getCardPresentation()),
 			activity,
 			spellingFeedback: this.spellingFeedback

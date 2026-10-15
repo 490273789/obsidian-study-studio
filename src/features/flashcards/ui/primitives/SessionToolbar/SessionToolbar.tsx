@@ -6,15 +6,18 @@ import { SessionTimer } from "../../../../../core/ui/primitives/SessionTimer";
 import { useFlashcardI18n } from "../../../strings/context";
 
 export interface SessionToolbarProps {
+	mode: string;
 	deckName: string;
 	progress: string;
 	progressPercent: number;
 	startTime: number;
-	onEdit: () => void;
-	onDelete: () => void;
+	busy?: boolean;
+	metrics?: React.ReactNode;
+	onEdit?: () => void;
+	onDelete?: () => void;
 	onClose: () => void;
-	editTitle: string;
-	deleteTitle: string;
+	editTitle?: string;
+	deleteTitle?: string;
 	closeTitle: string;
 	autoPronunciation?: {
 		enabled: boolean;
@@ -24,11 +27,14 @@ export interface SessionToolbarProps {
 	};
 }
 
-export const SessionToolbar: React.FC<SessionToolbarProps> = ({
+export function SessionToolbar({
+	mode,
 	deckName,
 	progress,
 	progressPercent,
 	startTime,
+	busy = false,
+	metrics,
 	onEdit,
 	onDelete,
 	onClose,
@@ -36,27 +42,32 @@ export const SessionToolbar: React.FC<SessionToolbarProps> = ({
 	deleteTitle,
 	closeTitle,
 	autoPronunciation,
-}) => {
+}: SessionToolbarProps) {
 	const { t } = useFlashcardI18n();
-	const normalizedProgress = Math.min(Math.max(progressPercent, 0), 100);
-	const autoPronunciationTitle = autoPronunciation?.enabled
+	const normalizedProgress = Number.isFinite(progressPercent)
+		? Math.min(Math.max(progressPercent, 0), 100)
+		: 0;
+	const autoTitle = autoPronunciation?.enabled
 		? autoPronunciation.disableTitle
 		: autoPronunciation?.enableTitle;
-	const actionMenuItems: FlashcardMenuItem[] = [
-		...(autoPronunciation
-			? [
-					{
-						key: "auto-pronunciation",
-						label: autoPronunciationTitle,
-						icon: autoPronunciation.enabled ? Volume2 : VolumeX,
-						onSelect: autoPronunciation.onToggle,
-					},
-				]
-			: []),
-		{ key: "edit", label: editTitle, icon: Pencil, onSelect: onEdit },
-		{ key: "delete", label: deleteTitle, icon: Trash2, onSelect: onDelete, danger: true },
-	];
-
+	const items: FlashcardMenuItem[] = [];
+	if (onEdit)
+		items.push({
+			key: "edit",
+			label: editTitle,
+			icon: Pencil,
+			onSelect: onEdit,
+			disabled: busy,
+		});
+	if (onDelete)
+		items.push({
+			key: "delete",
+			label: deleteTitle,
+			icon: Trash2,
+			onSelect: onDelete,
+			danger: true,
+			disabled: busy,
+		});
 	return (
 		<div className="flashcard-session-shell">
 			<header className="flashcard-session-header">
@@ -64,70 +75,59 @@ export const SessionToolbar: React.FC<SessionToolbarProps> = ({
 					preset="icon"
 					icon={X}
 					onClick={onClose}
+					disabled={busy}
 					className="flashcard-session-close"
 					title={closeTitle}
 					aria-label={closeTitle}
 				/>
 				<div className="flashcard-session-identity">
-					<span className="flashcard-deck-title">{deckName}</span>
+					<span className="flashcard-session-mode">{mode}</span>
+					<span className="flashcard-deck-title" title={deckName}>
+						{deckName}
+					</span>
 				</div>
 				<div className="flashcard-session-header-tools">
-					<div className="flashcard-session-progress" aria-label={t("study.progress")}>
+					<div className="flashcard-session-progress">
 						<span className="flashcard-session-progress-text">{progress}</span>
-						<span className="flashcard-session-progress-track">
-							<span
-								className="flashcard-session-progress-fill"
-								style={{ width: `${normalizedProgress}%` }}
-							/>
-						</span>
-					</div>
-					<div className="flashcard-session-metrics">
-						<SessionTimer
-							startTime={startTime}
-							className="flashcard-timer flashcard-session-timer"
+						<progress
+							className="flashcard-session-progress-track"
+							aria-label={t("study.progress")}
+							aria-valuetext={progress}
+							max={100}
+							value={normalizedProgress}
 						/>
 					</div>
-					<div className="flashcard-session-actions">
-						{autoPronunciation && (
-							<FlashcardButton
-								preset="icon"
-								icon={autoPronunciation.enabled ? Volume2 : VolumeX}
-								onClick={autoPronunciation.onToggle}
-								className="flashcard-session-action-item flashcard-session-auto-pronunciation"
-								title={autoPronunciationTitle}
-								aria-label={autoPronunciationTitle}
-								aria-pressed={autoPronunciation.enabled}
-								active={autoPronunciation.enabled}
-							/>
-						)}
-						<FlashcardButton
-							preset="icon"
-							icon={Pencil}
-							onClick={onEdit}
-							className="flashcard-session-action-item"
-							title={editTitle}
-							aria-label={editTitle}
-						/>
-						<FlashcardButton
-							preset="icon"
-							variant="danger"
-							icon={Trash2}
-							onClick={onDelete}
-							className="flashcard-session-action-item"
-							title={deleteTitle}
-							aria-label={deleteTitle}
-						/>
-						<FlashcardMenu
-							items={actionMenuItems}
-							triggerTitle={t("cardEditor.showActions")}
-							ariaLabel={t("cardEditor.showActions")}
-							triggerClassName="flashcard-session-actions-toggle"
-							menuClassName="flashcard-session-actions-menu"
-							align="end"
-						/>
-					</div>
+					<SessionTimer startTime={startTime} className="flashcard-session-timer" />
+					{(autoPronunciation || items.length > 0) && (
+						<div className="flashcard-session-actions">
+							{autoPronunciation && (
+								<FlashcardButton
+									preset="icon"
+									icon={autoPronunciation.enabled ? Volume2 : VolumeX}
+									onClick={autoPronunciation.onToggle}
+									disabled={busy}
+									className="flashcard-session-auto-pronunciation"
+									title={autoTitle}
+									aria-label={autoTitle}
+									aria-pressed={autoPronunciation.enabled}
+									active={autoPronunciation.enabled}
+								/>
+							)}
+							{items.length > 0 && (
+								<FlashcardMenu
+									items={items}
+									triggerTitle={t("cardEditor.showActions")}
+									ariaLabel={t("cardEditor.showActions")}
+									triggerClassName="flashcard-session-actions-toggle"
+									menuClassName="flashcard-session-actions-menu"
+									align="end"
+								/>
+							)}
+						</div>
+					)}
 				</div>
 			</header>
+			{metrics && <div className="flashcard-session-secondary">{metrics}</div>}
 		</div>
 	);
-};
+}

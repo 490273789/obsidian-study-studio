@@ -238,9 +238,9 @@
 		gap: 8px !important;
 		box-sizing: border-box;
 		padding: 0 12px !important;
-		height: 44px !important;
-		min-height: 44px !important;
-		max-height: 44px !important;
+		height: var(--fc-control-md, 38px) !important;
+		min-height: var(--fc-control-md, 38px) !important;
+		max-height: var(--fc-control-md, 38px) !important;
 		border-radius: var(--fc-radius-sm, 6px) !important;
 		border: 1px solid var(--background-modifier-border) !important;
 		background: color-mix(

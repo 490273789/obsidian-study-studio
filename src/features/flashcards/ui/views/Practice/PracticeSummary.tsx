@@ -1,18 +1,16 @@
-import React, { memo, useMemo } from "react";
-import { FileText, Check, X, Timer, CircleCheck, CircleX, RotateCw, House } from "lucide-react";
-import { cls } from "../../../../../core/shared/classNames";
+import React, { memo } from "react";
+import { CircleCheck, CircleX, House, RotateCw } from "lucide-react";
 import type {
 	PracticeResultSnapshot,
 	SessionCardSnapshot,
 } from "../../../domain/sessions/sessionLifecycle";
-import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
-import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
-import { Confetti } from "../../../../../core/ui/primitives/Confetti";
 import { MarkdownContent } from "../../primitives/Markdown";
+import { SessionSummary } from "../../primitives/SessionSummary/SessionSummary";
+import { cls } from "../../../../../core/shared/classNames";
 import { useFlashcardI18n } from "../../../strings/context";
 import { formatCompactDuration } from "../../../strings/index";
 import { getDisplayCardContent } from "../../../domain/cards/cardDisplay";
-import styles from "./Practice.module.scss";
+import styles from "../../primitives/SessionSummary/SessionSummary.module.scss";
 
 interface PracticeSummaryProps {
 	result: PracticeResultSnapshot;
@@ -22,14 +20,7 @@ interface PracticeSummaryProps {
 	markdownRenderer: (content: string, el: HTMLElement) => Promise<void>;
 }
 
-function getAccuracyColor(accuracy: number): string {
-	if (accuracy >= 90) return "var(--fc-lime)";
-	if (accuracy >= 70) return "var(--fc-blue)";
-	if (accuracy >= 50) return "var(--fc-orange)";
-	return "var(--fc-danger)";
-}
-
-export const PracticeSummary = React.memo(function PracticeSummary({
+export const PracticeSummary = memo(function PracticeSummary({
 	result,
 	onRestart,
 	onPracticeIncorrect,
@@ -37,159 +28,68 @@ export const PracticeSummary = React.memo(function PracticeSummary({
 	markdownRenderer,
 }: PracticeSummaryProps) {
 	const { t, language } = useFlashcardI18n();
-	const completionMessage = useMemo(() => {
-		if (result.incorrectCount === 0) {
-			return t("practice.completePerfect");
-		}
-
-		return t("practice.completeWithErrors");
-	}, [result.incorrectCount, t]);
-
 	const incorrectCards = result.incorrectCards;
-
+	const hasIncorrect = result.incorrectCount > 0;
 	return (
-		<div className={cls("flashcard-practice-summary fc-page fc-page--fill", styles.summary)}>
-			<Confetti />
-			<FlashcardHeader icon={CircleCheck} title={t("practice.title")} onBack={onHome} />
-
-			<div
-				className={cls(
-					"flashcard-practice-summary-scroll fc-page__body",
-					styles.summaryScroll,
-				)}
-			>
-				<div className={cls("flashcard-practice-summary-header", styles.summaryHeader)}>
-					<div className={styles.summaryTitle}>{completionMessage}</div>
-					<div className={styles.summaryDeck}>
-						{t("practice.summaryDeck", {
-							deckName: result.originDeck.name,
-							totalQuestions: result.totalQuestions,
-							time: formatCompactDuration(language, result.timeSpent),
-						})}
+		<SessionSummary
+			mode={t("practice.title")}
+			icon={CircleCheck}
+			title={t(
+				result.incorrectCount === 0
+					? "practice.completePerfect"
+					: "practice.completeWithErrors",
+			)}
+			description={t("practice.summaryDeck", {
+				deckName: result.originDeck.name,
+				totalQuestions: result.totalQuestions,
+				time: formatCompactDuration(language, result.timeSpent),
+			})}
+			metric={{ label: t("practice.accuracy"), value: `${result.accuracy.toFixed(1)}%` }}
+			stats={[
+				{ label: t("practice.correct"), value: result.correctCount },
+				{ label: t("practice.incorrect"), value: result.incorrectCount },
+				{ label: t("practice.totalQuestions"), value: result.totalQuestions },
+				{
+					label: t("practice.timeSpent"),
+					value: formatCompactDuration(language, result.timeSpent),
+				},
+			]}
+			onHome={onHome}
+			actions={[
+				{ label: t("practice.home"), icon: House, onClick: onHome, primary: !hasIncorrect },
+				{ label: t("practice.restart"), icon: RotateCw, onClick: onRestart },
+				...(hasIncorrect
+					? [
+							{
+								label: t("practice.failed", { count: result.incorrectCount }),
+								icon: RotateCw,
+								onClick: onPracticeIncorrect,
+								primary: true,
+							},
+						]
+					: []),
+			]}
+		>
+			{incorrectCards.length > 0 && (
+				<section className={cls("fc-panel", styles.incorrectSection)}>
+					<h2 className={styles.incorrectTitle}>
+						<CircleX size={16} aria-hidden="true" />
+						{t("practice.incorrectList", { count: incorrectCards.length })}
+					</h2>
+					<div className={styles.incorrectList}>
+						{incorrectCards.map((card, index) => (
+							<IncorrectCardItem
+								key={card.identity}
+								card={card}
+								index={index + 1}
+								direction={result.direction}
+								markdownRenderer={markdownRenderer}
+							/>
+						))}
 					</div>
-				</div>
-
-				<div className={cls("flashcard-practice-summary-stats", styles.summaryStats)}>
-					<div className={cls("flashcard-practice-stat-card", styles.statCard)}>
-						<div
-							className={styles.statValue}
-							style={{ color: getAccuracyColor(result.accuracy) }}
-						>
-							{result.accuracy.toFixed(1)}%
-						</div>
-						<div className={styles.statLabel}>{t("practice.accuracy")}</div>
-					</div>
-
-					<div className={cls("flashcard-practice-stat-row", styles.statRow)}>
-						<div
-							className={cls("flashcard-practice-stat-item fc-lift", styles.statItem)}
-						>
-							<span className={styles.statIcon}>
-								<FileText size={14} />
-							</span>
-							<span className={styles.statText}>
-								{t("practice.totalQuestions")}
-								<strong>{result.totalQuestions}</strong>
-							</span>
-						</div>
-						<div
-							className={cls(
-								"flashcard-practice-stat-item flashcard-practice-stat-correct fc-lift",
-								styles.statItem,
-								styles.statCorrect,
-							)}
-						>
-							<span className={styles.statIcon}>
-								<Check size={14} />
-							</span>
-							<span className={styles.statText}>
-								{t("practice.correct")}
-								<strong>{result.correctCount}</strong>
-							</span>
-						</div>
-						<div
-							className={cls(
-								"flashcard-practice-stat-item flashcard-practice-stat-wrong fc-lift",
-								styles.statItem,
-								styles.statWrong,
-							)}
-						>
-							<span className={styles.statIcon}>
-								<X size={14} />
-							</span>
-							<span className={styles.statText}>
-								{t("practice.incorrect")}
-								<strong>{result.incorrectCount}</strong>
-							</span>
-						</div>
-						<div
-							className={cls("flashcard-practice-stat-item fc-lift", styles.statItem)}
-						>
-							<span className={styles.statIcon}>
-								<Timer size={14} />
-							</span>
-							<span className={styles.statText}>
-								{t("practice.timeSpent")}
-								<strong>{formatCompactDuration(language, result.timeSpent)}</strong>
-							</span>
-						</div>
-					</div>
-				</div>
-
-				{incorrectCards.length > 0 && (
-					<div
-						className={cls(
-							"flashcard-practice-incorrect-section",
-							styles.incorrectSection,
-						)}
-					>
-						<h3 className={styles.incorrectTitle}>
-							<CircleX size={16} />{" "}
-							{t("practice.incorrectList", {
-								count: incorrectCards.length,
-							})}
-						</h3>
-						<div className={styles.incorrectList}>
-							{incorrectCards.map((card, index) => (
-								<IncorrectCardItem
-									key={card.identity}
-									card={card}
-									index={index + 1}
-									direction={result.direction}
-									markdownRenderer={markdownRenderer}
-								/>
-							))}
-						</div>
-					</div>
-				)}
-			</div>
-
-			<div className={cls("flashcard-practice-summary-actions", styles.summaryActions)}>
-				<FlashcardButton
-					variant="primary"
-					icon={RotateCw}
-					iconSize={14}
-					onClick={onRestart}
-				>
-					{t("practice.restart")}
-				</FlashcardButton>
-				{result.incorrectCount > 0 && (
-					<FlashcardButton
-						variant="danger"
-						icon={CircleX}
-						iconSize={14}
-						onClick={onPracticeIncorrect}
-					>
-						{t("practice.failed", {
-							count: result.incorrectCount,
-						})}
-					</FlashcardButton>
-				)}
-				<FlashcardButton variant="secondary" icon={House} iconSize={14} onClick={onHome}>
-					{t("practice.home")}
-				</FlashcardButton>
-			</div>
-		</div>
+				</section>
+			)}
+		</SessionSummary>
 	);
 });
 
@@ -210,7 +110,7 @@ const IncorrectCardItem = memo(function IncorrectCardItem({
 	const displayContent = getDisplayCardContent(card, direction);
 
 	return (
-		<div className={cls("flashcard-practice-incorrect-item fc-lift", styles.incorrectItem)}>
+		<div className={cls("flashcard-summary-incorrect-item", styles.incorrectItem)}>
 			<div className={styles.incorrectIndex}>{index}</div>
 			<div className={styles.incorrectContent}>
 				<div className={styles.incorrectQuestion}>

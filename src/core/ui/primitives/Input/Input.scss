@@ -79,11 +79,6 @@
 			background var(--fc-motion-quick) ease,
 			box-shadow var(--fc-motion-quick) ease;
 
-		&:hover:not(:disabled):not([readonly]) {
-			border-color: var(--fc-line-strong);
-			background: var(--fc-input-bg-hover);
-		}
-
 		&:focus {
 			border-color: var(--fc-control-border-selected);
 			background: var(--fc-input-bg);

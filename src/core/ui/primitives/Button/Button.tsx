@@ -42,7 +42,7 @@ const DEFAULT_ICON_SIZE = 16;
 export interface FlashcardButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 	/** Visual hierarchy. Defaults to neutral, or ghost for icon/previous controls. */
 	variant?: ButtonVariant;
-	/** Control size. Defaults to the 32px medium control; icon presets respect this size. */
+	/** Control size. Defaults to the shared medium size; views may override the height token. */
 	size?: ButtonSize;
 	/** Special shape / behavior preset. Class generation combines preset and variant. */
 	preset?: ButtonPreset;

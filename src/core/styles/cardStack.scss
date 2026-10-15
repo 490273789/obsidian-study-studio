@@ -1,93 +1,55 @@
-// =============================================================================
-// Session Card Stack Layout (Global Skeleton)
-// Shared across CardView, PracticeView, and SpellingView
-// =============================================================================
+@use "./mixins.scss" as *;
 
-.flashcard-study {
-	height: 100%;
-	flex: 1 1 100%;
-	min-height: 0;
-	max-height: 100%;
-	// margin: 0 auto;
-	display: flex;
-	flex-direction: column;
-	gap: var(--fc-space-3);
-	overflow: hidden;
-	animation: var(--fc-motion-page-enter);
-}
-
+/* Session reading surface; per-mode controls live in their CSS Modules. */
 .flashcard-complete {
 	height: 100%;
-	flex: 1 1 100%;
-	min-height: 0;
-	max-height: 100%;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	gap: var(--fc-space-3);
-	padding: var(--fc-space-4);
+	gap: var(--fc-space-4);
 	text-align: center;
 }
-
 .flashcard-content {
 	min-height: 0;
 	flex: 1;
 	display: flex;
 	flex-direction: column;
-	gap: var(--fc-space-3);
 	overflow-y: auto;
 	overscroll-behavior: contain;
 	-webkit-overflow-scrolling: touch;
-	width: 100%;
-	padding: var(--fc-space-2) var(--fc-space-2) var(--fc-space-4);
-
-	&.animating {
-		animation: fc-card-slide-out 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-		border-color: rgba(var(--fc-magenta-rgb), 0.4);
-		box-shadow:
-			inset 0 0 34px rgba(var(--fc-magenta-rgb), 0.16),
-			0 0 24px rgba(var(--fc-cyan-rgb), 0.1);
-	}
+	scroll-padding-block: var(--fc-space-6);
 }
-
 .flashcard-card-stack {
+	width: 100%;
+	min-width: 0;
 	display: flex;
 	flex-direction: column;
+	flex-shrink: 0;
 	gap: var(--fc-space-4);
-	width: 100%;
-	animation: fc-card-slide-in 0.3s cubic-bezier(0.2, 0, 0, 1) forwards;
+	animation: fc-session-content-enter var(--fc-motion-base) var(--fc-ease-out);
 	user-select: text;
 	-webkit-user-select: text;
 }
-
 .flashcard-answer-section {
 	display: flex;
 	flex-direction: column;
+	min-width: 0;
 	gap: var(--fc-space-4);
-	width: 100%;
 }
-
 .flashcard-question,
 .flashcard-answer,
 .flashcard-explanation {
 	position: relative;
 	flex: 0 0 auto;
-	overflow: hidden;
+	min-width: 0;
 	padding: var(--fc-space-4) var(--fc-space-5);
-	border: 1px solid var(--fc-line-glow);
-	border-left-width: 3px;
-	border-radius: var(--fc-radius-md);
+	border-color: var(--fc-line-soft);
+	border-inline-start-width: 3px;
 	background: var(--fc-surface-card);
-	box-shadow: var(--fc-shadow-card);
-	transition: all 0.2s ease;
-	user-select: text;
-	-webkit-user-select: text;
+	box-shadow: none;
 }
-
 .flashcard-question {
-	border-left-color: rgba(var(--fc-cyan-rgb), 0.85);
-
 	.flashcard-markdown,
 	.pronounceable-markdown-wrapper {
 		font-size: var(--fc-font-xl);
@@ -95,75 +57,99 @@
 		color: var(--fc-text);
 	}
 }
-
-.flashcard-answer {
-	border-left-color: rgba(var(--fc-violet-rgb), 0.85);
-}
-
-.flashcard-explanation {
-	border-left-color: rgba(var(--fc-amber-rgb), 0.85);
-}
-
 .flashcard-label {
 	position: absolute;
-	top: 0;
-	right: 0;
+	inset-block-start: 0;
+	inset-inline-end: 0;
 	display: inline-flex;
 	align-items: center;
-	font-size: var(--fc-font-sm);
-	font-weight: var(--fc-weight-semibold);
-	text-transform: uppercase;
-	letter-spacing: 0.05em;
 	padding: var(--fc-space-2) var(--fc-space-6);
-	border-bottom-left-radius: var(--fc-radius-md);
+	border-end-start-radius: var(--fc-radius-md);
+	font: var(--fc-weight-semibold) var(--fc-font-sm) / var(--fc-line-body) var(--fc-font-ui);
 	margin: 0;
 	width: fit-content;
+	max-width: 60%;
+	overflow-wrap: anywhere;
 	user-select: none;
-	-webkit-user-select: none;
-
 	&.flashcard-label-question {
-		background: color-mix(in srgb, var(--fc-cyan) 12%, transparent);
-		color: var(--fc-cyan);
+		color: var(--fc-primary);
+		background: color-mix(in srgb, var(--fc-primary) 10%, var(--fc-surface-card));
 	}
-
 	&.flashcard-label-answer {
-		background: color-mix(in srgb, var(--fc-violet) 12%, transparent);
 		color: var(--fc-violet);
+		background: color-mix(in srgb, var(--fc-violet) 10%, var(--fc-surface-card));
 	}
-
 	&.flashcard-label-explanation {
-		background: color-mix(in srgb, var(--fc-amber) 12%, transparent);
 		color: var(--fc-amber);
+		background: color-mix(in srgb, var(--fc-amber) 10%, var(--fc-surface-card));
 	}
 }
-
 .flashcard-divider {
 	width: min(280px, 60%);
 	height: 1px;
 	margin: var(--fc-space-2) auto;
-	background: linear-gradient(
-		90deg,
-		transparent,
-		color-mix(in srgb, var(--text-normal) 25%, transparent),
-		transparent
-	);
-	user-select: none;
-	-webkit-user-select: none;
+	background: linear-gradient(90deg, transparent, var(--fc-line), transparent);
+}
+/* A short, paired handoff; the page chrome stays still and text stays sharp. */
+@keyframes fc-session-content-enter {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
 }
 
 .flashcard-footer {
 	flex-shrink: 0;
-	position: sticky;
-	bottom: 0;
-	z-index: 12;
-	border-radius: 0;
-	width: 100%;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	border: 0;
-	background: transparent;
-	box-shadow: none;
-	backdrop-filter: none;
-	padding: var(--fc-space-1) 0;
+}
+.flashcard-study .flashcard-markdown {
+	overflow-wrap: anywhere;
+	img {
+		max-width: 100%;
+		height: auto;
+	}
+	table {
+		display: block;
+		max-width: 100%;
+		overflow-x: auto;
+	}
+	pre {
+		max-width: 100%;
+		overflow-x: auto;
+	}
+}
+@container session (max-width: 640px) {
+	.flashcard-question,
+	.flashcard-answer,
+	.flashcard-explanation {
+		padding: var(--fc-space-4);
+	}
+	.flashcard-label {
+		position: static;
+		align-self: flex-end;
+		max-width: 100%;
+		margin: calc(-1 * var(--fc-space-4)) calc(-1 * var(--fc-space-4)) var(--fc-space-3) 0;
+		padding: var(--fc-space-1) var(--fc-space-3);
+	}
+	.flashcard-study .flashcard-markdown {
+		font-size: var(--fc-font-lg);
+	}
+}
+.flashcard-study .flashcard-pronunciation-row {
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--fc-space-3);
+}
+
+@media (pointer: coarse) {
+	.flashcard-root .flashcard-study button.flashcard-btn.flashcard-pronunciation-button {
+		min-width: var(--fc-control-touch);
+		min-height: var(--fc-control-touch);
+	}
 }

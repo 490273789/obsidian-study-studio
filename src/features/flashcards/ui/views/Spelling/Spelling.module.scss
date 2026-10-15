@@ -1,260 +1,129 @@
-/* Spelling View */
-
 .spellingView {
+	&:global(.flashcard-study):focus-within {
+		padding-bottom: max(var(--fc-space-2), var(--fc-keyboard-inset, 0px));
+	}
 	&:focus-within :global(.flashcard-content) {
-		padding-bottom: max(var(--fc-space-3), var(--fc-keyboard-inset, 0px));
-		scroll-padding-bottom: calc(var(--fc-keyboard-inset, 0px) + var(--fc-space-6));
+		scroll-padding-bottom: var(--fc-space-6);
 	}
 }
-
 .inputGroup {
-	display: flex;
-	flex-direction: column;
-	gap: var(--fc-space-2);
-	padding: var(--fc-space-4) var(--fc-space-5);
-	position: relative;
-	background: var(--fc-surface-card);
-	border: 1px solid var(--fc-line-glow);
-	border-left: 3px solid rgba(var(--fc-cyan-rgb), 0.85);
-	border-radius: var(--fc-radius-md);
-	box-shadow: var(--fc-shadow-card);
-	color: var(--fc-muted);
-	font-size: var(--fc-font-xs);
-	font-weight: var(--fc-weight-semibold);
-	transition: all 0.2s ease;
-
-	input {
-		width: 100%;
-		min-height: 48px;
-		padding: var(--fc-space-2) var(--fc-space-3);
-		border: 1px solid var(--fc-input-border);
-		border-radius: var(--fc-radius-sm);
-		background: color-mix(
-			in srgb,
-			var(--background-secondary) 75%,
-			var(--background-primary) 25%
-		);
-		box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.12);
-		color: var(--fc-text);
-		font: var(--fc-weight-bold) var(--fc-font-xl) / var(--fc-line-tight) var(--fc-font-data);
-		letter-spacing: 0.04em;
-		text-align: center;
-		transition: all 0.18s ease;
-
-		&:hover:not(:focus) {
-			border-color: color-mix(in srgb, var(--interactive-accent) 45%, var(--fc-line-soft));
-			background: color-mix(
-				in srgb,
-				var(--background-secondary) 65%,
-				var(--background-primary) 35%
-			);
-			box-shadow:
-				inset 0 1px 3px rgba(0, 0, 0, 0.14),
-				0 0 8px color-mix(in srgb, var(--interactive-accent) 12%, transparent);
-		}
-
-		&:focus {
-			border-color: var(--interactive-accent);
-			background: var(--background-primary);
-			box-shadow:
-				0 0 0 1px var(--interactive-accent),
-				0 0 12px color-mix(in srgb, var(--interactive-accent) 25%, transparent),
-				inset 0 1px 2px rgba(0, 0, 0, 0.08);
-			outline: none;
-		}
-	}
-}
-
-.feedback {
 	display: flex;
 	flex-direction: column;
 	gap: var(--fc-space-3);
 	padding: var(--fc-space-4) var(--fc-space-5);
-	border: 1px solid var(--fc-line-glow);
-	border-left-width: 3px;
+	border: 1px solid var(--fc-line-soft);
+	border-inline-start-width: 3px;
 	border-radius: var(--fc-radius-md);
 	background: var(--fc-surface-card);
-	box-shadow: var(--fc-shadow-card);
-	animation: var(--fc-motion-answer);
-
-	&.isCorrect {
-		flex-direction: row;
-		align-items: center;
-		justify-content: center;
-		gap: var(--fc-space-2);
-		border-color: var(--fc-line-glow);
-		border-left-color: rgba(var(--fc-lime-rgb), 0.85);
-		background: var(--fc-surface-card);
-		color: var(--fc-lime);
-		font-size: var(--fc-font-sm);
-		font-weight: var(--fc-weight-semibold);
-
-		strong {
-			color: var(--fc-text);
-			font-family: var(--fc-font-data);
-			font-size: var(--fc-font-lg);
+	color: var(--fc-muted);
+	font-size: var(--fc-font-sm);
+	input {
+		box-sizing: border-box;
+		width: 100%;
+		min-height: var(--fc-control-md);
+		padding: var(--fc-space-1) var(--fc-space-4);
+		text-align: center;
+		background: var(--fc-input-bg);
+		font: var(--fc-weight-medium) var(--fc-font-xl) / var(--fc-line-body) var(--fc-font-data);
+		&:focus {
+			border-color: var(--fc-input-border-focus);
+			box-shadow: var(--fc-focus-ring);
+			outline: none;
 		}
 	}
-
-	&.isWrong {
-		border-color: var(--fc-line-glow);
-		border-left-color: rgba(var(--fc-red-rgb), 0.85);
-		background: var(--fc-surface-card);
+}
+.feedback {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fc-space-4);
+	padding: var(--fc-space-4) var(--fc-space-5);
+	border: 1px solid var(--fc-line-soft);
+	border-inline-start-width: 3px;
+	border-radius: var(--fc-radius-md);
+	background: var(--fc-surface-card);
+}
+.isCorrect {
+	flex-direction: row;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: center;
+	color: var(--fc-lime);
+	strong {
+		color: var(--fc-text);
+		overflow-wrap: anywhere;
 	}
 }
-
+.isWrong {
+	background: color-mix(in srgb, var(--fc-red) 3%, var(--fc-surface-card));
+}
 .feedbackTitle {
-	display: inline-flex;
+	display: flex;
 	align-items: center;
 	gap: var(--fc-space-2);
 	color: var(--fc-red);
 	font-size: var(--fc-font-sm);
-	font-weight: var(--fc-weight-bold);
+	font-weight: var(--fc-weight-medium);
 }
-
 .diff {
 	display: flex;
-	justify-content: center;
 	flex-wrap: wrap;
 	gap: var(--fc-space-1);
+	justify-content: center;
 	padding: var(--fc-space-3);
-	border-radius: var(--fc-radius-sm);
-	background: color-mix(in srgb, var(--background-secondary) 80%, var(--background-primary) 20%);
 	border: 1px solid var(--fc-line-soft);
-	box-shadow: var(--fc-shadow-inset);
-	font: var(--fc-weight-bold) var(--fc-font-xl) / var(--fc-line-tight) var(--fc-font-data);
-
+	border-radius: var(--fc-radius-sm);
+	background: var(--fc-input-bg);
+	font: var(--fc-weight-bold) var(--fc-font-xl) / var(--fc-line-body) var(--fc-font-data);
 	> span:not(.emptyAnswer) {
 		min-width: 1.1em;
 		padding: var(--fc-space-1);
 		border-bottom: 2px solid currentColor;
 		text-align: center;
+		white-space: pre;
 	}
 }
-
 .diffCorrect {
 	color: var(--fc-lime);
 }
-
-.diffIncorrect,
+.diffIncorrect {
+	color: var(--fc-red);
+	text-decoration: underline wavy;
+	text-underline-offset: 5px;
+}
 .diffExtra {
 	color: var(--fc-red);
+	text-decoration: line-through;
 }
-
 .diffMissing {
-	border: 1px dashed rgba(var(--fc-amber-rgb), 0.6);
 	color: var(--fc-amber);
+	outline: 1px dashed currentColor;
+	outline-offset: -1px;
 }
-
 .emptyAnswer {
-	color: var(--fc-faint);
-	font-size: var(--fc-font-xs);
-}
-
-.submittedAnswer {
-	display: flex;
-	align-items: baseline;
-	justify-content: center;
-	gap: var(--fc-space-2);
 	color: var(--fc-muted);
-	font-size: var(--fc-font-xs);
-
-	strong {
-		color: var(--fc-red);
-		font-family: var(--fc-font-data);
-		font-size: var(--fc-font-md);
-		overflow-wrap: anywhere;
-	}
+	font-size: var(--fc-font-sm);
 }
-
+.submittedAnswer,
 .correctAnswer {
 	display: flex;
 	align-items: baseline;
 	justify-content: center;
+	flex-wrap: wrap;
 	gap: var(--fc-space-2);
 	color: var(--fc-muted);
 	font-size: var(--fc-font-xs);
-
 	strong {
 		color: var(--fc-text);
-		font-family: var(--fc-font-data);
-		font-size: var(--fc-font-lg);
+		font: var(--fc-font-lg) var(--fc-font-data);
+		overflow-wrap: anywhere;
 	}
 }
-
-.actions {
-	display: grid;
-	grid-template-columns: minmax(130px, 1fr) minmax(180px, 2fr);
-	width: 100%;
-	gap: var(--fc-space-3);
-	padding: 0 var(--fc-space-4);
-
-	:global(.flashcard-btn) {
-		min-height: 46px;
-		border-radius: var(--fc-radius-lg);
-		font-weight: var(--fc-weight-semibold);
-		box-shadow: none;
-		transition: all 0.2s ease;
-
-		&:hover:not(:disabled) {
-			transform: translateY(-1px);
-			box-shadow: none;
-		}
-	}
+.submittedAnswer strong {
+	color: var(--fc-red);
 }
-
-.summaryAnswerRow {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--fc-space-2) var(--fc-space-4);
-	color: var(--fc-muted);
-	font-size: var(--fc-font-sm);
-
-	strong {
-		color: var(--fc-text);
-		font-family: var(--fc-font-data);
-	}
-}
-
-:global(.theme-light) {
+@container session (max-width: 640px) {
 	.inputGroup,
 	.feedback {
-		background: rgba(var(--fc-bg-elevated-rgb), 0.68);
-		box-shadow: none;
-	}
-
-	.feedback.isCorrect {
-		border-left-color: rgba(var(--fc-lime-rgb), 0.68);
-	}
-
-	.feedback.isWrong {
-		border-left-color: rgba(var(--fc-red-rgb), 0.64);
-	}
-
-	.inputGroup input,
-	.diff {
-		background: color-mix(in srgb, var(--fc-cyan) 3%, var(--background-primary) 97%);
-		color: var(--fc-text);
-	}
-
-	.inputGroup input:hover:not(:focus) {
-		border-color: rgba(var(--fc-cyan-rgb), 0.52);
-		background:
-			linear-gradient(135deg, rgba(var(--fc-cyan-rgb), 0.05), transparent 52%),
-			color-mix(in srgb, var(--fc-cyan) 2%, var(--background-primary) 98%);
-		box-shadow: 0 0 0 1px rgba(var(--fc-cyan-rgb), 0.1);
-	}
-
-	.inputGroup input:focus {
-		background:
-			linear-gradient(135deg, rgba(var(--fc-cyan-rgb), 0.07), transparent 52%),
-			color-mix(in srgb, var(--fc-cyan) 1%, var(--background-primary) 99%);
-	}
-}
-
-@media (max-width: 640px) {
-	.inputGroup input {
-		min-height: 48px;
-		font-size: var(--fc-font-md);
+		padding-inline: var(--fc-space-4);
 	}
 }

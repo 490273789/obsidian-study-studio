@@ -68,11 +68,6 @@
 		background var(--fc-motion-quick) ease,
 		box-shadow var(--fc-motion-quick) ease;
 
-	&:hover {
-		border-color: var(--fc-line-strong);
-		background: var(--fc-input-bg-hover);
-	}
-
 	&:focus-within {
 		border-color: var(--fc-input-border-focus);
 		background: var(--fc-input-bg);

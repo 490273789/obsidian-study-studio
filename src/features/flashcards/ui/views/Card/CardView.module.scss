@@ -1,196 +1,87 @@
-/* CardView Rating & Response Controls */
-
 .responseControls {
-	display: flex;
+	display: grid;
+	grid-template-columns: var(--fc-control-md) minmax(0, 1fr);
 	align-items: center;
-	justify-content: center;
-	gap: var(--fc-space-2);
+	gap: var(--fc-space-3);
 	width: 100%;
-	max-width: none;
-	margin-inline: auto;
-	padding: 0;
-	border: none;
-	background: transparent;
-	box-shadow: none;
-
-	:global(button.flashcard-btn.flashcard-btn-icon) {
-		min-height: 52px;
-		min-width: 48px;
-		height: 52px;
-		border-radius: var(--fc-radius-md);
-		border: 1px solid var(--fc-line-soft);
-		background: var(--background-primary) !important;
-		background-color: var(--background-primary) !important;
+	:global(button.flashcard-btn-prev) {
+		width: var(--fc-control-md);
+		height: var(--fc-control-md);
 		color: var(--fc-muted);
-		box-shadow: none;
-		transition: all 0.18s ease;
-
-		&:hover:not(:disabled) {
-			transform: translateY(-1px);
-			border-color: var(--fc-line);
-			background: var(--fc-surface-hover) !important;
-			background-color: var(--fc-surface-hover) !important;
-			color: var(--fc-text);
-			box-shadow: none;
-		}
-
-		&:active:not(:disabled) {
-			transform: translateY(0);
-		}
 	}
 }
-
 .ratingGrid {
-	flex: 1;
 	display: grid;
 	grid-template-columns: repeat(5, minmax(0, 1fr));
 	gap: var(--fc-space-2);
-	padding: var(--fc-space-1) 0;
 }
-
-.ratingDuration {
-	color: var(--fc-rating-color);
-	font-size: var(--fc-font-sm);
-	font-weight: var(--fc-weight-bold);
-	font-family: var(--fc-font-data);
-	line-height: var(--fc-line-tight);
-}
-
-.ratingMeta {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	gap: var(--fc-space-1);
-	line-height: var(--fc-line-tight);
-}
-
 :global(button.flashcard-btn).ratingBtn {
-	position: relative;
-	overflow: hidden;
-	min-height: 52px;
-	padding: var(--fc-space-1) var(--fc-space-2);
-	border-radius: var(--fc-radius-md);
-	border: 1px solid
-		color-mix(in srgb, var(--fc-rating-color, var(--fc-text)) 28%, var(--fc-line-soft));
-	background: color-mix(
-		in srgb,
-		var(--fc-rating-color, var(--fc-text)) 12%,
-		var(--background-primary)
-	) !important;
-	background-color: color-mix(
-		in srgb,
-		var(--fc-rating-color, var(--fc-text)) 12%,
-		var(--background-primary)
-	) !important;
-	box-shadow: none;
+	--fc-button-bg: var(--fc-surface-card);
+	--fc-button-bg-hover: color-mix(in srgb, var(--fc-rating-color) 10%, var(--fc-surface-card));
+	--fc-button-border: var(--fc-line-soft);
+	--fc-button-border-hover: var(--fc-rating-color);
+	--fc-button-text: var(--fc-text);
+	min-height: var(--fc-control-md);
+	padding: var(--fc-space-half) var(--fc-space-2);
 	display: flex;
 	flex-direction: column;
-	align-items: center;
-	justify-content: center;
 	gap: var(--fc-space-half);
-	cursor: pointer;
-	transition:
-		transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
-		background-color 0.18s ease;
-
-	&::after {
-		content: "";
-		position: absolute;
-		left: 50%;
-		bottom: 0;
-		width: 22px;
-		height: 3px;
-		border-radius: var(--fc-radius-pill) var(--fc-radius-pill) 0 0;
-		background: var(--fc-rating-color, var(--fc-text));
-		opacity: 0.85;
-		transform: translateX(-50%);
-		transition:
-			opacity 0.2s ease,
-			width 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
-	}
-
-	&:hover:not(:disabled) {
-		transform: translateY(-2px);
-		background: color-mix(
-			in srgb,
-			var(--fc-rating-color, var(--fc-text)) 20%,
-			var(--background-primary)
-		) !important;
-		background-color: color-mix(
-			in srgb,
-			var(--fc-rating-color, var(--fc-text)) 20%,
-			var(--background-primary)
-		) !important;
-		border-color: color-mix(in srgb, var(--fc-rating-color, var(--fc-text)) 55%, transparent);
-		box-shadow: none;
-
-		&::after {
-			opacity: 1;
-			width: 44px;
-		}
-	}
-
-	&:active:not(:disabled) {
-		transform: translateY(0);
-		box-shadow: none;
-	}
-
+	box-shadow: none;
 	&:focus-visible {
-		outline: 2px solid var(--fc-rating-color, var(--fc-text));
+		outline: 2px solid var(--fc-rating-color);
 		outline-offset: 2px;
 	}
 }
-
-:global(button.flashcard-rating-1),
-:global(button.flashcard-btn).rating1,
+.ratingMeta {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--fc-space-2);
+}
+.ratingLabel {
+	color: var(--fc-text);
+	font-size: var(--fc-font-sm);
+	font-weight: var(--fc-weight-medium);
+}
+.ratingDuration {
+	color: var(--fc-rating-color);
+	font-size: var(--fc-font-xs);
+	font-family: var(--fc-font-data);
+}
+.ratingInterval {
+	color: var(--fc-faint);
+	font: var(--fc-font-2xs) var(--fc-font-data);
+}
 .rating1 {
 	--fc-rating-color: var(--fc-red);
 }
-
-:global(button.flashcard-rating-2),
-:global(button.flashcard-btn).rating2,
 .rating2 {
 	--fc-rating-color: var(--fc-orange);
 }
-
-:global(button.flashcard-rating-3),
-:global(button.flashcard-btn).rating3,
 .rating3 {
 	--fc-rating-color: var(--fc-blue);
 }
-
-:global(button.flashcard-rating-4),
-:global(button.flashcard-btn).rating4,
 .rating4 {
 	--fc-rating-color: var(--fc-lime);
 }
-
-:global(button.flashcard-rating-5),
-:global(button.flashcard-btn).rating5,
 .rating5 {
-	--fc-rating-color: var(--fc-cyan);
+	--fc-rating-color: var(--fc-primary);
 }
-
-.ratingLabel {
-	color: var(--fc-rating-color);
-	font-size: var(--fc-font-xs);
-	font-weight: var(--fc-weight-semibold);
-	letter-spacing: 0.01em;
-}
-
-.ratingInterval {
-	min-width: 18px;
-	min-height: 18px;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	padding: 0 5px;
-	border: 1px solid color-mix(in srgb, var(--fc-rating-color) 32%, transparent);
-	border-radius: var(--fc-radius-pill);
-	background: color-mix(in srgb, var(--fc-rating-color) 16%, var(--background-primary));
-	color: var(--fc-rating-color);
-	font-size: var(--fc-font-2xs);
-	font-family: var(--fc-font-data);
-	font-weight: var(--fc-weight-medium);
-	line-height: var(--fc-line-tight);
+@container session (max-width: 640px) {
+	.responseControls {
+		gap: var(--fc-space-2);
+	}
+	.ratingGrid {
+		grid-template-columns: repeat(6, minmax(0, 1fr));
+	}
+	.ratingBtn {
+		grid-column: span 2;
+	}
+	.rating1,
+	.rating2 {
+		grid-column: span 3;
+	}
+	.ratingInterval {
+		display: none;
+	}
 }

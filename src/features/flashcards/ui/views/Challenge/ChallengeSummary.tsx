@@ -1,14 +1,12 @@
 import React, { memo } from "react";
-import { CircleCheck, House, RotateCw, Timer } from "lucide-react";
+import { CircleCheck, House, RotateCw } from "lucide-react";
 import { cls } from "../../../../../core/shared/classNames";
-import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
-import { Confetti } from "../../../../../core/ui/primitives/Confetti";
-import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
+import { SessionSummary } from "../../primitives/SessionSummary/SessionSummary";
 import type { ChallengeResultSnapshot } from "../../../domain/sessions/sessionLifecycle";
 import { formatCompactDuration } from "../../../strings";
 import { useFlashcardI18n } from "../../../strings/context";
 import { MarkdownContent } from "../../primitives/Markdown";
-import styles from "./Challenge.module.scss";
+import styles from "../../primitives/SessionSummary/SessionSummary.module.scss";
 
 interface ChallengeSummaryProps {
 	result: ChallengeResultSnapshot;
@@ -40,108 +38,90 @@ export const ChallengeSummary = memo(function ChallengeSummary({
 			}
 		: result.levelResult;
 	const roundComplete = result.roundComplete;
+	const title = roundComplete
+		? t("challenge.roundCompletedTitle")
+		: result.sourceChanged
+			? t("challenge.sourceChangedTitle")
+			: t("challenge.completedTitle");
 	return (
-		<div className={cls("fc-page fc-page--fill", styles.summary)}>
-			{!result.sourceChanged && <Confetti />}
-			<FlashcardHeader
-				icon={CircleCheck}
-				title={
-					roundComplete
-						? t("challenge.roundCompletedTitle")
-						: result.sourceChanged
-							? t("challenge.sourceChangedTitle")
-							: t("challenge.completedTitle")
-				}
-				onBack={onEnd}
-			/>
-			<div className={cls("fc-page__body", styles.summaryBody)}>
-				<p className={styles.summarySubtitle}>
+		<SessionSummary
+			mode={t("challenge.title")}
+			icon={CircleCheck}
+			title={title}
+			description={
+				<>
 					{t("challenge.level", { current: result.levelResult.levelIndex + 1 })} ·{" "}
 					{result.roundSummary.completedLevels}/{result.roundSummary.totalLevels}
-				</p>
-				<p className={styles.summarySubtitle}>
+					<br />
 					{result.sourceChanged
 						? t("challenge.sourceChangedNote")
 						: t("challenge.completedSubtitle")}
+				</>
+			}
+			metric={{
+				label: t("challenge.firstTryAccuracy"),
+				value: `${Math.round(level.firstTryAccuracy)}%`,
+			}}
+			stats={[
+				{
+					label: t("challenge.firstTryCorrect"),
+					value: `${level.firstTryCorrectCount}/${level.totalQuestions}`,
+				},
+				{ label: t("challenge.retries"), value: level.retryCount },
+				{
+					label: t("challenge.timeSpent"),
+					value: formatCompactDuration(language, level.timeSpent),
+				},
+			]}
+			onHome={onEnd}
+			celebrate={!result.sourceChanged}
+			actions={[
+				{
+					label: t("challenge.end"),
+					icon: House,
+					onClick: onEnd,
+					primary: roundComplete || !result.canContinue,
+				},
+				...(!roundComplete && result.canContinue
+					? [{ label: t("challenge.nextLevel"), onClick: onNextLevel, primary: true }]
+					: [{ label: t("challenge.restart"), icon: RotateCw, onClick: onRestart }]),
+			]}
+		>
+			{result.removedCardCount > 0 && (
+				<p className={styles.removed}>
+					{t("challenge.removedCards", { count: result.removedCardCount })}
 				</p>
-				<div className={styles.stats}>
-					<Stat
-						label={t("challenge.firstTryAccuracy")}
-						value={`${Math.round(level.firstTryAccuracy)}%`}
-					/>
-					<Stat
-						label={t("challenge.firstTryCorrect")}
-						value={`${level.firstTryCorrectCount}/${level.totalQuestions}`}
-					/>
-					<Stat label={t("challenge.retries")} value={String(level.retryCount)} />
-					<Stat
-						label={t("challenge.timeSpent")}
-						value={formatCompactDuration(language, level.timeSpent)}
-						icon={<Timer size={16} />}
-					/>
-				</div>
-				{result.removedCardCount > 0 && (
-					<p className={styles.removed}>
-						{t("challenge.removedCards", { count: result.removedCardCount })}
-					</p>
-				)}
-				{result.incorrectCards.length > 0 && (
-					<section className={styles.missed}>
-						<h2>
-							{t("challenge.missedCards", { count: result.incorrectCards.length })}
-						</h2>
-						<ul>
-							{result.incorrectCards.map((card) => (
-								<li key={card.identity}>
+			)}
+			{result.incorrectCards.length > 0 && (
+				<section className={cls("fc-panel", styles.incorrectSection)}>
+					<h2 className={styles.incorrectTitle}>
+						{t("challenge.missedCards", { count: result.incorrectCards.length })}
+					</h2>
+					<ul className={styles.incorrectList}>
+						{result.incorrectCards.map((card) => (
+							<li className={styles.incorrectItem} key={card.identity}>
+								<div className={styles.incorrectContent}>
 									<MarkdownContent
 										content={card.front}
-										className="flashcard-markdown"
+										className={styles.incorrectText}
 										markdownRenderer={markdownRenderer}
 									/>
-									<span>
+									<span className={styles.source}>
 										{t("challenge.source", {
 											deckName: card.currentDeckName ?? card.sourceFile,
 										})}
 									</span>
 									<MarkdownContent
 										content={card.back}
-										className="flashcard-markdown"
+										className={styles.incorrectText}
 										markdownRenderer={markdownRenderer}
 									/>
-								</li>
-							))}
-						</ul>
-					</section>
-				)}
-			</div>
-			<div className={cls("flashcard-footer", styles.summaryActions)}>
-				<FlashcardButton variant="ghost" icon={House} onClick={onEnd}>
-					{t("challenge.end")}
-				</FlashcardButton>
-				{roundComplete ? (
-					<FlashcardButton variant="secondary" icon={RotateCw} onClick={onRestart}>
-						{t("challenge.restart")}
-					</FlashcardButton>
-				) : result.canContinue ? (
-					<FlashcardButton variant="primary" onClick={onNextLevel}>
-						{t("challenge.nextLevel")}
-					</FlashcardButton>
-				) : (
-					<FlashcardButton variant="secondary" icon={RotateCw} onClick={onRestart}>
-						{t("challenge.restart")}
-					</FlashcardButton>
-				)}
-			</div>
-		</div>
+								</div>
+							</li>
+						))}
+					</ul>
+				</section>
+			)}
+		</SessionSummary>
 	);
 });
-
-function Stat({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {
-	return (
-		<div className={styles.stat}>
-			{icon}
-			<span>{label}</span>
-			<strong>{value}</strong>
-		</div>
-	);
-}

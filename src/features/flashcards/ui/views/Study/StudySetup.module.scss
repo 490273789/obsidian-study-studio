@@ -35,7 +35,7 @@
 .dayItem:global(.fc-rail-row) {
 	grid-template-columns: minmax(0, 1fr) auto auto;
 	grid-template-areas: "main progress actions";
-	scroll-margin-top: 110px;
+	scroll-margin-block: var(--fc-space-3);
 
 	:global(.fc-rail-row__main) {
 		grid-area: main;
@@ -140,8 +140,8 @@
 /* Keep the host's generic button surface off the quiet group headings. */
 :global(.flashcard-root) .plan button:global(.fc-disclosure) {
 	justify-content: flex-start;
-	min-height: 38px;
-	height: 38px;
+	min-height: var(--fc-control-md);
+	height: var(--fc-control-md);
 	padding-inline: var(--fc-space-3);
 	border-radius: var(--fc-radius-sm);
 	border: 0;

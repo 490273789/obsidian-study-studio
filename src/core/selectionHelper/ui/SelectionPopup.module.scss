@@ -413,7 +413,8 @@
 		.closeButton,
 		.openButton,
 		.aiGenerateBtn {
-			min-height: 44px;
+			min-height: var(--fc-control-touch);
+			min-width: var(--fc-control-touch);
 		}
 	}
 }

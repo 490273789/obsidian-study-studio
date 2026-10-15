@@ -16,7 +16,7 @@
 <FlashcardButton variant="neutral" preset="icon" size="md" icon={Keyboard} aria-label="拼写" />
 ```
 
-尺寸为 `sm`（28px）、`md`（32px，默认）、`lg`（38px），图标按钮保持同尺寸正方形。触摸设备的点击区域至少为 44px。普通按钮允许多行文字。
+按钮提供 `sm`、`md`（默认）与 `lg` 尺寸，分别使用 `--fc-control-sm/md/lg`，实际桌面高度可按组件内容与密度调整，没有统一的 38px 限制。图标按钮保持对应尺寸的正方形；触摸设备点击区域至少为 40 × 40px，多行按钮按内容自然增高。完整规则见 [控件尺寸规范](../../../styles/README.md#间距与尺寸)。
 
 所有按钮及其悬停、选中、按下状态均不使用阴影，通过底色与边框区分层级；键盘焦点使用 outline。
 

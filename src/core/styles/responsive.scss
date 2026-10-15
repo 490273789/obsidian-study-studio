@@ -9,10 +9,6 @@
 		padding-bottom: var(--fc-space-3);
 	}
 
-	.flashcard-rating-grid {
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-	}
-
 	.flashcard-stats-session {
 		grid-template-columns: 1fr;
 	}
@@ -150,8 +146,6 @@
 		display: none;
 	}
 
-	.flashcard-practice-answer-buttons,
-	.flashcard-response-controls,
 	.flashcard-modal-footer,
 	.flashcard-identity-migration-card {
 		flex-direction: column;
@@ -312,10 +306,6 @@
 		line-height: var(--fc-line-reading);
 	}
 
-	.flashcard-rating-grid {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-	}
-
 	.flashcard-practice-input {
 		width: 100%;
 	}
@@ -326,88 +316,6 @@
 
 	.flashcard-card-editor-field textarea {
 		min-height: 126px;
-	}
-
-	.flashcard-study .flashcard-question,
-	.flashcard-study .flashcard-answer,
-	.flashcard-study .flashcard-explanation {
-		padding: var(--fc-space-4) var(--fc-space-10) var(--fc-space-4) var(--fc-space-4);
-		.flashcard-label {
-			padding: var(--fc-space-1) var(--fc-space-3);
-		}
-	}
-
-	.flashcard-study .flashcard-markdown {
-		font-size: var(--fc-font-md);
-		line-height: var(--fc-line-body);
-	}
-
-	.flashcard-study .flashcard-response-controls {
-		display: grid;
-		grid-template-columns: auto minmax(0, 1fr);
-		align-items: stretch;
-		gap: var(--fc-space-2);
-		width: 100%;
-		padding: 0 var(--fc-space-4);
-	}
-
-	.flashcard-study .flashcard-practice-response-controls {
-		grid-template-columns: auto minmax(0, 1fr);
-		align-items: stretch;
-		gap: var(--fc-space-2);
-		width: 100%;
-		padding: 0 var(--fc-space-4);
-	}
-
-	.flashcard-study .flashcard-rating-grid {
-		grid-template-columns: repeat(6, minmax(0, 1fr));
-		gap: var(--fc-space-1);
-	}
-
-	.flashcard-study .flashcard-rating-btn {
-		padding: var(--fc-space-1);
-		justify-content: center;
-	}
-
-	.flashcard-study .flashcard-rating-label {
-		font-size: var(--fc-font-sm);
-		line-height: var(--fc-line-tight);
-		white-space: nowrap;
-	}
-
-	.flashcard-study .flashcard-rating-1 {
-		grid-column: 1 / span 3;
-	}
-
-	.flashcard-study .flashcard-rating-2 {
-		grid-column: 4 / span 3;
-	}
-
-	.flashcard-study .flashcard-rating-3 {
-		grid-column: 1 / span 2;
-	}
-
-	.flashcard-study .flashcard-rating-4 {
-		grid-column: 3 / span 2;
-	}
-
-	.flashcard-study .flashcard-rating-5 {
-		grid-column: 5 / span 2;
-	}
-
-	.flashcard-footer .flashcard-shortcut,
-	.flashcard-footer .flashcard-rating-interval {
-		display: none;
-	}
-
-	.flashcard-footer .flashcard-btn-show {
-		width: calc(100% - var(--fc-space-8));
-		margin: 0 var(--fc-space-4);
-	}
-
-	.flashcard-study .flashcard-practice-answer-buttons {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 
 	.flashcard-modal-backdrop {

@@ -60,9 +60,9 @@
 	box-shadow: none;
 }
 .flashcard-root button.flashcard-setup-segment-btn {
-	--fc-button-height: 38px;
-	height: 38px;
-	min-height: 38px;
+	--fc-button-height: var(--fc-control-md);
+	height: var(--fc-control-md);
+	min-height: var(--fc-control-md);
 	--fc-button-bg: transparent;
 	--fc-button-bg-hover: var(--fc-surface-hover);
 	--fc-button-border: transparent;
@@ -86,11 +86,6 @@
 		background: var(--fc-button-bg-hover);
 		border-color: var(--fc-button-border-hover);
 		color: var(--fc-button-text);
-		box-shadow: none;
-	}
-	&:focus-visible {
-		outline: 2px solid var(--fc-primary);
-		outline-offset: 2px;
 		box-shadow: none;
 	}
 }

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import type {
 	ActionFor,
 	ActivePracticeSnapshot,
+	ActiveChallengeSnapshot,
 	ActiveSpellingSnapshot,
 	ActiveStudySnapshot,
 	LifecycleOutcome,
@@ -656,6 +657,7 @@ describe("AnswerPresentationTransition", () => {
 		expect(subject.getSnapshot()).toMatchObject({
 			lifecycle: { currentCard: { identity: "one" } },
 			activity: { kind: "transitioning", action: "study-previous" },
+			cardMotion: { direction: "backward", durationMs: 200 },
 		});
 		expect(await subject.act({ kind: "study-previous", reference: initial.reference })).toEqual(
 			{ kind: "rejected", reason: "busy" },
@@ -668,7 +670,7 @@ describe("AnswerPresentationTransition", () => {
 			lifecycle: { currentCard: { identity: "two" } },
 			activity: { kind: "idle" },
 		});
-		expect(listener).toHaveBeenCalledTimes(2);
+		expect(listener).toHaveBeenCalledTimes(3);
 		unsubscribe();
 	});
 
@@ -810,6 +812,7 @@ describe("AnswerPresentationTransition", () => {
 			lifecycle: { phase: "correction", currentCard: { identity: "one" } },
 			activity: { kind: "idle" },
 			spellingFeedback: { kind: "retrieval-incorrect" },
+			cardMotion: null,
 		});
 		expect(clock.pendingCount).toBe(0);
 
@@ -851,12 +854,14 @@ describe("AnswerPresentationTransition", () => {
 			lifecycle: { currentCard: { identity: "one" } },
 			activity: { kind: "transitioning" },
 			spellingFeedback: { kind: "retrieval-correct" },
+			cardMotion: null,
 		});
 		expect(clock.pendingCount).toBe(0);
 
 		preparation.resolve(550);
 		await flushPromises();
 		expect(clock.delays).toEqual([550]);
+		expect(subject.getSnapshot().cardMotion).toEqual({ direction: "forward", durationMs: 550 });
 		clock.runNext();
 		expect(await pending).toMatchObject({ kind: "applied" });
 		expect(subject.getSnapshot()).toMatchObject({
@@ -1210,4 +1215,130 @@ describe("challenge answer presentation", () => {
 		unsubscribe();
 		expect(lifecycle.getSnapshot()).toEqual(feedback);
 	});
+});
+
+describe("card exit motion", () => {
+	it("keeps the current card fully visible until persistence succeeds, then exits without an extra delay", async () => {
+		const initial = activeStudy("one", 1);
+		const next = activeStudy("two", 2);
+		const lifecycle = new ScriptedLifecycle(initial);
+		const commit = deferred<LifecycleOutcome>();
+		const clock = new FakeClock();
+		lifecycle.onAct = () => commit.promise;
+		const subject = createAnswerPresentationTransition({ lifecycle, clock });
+		const release = subject.subscribe(() => {});
+		const pending = subject.act({
+			kind: "study-answer",
+			reference: initial.reference,
+			rating: 3,
+		});
+		expect(subject.getSnapshot().cardMotion).toBeNull();
+		expect(clock.pendingCount).toBe(0);
+		lifecycle.publish(next);
+		commit.resolve({ kind: "applied", snapshot: next });
+		await flushPromises();
+		expect(subject.getSnapshot()).toMatchObject({
+			lifecycle: initial,
+			cardMotion: { durationMs: 200, direction: "forward" },
+		});
+		expect(clock.delays).toEqual([200]);
+		clock.runNext();
+		await pending;
+		expect(subject.getSnapshot()).toMatchObject({ lifecycle: next, cardMotion: null });
+		release();
+	});
+	it("never exits a failed answer and releases exit state on unsubscribe", async () => {
+		const initial = activePractice("one", 1);
+		const lifecycle = new ScriptedLifecycle(initial);
+		const clock = new FakeClock();
+		lifecycle.onAct = async () => ({
+			kind: "failed",
+			failure: { code: "persistence-failed", message: "disk unavailable", retryable: true },
+			snapshot: initial,
+		});
+		const subject = createAnswerPresentationTransition({ lifecycle, clock });
+		const release = subject.subscribe(() => {});
+		await subject.act({ kind: "practice-answer", reference: initial.reference, correct: true });
+		expect(subject.getSnapshot().cardMotion).toBeNull();
+		const next = activePractice("two", 2);
+		lifecycle.onAct = async () => {
+			lifecycle.publish(next);
+			return { kind: "applied", snapshot: next };
+		};
+		const pending = subject.act({
+			kind: "practice-answer",
+			reference: initial.reference,
+			correct: true,
+		});
+		await flushPromises();
+		expect(subject.getSnapshot().cardMotion).not.toBeNull();
+		release();
+		expect(await pending).toEqual({ kind: "cancelled" });
+		expect(subject.getSnapshot().cardMotion).toBeNull();
+		expect(clock.pendingCount).toBe(0);
+	});
+});
+
+it("keeps challenge error feedback still, then animates the explicit continue", async () => {
+	const initial: ActiveChallengeSnapshot = {
+		...activePractice("one", 1),
+		mode: "challenge",
+		reference: { kind: "active", mode: "challenge", revision: 1, key: "challenge" },
+		sourceDeck: { id: "deck", name: "Deck" },
+		questionMode: "normal",
+		phase: "question",
+		feedback: null,
+		roundProgress: {
+			level: 1,
+			totalLevels: 1,
+			passedInLevel: 0,
+			currentLevelTotal: 3,
+			completedAcrossRound: 0,
+			totalAcrossRound: 3,
+		},
+		removedCardCount: 0,
+	};
+	const feedback: ActiveChallengeSnapshot = {
+		...initial,
+		revision: 2,
+		reference: { ...initial.reference, revision: 2 },
+		phase: "feedback",
+		feedback: { correct: false },
+	};
+	const next: ActiveChallengeSnapshot = {
+		...initial,
+		revision: 3,
+		reference: { ...initial.reference, revision: 3 },
+	};
+	const lifecycle = new ScriptedLifecycle(initial);
+	const clock = new FakeClock();
+	lifecycle.onAct = async () => {
+		lifecycle.publish(feedback);
+		return { kind: "applied", snapshot: feedback };
+	};
+	const subject = createAnswerPresentationTransition({ lifecycle, clock });
+	const release = subject.subscribe(() => {});
+	const incorrect = subject.act({
+		kind: "challenge-answer",
+		reference: initial.reference,
+		correct: false,
+	});
+	await flushPromises();
+	expect(subject.getSnapshot().cardMotion).toBeNull();
+	clock.runNext();
+	await incorrect;
+	lifecycle.onAct = async () => {
+		lifecycle.publish(next);
+		return { kind: "applied", snapshot: next };
+	};
+	const continued = subject.act({ kind: "challenge-continue", reference: feedback.reference });
+	await flushPromises();
+	expect(subject.getSnapshot()).toMatchObject({
+		lifecycle: feedback,
+		cardMotion: { direction: "forward", durationMs: 200 },
+	});
+	clock.runNext();
+	await continued;
+	expect(subject.getSnapshot()).toMatchObject({ lifecycle: next, cardMotion: null });
+	release();
 });

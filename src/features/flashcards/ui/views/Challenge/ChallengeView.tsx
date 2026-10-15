@@ -1,7 +1,7 @@
+import type { CardMotion } from "../../answerPresentationTransition";
 import React, { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Check, CornerDownLeft, Lightbulb, X } from "lucide-react";
 import { Notice } from "obsidian";
-import { cls } from "../../../../../core/shared/classNames";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardInput } from "../../../../../core/ui/primitives/Input";
 import { useCardPresentationShortcuts } from "../../hooks/useCardPresentationShortcuts";
@@ -11,12 +11,16 @@ import { useFlashcardI18n } from "../../../strings/context";
 import { useCardContextMenu } from "../../hooks/useCardContextMenu";
 import type { AnswerPresentationTransition } from "../../answerPresentationTransition";
 import { MarkdownContent } from "../../primitives/Markdown";
+import { useSessionInputVisibility } from "../../hooks/useSessionInputVisibility";
+import { SessionLayout } from "../../primitives/SessionLayout/SessionLayout";
+import { SessionToolbar } from "../../primitives/SessionToolbar";
 import styles from "./Challenge.module.scss";
 
 interface ChallengeViewProps {
 	session: ActiveChallengeSnapshot;
 	transition: AnswerPresentationTransition;
 	isTransitioning: boolean;
+	cardMotion?: CardMotion;
 	onClose: () => void;
 	markdownRenderer: (content: string, el: HTMLElement) => Promise<void>;
 }
@@ -41,6 +45,7 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 	session,
 	transition,
 	isTransitioning,
+	cardMotion,
 	onClose,
 	markdownRenderer,
 }: ChallengeViewProps) {
@@ -49,6 +54,8 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 	const [answerVisible, setAnswerVisible] = useState(false);
 	const [input, setInput] = useState("");
 	const inputRef = useRef<HTMLInputElement>(null);
+	const viewRef = useRef<HTMLDivElement>(null);
+	const { keepInputVisible, handleInputBlur } = useSessionInputVisibility(inputRef, viewRef);
 	const currentCard = session.currentCard;
 	const isSpelling = session.questionMode === "spelling";
 	const feedback = session.feedback;
@@ -60,7 +67,7 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 	const showAnswer = isFeedback || (!isSpelling && answerVisible);
 
 	useEffect(() => {
-		if (isSpelling && !isFeedback) inputRef.current?.focus();
+		if (isSpelling && !isFeedback) inputRef.current?.focus({ preventScroll: true });
 	}, [currentCard.identity, currentCard.front, currentCard.back, isFeedback, isSpelling]);
 
 	const report = useCallback(
@@ -114,7 +121,7 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 		(intent) => {
 			switch (intent.kind) {
 				case "reveal":
-					setAnswerVisible(true);
+					if (!isTransitioning) setAnswerVisible(true);
 					break;
 				case "answer":
 					void answer(intent.correct);
@@ -126,185 +133,209 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 		},
 	);
 
+	const attachRoot = useCallback(
+		(node: HTMLDivElement | null) => {
+			viewRef.current = node;
+			shortcutRootRef(node);
+		},
+		[shortcutRootRef],
+	);
+
 	return (
-		<div
-			ref={shortcutRootRef}
-			className={cls("flashcard-study fc-page fc-page--fill", styles.view)}
-		>
-			<header className={styles.header}>
-				<FlashcardButton
-					preset="icon"
-					icon={X}
-					onClick={onClose}
-					title={t("challenge.exitTitle")}
-					aria-label={t("challenge.exitTitle")}
+		<SessionLayout
+			rootRef={attachRoot}
+			busy={isTransitioning}
+			className={styles.view}
+			motion={cardMotion}
+			header={
+				<SessionToolbar
+					mode={t("challenge.level", { current: session.roundProgress.level })}
+					deckName={t("challenge.title")}
+					progress={t("challenge.levelProgress", {
+						passed: session.roundProgress.passedInLevel,
+						total: session.roundProgress.currentLevelTotal,
+					})}
+					progressPercent={
+						session.roundProgress.currentLevelTotal > 0
+							? (session.roundProgress.passedInLevel /
+									session.roundProgress.currentLevelTotal) *
+								100
+							: 0
+					}
+					startTime={session.startTime}
+					busy={isTransitioning}
+					onClose={onClose}
+					closeTitle={t("challenge.exitTitle")}
+					metrics={
+						<>
+							<span>
+								{t("challenge.roundProgress", {
+									passed: session.roundProgress.completedAcrossRound,
+									total: session.roundProgress.totalAcrossRound,
+								})}
+							</span>
+							<span>
+								{t("challenge.source", { deckName: session.sourceDeck.name })}
+							</span>
+							{session.removedCardCount > 0 && (
+								<output>
+									{t("challenge.removedCards", {
+										count: session.removedCardCount,
+									})}
+								</output>
+							)}
+						</>
+					}
 				/>
-				<div className={styles.progress}>
-					<strong>
-						{t("challenge.level", { current: session.roundProgress.level })}
-					</strong>
-					<span>
-						{t("challenge.levelProgress", {
-							passed: session.roundProgress.passedInLevel,
-							total: session.roundProgress.currentLevelTotal,
-						})}
-					</span>
-					<span>
-						{t("challenge.roundProgress", {
-							passed: session.roundProgress.completedAcrossRound,
-							total: session.roundProgress.totalAcrossRound,
-						})}
-					</span>
-				</div>
-				{session.removedCardCount > 0 && (
-					<output className={styles.removed}>
-						{t("challenge.removedCards", { count: session.removedCardCount })}
-					</output>
-				)}
-				<span className={styles.source}>
-					{t("challenge.source", { deckName: session.sourceDeck.name })}
-				</span>
-			</header>
-			<div
-				className={cls(
-					"flashcard-content fc-page__body",
-					isTransitioning && "animating",
-					styles.content,
-				)}
-			>
-				<div
-					className="flashcard-card-stack"
-					key={currentCard.identity}
-					onContextMenu={handleContextMenu}
-				>
-					<div className="flashcard-question">
-						<div className="flashcard-label flashcard-label-question">
-							{isSpelling ? t("challenge.spellingPrompt") : t("common.question")}
+			}
+			footer={
+				<>
+					{isFeedback ? (
+						<FlashcardButton
+							variant="primary"
+							size="lg"
+							onClick={() => void continueAfterFeedback()}
+							disabled={isTransitioning}
+						>
+							{t("challenge.continueAnswer")}
+						</FlashcardButton>
+					) : isSpelling ? (
+						<>
+							<FlashcardButton
+								variant="secondary"
+								size="lg"
+								icon={Lightbulb}
+								onClick={() => void submitSpelling("", true)}
+								disabled={isTransitioning}
+							>
+								{t("challenge.dontKnow")}
+							</FlashcardButton>
+							<FlashcardButton
+								variant="primary"
+								size="lg"
+								icon={CornerDownLeft}
+								onClick={() => void submitSpelling(input)}
+								disabled={isTransitioning || input.trim().length === 0}
+							>
+								{t("challenge.submit")}
+							</FlashcardButton>
+						</>
+					) : !showAnswer ? (
+						<FlashcardButton
+							preset="show"
+							variant="primary"
+							size="lg"
+							disabled={isTransitioning}
+							onClick={() => {
+								if (!isTransitioning) setAnswerVisible(true);
+							}}
+						>
+							{t("challenge.showAnswer")}{" "}
+							<span className="flashcard-shortcut">({t("common.space")})</span>
+						</FlashcardButton>
+					) : (
+						<div className={styles.answerButtons}>
+							<FlashcardButton
+								preset="practice-wrong"
+								size="lg"
+								disabled={isTransitioning}
+								onClick={() => void answer(false)}
+							>
+								<X size={18} />
+								{t("challenge.wrong")}
+							</FlashcardButton>
+							<FlashcardButton
+								preset="practice-correct"
+								size="lg"
+								disabled={isTransitioning}
+								onClick={() => void answer(true)}
+							>
+								<Check size={18} />
+								{t("challenge.correct")}
+							</FlashcardButton>
 						</div>
-						<MarkdownContent
-							content={display.prompt}
-							className="flashcard-markdown"
-							markdownRenderer={markdownRenderer}
-						/>
+					)}
+				</>
+			}
+		>
+			<div
+				className="flashcard-card-stack"
+				key={currentCard.identity}
+				onContextMenu={handleContextMenu}
+			>
+				<div className="flashcard-question fc-panel">
+					<div className="flashcard-label flashcard-label-question">
+						{isSpelling ? t("challenge.spellingPrompt") : t("common.question")}
 					</div>
-					{showAnswer && (
-						<div className="flashcard-answer-section">
-							<div className="flashcard-divider" />
-							<div className="flashcard-answer">
-								<div className="flashcard-label flashcard-label-answer">
-									{t("common.answer")}
+					<MarkdownContent
+						content={display.prompt}
+						className="flashcard-markdown"
+						markdownRenderer={markdownRenderer}
+					/>
+				</div>
+				{showAnswer && (
+					<div className="flashcard-answer-section">
+						<div className="flashcard-divider" />
+						<div className="flashcard-answer fc-panel">
+							<div className="flashcard-label flashcard-label-answer">
+								{t("common.answer")}
+							</div>
+							<MarkdownContent
+								content={display.answer}
+								className="flashcard-markdown"
+								markdownRenderer={markdownRenderer}
+							/>
+						</div>
+						{currentCard.explanation && (
+							<div className="flashcard-explanation fc-panel">
+								<div className="flashcard-label flashcard-label-explanation">
+									{t("common.explanation")}
 								</div>
 								<MarkdownContent
-									content={display.answer}
+									content={currentCard.explanation}
 									className="flashcard-markdown"
 									markdownRenderer={markdownRenderer}
 								/>
 							</div>
-							{currentCard.explanation && (
-								<div className="flashcard-explanation">
-									<div className="flashcard-label flashcard-label-explanation">
-										{t("common.explanation")}
-									</div>
-									<MarkdownContent
-										content={currentCard.explanation}
-										className="flashcard-markdown"
-										markdownRenderer={markdownRenderer}
-									/>
-								</div>
-							)}
-						</div>
-					)}
-					{isFeedback && feedback && !feedback.correct && (
-						<div className={styles.feedback}>{t("challenge.queuedAgain")}</div>
-					)}
-					{isSpelling && !isFeedback && (
-						<label className={styles.inputGroup}>
-							<span>{t("spelling.inputInstruction")}</span>
-							<FlashcardInput
-								ref={inputRef}
-								value={input}
-								onChange={(event) => setInput(event.target.value)}
-								onKeyDown={(event) => {
-									if (event.key === "Enter") {
-										event.preventDefault();
-										void submitSpelling(input);
-									}
-								}}
-								disabled={isTransitioning}
-								spellCheck={false}
-								autoComplete="off"
-								autoCapitalize="none"
-								autoCorrect="off"
-							/>
-						</label>
-					)}
-				</div>
-			</div>
-			<div className={cls("flashcard-footer", styles.footer)}>
-				{isFeedback ? (
-					<FlashcardButton
-						variant="primary"
-						size="lg"
-						onClick={() => void continueAfterFeedback()}
-						disabled={isTransitioning}
-					>
-						{t("challenge.continueAnswer")}
-					</FlashcardButton>
-				) : isSpelling ? (
-					<>
-						<FlashcardButton
-							variant="secondary"
-							size="lg"
-							icon={Lightbulb}
-							onClick={() => void submitSpelling("", true)}
-							disabled={isTransitioning}
-						>
-							{t("challenge.dontKnow")}
-						</FlashcardButton>
-						<FlashcardButton
-							variant="primary"
-							size="lg"
-							icon={CornerDownLeft}
-							onClick={() => void submitSpelling(input)}
-							disabled={isTransitioning || input.trim().length === 0}
-						>
-							{t("challenge.submit")}
-						</FlashcardButton>
-					</>
-				) : !showAnswer ? (
-					<FlashcardButton
-						preset="show"
-						variant="primary"
-						size="lg"
-						disabled={isTransitioning}
-						onClick={() => setAnswerVisible(true)}
-					>
-						{t("challenge.showAnswer")}{" "}
-						<span className="flashcard-shortcut">({t("common.space")})</span>
-					</FlashcardButton>
-				) : (
-					<div className={styles.answerButtons}>
-						<FlashcardButton
-							preset="practice-wrong"
-							size="lg"
-							disabled={isTransitioning}
-							onClick={() => void answer(false)}
-						>
-							<X size={18} />
-							{t("challenge.wrong")}
-						</FlashcardButton>
-						<FlashcardButton
-							preset="practice-correct"
-							size="lg"
-							disabled={isTransitioning}
-							onClick={() => void answer(true)}
-						>
-							<Check size={18} />
-							{t("challenge.correct")}
-						</FlashcardButton>
+						)}
 					</div>
 				)}
+				{isFeedback && feedback && (
+					<output className={styles.feedback}>
+						<X size={18} />
+						{t("challenge.queuedAgain")}
+					</output>
+				)}
+				{isSpelling && !isFeedback && (
+					<label className={styles.inputGroup}>
+						<span>{t("spelling.inputInstruction")}</span>
+						<FlashcardInput
+							ref={inputRef}
+							value={input}
+							onFocus={keepInputVisible}
+							onBlur={handleInputBlur}
+							onChange={(event) => setInput(event.target.value)}
+							onKeyDown={(event) => {
+								if (
+									event.key === "Enter" &&
+									!event.nativeEvent.isComposing &&
+									!event.repeat
+								) {
+									event.preventDefault();
+									void submitSpelling(input);
+								}
+							}}
+							disabled={isTransitioning}
+							spellCheck={false}
+							autoComplete="off"
+							autoCapitalize="none"
+							autoCorrect="off"
+							aria-label={t("spelling.inputInstruction")}
+							enterKeyHint="done"
+						/>
+					</label>
+				)}
 			</div>
-		</div>
+		</SessionLayout>
 	);
 });

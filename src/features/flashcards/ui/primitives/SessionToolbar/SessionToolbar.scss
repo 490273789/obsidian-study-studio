@@ -1,217 +1,131 @@
-// =============================================================================
-// SessionToolbar Primitive Styles (SCSS)
-// =============================================================================
-
 .flashcard-session-shell {
 	flex-shrink: 0;
-	position: sticky;
-	top: 0;
+	position: relative;
 	z-index: 24;
-	display: flex;
-	flex-direction: column;
+	border: 1px solid color-mix(in srgb, var(--fc-primary) 18%, var(--fc-line-soft));
+	border-radius: var(--fc-radius-lg);
+	background:
+		linear-gradient(
+			110deg,
+			color-mix(in srgb, var(--fc-primary) 6%, transparent),
+			transparent 60%
+		),
+		var(--fc-surface-section);
 }
-
-.flashcard-session-identity,
-.flashcard-session-metrics,
-.flashcard-session-actions,
-.flashcard-session-header-tools {
-	display: flex;
-	align-items: center;
-	min-width: 0;
-}
-
-.flashcard-session-identity {
-	min-width: 0;
-
-	.flashcard-deck-title {
-		overflow: hidden;
-		max-width: 24ch;
-		color: var(--fc-text);
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-weight: var(--fc-weight-semibold);
-		font-size: var(--fc-font-md);
-		letter-spacing: -0.01em;
-	}
-}
-
 .flashcard-session-header {
 	display: flex;
 	align-items: center;
+	gap: var(--fc-space-4);
 	min-width: 0;
-	gap: var(--fc-space-3);
-	padding: var(--fc-space-2) var(--fc-space-4);
-	border-bottom: 1px solid var(--fc-line-soft);
-	background: color-mix(in srgb, var(--background-primary) 90%, transparent);
-	backdrop-filter: blur(12px);
-	-webkit-backdrop-filter: blur(12px);
-
-	.flashcard-session-close {
-		flex: 0 0 auto;
-	}
+	padding: var(--fc-space-3) var(--fc-space-4);
 }
-
-.flashcard-session-header-tools {
-	justify-content: flex-end;
-	gap: var(--fc-space-2);
-	margin-left: auto;
+.flashcard-session-identity {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fc-space-half);
 	min-width: 0;
-}
-
-.flashcard-session-progress {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--fc-space-2);
-	min-height: 26px;
-	padding: 2px var(--fc-space-3);
-	border-radius: var(--fc-radius-pill);
-	border: 1px solid var(--fc-line-glow);
-	background: var(--fc-surface-card);
-	box-shadow: var(--fc-shadow-sm);
-
-	&-text {
-		color: var(--fc-text);
-		font-family: var(--fc-font-data);
-		font-size: var(--fc-font-xs);
-		font-weight: var(--fc-weight-semibold);
-		white-space: nowrap;
-	}
-
-	&-track {
-		position: relative;
-		display: block;
+	.flashcard-deck-title {
 		overflow: hidden;
-		width: 72px;
-		height: 5px;
-		border-radius: var(--fc-radius-pill);
-		border: 0;
-		background: color-mix(in srgb, var(--text-normal) 14%, transparent);
-		box-shadow: none;
-	}
-
-	&-fill {
-		position: absolute;
-		inset: 0 auto 0 0;
-		border-radius: inherit;
-		transition: var(--fc-transition-progress);
-		background: var(--fc-cyan);
-		box-shadow: none;
-
-		&::after {
-			content: "";
-			position: absolute;
-			inset: 0;
-			background: linear-gradient(
-				90deg,
-				transparent,
-				rgba(var(--fc-white-rgb), 0.42),
-				transparent
-			);
-			animation: var(--fc-motion-progress-scan);
-		}
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: var(--fc-font-md);
+		font-weight: var(--fc-weight-semibold);
 	}
 }
-
-.flashcard-session-metrics {
-	display: flex;
-	align-items: center;
-	gap: var(--fc-space-2);
-
-	.flashcard-session-timer {
-		position: relative;
-		min-width: 58px;
-		padding-left: calc(var(--fc-space-4) + var(--fc-space-1));
-		font-family: var(--fc-font-data);
-		font-size: var(--fc-font-xs);
-		font-weight: var(--fc-weight-medium);
-		color: var(--fc-muted);
-		box-shadow: none;
-		border-color: transparent;
-		background: transparent;
-
-		&::before {
-			content: "";
-			position: absolute;
-			left: var(--fc-space-1);
-			top: 50%;
-			transform: translateY(-50%);
-			width: 6px;
-			height: 6px;
-			border-radius: 50%;
-			background: var(--fc-lime);
-			box-shadow: 0 0 6px rgba(var(--fc-lime-rgb), 0.6);
-		}
-	}
+.flashcard-session-mode {
+	font-size: var(--fc-font-xs);
+	color: var(--fc-muted);
 }
-
+.flashcard-session-header-tools,
 .flashcard-session-actions {
-	position: relative;
 	display: flex;
 	align-items: center;
-	justify-content: flex-end;
+	gap: var(--fc-space-3);
+}
+.flashcard-session-header-tools {
+	margin-inline-start: auto;
+	flex-shrink: 0;
+}
+.flashcard-session-actions {
 	gap: var(--fc-space-1);
-
-	.flashcard-session-actions-toggle {
-		display: none;
-	}
-
-	.flashcard-session-action-item {
-		display: inline-flex;
-		width: 30px;
-		height: 30px;
-		min-width: 30px;
-		min-height: 30px;
-		padding: 0;
-		border-radius: var(--fc-radius-sm);
-		border: 1px solid transparent;
-		color: var(--fc-muted);
-		background: transparent;
-
-		&:hover {
-			background: color-mix(in srgb, var(--text-normal) 8%, transparent);
-			color: var(--fc-text);
-			border-color: var(--fc-line-glow);
-		}
-	}
+	padding-inline-start: var(--fc-space-2);
+	border-inline-start: 1px solid var(--fc-line-soft);
+}
+.flashcard-session-progress {
+	display: flex;
+	align-items: center;
+	gap: var(--fc-space-3);
+	font: var(--fc-weight-medium) var(--fc-font-sm) var(--fc-font-data);
+	white-space: nowrap;
+}
+.flashcard-session-progress-track {
+	width: 80px;
+	height: 4px;
+	overflow: hidden;
+	border-radius: var(--fc-radius-pill);
+	background: var(--fc-line);
 }
 
-@media (max-width: 640px) {
+.flashcard-session-progress-track {
+	appearance: none;
+	border: 0;
+	vertical-align: middle;
+	&::-webkit-progress-bar {
+		border-radius: inherit;
+		background: var(--fc-line);
+	}
+	&::-webkit-progress-value {
+		border-radius: inherit;
+		background: var(--fc-primary);
+		transition: var(--fc-transition-progress);
+	}
+	&::-moz-progress-bar {
+		border-radius: inherit;
+		background: var(--fc-primary);
+	}
+}
+.flashcard-session-timer {
+	color: var(--fc-muted);
+	font-family: var(--fc-font-data);
+	font-size: var(--fc-font-xs);
+	font-variant-numeric: tabular-nums;
+}
+.flashcard-session-secondary {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--fc-space-2) var(--fc-space-5);
+	padding: 0 var(--fc-space-5) var(--fc-space-3);
+	font-size: var(--fc-font-xs);
+	color: var(--fc-muted);
+	overflow-wrap: anywhere;
+}
+@container session (max-width: 640px) {
 	.flashcard-session-header {
+		flex-wrap: wrap;
 		gap: var(--fc-space-2);
 		padding: var(--fc-space-2);
 	}
-
-	.flashcard-session-identity .flashcard-deck-title {
-		max-width: none;
-		font-size: var(--fc-font-sm);
+	.flashcard-session-identity {
+		flex: 1;
 	}
-
 	.flashcard-session-header-tools {
-		gap: var(--fc-space-1);
+		width: 100%;
+		margin: 0;
+		padding-inline-start: var(--fc-space-2);
 	}
-
 	.flashcard-session-progress {
-		gap: var(--fc-space-1);
-		padding: var(--fc-space-1) var(--fc-space-2);
-
-		&-track {
-			display: none;
-		}
+		flex: 1;
 	}
-
-	.flashcard-session-actions {
-		.flashcard-session-actions-toggle {
-			display: inline-flex;
-		}
-
-		.flashcard-session-action-item {
-			display: none;
-		}
+	.flashcard-session-progress-track {
+		width: 64px;
 	}
-
-	.flashcard-session-timer {
-		min-width: 52px;
-		padding-left: calc(var(--fc-space-3) + var(--fc-space-1));
-		font-size: var(--fc-font-xs);
+}
+@media (pointer: coarse) {
+	.flashcard-session-header button.flashcard-btn-icon {
+		min-width: var(--fc-control-touch);
+		min-height: var(--fc-control-touch);
+	}
+	.flashcard-session-actions-menu .flashcard-menu-item {
+		min-height: var(--fc-control-touch);
 	}
 }

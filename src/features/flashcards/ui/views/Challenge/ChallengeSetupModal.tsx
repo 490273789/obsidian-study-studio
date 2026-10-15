@@ -1,11 +1,11 @@
 import React, { memo, useId, useState } from "react";
-import { Flag, Target, X } from "lucide-react";
+import { Target, X } from "lucide-react";
 import { cls } from "../../../../../core/shared/classNames";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { ModalSurface } from "../../../../../core/ui/primitives/Modal";
 import type { ChallengeMode } from "../../../domain/sessions/challengeSessionEngine";
 import { useFlashcardI18n } from "../../../strings/context";
-import styles from "./Challenge.module.scss";
+import styles from "./ChallengeSetup.module.scss";
 
 const MODES: readonly ChallengeMode[] = ["normal", "reversed", "spelling", "random"];
 
@@ -41,6 +41,7 @@ export const ChallengeSetupModal = memo(function ChallengeSetupModal({
 	const descriptionId = useId();
 	const canStart = readiness.eligibleCount > 0 && !isStarting;
 	const hasResumableChallenge = readiness.round !== null;
+	const canResume = hasResumableChallenge && mode === readiness.round?.mode;
 
 	return (
 		<ModalSurface
@@ -54,9 +55,6 @@ export const ChallengeSetupModal = memo(function ChallengeSetupModal({
 				<>
 					<div className="flashcard-modal-header">
 						<div className="flashcard-modal-heading">
-							<div className="flashcard-modal-kicker fc-kicker">
-								<Flag size={14} /> {t("challenge.kicker")}
-							</div>
 							<span id={titleId} className="flashcard-modal-title">
 								{t("challenge.title")}
 							</span>
@@ -142,17 +140,9 @@ export const ChallengeSetupModal = memo(function ChallengeSetupModal({
 						>
 							{t("common.cancel")}
 						</FlashcardButton>
-						{hasResumableChallenge && mode === readiness.round?.mode && (
-							<FlashcardButton
-								variant="secondary"
-								onClick={() => onStart(mode, "continue")}
-								disabled={!canStart}
-							>
-								{t("challenge.continue")}
-							</FlashcardButton>
-						)}
+
 						<FlashcardButton
-							variant="primary"
+							variant={canResume ? "secondary" : "primary"}
 							onClick={() => onStart(mode, "new")}
 							disabled={!canStart}
 						>
@@ -164,6 +154,15 @@ export const ChallengeSetupModal = memo(function ChallengeSetupModal({
 									)
 								: t("challenge.start")}
 						</FlashcardButton>
+						{canResume && (
+							<FlashcardButton
+								variant="primary"
+								onClick={() => onStart(mode, "continue")}
+								disabled={!canStart}
+							>
+								{t("challenge.continue")}
+							</FlashcardButton>
+						)}
 					</div>
 				</>
 			)}
