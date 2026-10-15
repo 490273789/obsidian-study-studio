@@ -857,8 +857,8 @@ export const DeckList = React.memo(function DeckList({
 									{t("footprint.bestStreak", { count: streak.bestStreak })}
 								</span>
 								<FlashcardButton
-									variant="primary"
-									size="lg"
+									variant="secondary"
+									size="md"
 									icon={Brain}
 									disabled={!nextDeck}
 									onClick={() => nextDeck && onNavigate("study", nextDeck.id)}

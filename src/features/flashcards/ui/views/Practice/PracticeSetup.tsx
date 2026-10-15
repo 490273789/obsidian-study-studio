@@ -5,12 +5,10 @@ import type { CardDirection, Deck } from "../../../../../core/shared/types";
 import type { SessionStartRequest } from "../../../domain/sessions/sessionLifecycle";
 import type { PracticeSetupPlan } from "../../../domain/sessions/sessionPlanner";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
-import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
 import { FlashcardInput } from "../../../../../core/ui/primitives/Input";
 import { useFlashcardI18n } from "../../../strings/context";
 import { SetupControlGroup, SetupSelector } from "../../../../../core/ui/primitives/SetupSelector";
-import { useWindowKeyDown } from "../../../../../core/ui/hooks/hooks";
-import styles from "./Practice.module.scss";
+import { SetupPage, setupStyles as styles } from "../../primitives/SetupPage/SetupPage";
 
 const QUICK_QUESTION_COUNTS = [20, 50, 100, 150, 200];
 
@@ -135,16 +133,6 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 		}
 	};
 
-	useWindowKeyDown((e) => {
-		if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-			return;
-		}
-		if (e.code === "Space") {
-			e.preventDefault();
-			handleStart();
-		}
-	});
-
 	const handleQuickSelect = (count: number) => {
 		const actualCount = Math.min(count, maxQuestions);
 		setQuestionCount(actualCount);
@@ -165,165 +153,158 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 	};
 
 	return (
-		<div className="flashcard-practice-setup fc-page fc-page--fill">
-			<FlashcardHeader icon={Target} title={t("practice.title")} onBack={onBack} />
+		<SetupPage
+			icon={Target}
+			title={t("practice.title")}
+			deck={deck}
+			count={currentQuestionCount}
+			countLabel={t("setup.questions")}
+			meta={<span>{t("setup.availableCards", { count: maxQuestions })}</span>}
+			summary={
+				<>
+					{t(
+						selectionMode === "range"
+							? "practice.modeRange"
+							: "practice.modeRandomCount",
+					)}{" "}
+					· {t(direction === "normal" ? "mode.normal" : "mode.reversed")}
+					{selectionMode === "range" && (
+						<>
+							{" "}
+							· {rangeStart}–{rangeEnd}
+						</>
+					)}
+				</>
+			}
+			startLabel={t("practice.startQuestions", { count: currentQuestionCount })}
+			disabled={isStartDisabled}
+			onStart={handleStart}
+			onBack={onBack}
+		>
+			<div className={cls("fc-panel", styles.setupPanel)}>
+				<SetupControlGroup
+					icon={SlidersHorizontal}
+					title={t("practice.chooseCount")}
+					note={t("practice.chooseCountNote")}
+				>
+					<SetupSelector
+						value={selectionMode}
+						ariaLabel={t("practice.chooseCount")}
+						options={[
+							{
+								value: "random",
+								label: t("practice.modeRandomCount"),
+								icon: Shuffle,
+							},
+							{
+								value: "range",
+								label: t("practice.modeRange"),
+								icon: ListOrdered,
+							},
+						]}
+						onChange={setSelectionMode}
+					/>
 
-			<div className="flashcard-setup-content fc-page__body fc-page__body--narrow">
-				<div className={styles.hero}>
-					<div className={styles.deckNameWrapper}>
-						<div className={styles.deckName}>{deck.name}</div>
-						<div className={styles.deckTag}>{deck.tag}</div>
-					</div>
-				</div>
-
-				<div className={styles.setupPanel}>
-					<SetupControlGroup
-						icon={SlidersHorizontal}
-						title={t("practice.chooseCount")}
-						note={t("practice.chooseCountNote")}
-					>
-						<SetupSelector
-							value={selectionMode}
-							ariaLabel={t("practice.chooseCount")}
-							options={[
-								{
-									value: "random",
-									label: t("practice.modeRandomCount"),
-									icon: Shuffle,
-								},
-								{
-									value: "range",
-									label: t("practice.modeRange"),
-									icon: ListOrdered,
-								},
-							]}
-							onChange={setSelectionMode}
-						/>
-
-						<div className={styles.controlDetail}>
-							{selectionMode === "random" ? (
-								<>
-									<div className={styles.quickButtons}>
-										{quickQuestionCounts.map((count) => (
-											<FlashcardButton
-												key={count}
-												type="button"
-												className={cls(
-													styles.chip,
-													questionCount === count && styles.active,
-												)}
-												active={questionCount === count}
-												onClick={() => handleQuickSelect(count)}
-											>
-												{count}
-											</FlashcardButton>
-										))}
+					<div className={styles.controlDetail}>
+						{selectionMode === "random" ? (
+							<>
+								<div className={styles.quickButtons}>
+									{quickQuestionCounts.map((count) => (
 										<FlashcardButton
+											key={count}
 											type="button"
-											className={cls(
-												styles.chip,
-												questionCount === maxQuestions && styles.active,
-											)}
-											active={questionCount === maxQuestions}
-											onClick={() => handleQuickSelect(maxQuestions)}
+											className={styles.chip}
+											active={questionCount === count}
+											aria-pressed={questionCount === count}
+											onClick={() => handleQuickSelect(count)}
 										>
-											{t("common.all")}
+											{count}
 										</FlashcardButton>
-									</div>
+									))}
+									<FlashcardButton
+										type="button"
+										className={styles.chip}
+										active={questionCount === maxQuestions}
+										aria-pressed={questionCount === maxQuestions}
+										onClick={() => handleQuickSelect(maxQuestions)}
+									>
+										{t("common.all")}
+									</FlashcardButton>
+								</div>
 
-									<label className={styles.customField}>
+								<label className={styles.customField}>
+									<span className={styles.inputLabel}>
+										{t("practice.customCount")}
+									</span>
+									<FlashcardInput
+										type="number"
+										className={styles.input}
+										value={inputValue}
+										onChange={handleInputChange}
+										onBlur={handleInputBlur}
+										min={1}
+										max={maxQuestions}
+									/>
+									<span className={styles.inputHint}>1–{maxQuestions}</span>
+								</label>
+							</>
+						) : (
+							<div className={styles.rangeGroup}>
+								<div className={styles.rangeInputs}>
+									<label className={styles.rangeField}>
 										<span className={styles.inputLabel}>
-											{t("practice.customCount")}
+											{t("practice.rangeStart")}
 										</span>
 										<FlashcardInput
 											type="number"
 											className={styles.input}
-											value={inputValue}
-											onChange={handleInputChange}
-											onBlur={handleInputBlur}
-											min={1}
-											max={maxQuestions}
+											value={rangeStartInput}
+											onChange={handleRangeStartChange}
+											onBlur={handleRangeBlur}
 										/>
-										<span className={styles.inputHint}>1–{maxQuestions}</span>
 									</label>
-								</>
-							) : (
-								<div className={styles.rangeGroup}>
-									<div className={styles.rangeInputs}>
-										<label className={styles.rangeField}>
-											<span className={styles.inputLabel}>
-												{t("practice.rangeStart")}
-											</span>
-											<FlashcardInput
-												type="number"
-												className={styles.input}
-												value={rangeStartInput}
-												onChange={handleRangeStartChange}
-												onBlur={handleRangeBlur}
-											/>
-										</label>
-										<label className={styles.rangeField}>
-											<span className={styles.inputLabel}>
-												{t("practice.rangeEnd")}
-											</span>
-											<FlashcardInput
-												type="number"
-												className={styles.input}
-												value={rangeEndInput}
-												onChange={handleRangeEndChange}
-												onBlur={handleRangeBlur}
-											/>
-										</label>
-									</div>
+									<label className={styles.rangeField}>
+										<span className={styles.inputLabel}>
+											{t("practice.rangeEnd")}
+										</span>
+										<FlashcardInput
+											type="number"
+											className={styles.input}
+											value={rangeEndInput}
+											onChange={handleRangeEndChange}
+											onBlur={handleRangeBlur}
+										/>
+									</label>
 								</div>
-							)}
-						</div>
-					</SetupControlGroup>
-
-					<SetupControlGroup
-						icon={Repeat2}
-						title={t("mode.direction")}
-						note={
-							direction === "normal" ? t("mode.normalNote") : t("mode.reversedNote")
-						}
-					>
-						<SetupSelector
-							value={direction}
-							ariaLabel={t("mode.direction")}
-							options={[
-								{
-									value: "normal",
-									label: t("mode.normal"),
-									icon: Target,
-								},
-								{
-									value: "reversed",
-									label: t("mode.reversed"),
-									icon: Repeat2,
-								},
-							]}
-							onChange={setDirection}
-						/>
-					</SetupControlGroup>
-				</div>
-
-				<div className={styles.actionBar}>
-					<FlashcardButton
-						variant="primary"
-						preset="show"
-						size="lg"
-						onClick={handleStart}
-						disabled={isStartDisabled}
-					>
-						{t("practice.startQuestions", {
-							count: currentQuestionCount,
-						})}
-						{!isStartDisabled && (
-							<span className="flashcard-shortcut">({t("common.space")})</span>
+							</div>
 						)}
-					</FlashcardButton>
-				</div>
+					</div>
+				</SetupControlGroup>
+
+				<SetupControlGroup
+					icon={Repeat2}
+					title={t("mode.direction")}
+					note={direction === "normal" ? t("mode.normalNote") : t("mode.reversedNote")}
+				>
+					<SetupSelector
+						value={direction}
+						ariaLabel={t("mode.direction")}
+						options={[
+							{
+								value: "normal",
+								label: t("mode.normal"),
+								icon: Target,
+							},
+							{
+								value: "reversed",
+								label: t("mode.reversed"),
+								icon: Repeat2,
+							},
+						]}
+						onChange={setDirection}
+					/>
+				</SetupControlGroup>
 			</div>
-		</div>
+		</SetupPage>
 	);
 });

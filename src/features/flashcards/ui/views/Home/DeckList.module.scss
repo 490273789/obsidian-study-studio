@@ -83,10 +83,23 @@
 /* ── Hero adjustments ────────────────────────────────────────────────────── */
 
 .hero:global(.fc-hero) {
-	border: 1px solid color-mix(in srgb, var(--fc-primary) 20%, var(--fc-line-soft));
-	background:
-		radial-gradient(100% 160% at 0% 0%, rgba(var(--fc-cyan-rgb), 0.045), transparent 65%),
-		var(--fc-surface-section);
+	padding: var(--fc-space-4) var(--fc-space-5);
+	border-color: color-mix(in srgb, var(--fc-primary) 12%, var(--fc-line-soft));
+	border-radius: var(--fc-radius-md);
+	background: color-mix(in srgb, var(--fc-primary) 2%, var(--fc-surface-card));
+
+	:global(.fc-hero__num) b {
+		font-size: var(--fc-font-hero);
+		color: var(--fc-text);
+	}
+
+	:global(.fc-hero__summary) {
+		font-size: var(--fc-font-xs);
+	}
+
+	:global(.fc-hero__side) {
+		gap: var(--fc-space-3);
+	}
 }
 
 .heroMain {
@@ -104,7 +117,7 @@
 
 	b {
 		color: var(--fc-amber);
-		font-weight: var(--fc-weight-semibold);
+		font-weight: var(--fc-weight-medium);
 	}
 
 	svg {
