@@ -20,16 +20,11 @@
 		background var(--fc-motion-quick) ease,
 		box-shadow var(--fc-motion-quick) ease;
 
-	&:hover:not(:disabled):not([readonly]) {
-		border-color: var(--fc-control-border-hover);
-		background: var(--fc-input-bg-hover);
-	}
-
+	&:hover:not(:disabled):not([readonly]),
 	&:focus,
 	&:focus-visible {
 		border-color: var(--fc-input-border-focus);
 		background: var(--fc-input-bg);
-		box-shadow: var(--fc-focus-ring);
 		outline: none;
 	}
 
@@ -44,6 +39,7 @@
 	&[aria-invalid="true"] {
 		border-color: var(--fc-danger);
 
+		&:hover:not(:disabled):not([readonly]),
 		&:focus,
 		&:focus-visible {
 			box-shadow: 0 0 0 2px color-mix(in srgb, var(--fc-red) 30%, transparent);
@@ -83,20 +79,20 @@
 // ── 变体修饰符 (Input variants) ───────────────────────────────────────────────
 .flashcard-input--unstyled,
 .flashcard-textarea--unstyled {
-	border: none;
-	border-radius: 0;
-	background: transparent;
-	box-shadow: none;
-	outline: none;
+	border: none !important;
+	border-radius: 0 !important;
+	background: transparent !important;
+	box-shadow: none !important;
+	outline: none !important;
 
 	&:hover:not(:disabled):not([readonly]),
 	&:focus,
 	&:focus-visible {
-		border: none;
-		border-color: transparent;
-		background: transparent;
-		box-shadow: none;
-		outline: none;
+		border: none !important;
+		border-color: transparent !important;
+		background: transparent !important;
+		box-shadow: none !important;
+		outline: none !important;
 	}
 }
 
@@ -119,9 +115,10 @@
 			[type="button"],
 			[type="submit"],
 			[type="reset"],
-			[type="hidden"]
+			[type="hidden"],
+			.flashcard-input--unstyled
 		),
-		textarea
+		textarea:not(.flashcard-textarea--unstyled)
 	) {
 		box-sizing: border-box;
 		min-height: var(--fc-control-md);
@@ -138,16 +135,12 @@
 			background var(--fc-motion-quick) ease,
 			box-shadow var(--fc-motion-quick) ease;
 
-		&:hover:not(:disabled):not([readonly]) {
-			border-color: var(--fc-control-border-hover);
-			background: var(--fc-input-bg-hover);
-		}
-
+		&:hover:not(:disabled):not([readonly]),
 		&:focus,
 		&:focus-visible {
 			border-color: var(--fc-input-border-focus);
 			background: var(--fc-input-bg);
-			box-shadow: var(--fc-focus-ring);
+			box-shadow: none;
 			outline: none;
 		}
 

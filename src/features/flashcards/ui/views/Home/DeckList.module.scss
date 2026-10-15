@@ -213,11 +213,7 @@
 	&.isDragging {
 		opacity: 0.85;
 		z-index: 12;
-		box-shadow: var(--fc-focus-ring);
-		background:
-			linear-gradient(90deg, rgba(var(--fc-cyan-rgb), 0.09), transparent 38%),
-			rgba(var(--fc-bg-elevated-rgb), 0.84);
-		scale: 0.98;
+		scale: 0.95;
 	}
 
 	&.isOverlayOpen {

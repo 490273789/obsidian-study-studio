@@ -23,7 +23,7 @@
 		var(--fc-surface-section);
 	box-shadow: none;
 	min-height: calc(var(--fc-header-height) + var(--fc-space-3));
-	margin-top: var(--fc-space-2);
+	// margin-top: var(--fc-space-2);
 	padding: var(--fc-space-3) var(--fc-space-5);
 
 	&.has-left {

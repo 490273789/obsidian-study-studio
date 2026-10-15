@@ -85,7 +85,6 @@
 
 		&:focus-visible {
 			outline: none;
-			box-shadow: var(--fc-focus-ring);
 		}
 	}
 
@@ -158,7 +157,7 @@
 
 	&.is-recording {
 		border-color: var(--interactive-accent);
-		box-shadow: var(--fc-focus-ring);
+		box-shadow: none;
 	}
 
 	&.has-error {

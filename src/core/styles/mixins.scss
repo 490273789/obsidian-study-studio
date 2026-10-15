@@ -5,7 +5,7 @@
 // 焦点环样式，对齐系统规范
 @mixin fc-focus-ring {
 	outline: none;
-	box-shadow: var(--fc-focus-ring);
+	box-shadow: none;
 }
 
 // 弹性居中

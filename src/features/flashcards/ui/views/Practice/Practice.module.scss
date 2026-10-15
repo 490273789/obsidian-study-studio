@@ -4,6 +4,7 @@
 	width: 100%;
 	gap: var(--fc-space-3);
 	align-items: center;
+	animation: var(--fc-motion-fade-in);
 	:global(button.flashcard-btn-prev) {
 		min-width: var(--fc-control-md);
 		height: var(--fc-control-md);

@@ -36,6 +36,7 @@
 	flex-direction: column;
 	min-width: 0;
 	gap: var(--fc-space-4);
+	animation: var(--fc-motion-answer);
 }
 .flashcard-question,
 .flashcard-answer,
