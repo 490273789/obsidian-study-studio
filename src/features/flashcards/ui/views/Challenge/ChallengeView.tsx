@@ -237,21 +237,37 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 						<div className={styles.answerButtons}>
 							<FlashcardButton
 								preset="practice-wrong"
+								className={styles.btnWrong}
 								size="lg"
 								disabled={isTransitioning}
 								onClick={() => void answer(false)}
 							>
-								<X size={18} />
-								{t("challenge.wrong")}
+								<span className={styles.btnIcon}>
+									<X size={18} />
+								</span>
+								<span className="flashcard-practice-btn-label">
+									{t("challenge.wrong")}
+								</span>
+								<span className="flashcard-shortcut">
+									{t("challenge.wrongShortcut")}
+								</span>
 							</FlashcardButton>
 							<FlashcardButton
 								preset="practice-correct"
+								className={styles.btnCorrect}
 								size="lg"
 								disabled={isTransitioning}
 								onClick={() => void answer(true)}
 							>
-								<Check size={18} />
-								{t("challenge.correct")}
+								<span className={styles.btnIcon}>
+									<Check size={18} />
+								</span>
+								<span className="flashcard-practice-btn-label">
+									{t("challenge.correct")}
+								</span>
+								<span className="flashcard-shortcut">
+									{t("challenge.correctShortcut")}
+								</span>
 							</FlashcardButton>
 						</div>
 					)}

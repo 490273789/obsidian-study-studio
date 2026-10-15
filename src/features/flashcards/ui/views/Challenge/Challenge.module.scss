@@ -28,9 +28,35 @@
 	gap: var(--fc-space-3);
 	width: 100%;
 }
+.btnIcon {
+	display: inline-flex;
+	align-items: center;
+}
+.btnWrong,
+.btnCorrect {
+	--fc-button-height: var(--fc-control-md);
+	--fc-button-bg: var(--fc-surface-card);
+	--fc-button-bg-hover: color-mix(in srgb, var(--fc-button-accent) 10%, var(--fc-surface-card));
+	--fc-button-border: var(--fc-line-soft);
+	--fc-button-border-hover: var(--fc-button-accent);
+	--fc-button-text: var(--fc-text);
+	font-weight: var(--fc-weight-medium);
+	.btnIcon {
+		color: var(--fc-button-accent);
+	}
+}
+.btnWrong {
+	--fc-button-accent: var(--fc-red);
+}
+.btnCorrect {
+	--fc-button-accent: var(--fc-lime);
+}
 @container session (max-width: 640px) {
 	.inputGroup,
 	.feedback {
 		padding-inline: var(--fc-space-4);
+	}
+	.answerButtons {
+		gap: var(--fc-space-2);
 	}
 }

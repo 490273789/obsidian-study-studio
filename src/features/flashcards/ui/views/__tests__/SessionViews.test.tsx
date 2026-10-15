@@ -447,7 +447,11 @@ describe("challenge questions and feedback", () => {
 				questionMode === "normal" ? "back" : "front",
 				"explanation",
 			]);
-			await click(buttons(tree)[1]!);
+			const revealedButtons = buttons(tree);
+			expect(revealedButtons).toHaveLength(2);
+			expect(revealedButtons[0]!.className).toContain("btnWrong");
+			expect(revealedButtons[1]!.className).toContain("btnCorrect");
+			await click(revealedButtons[1]!);
 			expect(act).toHaveBeenCalledExactlyOnceWith({
 				kind: "challenge-answer",
 				reference: challenge.reference,
@@ -455,6 +459,21 @@ describe("challenge questions and feedback", () => {
 			});
 		},
 	);
+	it("dispatches challenge wrong answer on clicking wrong button", async () => {
+		const { act, common } = fixture();
+		const props = { ...common, session: challenge };
+		let tree = renderChallenge(props);
+		await click(buttons(tree)[0]!);
+		tree = renderChallenge(props);
+		const revealedButtons = buttons(tree);
+		expect(revealedButtons).toHaveLength(2);
+		await click(revealedButtons[0]!);
+		expect(act).toHaveBeenCalledExactlyOnceWith({
+			kind: "challenge-answer",
+			reference: challenge.reference,
+			correct: false,
+		});
+	});
 	it("offers only continue during error feedback and guards it while busy", async () => {
 		const { act, common } = fixture();
 		const props = {
