@@ -16,7 +16,7 @@
 	align-content: center;
 	gap: 10px;
 	padding: 32px;
-	border: 1px dashed var(--background-modifier-border);
+	border: 1px dashed var(--fc-border-color);
 	border-radius: 14px;
 	background: var(--background-secondary);
 	text-align: center;
@@ -42,7 +42,7 @@
 .playerPanel,
 .queue {
 	min-width: 0;
-	border: 1px solid var(--background-modifier-border);
+	border: 1px solid var(--fc-border-color);
 	border-radius: 14px;
 	background: var(--background-primary-alt);
 	box-shadow: var(--shadow-s);
@@ -288,7 +288,7 @@
 	transition: background-color 120ms ease;
 
 	&:has(+ .queueList) {
-		border-bottom-color: var(--background-modifier-border);
+		border-bottom-color: var(--fc-border-color);
 	}
 }
 
@@ -397,7 +397,7 @@
 	align-items: center;
 	gap: 8px;
 	padding: 6px 8px;
-	border: 1px solid var(--background-modifier-border);
+	border: 1px solid var(--fc-border-color);
 	border-radius: 8px;
 	background: var(--background-primary);
 	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -407,7 +407,7 @@
 		box-shadow 140ms ease;
 
 	&:hover {
-		border-color: var(--background-modifier-border-hover);
+		border-color: var(--fc-border-color-hover);
 		background: var(--background-modifier-hover);
 
 		.dragHandle {
@@ -420,7 +420,7 @@
 	}
 
 	&:focus-within {
-		border-color: var(--background-modifier-border-hover);
+		border-color: var(--fc-border-color-hover);
 
 		.itemActions {
 			opacity: 1;
@@ -428,11 +428,7 @@
 	}
 
 	&.active {
-		border-color: color-mix(
-			in srgb,
-			var(--interactive-accent) 45%,
-			var(--background-modifier-border)
-		);
+		border-color: color-mix(in srgb, var(--interactive-accent) 45%, var(--fc-border-color));
 		background: color-mix(in srgb, var(--interactive-accent) 9%, var(--background-primary));
 		box-shadow:
 			0 1px 4px rgba(0, 0, 0, 0.08),
@@ -641,7 +637,7 @@
 	min-height: 240px;
 	flex-direction: column;
 	overflow: hidden;
-	border: 1px solid var(--background-modifier-border-hover);
+	border: 1px solid var(--fc-border-color-hover);
 	border-radius: 12px;
 	background: var(--background-primary);
 	box-shadow: var(--shadow-l);

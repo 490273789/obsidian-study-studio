@@ -83,7 +83,7 @@
 
 .hero:global(.fc-hero) {
 	padding: var(--fc-space-4) var(--fc-space-5);
-	border-color: color-mix(in srgb, var(--fc-primary) 12%, var(--fc-line-soft));
+	border-color: var(--fc-border-color);
 	border-radius: var(--fc-radius-md);
 	background: color-mix(in srgb, var(--fc-primary) 2%, var(--fc-surface-card));
 

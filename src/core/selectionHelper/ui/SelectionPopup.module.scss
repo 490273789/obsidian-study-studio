@@ -18,7 +18,7 @@
 	gap: var(--fc-space-1);
 	padding: var(--fc-space-1);
 	background: var(--background-secondary);
-	border: 1px solid var(--background-modifier-border);
+	border: 1px solid var(--fc-border-color);
 	border-radius: var(--fc-radius-lg);
 	box-shadow: var(--fc-shadow-popover);
 	user-select: none;
@@ -47,6 +47,7 @@
 			color: var(--text-accent);
 			border-color: var(--interactive-accent);
 			outline: none;
+			box-shadow: none;
 		}
 
 		&.buttonPrimary {
@@ -89,7 +90,7 @@
 	flex-direction: column;
 	background: var(--background-primary);
 	color: inherit;
-	border: 1px solid var(--background-modifier-border);
+	border: 1px solid var(--fc-border-color);
 	border-radius: var(--fc-radius-lg);
 	box-shadow: var(--fc-shadow-overlay);
 	animation: bubblePop 0.15s ease-out;
@@ -98,7 +99,7 @@
 	.header {
 		flex-shrink: 0;
 		padding: 12px 14px 8px;
-		border-bottom: 1px solid var(--background-modifier-border);
+		border-bottom: 1px solid var(--fc-border-color);
 		background: var(--background-secondary);
 	}
 
@@ -166,7 +167,7 @@
 		&.tabActive {
 			color: var(--text-accent);
 			background: var(--background-primary);
-			border-color: var(--background-modifier-border);
+			border-color: var(--fc-border-color);
 			font-weight: var(--fc-weight-medium);
 		}
 	}
@@ -247,7 +248,7 @@
 		padding: var(--fc-space-1) var(--fc-space-3);
 		background: transparent;
 		color: var(--text-normal);
-		border: 1px solid var(--background-modifier-border);
+		border: 1px solid var(--fc-border-color);
 		border-radius: var(--fc-radius-md);
 		cursor: pointer;
 		font-size: var(--fc-font-xs);
@@ -388,7 +389,7 @@
 		justify-content: space-between;
 		padding: 6px 14px;
 		background: var(--background-secondary);
-		border-top: 1px solid var(--background-modifier-border);
+		border-top: 1px solid var(--fc-border-color);
 		font-size: var(--fc-font-xs);
 		color: var(--text-muted);
 	}

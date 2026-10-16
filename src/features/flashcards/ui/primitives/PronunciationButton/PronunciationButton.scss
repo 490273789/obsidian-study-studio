@@ -33,11 +33,6 @@
 			rgba(var(--fc-bg-elevated-rgb), 0.88);
 	}
 
-	&:focus-visible {
-		outline: 2px solid var(--fc-cyan);
-		outline-offset: 3px;
-	}
-
 	&.is-speaking {
 		border-color: var(--fc-cyan);
 		background:

@@ -204,6 +204,7 @@
 	--fc-motion-fade-in: fc-fade-in var(--fc-motion-quick) ease-out both;
 	--fc-motion-modal-in: fc-modal-in 240ms var(--fc-ease-out) both;
 	--fc-motion-spin: fc-spin 1s linear infinite;
+	--fc-border-color: color-mix(in srgb, var(--fc-primary) 26%, var(--fc-line-soft));
 
 	font-family: var(--fc-font-ui);
 	font-size: var(--fc-font-md);

@@ -145,10 +145,10 @@
 		box-shadow: none;
 	}
 
-	&:focus-visible {
-		outline: 2px solid var(--fc-button-accent);
-		outline-offset: 3px;
-	}
+	// &:focus-visible {
+	// 	outline: 2px solid var(--fc-button-accent);
+	// 	outline-offset: 3px;
+	// }
 
 	&:active:not(:disabled) {
 		transform: translateY(1px);
