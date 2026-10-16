@@ -19,16 +19,56 @@ import { SpellingView } from "../Spelling/SpellingView";
 import { ChallengeView } from "../Challenge/ChallengeView";
 
 // Exercise view adapters and slot content in node; effects and DOM renderers are external seams.
-const hooks = vi.hoisted(() => ({ cursor: 0, state: [] as unknown[] }));
+const hooks = vi.hoisted(() => ({
+	cursor: 0,
+	state: [] as unknown[],
+	spellingWrapperState: [] as unknown[],
+	spellingKey: null as string | null,
+	changed: false,
+}));
+const inputVisibility = vi.hoisted(() => ({
+	question: "",
+	current: true,
+	focus: vi.fn(),
+	captureReturn: vi.fn(),
+	keepInputVisible: vi.fn(),
+	handleInputBlur: vi.fn(),
+	bind: vi.fn(),
+}));
+vi.mock("../../hooks/useSessionInputVisibility", () => ({
+	useSessionInputVisibility: (
+		inputRef: unknown,
+		viewRef: unknown,
+		question: string,
+		focusOnEntry = true,
+	) => {
+		inputVisibility.question = question;
+		inputVisibility.bind(inputRef, viewRef, question, focusOnEntry);
+		return {
+			keepInputVisible: inputVisibility.keepInputVisible,
+			handleInputBlur: inputVisibility.handleInputBlur,
+			captureReturn: () => {
+				inputVisibility.captureReturn();
+				return {
+					isCurrent: () =>
+						inputVisibility.current && inputVisibility.question === question,
+					focus: inputVisibility.focus,
+				};
+			},
+		};
+	},
+}));
 vi.mock("react", async (original) => ({
 	...(await original<typeof import("react")>()),
 	useState: (initial: unknown) => {
 		const index = hooks.cursor++;
-		if (!(index in hooks.state)) hooks.state[index] = initial;
+		const state = hooks.state;
+		if (!(index in state)) state[index] = initial;
 		return [
-			hooks.state[index],
+			state[index],
 			(next: unknown) => {
-				hooks.state[index] = next;
+				state[index] = next;
+				hooks.changed = true;
 			},
 		];
 	},
@@ -54,6 +94,14 @@ vi.mock("../../hooks/useCardPresentationShortcuts", () => ({
 beforeEach(() => {
 	hooks.cursor = 0;
 	hooks.state = [];
+	hooks.spellingWrapperState = [];
+	hooks.spellingKey = null;
+	hooks.changed = false;
+	inputVisibility.question = "";
+	inputVisibility.current = true;
+	inputVisibility.focus.mockClear();
+	inputVisibility.captureReturn.mockClear();
+	inputVisibility.bind.mockClear();
 });
 
 type NodeProps = {
@@ -327,14 +375,167 @@ function enter(tree: React.ReactNode, options: { isComposing?: boolean; repeat?:
 	return preventDefault;
 }
 
+// Separate wrapper and question hooks and discard renders updated by render-time state.
+function renderSpellingWrapper(props: React.ComponentProps<typeof SpellingView>) {
+	const questionState = hooks.state;
+	hooks.state = hooks.spellingWrapperState;
+	let wrapper: React.ReactElement<React.ComponentProps<typeof SpellingView>>;
+	let renders = 0;
+	do {
+		hooks.changed = false;
+		wrapper = renderMemo(SpellingView, props) as typeof wrapper;
+		if (++renders > 3) throw new Error("Spelling wrapper did not settle");
+	} while (hooks.changed);
+	hooks.state = questionState;
+	return wrapper;
+}
+function renderSpelling(props: React.ComponentProps<typeof SpellingView>): React.ReactNode {
+	const wrapper = renderSpellingWrapper(props);
+	if (hooks.spellingKey !== wrapper.key) {
+		hooks.state = [];
+		hooks.spellingKey = wrapper.key;
+	}
+	return renderMemo(wrapper.type, wrapper.props);
+}
+
+const incorrectFeedback: SpellingLifecycleFeedback = {
+	kind: "retrieval-incorrect",
+	submittedInput: "fron",
+	expectedAnswer: "front",
+	diff: [{ kind: "missing", value: "t", expected: "t" }],
+};
+
 describe("spelling retrieval and correction", () => {
+	it("captures the input return before submission and clears/focuses a current incorrect result", async () => {
+		const { act, common } = fixture();
+		const props = { ...common, session: spelling, feedback: null };
+		typeInput(renderSpelling(props), "fron");
+		act.mockImplementationOnce(async () => {
+			expect(inputVisibility.captureReturn).toHaveBeenCalledOnce();
+			return { kind: "applied", studyCompleted: false, feedback: incorrectFeedback };
+		});
+		await click(buttons(renderSpelling(props))[1]!);
+		expect(
+			find<React.ComponentProps<typeof FlashcardInput>>(renderSpelling(props), FlashcardInput)
+				.value,
+		).toBe("");
+		expect(inputVisibility.focus).toHaveBeenCalledOnce();
+	});
+	it.each(["expired", "replacement"] as const)(
+		"ignores an old incorrect result after %s without clearing the latest draft or focusing",
+		async (reason) => {
+			const { act, common } = fixture();
+			const props = { ...common, session: spelling, feedback: null };
+			typeInput(renderSpelling(props), "fron");
+			let resolve!: (
+				outcome: Awaited<ReturnType<AnswerPresentationTransition["act"]>>,
+			) => void;
+			act.mockReturnValueOnce(
+				new Promise((done) => {
+					resolve = done;
+				}),
+			);
+			const pending = click(buttons(renderSpelling(props))[1]!);
+			const nextProps =
+				reason === "replacement"
+					? {
+							...props,
+							session: {
+								...spelling,
+								currentCard: { ...spelling.currentCard, identity: "next" },
+							},
+						}
+					: props;
+			if (reason === "expired") inputVisibility.current = false;
+			typeInput(renderSpelling(nextProps), "latest draft");
+			resolve({ kind: "applied", studyCompleted: false, feedback: incorrectFeedback });
+			await pending;
+			expect(
+				find<React.ComponentProps<typeof FlashcardInput>>(
+					renderSpelling(nextProps),
+					FlashcardInput,
+				).value,
+			).toBe("latest draft");
+			expect(inputVisibility.focus).not.toHaveBeenCalled();
+		},
+	);
+	it("keeps the question key across revision and correction, but replaces it for a new encounter or content", () => {
+		const { common } = fixture();
+		const props = { ...common, session: spelling, feedback: null };
+		const wrapper = renderSpellingWrapper(props);
+		void renderSpelling(props);
+		expect(inputVisibility.bind.mock.lastCall?.[2]).toBe(wrapper.key);
+		for (const session of [
+			{ ...spelling, reference: { ...spelling.reference, revision: 2 } },
+			{ ...spelling, phase: "correction" as const },
+		]) {
+			const next = renderSpellingWrapper({ ...props, session }) as React.ReactElement;
+			expect(next.key).toBe(wrapper.key);
+		}
+		for (const session of [
+			{ ...spelling, progress: { ...spelling.progress, completed: 1 } },
+			{ ...spelling, currentCard: { ...spelling.currentCard, back: "new meaning" } },
+		]) {
+			const next = renderSpellingWrapper({ ...props, session }) as React.ReactElement;
+			expect(next.key).not.toBe(wrapper.key);
+		}
+	});
+
+	it("starts a fresh encounter for the same card after correction while retaining retrieval-to-correction drafts", () => {
+		const { common } = fixture();
+		const props = { ...common, session: spelling, feedback: null };
+		typeInput(renderSpelling(props), "retrieval draft");
+		const firstQuestion = inputVisibility.question;
+		const correction = {
+			...props,
+			session: {
+				...spelling,
+				phase: "correction" as const,
+				reference: { ...spelling.reference, revision: 2 },
+			},
+		};
+		let tree = renderSpelling(correction);
+		expect(inputVisibility.question).toBe(firstQuestion);
+		expect(find<React.ComponentProps<typeof FlashcardInput>>(tree, FlashcardInput).value).toBe(
+			"retrieval draft",
+		);
+		typeInput(tree, "correction draft");
+		tree = renderSpelling({
+			...props,
+			session: { ...spelling, reference: { ...spelling.reference, revision: 3 } },
+		});
+		expect(inputVisibility.question).not.toBe(firstQuestion);
+		expect(find<React.ComponentProps<typeof FlashcardInput>>(tree, FlashcardInput).value).toBe(
+			"",
+		);
+		const nextQuestion = inputVisibility.question;
+		typeInput(tree, "next retrieval draft");
+		tree = renderSpelling({
+			...props,
+			session: {
+				...spelling,
+				reference: { ...spelling.reference, revision: 4 },
+				currentCard: { ...spelling.currentCard, explanation: "updated explanation" },
+			},
+		});
+		expect(inputVisibility.question).toBe(nextQuestion);
+		expect(find<React.ComponentProps<typeof FlashcardInput>>(tree, FlashcardInput).value).toBe(
+			"next retrieval draft",
+		);
+	});
+
 	it("submits unknown only during retrieval, and ignores empty, IME and repeated Enter", async () => {
 		const { act, common } = fixture();
-		const render = () =>
-			renderMemo(SpellingView, { ...common, session: spelling, feedback: null });
+		const render = () => renderSpelling({ ...common, session: spelling, feedback: null });
 		let tree = render();
 		expect(markdown(tree)).toEqual(["back"]);
 		expect(buttons(tree)).toHaveLength(2);
+		for (const button of buttons(tree)) {
+			expect(button).toHaveProperty("data-session-input-action", "");
+		}
+		const input = find<React.ComponentProps<typeof FlashcardInput>>(tree, FlashcardInput);
+		expect(input.onFocus).toBe(inputVisibility.keepInputVisible);
+		expect(input.onBlur).toBe(inputVisibility.handleInputBlur);
 		expect(buttons(tree)[1]!.disabled).toBe(true);
 		enter(tree);
 		expect(act).not.toHaveBeenCalled();
@@ -370,7 +571,7 @@ describe("spelling retrieval and correction", () => {
 			session: { ...spelling, phase: "correction" as const },
 			feedback,
 		};
-		let tree = renderMemo(SpellingView, props);
+		let tree = renderSpelling(props);
 		const input = find<React.ComponentProps<typeof FlashcardInput>>(tree, FlashcardInput);
 		expect(input["aria-invalid"]).toBe(true);
 		const nodes = elements(tree);
@@ -385,7 +586,7 @@ describe("spelling retrieval and correction", () => {
 		expect(buttons(tree)).toHaveLength(1);
 		expect(buttons(tree)[0]!.children).toBe("spelling.confirmCorrection");
 		typeInput(tree, "front");
-		tree = renderMemo(SpellingView, props);
+		tree = renderSpelling(props);
 		await click(buttons(tree)[0]!);
 		expect(act).toHaveBeenCalledExactlyOnceWith({
 			kind: "spelling-answer",
@@ -396,8 +597,8 @@ describe("spelling retrieval and correction", () => {
 	it("guards submission and input while a transition is pending", async () => {
 		const { act, common } = fixture();
 		const props = { ...common, session: spelling, feedback: null };
-		typeInput(renderMemo(SpellingView, props), "front");
-		const tree = renderMemo(SpellingView, { ...props, isTransitioning: true });
+		typeInput(renderSpelling(props), "front");
+		const tree = renderSpelling({ ...props, isTransitioning: true });
 		expect(
 			find<React.ComponentProps<typeof FlashcardInput>>(tree, FlashcardInput).disabled,
 		).toBe(true);
@@ -418,6 +619,26 @@ function renderChallenge(props: React.ComponentProps<typeof ChallengeView>): Rea
 }
 
 describe("challenge questions and feedback", () => {
+	it("binds the presentation key and requests entry focus only for spelling questions", () => {
+		const { common } = fixture();
+		for (const questionMode of ["normal", "spelling"] as const) {
+			for (const phase of ["question", "feedback"] as const) {
+				const props = { ...common, session: { ...challenge, questionMode, phase } };
+				const wrapper = renderMemo(ChallengeView, props) as React.ReactElement;
+				const tree = renderChallenge(props);
+				expect(inputVisibility.bind.mock.lastCall?.slice(2)).toEqual([
+					wrapper.key,
+					questionMode === "spelling" && phase === "question",
+				]);
+				if (questionMode === "spelling" || phase === "feedback") {
+					for (const button of buttons(tree)) {
+						expect(button).toHaveProperty("data-session-input-action", "");
+					}
+				}
+			}
+		}
+	});
+
 	it("does not reveal a challenge answer while busy", async () => {
 		const { act, common } = fixture();
 		const props = { ...common, isTransitioning: true, session: challenge };

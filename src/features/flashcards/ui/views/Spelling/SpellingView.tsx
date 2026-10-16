@@ -40,7 +40,39 @@ interface SpellingViewProps {
 	pronunciationRuntime: PronunciationRuntime;
 }
 
-export const SpellingView = React.memo(function SpellingView({
+export const SpellingView = React.memo(function SpellingView(props: SpellingViewProps) {
+	const { session } = props;
+	const baseQuestion = JSON.stringify([
+		session.reference.key,
+		session.currentCard.identity,
+		session.currentCard.front,
+		session.currentCard.back,
+		session.progress.completed,
+	]);
+	const [encounter, setEncounter] = useState({
+		baseQuestion,
+		phase: session.phase,
+		generation: 0,
+	});
+	// A repeated failed card can return to retrieval without changing content or progress.
+	// Adjust this component's state before committing the next question subtree.
+	if (encounter.baseQuestion !== baseQuestion || encounter.phase !== session.phase) {
+		setEncounter({
+			baseQuestion,
+			phase: session.phase,
+			generation:
+				encounter.baseQuestion !== baseQuestion
+					? 0
+					: encounter.generation +
+						(encounter.phase === "correction" && session.phase === "retrieval" ? 1 : 0),
+		});
+	}
+	const question = JSON.stringify([baseQuestion, encounter.generation]);
+	return <SpellingQuestion key={question} question={question} {...props} />;
+});
+
+const SpellingQuestion = React.memo(function SpellingQuestion({
+	question,
 	session,
 	transition,
 	isTransitioning,
@@ -51,7 +83,7 @@ export const SpellingView = React.memo(function SpellingView({
 	onClose,
 	markdownRenderer,
 	pronunciationRuntime,
-}: SpellingViewProps) {
+}: SpellingViewProps & { question: string }) {
 	const { t } = useFlashcardI18n();
 	const handleContextMenu = useCardContextMenu();
 	const [input, setInput] = useState("");
@@ -60,23 +92,22 @@ export const SpellingView = React.memo(function SpellingView({
 	const viewRef = useRef<HTMLDivElement>(null);
 	const currentCard = session.currentCard;
 
-	const { keepInputVisible, handleInputBlur } = useSessionInputVisibility(inputRef, viewRef);
+	const { keepInputVisible, handleInputBlur, captureReturn } = useSessionInputVisibility(
+		inputRef,
+		viewRef,
+		question,
+	);
 
 	useEffect(() => {
 		pronunciationRuntime.stop();
-		const reset = window.setTimeout(() => {
-			setInput("");
-			inputRef.current?.focus({ preventScroll: true });
-		}, 0);
-		return () => window.clearTimeout(reset);
-	}, [currentCard.identity, pronunciationRuntime]);
-
-	useEffect(() => () => pronunciationRuntime.stop(), [pronunciationRuntime]);
+		return () => pronunciationRuntime.stop();
+	}, [pronunciationRuntime]);
 
 	const submit = useCallback(
 		async (submittedInput: string, allowEmpty = false) => {
 			if (!currentCard || isTransitioning) return;
 			if (!allowEmpty && submittedInput.trim().length === 0) return;
+			const inputReturn = captureReturn();
 			const outcome = await transition.act({
 				kind: "spelling-answer",
 				reference: session.reference,
@@ -91,11 +122,13 @@ export const SpellingView = React.memo(function SpellingView({
 				outcome.feedback.kind === "retrieval-incorrect" ||
 				outcome.feedback.kind === "correction-incorrect"
 			) {
-				setInput("");
-				window.setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 0);
+				if (inputReturn.isCurrent()) {
+					setInput("");
+					inputReturn.focus();
+				}
 			}
 		},
-		[currentCard, isTransitioning, session.reference, transition],
+		[captureReturn, currentCard, isTransitioning, session.reference, transition],
 	);
 
 	if (!currentCard) {
@@ -145,6 +178,7 @@ export const SpellingView = React.memo(function SpellingView({
 				<>
 					{!isCorrection && (
 						<FlashcardButton
+							data-session-input-action=""
 							variant="secondary"
 							size="lg"
 							icon={Lightbulb}
@@ -155,6 +189,7 @@ export const SpellingView = React.memo(function SpellingView({
 						</FlashcardButton>
 					)}
 					<FlashcardButton
+						data-session-input-action=""
 						variant="primary"
 						size="lg"
 						icon={CornerDownLeft}

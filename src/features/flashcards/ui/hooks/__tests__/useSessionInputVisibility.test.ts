@@ -1,95 +1,110 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useSessionInputVisibility } from "../useSessionInputVisibility";
+import type { InputBinding, InputRegistration } from "../../inputVisibility";
 
-const effects = vi.hoisted(() => [] as (() => void | (() => void))[]);
-vi.mock("react", () => ({
-	useRef: (current: unknown) => ({ current }),
-	useCallback: (callback: unknown) => callback,
-	useEffect: (effect: () => void | (() => void)) => effects.push(effect),
+// Only the React adapter is simulated; geometry and focus sequences exercise
+// the real module in inputVisibility.test.ts.
+const hooks = vi.hoisted(() => ({
+	effects: [] as (() => void | (() => void))[],
+	ref: { current: null as unknown },
+	visibility: { open: vi.fn<(registration: InputRegistration) => InputBinding>() },
 }));
-beforeEach(() => effects.splice(0));
+vi.mock("react", async (original) => ({
+	...(await original<typeof import("react")>()),
+	useContext: () => hooks.visibility,
+	useRef: () => hooks.ref,
+	useCallback: (callback: unknown) => callback,
+	useLayoutEffect: (effect: () => void | (() => void)) => hooks.effects.push(effect),
+}));
+beforeEach(() => {
+	hooks.effects = [];
+	hooks.ref.current = null;
+	hooks.visibility.open.mockReset();
+});
 
 function fixture() {
-	let callback: FrameRequestCallback | undefined;
-	const viewport = {
-		offsetTop: 0,
-		height: 400,
-		addEventListener: vi.fn(),
-		removeEventListener: vi.fn(),
-	};
-	const ownerWindow = {
-		innerHeight: 800,
-		visualViewport: viewport,
-		requestAnimationFrame: vi.fn((next: FrameRequestCallback) => {
-			callback = next;
-			return 7;
-		}),
-		cancelAnimationFrame: vi.fn(),
-	};
-	const scroller = { getBoundingClientRect: () => ({ bottom: 600 }), scrollBy: vi.fn() };
-	const document = { defaultView: ownerWindow, activeElement: null as unknown };
-	const input = {
-		ownerDocument: document,
-		closest: () => scroller,
-		getBoundingClientRect: () => ({ bottom: 500 }),
-	};
-	document.activeElement = input;
-	const view = {
-		getBoundingClientRect: () => ({ bottom: 700 }),
-		style: { setProperty: vi.fn(), removeProperty: vi.fn() },
-	};
-	const inputRef = { current: input as unknown as HTMLInputElement | null };
-	const viewRef = { current: view as unknown as HTMLDivElement | null };
-	return {
-		inputRef,
-		viewRef,
-		input,
-		view,
-		document,
-		ownerWindow,
-		viewport,
-		scroller,
-		flush: () => callback?.(0),
-	};
+	const bindings: InputBinding[] = [];
+	hooks.visibility.open.mockImplementation(() => {
+		const binding = {
+			keepVisible: vi.fn(),
+			blur: vi.fn(),
+			dispose: vi.fn(),
+			captureReturn: vi.fn(() => ({ isCurrent: () => true, focus: vi.fn() })),
+		};
+		bindings.push(binding);
+		return binding;
+	});
+	const inputRef = { current: {} as HTMLInputElement | null };
+	const viewRef = { current: {} as HTMLDivElement | null };
+	let cleanup: void | (() => void);
+	function render(question = "question", focusOnEntry = true, commit = true) {
+		hooks.effects = [];
+		const actions = useSessionInputVisibility(inputRef, viewRef, question, focusOnEntry);
+		if (commit) {
+			hooks.effects[0]!();
+			if (!cleanup) cleanup = hooks.effects[1]!();
+		}
+		return actions;
+	}
+	return { inputRef, viewRef, bindings, render, unmount: () => cleanup?.() };
 }
 
-describe("session input visibility", () => {
-	it("reserves the owning panel's keyboard overlap and scrolls its input into view", () => {
+describe("session input React adapter", () => {
+	it("registers committed elements and keeps the lease through unrelated renders", () => {
 		const f = fixture();
-		const actions = useSessionInputVisibility(f.inputRef, f.viewRef);
+		const actions = f.render();
+		f.render();
+		expect(hooks.visibility.open).toHaveBeenCalledExactlyOnceWith({
+			input: f.inputRef.current,
+			view: f.viewRef.current,
+			question: "question",
+			focusOnEntry: true,
+		});
 		actions.keepInputVisible();
-		expect(f.view.style.setProperty).toHaveBeenCalledWith("--fc-keyboard-inset", "300px");
-		f.flush();
-		expect(f.scroller.scrollBy).toHaveBeenCalledWith({ top: 116, behavior: "auto" });
-	});
-	it("does not scroll after focus leaves or the input is replaced", () => {
-		const f = fixture();
-		const actions = useSessionInputVisibility(f.inputRef, f.viewRef);
-		actions.keepInputVisible();
-		f.inputRef.current = null;
-		f.flush();
-		expect(f.scroller.scrollBy).not.toHaveBeenCalled();
-		f.document.activeElement = null;
-		actions.keepInputVisible();
-		expect(f.ownerWindow.requestAnimationFrame).toHaveBeenCalledTimes(1);
-	});
-	it("cancels superseded frames and releases viewport listeners and inset on cleanup", () => {
-		const f = fixture();
-		const actions = useSessionInputVisibility(f.inputRef, f.viewRef);
-		const cleanup = effects[0]!();
-		actions.keepInputVisible();
-		actions.keepInputVisible();
-		expect(f.ownerWindow.cancelAnimationFrame).toHaveBeenCalledWith(7);
 		actions.handleInputBlur();
-		expect(f.view.style.removeProperty).toHaveBeenCalledWith("--fc-keyboard-inset");
-		if (typeof cleanup === "function") cleanup();
-		expect(f.viewport.removeEventListener).toHaveBeenCalledWith(
-			"resize",
-			actions.keepInputVisible,
-		);
-		expect(f.viewport.removeEventListener).toHaveBeenCalledWith(
-			"scroll",
-			actions.keepInputVisible,
-		);
+		const captured = actions.captureReturn();
+		expect(captured.isCurrent()).toBe(true);
+		expect(f.bindings[0]!.keepVisible).toHaveBeenCalledOnce();
+		expect(f.bindings[0]!.blur).toHaveBeenCalledOnce();
+		expect(f.bindings[0]!.captureReturn).toHaveBeenCalledOnce();
+	});
+
+	it("releases the old lease when the question or actual input is replaced", () => {
+		const f = fixture();
+		f.render();
+		f.render("next");
+		expect(f.bindings[0]!.dispose).toHaveBeenCalledOnce();
+		f.inputRef.current = {} as HTMLInputElement;
+		f.render("next");
+		expect(f.bindings[1]!.dispose).toHaveBeenCalledOnce();
+		expect(hooks.visibility.open).toHaveBeenCalledTimes(3);
+	});
+
+	it("does not register speculative renders, and forwards the absence of a question input", () => {
+		const f = fixture();
+		f.render("speculative", true, false);
+		expect(hooks.visibility.open).not.toHaveBeenCalled();
+		f.inputRef.current = null;
+		f.render("feedback", false);
+		expect(hooks.visibility.open).toHaveBeenCalledWith({
+			input: null,
+			view: f.viewRef.current,
+			question: "feedback",
+			focusOnEntry: false,
+		});
+	});
+
+	it("releases on root removal and unmount, and stops forwarding old handlers", () => {
+		const f = fixture();
+		const actions = f.render();
+		f.viewRef.current = null;
+		f.render();
+		expect(f.bindings[0]!.dispose).toHaveBeenCalledOnce();
+		f.unmount();
+		actions.keepInputVisible();
+		actions.handleInputBlur();
+		expect(actions.captureReturn().isCurrent()).toBe(false);
+		expect(f.bindings[0]!.keepVisible).not.toHaveBeenCalled();
+		expect(f.bindings[0]!.blur).not.toHaveBeenCalled();
 	});
 });

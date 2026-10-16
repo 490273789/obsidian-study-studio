@@ -1,50 +1,82 @@
-import { useCallback, useEffect, useRef, type RefObject } from "react";
+import {
+	createContext,
+	createElement,
+	useCallback,
+	useContext,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	type ReactNode,
+	type RefObject,
+} from "react";
+import { InputVisibility, type InputBinding, type InputReturn } from "../inputVisibility";
 
-/** Keep a session's input and action dock above its owning window's soft keyboard. */
+const InputVisibilityContext = createContext<InputVisibility | null>(null);
+const NO_RETURN: InputReturn = { isCurrent: () => false, focus: () => {} };
+
+/** Own window compatibility once per flashcard view; question leases live below it. */
+export function InputVisibilityProvider({
+	host,
+	children,
+}: {
+	host: HTMLElement;
+	children: ReactNode;
+}) {
+	const visibility = useMemo(() => new InputVisibility(host.ownerDocument), [host.ownerDocument]);
+	useLayoutEffect(() => visibility.mount(), [visibility]);
+	return createElement(InputVisibilityContext.Provider, { value: visibility }, children);
+}
+
+/** React supplies the current question and elements; the module owns delayed work. */
 export function useSessionInputVisibility(
 	inputRef: RefObject<HTMLInputElement | null>,
 	viewRef: RefObject<HTMLDivElement | null>,
+	question: string,
+	focusOnEntry = true,
 ) {
-	const frame = useRef<number | null>(null);
-	const keepInputVisible = useCallback(() => {
+	const visibility = useContext(InputVisibilityContext);
+	if (!visibility) throw new Error("Session input requires InputVisibilityProvider");
+	const current = useRef<{
+		input: HTMLInputElement | null;
+		view: HTMLElement;
+		question: string;
+		focusOnEntry: boolean;
+		binding: InputBinding;
+	} | null>(null);
+	useLayoutEffect(() => {
 		const input = inputRef.current;
 		const view = viewRef.current;
-		const ownerWindow = input?.ownerDocument.defaultView;
-		if (!input || !view || !ownerWindow || input.ownerDocument.activeElement !== input) return;
-		const viewport = ownerWindow.visualViewport;
-		const bottom = viewport ? viewport.offsetTop + viewport.height : ownerWindow.innerHeight;
-		const inset = Math.max(0, view.getBoundingClientRect().bottom - bottom);
-		view.style.setProperty("--fc-keyboard-inset", `${inset}px`);
-		if (frame.current !== null) ownerWindow.cancelAnimationFrame(frame.current);
-		frame.current = ownerWindow.requestAnimationFrame(() => {
-			frame.current = null;
-			if (inputRef.current !== input || input.ownerDocument.activeElement !== input) return;
-			const scroller = input.closest<HTMLElement>(".flashcard-content");
-			if (!scroller) return;
-			const overlap =
-				input.getBoundingClientRect().bottom +
-				16 -
-				Math.min(scroller.getBoundingClientRect().bottom, bottom);
-			if (overlap > 0) scroller.scrollBy({ top: overlap, behavior: "auto" });
-		});
-	}, [inputRef, viewRef]);
-	const handleInputBlur = useCallback(() => {
-		viewRef.current?.style.removeProperty("--fc-keyboard-inset");
-	}, [viewRef]);
-	useEffect(() => {
-		const ownerWindow = inputRef.current?.ownerDocument.defaultView;
-		const view = viewRef.current;
-		if (!ownerWindow) return;
-		const viewport = ownerWindow.visualViewport;
-		viewport?.addEventListener("resize", keepInputVisible);
-		viewport?.addEventListener("scroll", keepInputVisible);
-		return () => {
-			viewport?.removeEventListener("resize", keepInputVisible);
-			viewport?.removeEventListener("scroll", keepInputVisible);
-			if (frame.current !== null) ownerWindow.cancelAnimationFrame(frame.current);
-			frame.current = null;
-			view?.style.removeProperty("--fc-keyboard-inset");
-		};
-	}, [inputRef, viewRef, keepInputVisible]);
-	return { keepInputVisible, handleInputBlur };
+		const previous = current.current;
+		if (
+			previous?.input === input &&
+			previous.view === view &&
+			previous.question === question &&
+			previous.focusOnEntry === focusOnEntry
+		)
+			return;
+		previous?.binding.dispose();
+		current.current = view
+			? {
+					input,
+					view,
+					question,
+					focusOnEntry,
+					binding: visibility.open({ input, view, question, focusOnEntry }),
+				}
+			: null;
+	});
+	useLayoutEffect(
+		() => () => {
+			current.current?.binding.dispose();
+			current.current = null;
+		},
+		[visibility],
+	);
+	const keepInputVisible = useCallback(() => current.current?.binding.keepVisible(), []);
+	const handleInputBlur = useCallback(() => current.current?.binding.blur(), []);
+	const captureReturn = useCallback(
+		() => current.current?.binding.captureReturn() ?? NO_RETURN,
+		[],
+	);
+	return { keepInputVisible, handleInputBlur, captureReturn };
 }

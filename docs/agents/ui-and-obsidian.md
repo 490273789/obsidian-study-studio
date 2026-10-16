@@ -100,6 +100,28 @@ imperative settings controls own its mount cleanup and pass it to their React so
 - Test these sequences through the real interaction interface. Adapter tests cover
   grid strategy and completed-deck grouping, native move buttons, and queue wiring.
 
+## Question input visibility
+
+`InputVisibility` in `src/features/flashcards/ui/inputVisibility.ts` owns the
+flashcard view's window-scroll compatibility and registered question input's
+keyboard inset, local scrolling, conditional focus, and scheduled-work cleanup.
+`InputVisibilityProvider` owns its document/window lifetime; `useSessionInputVisibility`
+registers only committed elements and question keys.
+
+- Capture an `InputReturn` before awaiting an answer. Apply draft changes only
+  while it is current, then request conditional focus. Pointer/focus transfers,
+  dialogs and window blur revoke old focus permission even if the learner returns.
+- Mark submission, unknown-answer and continue buttons with
+  `data-session-input-action` so they retain input ownership. Other controls keep
+  their own focus. View/root tabindex does not make ordinary content a control.
+- Question keys survive ordinary revisions and retrieval-to-correction changes;
+  a new encounter, including single-card correction-to-retrieval, resets drafts
+  and leases. Input replacement and unmount release old work while accepted
+  answer transactions remain owned by `AnswerPresentationTransition`.
+- Preserve the existing root-scroll and keyboard geometry policies. Test real
+  module behavior with local document/window doubles, adapter wiring separately,
+  and real React mounting for effect ordering; report mobile verification separately.
+
 ## Word list
 
 `WordListViewport` in `src/features/flashcards/ui/views/WordList/` owns one view's

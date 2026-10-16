@@ -1,11 +1,4 @@
-import React, {
-	useCallback,
-	useLayoutEffect,
-	useMemo,
-	useEffect,
-	useId,
-	useSyncExternalStore,
-} from "react";
+import React, { useCallback, useLayoutEffect, useMemo, useId, useSyncExternalStore } from "react";
 import { App, Component, MarkdownRenderer, Notice, TFile } from "obsidian";
 import type { ScopedWorkbenchSettings } from "../../../core/host/settingsSlices";
 import type { DeckHome, DeckHomeDestination } from "../domain/decks/deckHome";
@@ -31,6 +24,7 @@ import { ModalProvider } from "../../../core/ui/primitives/Modal";
 import { createAnswerPresentationTransition } from "./answerPresentationTransition";
 import { ChallengeSetupModal, ChallengeView, ChallengeSummary } from "./views/Challenge";
 import { FlashcardNavigation } from "./flashcardNavigation";
+import { InputVisibilityProvider } from "./hooks/useSessionInputVisibility";
 import styles from "./FlashcardApp.module.scss";
 
 interface FlashcardAppProps {
@@ -126,58 +120,6 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 		readDeckHomeSnapshot,
 		readDeckHomeSnapshot,
 	);
-
-	// Mobile/iPad: prevent iOS WebKit from scrolling window/document when focusing inputs
-	useEffect(() => {
-		const ownerWindow = modalHost.ownerDocument.defaultView ?? window;
-		const ownerDoc = modalHost.ownerDocument;
-
-		const resetWindowScroll = () => {
-			if (ownerWindow.scrollY > 0 || ownerWindow.scrollX > 0) {
-				ownerWindow.scrollTo({ top: 0, left: 0, behavior: "instant" });
-			}
-			if (ownerDoc.body && ownerDoc.body.scrollTop > 0) {
-				ownerDoc.body.scrollTop = 0;
-			}
-			if (ownerDoc.documentElement && ownerDoc.documentElement.scrollTop > 0) {
-				ownerDoc.documentElement.scrollTop = 0;
-			}
-		};
-
-		const handleFocusIn = (event: FocusEvent) => {
-			const target = event.target as HTMLElement | null;
-			if (
-				target &&
-				(target.tagName === "INPUT" ||
-					target.tagName === "TEXTAREA" ||
-					target.tagName === "SELECT")
-			) {
-				ownerWindow.requestAnimationFrame(resetWindowScroll);
-				ownerWindow.setTimeout(resetWindowScroll, 50);
-				ownerWindow.setTimeout(resetWindowScroll, 200);
-			}
-		};
-
-		const handleFocusOut = () => {
-			ownerWindow.requestAnimationFrame(resetWindowScroll);
-		};
-
-		ownerWindow.addEventListener("scroll", resetWindowScroll, { passive: true });
-		ownerDoc.addEventListener("focusin", handleFocusIn);
-		ownerDoc.addEventListener("focusout", handleFocusOut);
-
-		const viewport = ownerWindow.visualViewport;
-		viewport?.addEventListener("resize", resetWindowScroll);
-		viewport?.addEventListener("scroll", resetWindowScroll);
-
-		return () => {
-			ownerWindow.removeEventListener("scroll", resetWindowScroll);
-			ownerDoc.removeEventListener("focusin", handleFocusIn);
-			ownerDoc.removeEventListener("focusout", handleFocusOut);
-			viewport?.removeEventListener("resize", resetWindowScroll);
-			viewport?.removeEventListener("scroll", resetWindowScroll);
-		};
-	}, [modalHost]);
 
 	const cardEditing = useMemo(
 		() =>
@@ -541,56 +483,59 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 			: `${presentedLifecycleSnapshot.kind}:${presentedLifecycleSnapshot.mode}`;
 
 	return (
-		<ModalProvider host={modalHost}>
-			<div key={pageKey} className={styles.pageTransition} data-page={pageKey}>
-				{renderContent()}
-			</div>
-			{viewState.type === "challenge-setup" && presentedLifecycleSnapshot.kind === "idle" && (
-				<ChallengeSetupModal
-					readiness={deckHomeSnapshot.challenge}
-					isStarting={navigationBusy}
-					onStart={(challengeMode, intent) =>
-						void navigation.startChallenge(
-							{
-								mode: "challenge",
-								challengeMode,
-								intent,
-								expectedRoundId: deckHomeSnapshot.challenge.savedRoundId,
-							},
-							deckHomeSnapshot.challenge.round !== null,
-						)
-					}
-					onClose={handleBackHome}
-				/>
-			)}
-			{cardEditor && (
-				<CardEditorModal
-					key={cardEditor.id}
-					mode={cardEditor.mode}
-					decks={deckHomeSnapshot.decks}
-					initialDeckId={cardEditor.deckId}
-					initialFront={cardEditor.front}
-					initialBack={cardEditor.back}
-					initialExplanation={cardEditor.explanation}
-					isSaving={cardEditor.saving}
-					error={cardEditor.error}
-					onSave={(draft) => cardEditing.save(cardEditor.id, draft)}
-					onClose={() => cardEditing.close(cardEditor.id)}
-				/>
-			)}
-			{confirmation && (
-				<ConfirmDialog
-					key={confirmation.id}
-					title={confirmation.title}
-					message={confirmation.message}
-					confirmText={confirmation.confirmText}
-					cancelText={t("common.cancel")}
-					kicker={t("common.confirmAction")}
-					tone={confirmation.tone}
-					onConfirm={handleConfirmDialogConfirm}
-					onCancel={handleConfirmDialogCancel}
-				/>
-			)}
-		</ModalProvider>
+		<InputVisibilityProvider host={modalHost}>
+			<ModalProvider host={modalHost}>
+				<div key={pageKey} className={styles.pageTransition} data-page={pageKey}>
+					{renderContent()}
+				</div>
+				{viewState.type === "challenge-setup" &&
+					presentedLifecycleSnapshot.kind === "idle" && (
+						<ChallengeSetupModal
+							readiness={deckHomeSnapshot.challenge}
+							isStarting={navigationBusy}
+							onStart={(challengeMode, intent) =>
+								void navigation.startChallenge(
+									{
+										mode: "challenge",
+										challengeMode,
+										intent,
+										expectedRoundId: deckHomeSnapshot.challenge.savedRoundId,
+									},
+									deckHomeSnapshot.challenge.round !== null,
+								)
+							}
+							onClose={handleBackHome}
+						/>
+					)}
+				{cardEditor && (
+					<CardEditorModal
+						key={cardEditor.id}
+						mode={cardEditor.mode}
+						decks={deckHomeSnapshot.decks}
+						initialDeckId={cardEditor.deckId}
+						initialFront={cardEditor.front}
+						initialBack={cardEditor.back}
+						initialExplanation={cardEditor.explanation}
+						isSaving={cardEditor.saving}
+						error={cardEditor.error}
+						onSave={(draft) => cardEditing.save(cardEditor.id, draft)}
+						onClose={() => cardEditing.close(cardEditor.id)}
+					/>
+				)}
+				{confirmation && (
+					<ConfirmDialog
+						key={confirmation.id}
+						title={confirmation.title}
+						message={confirmation.message}
+						confirmText={confirmation.confirmText}
+						cancelText={t("common.cancel")}
+						kicker={t("common.confirmAction")}
+						tone={confirmation.tone}
+						onConfirm={handleConfirmDialogConfirm}
+						onCancel={handleConfirmDialogCancel}
+					/>
+				)}
+			</ModalProvider>
+		</InputVisibilityProvider>
 	);
 };

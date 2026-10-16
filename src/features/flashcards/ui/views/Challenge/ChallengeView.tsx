@@ -1,5 +1,5 @@
 import type { CardMotion } from "../../answerPresentationTransition";
-import React, { memo, useCallback, useEffect, useRef, useState } from "react";
+import React, { memo, useCallback, useRef, useState } from "react";
 import { Check, CornerDownLeft, Lightbulb, X } from "lucide-react";
 import { Notice } from "obsidian";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
@@ -27,35 +27,31 @@ interface ChallengeViewProps {
 
 export const ChallengeView = memo(function ChallengeView(props: ChallengeViewProps) {
 	const { session } = props;
-	return (
-		<ChallengeQuestion
-			key={JSON.stringify([
-				session.reference.key,
-				session.currentCard.identity,
-				session.currentCard.front,
-				session.currentCard.back,
-				session.phase,
-			])}
-			{...props}
-		/>
-	);
+	const question = JSON.stringify([
+		session.reference.key,
+		session.currentCard.identity,
+		session.currentCard.front,
+		session.currentCard.back,
+		session.phase,
+	]);
+	return <ChallengeQuestion key={question} question={question} {...props} />;
 });
 
 const ChallengeQuestion = memo(function ChallengeQuestion({
+	question,
 	session,
 	transition,
 	isTransitioning,
 	cardMotion,
 	onClose,
 	markdownRenderer,
-}: ChallengeViewProps) {
+}: ChallengeViewProps & { question: string }) {
 	const { t } = useFlashcardI18n();
 	const handleContextMenu = useCardContextMenu();
 	const [answerVisible, setAnswerVisible] = useState(false);
 	const [input, setInput] = useState("");
 	const inputRef = useRef<HTMLInputElement>(null);
 	const viewRef = useRef<HTMLDivElement>(null);
-	const { keepInputVisible, handleInputBlur } = useSessionInputVisibility(inputRef, viewRef);
 	const currentCard = session.currentCard;
 	const isSpelling = session.questionMode === "spelling";
 	const feedback = session.feedback;
@@ -66,9 +62,12 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 	);
 	const showAnswer = isFeedback || (!isSpelling && answerVisible);
 
-	useEffect(() => {
-		if (isSpelling && !isFeedback) inputRef.current?.focus({ preventScroll: true });
-	}, [currentCard.identity, currentCard.front, currentCard.back, isFeedback, isSpelling]);
+	const { keepInputVisible, handleInputBlur } = useSessionInputVisibility(
+		inputRef,
+		viewRef,
+		question,
+		isSpelling && !isFeedback,
+	);
 
 	const report = useCallback(
 		(outcome: Awaited<ReturnType<AnswerPresentationTransition["act"]>>) => {
@@ -195,6 +194,7 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 							variant="primary"
 							size="lg"
 							onClick={() => void continueAfterFeedback()}
+							data-session-input-action=""
 							disabled={isTransitioning}
 						>
 							{t("challenge.continueAnswer")}
@@ -206,6 +206,7 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 								size="lg"
 								icon={Lightbulb}
 								onClick={() => void submitSpelling("", true)}
+								data-session-input-action=""
 								disabled={isTransitioning}
 							>
 								{t("challenge.dontKnow")}
@@ -215,6 +216,7 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 								size="lg"
 								icon={CornerDownLeft}
 								onClick={() => void submitSpelling(input)}
+								data-session-input-action=""
 								disabled={isTransitioning || input.trim().length === 0}
 							>
 								{t("challenge.submit")}
