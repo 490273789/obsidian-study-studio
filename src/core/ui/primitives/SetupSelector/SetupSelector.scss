@@ -106,3 +106,23 @@
 		}
 	}
 }
+
+@media (max-width: 640px) {
+	.flashcard-setup-control-group {
+		grid-template-columns: 1fr;
+		gap: var(--fc-space-3);
+		padding: var(--fc-space-4);
+	}
+
+	.flashcard-setup-control-copy {
+		padding: 0 0 var(--fc-space-3);
+		border-right: 0;
+		border-bottom: 1px solid var(--fc-line-faint);
+	}
+
+	.flashcard-setup-control-icon {
+		width: var(--fc-control-sm);
+		height: var(--fc-control-sm);
+		flex-basis: var(--fc-control-sm);
+	}
+}

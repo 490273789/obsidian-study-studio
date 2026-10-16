@@ -34,3 +34,10 @@
 		min-width: 0;
 	}
 }
+
+@media (max-width: 640px) {
+	.flashcard-markdown {
+		font-size: var(--fc-font-md);
+		line-height: var(--fc-line-reading);
+	}
+}

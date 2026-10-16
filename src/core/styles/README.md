@@ -16,7 +16,7 @@
 - `base.scss`：设计 token（唯一来源，`--fc-*`）、根容器框架（`.flashcard-root` 的定义与表面归一）。
 - `settings.scss`：Obsidian 设置面板与设置弹窗相关的样式。
 - `motion.scss`：全局动画与关键帧（尊重 `prefers-reduced-motion`）。
-- `responsive.scss`：全局小屏幕和移动端粗指针媒体查询适配。
+- `responsive.scss`：通用页面外壳、跨视图布局模式与控件的响应式适配；组件和业务视图专属适配放在各自样式文件。
 - `index.scss`：主样式入口，负责按序汇入全局层及尚未模块化的存量样式。
 
 ### 2. 混合架构：全局 CSS 与 CSS Modules (`*.module.scss`)
@@ -102,7 +102,7 @@
 - `.fc-panel` + `.fc-panel > header|footer`：带边框的面板与其头/尾语义。
 - `.workspace-leaf-content .flashcard-container`：挂载接缝为每个视图添加的唯一容器类。
 
-布局模块自带 720px / 640px / `pointer: coarse` 三组媒体查询，因此新视图无需再写外壳级响应式。功能样式在布局层之后加载，可以覆盖个别数值（例如统计页保留自己的内边距）。
+页面外壳的 720px / 640px 媒体查询统一在 `responsive.scss`，因此新视图无需再写外壳级响应式。视图可通过自身类名覆盖个别数值（例如统计页保留自己的内边距）。
 
 ## 通用 UI 模式 (`patterns.scss`)
 
@@ -265,6 +265,8 @@
 
 ## 响应式与主题
 
+- 通用页面外壳、跨视图布局模式和控件的响应式规则集中在 `responsive.scss`；Header、Modal 等组件及业务视图专属规则与对应样式就近存放。
+- 同一样式文件中，相同条件的 `@media` 合并为一个区块。`@media`（视口宽度）、`@container`（面板宽度）与 Obsidian 手机环境类的触发条件不同，按需分别保留。
 - 900px 以下允许折叠栏位和重排工具栏，但不缩小基础字号。
 - 640px 以下阅读内容降为 `--fc-font-md`（14px）；布局可以堆叠，信息层级保持不变。
 - 亮色与暗色主题默认都直接继承 Obsidian token。只有透明度或对比度确实无法自动适配时，才在对应组件文件里添加极少量 `.theme-light` 光学修正，禁止维护一套固定色值的独立亮色主题文件。

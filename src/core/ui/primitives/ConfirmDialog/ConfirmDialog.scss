@@ -129,3 +129,16 @@
 		}
 	}
 }
+
+@media (max-width: 640px) {
+	/* Confirmation choices remain adjacent so both actions are immediately
+	   comparable and use the modal width evenly on phones. */
+	.flashcard-modal-footer.flashcard-confirm-footer {
+		flex-direction: row;
+
+		.flashcard-btn {
+			min-width: 0;
+			flex: 1 1 0;
+		}
+	}
+}

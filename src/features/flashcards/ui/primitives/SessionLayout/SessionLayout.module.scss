@@ -70,3 +70,9 @@
 		animation: none;
 	}
 }
+
+@media (max-width: 640px) {
+	.page:global(.flashcard-study) {
+		overflow: hidden;
+	}
+}

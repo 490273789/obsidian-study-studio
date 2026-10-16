@@ -89,18 +89,3 @@
 	overscroll-behavior: contain;
 	padding: 0;
 }
-
-/* Narrow panes tighten the shell without changing hierarchy or type scale. */
-@media (max-width: 720px) {
-	.fc-panel > header,
-	.fc-panel > footer {
-		padding-inline: var(--fc-space-2);
-	}
-}
-
-@media (max-width: 640px) {
-	.fc-page,
-	.fc-page__body {
-		gap: var(--fc-space-3);
-	}
-}

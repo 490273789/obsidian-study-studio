@@ -47,3 +47,16 @@
 	font-size: var(--fc-font-sm);
 	font-weight: var(--fc-weight-semibold);
 }
+
+@media (max-width: 640px) {
+	.modal:global(.flashcard-card-editor-modal) {
+		max-height: min(84vh, calc(100% - 24px));
+		width: min(100%, 680px);
+		height: min(680px, 92vh, calc(100% - 16px));
+	}
+
+	.modal:global(.flashcard-card-editor-modal) :global(.flashcard-modal-header),
+	.modal:global(.flashcard-card-editor-modal) :global(.flashcard-modal-footer) {
+		flex: 0 0 auto;
+	}
+}

@@ -599,15 +599,67 @@
 	}
 }
 
+/* Home deck layout for narrow viewports, panes, and Obsidian phones. */
+@mixin compact-deck-layout {
+	.deckList .deckItem {
+		flex-direction: column;
+		min-height: auto;
+		gap: var(--fc-space-3);
+		padding: var(--fc-space-3);
+		align-items: stretch;
+	}
+
+	.deckItem :global(.flashcard-deck-main) {
+		width: 100%;
+		min-height: auto;
+		flex: none;
+	}
+
+	.deckItem :global(.flashcard-deck-side) {
+		width: 100%;
+		align-self: stretch;
+		margin-top: 0;
+		flex: none;
+	}
+
+	.deckItem .deckActions {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr)) var(
+				--fc-deck-tool-size,
+				var(--fc-control-md)
+			);
+		gap: var(--fc-space-2);
+		width: 100%;
+	}
+
+	.deckItem .deckActions.hasSpelling {
+		grid-template-columns: repeat(2, minmax(0, 1fr)) repeat(
+				2,
+				var(--fc-deck-tool-size, var(--fc-control-md))
+			);
+	}
+}
+
 @container flashcard-page (max-width: 640px) {
+	@include compact-deck-layout;
 	@include home-header-compact;
 }
 
 @media (max-width: 640px) {
+	:global(.flashcard-home.fc-page) {
+		gap: var(--fc-space-2);
+	}
+
+	.deckList {
+		padding-bottom: var(--fc-space-4);
+	}
+
+	@include compact-deck-layout;
 	@include home-header-compact;
 }
 
 :global(.is-phone) {
+	@include compact-deck-layout;
 	@include home-header-compact;
 }
 

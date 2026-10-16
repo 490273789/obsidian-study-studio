@@ -430,3 +430,14 @@
 		}
 	}
 }
+
+@media (max-width: 640px) {
+	.flashcard-settings-tab .setting-item {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.flashcard-settings-tab .setting-item-info {
+		width: 100%;
+	}
+}

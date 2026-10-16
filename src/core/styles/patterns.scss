@@ -392,23 +392,3 @@
 		justify-content: flex-end;
 	}
 }
-
-@container flashcard-page (max-width: 768px) {
-	@include fc-rail-row-stacked;
-}
-
-@media (max-width: 768px) {
-	@include fc-rail-row-stacked;
-}
-
-@container flashcard-page (max-width: 640px) {
-	@include fc-hero-stacked;
-}
-
-@media (max-width: 640px) {
-	@include fc-hero-stacked;
-}
-
-.is-phone {
-	@include fc-hero-stacked;
-}
