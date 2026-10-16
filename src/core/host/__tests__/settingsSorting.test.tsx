@@ -2,6 +2,7 @@ import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { mountSettingsSorting } from "../settingsSorting";
 import { ReorderableList } from "../../ui/primitives/Sortable/Sortable";
+import { SortableInteraction } from "../../ui/primitives/Sortable/sortableInteraction";
 
 const adapter = vi.hoisted(() => ({
 	render: vi.fn(),
@@ -61,15 +62,14 @@ describe("Obsidian settings sorting adapter", () => {
 			},
 		} as unknown as HTMLElement;
 		const row = { id: "a", label: "Sort A", element, handleContainer: {} as HTMLElement };
-		const onMove = vi.fn(async () => {});
-		const dispose = mountSettingsSorting({} as HTMLElement, [row], "en", onMove);
+		const interaction = new SortableInteraction({ items: ["a"], onMove: vi.fn() });
+		const dispose = mountSettingsSorting({} as HTMLElement, [row], "en", interaction);
 		const list = adapter.render.mock.calls[0]![0] as React.ReactElement<
 			React.ComponentProps<typeof ReorderableList>
 		>;
 		expect(list.type).toBe(ReorderableList);
-		expect(list.props.items).toEqual(["a"]);
+		expect(list.props.interaction).toBe(interaction);
 		expect(list.props.language).toBe("en");
-		expect(list.props.onMove).toBe(onMove);
 		const binding = React.Children.toArray(list.props.children)[0] as React.ReactElement<{
 			row: typeof row;
 		}>;

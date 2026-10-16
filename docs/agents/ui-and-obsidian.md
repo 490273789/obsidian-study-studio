@@ -80,6 +80,26 @@ opening, closing, or save-completion behavior.
 - Do not derive competing readiness rules or raw deck-home statistics inside components.
 - Reorder through the semantic `reorder` action so the saved `deckOrder` and shared snapshot stay aligned.
 
+## Sorting interactions
+
+`SortableInteraction` in `src/core/ui/primitives/Sortable/sortableInteraction.ts`
+owns a displayed list's drag validity, immediate submission lock, optional preview,
+and stale-completion rejection. React acquires it with `useSortableInteraction`;
+imperative settings controls own its mount cleanup and pass it to their React sorting adapter.
+
+- Drag gestures and move buttons use the same interaction and stable item IDs.
+  Ordered-ID changes or disabling invalidate an unfinished gesture; same-content
+  array replacements preserve it. `ReorderableList` connects sensors and releases
+  unfinished gestures when its surface closes.
+- Owners retain authoritative order, ordering rules, persistence and error feedback.
+  Completion means the owner callback settled; video queue acceptance still precedes
+  background persistence. A new authoritative order replaces any local preview
+  without unlocking an accepted submission early.
+- Unmount releases presentation work while accepted owner writes continue. Old
+  completions cannot affect a replacement mount. Locks belong to each displayed list.
+- Test these sequences through the real interaction interface. Adapter tests cover
+  grid strategy and completed-deck grouping, native move buttons, and queue wiring.
+
 ## Word list
 
 `WordListViewport` in `src/features/flashcards/ui/views/WordList/` owns one view's

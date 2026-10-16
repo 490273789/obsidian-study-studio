@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useLayoutEffect, useState, useSyncExternalStore } from "react";
 import {
 	closestCenter,
 	DndContext,
@@ -8,6 +8,7 @@ import {
 	useSensor,
 	useSensors,
 	type DragEndEvent,
+	type DragStartEvent,
 	type SensorDescriptor,
 	type SensorOptions,
 } from "@dnd-kit/core";
@@ -16,12 +17,14 @@ import {
 	sortableKeyboardCoordinates,
 	useSortable,
 	verticalListSortingStrategy,
+	type SortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
 import { cls } from "../../../shared/classNames";
 import type { Language } from "../../../shared/types";
 import { createSharedTranslator } from "../../../i18n";
+import { SortableInteraction, type SortableInput } from "./sortableInteraction";
 
 const NO_SENSORS: SensorDescriptor<SensorOptions>[] = [];
 
@@ -53,47 +56,54 @@ export function sortableAccessibility(language: Language, items: readonly string
 	};
 }
 
-/** Presentation only: owners retain the authoritative order and persistence. */
+/** React owns the interaction lifetime; authoritative order still comes from the owner. */
+export function useSortableInteraction(input: SortableInput) {
+	const [interaction] = useState(() => new SortableInteraction(input));
+	useLayoutEffect(() => interaction.update(input));
+	useLayoutEffect(() => interaction.mount(), [interaction]);
+	const snapshot = useSyncExternalStore(
+		interaction.subscribe,
+		interaction.getSnapshot,
+		interaction.getSnapshot,
+	);
+	return { interaction, snapshot };
+}
+
+/** Grid, native settings rows and queue rows share the same input coordination. */
 export function ReorderableList({
-	items,
+	interaction,
 	language,
-	disabled = false,
-	onMove,
+	strategy = verticalListSortingStrategy,
 	children,
 }: {
-	items: readonly string[];
+	interaction: SortableInteraction;
 	language: Language;
-	disabled?: boolean;
-	onMove: (fromIndex: number, toIndex: number) => void | Promise<void>;
+	strategy?: SortingStrategy;
 	children: React.ReactNode;
 }) {
+	useLayoutEffect(() => () => interaction.cancelDrag(), [interaction]);
+	const snapshot = useSyncExternalStore(
+		interaction.subscribe,
+		interaction.getSnapshot,
+		interaction.getSnapshot,
+	);
 	const sensors = useSortableSensors();
-	const saving = useRef(false);
-	const [busy, setBusy] = useState(false);
+	function handleDragStart({ active }: DragStartEvent): void {
+		interaction.beginDrag(String(active.id));
+	}
 	function handleDragEnd({ active, over }: DragEndEvent): void {
-		if (disabled || saving.current || !over || active.id === over.id) return;
-		const fromIndex = items.indexOf(String(active.id));
-		const toIndex = items.indexOf(String(over.id));
-		if (fromIndex < 0 || toIndex < 0) return;
-		saving.current = true;
-		setBusy(true);
-		// Lock immediately, including when another input completes before React renders.
-		void Promise.resolve()
-			.then(() => onMove(fromIndex, toIndex))
-			.catch((error: unknown) => console.error("Reorder failed:", error))
-			.finally(() => {
-				saving.current = false;
-				setBusy(false);
-			});
+		interaction.drop(String(active.id), over ? String(over.id) : null);
 	}
 	return (
 		<DndContext
-			sensors={disabled || busy ? NO_SENSORS : sensors}
+			sensors={snapshot.disabled ? NO_SENSORS : sensors}
 			collisionDetection={closestCenter}
-			accessibility={sortableAccessibility(language, items)}
+			accessibility={sortableAccessibility(language, snapshot.items)}
+			onDragStart={handleDragStart}
 			onDragEnd={handleDragEnd}
+			onDragCancel={interaction.cancelDrag}
 		>
-			<SortableContext items={[...items]} strategy={verticalListSortingStrategy}>
+			<SortableContext items={[...snapshot.items]} strategy={strategy}>
 				{children}
 			</SortableContext>
 		</DndContext>

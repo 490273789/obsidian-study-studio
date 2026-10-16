@@ -1,6 +1,7 @@
 import { App, SecretComponent, Setting } from "obsidian";
 import type { Language } from "../shared/types";
 import { mountSettingsSorting, type SortableSettingRow } from "./settingsSorting";
+import { SortableInteraction } from "../ui/primitives/Sortable/sortableInteraction";
 import {
 	type SettingsActionRef,
 	type SettingsButtonSnapshot,
@@ -375,6 +376,26 @@ class SettingsControlRenderer {
 		}
 
 		const sortableRows: SortableSettingRow[] = [];
+		const ids = control.items.map((item) => item.id);
+		const sorting = new SortableInteraction({
+			items: ids,
+			disabled: control.disabled,
+			onMove: async ({ activeId, overId }) => {
+				const result = await presentation.invoke({
+					action: control.moveAction,
+					value: { fromIndex: ids.indexOf(activeId), toIndex: ids.indexOf(overId) },
+				});
+				if (result.status === "failed")
+					console.error("Settings action failed:", result.error);
+			},
+		});
+		this.disposers.push(sorting.mount());
+		const moveButtons: ((disabled: boolean) => void)[] = [];
+		this.disposers.push(
+			sorting.subscribe(() => {
+				for (const update of moveButtons) update(sorting.getSnapshot().disabled);
+			}),
+		);
 
 		control.items.forEach((item, index) => {
 			const row = new Setting(container);
@@ -398,28 +419,28 @@ class SettingsControlRenderer {
 			}
 
 			row.addExtraButton((button) => {
+				moveButtons.push((disabled) => button.setDisabled(disabled || index === 0));
 				button
 					.setIcon("arrow-up")
 					.setTooltip(control.tooltips.moveUp)
 					.setDisabled(control.disabled || index === 0);
-				button.onClick(() =>
-					this.dispatch(presentation, control.moveAction, {
-						fromIndex: index,
-						toIndex: index - 1,
-					}),
-				);
+				button.onClick(() => {
+					const target = ids[index - 1];
+					if (target !== undefined) sorting.move(item.id, target);
+				});
 			});
 			row.addExtraButton((button) => {
+				moveButtons.push((disabled) =>
+					button.setDisabled(disabled || index === control.items.length - 1),
+				);
 				button
 					.setIcon("arrow-down")
 					.setTooltip(control.tooltips.moveDown)
 					.setDisabled(control.disabled || index === control.items.length - 1);
-				button.onClick(() =>
-					this.dispatch(presentation, control.moveAction, {
-						fromIndex: index,
-						toIndex: index + 1,
-					}),
-				);
+				button.onClick(() => {
+					const target = ids[index + 1];
+					if (target !== undefined) sorting.move(item.id, target);
+				});
 			});
 			if (control.removeAction) {
 				const removeAction = control.removeAction;
@@ -440,21 +461,7 @@ class SettingsControlRenderer {
 		});
 		if (sortableRows.length > 1) {
 			const host = container.createDiv({ cls: "fc-settings-sort-context" });
-			this.disposers.push(
-				mountSettingsSorting(
-					host,
-					sortableRows,
-					this.language,
-					async (fromIndex, toIndex) => {
-						const result = await presentation.invoke({
-							action: control.moveAction,
-							value: { fromIndex, toIndex },
-						});
-						if (result.status === "failed")
-							console.error("Settings action failed:", result.error);
-					},
-				),
-			);
+			this.disposers.push(mountSettingsSorting(host, sortableRows, this.language, sorting));
 		}
 	}
 

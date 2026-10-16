@@ -5,24 +5,17 @@ import {
 	MouseSensor,
 	TouchSensor,
 	type DragEndEvent,
+	type DragStartEvent,
 	type DndContextProps,
 } from "@dnd-kit/core";
 import { ReorderableList, SortableRow, sortableAccessibility } from "../Sortable";
+import { SortableInteraction } from "../sortableInteraction";
 
-const hooks = vi.hoisted(() => ({ cursor: 0, state: [] as unknown[], ref: { current: false } }));
+const cleanups = vi.hoisted(() => [] as (() => void)[]);
 vi.mock("react", async (original) => ({
 	...(await original<typeof import("react")>()),
-	useRef: () => hooks.ref,
-	useState: (initial: unknown) => {
-		const index = hooks.cursor++;
-		if (!(index in hooks.state)) hooks.state[index] = initial;
-		return [
-			hooks.state[index],
-			(value: unknown) => {
-				hooks.state[index] = value;
-			},
-		];
-	},
+	useSyncExternalStore: (_subscribe: unknown, getSnapshot: () => unknown) => getSnapshot(),
+	useLayoutEffect: (effect: () => () => void) => cleanups.push(effect()),
 }));
 vi.mock("@dnd-kit/core", async (original) => ({
 	...(await original<typeof import("@dnd-kit/core")>()),
@@ -44,34 +37,23 @@ vi.mock("@dnd-kit/sortable", async (original) => ({
 }));
 
 beforeEach(() => {
-	hooks.cursor = 0;
-	hooks.state = [];
-	hooks.ref.current = false;
+	cleanups.splice(0);
 	sortable.isDragging = false;
 });
 
-function harness(onMove = vi.fn(), disabled = false) {
+function harness() {
+	const onMove = vi.fn();
+	const interaction = new SortableInteraction({ items: ["a", "b", "c"], onMove });
+	interaction.mount();
 	function render() {
-		hooks.cursor = 0;
-		return ReorderableList({
-			items: ["a", "b", "c"],
-			language: "zh",
-			disabled,
-			onMove,
-			children: null,
-		}).props as DndContextProps;
+		return ReorderableList({ interaction, language: "zh", children: null })
+			.props as DndContextProps;
 	}
-	function drop(active: string, over: string | null, props = render()) {
-		props.onDragEnd!({
-			active: { id: active },
-			over: over ? { id: over } : null,
-		} as DragEndEvent);
-	}
-	return { onMove, render, drop };
+	return { onMove, interaction, render };
 }
 
-describe("shared sortable interaction", () => {
-	it("uses the deck list's mouse, long-press touch and keyboard inputs", () => {
+describe("shared sortable adapter", () => {
+	it("uses mouse, long-press touch and keyboard sensors", () => {
 		const { sensors } = harness().render();
 		expect(sensors).toEqual([
 			{ sensor: MouseSensor, options: { activationConstraint: { distance: 6 } } },
@@ -83,63 +65,29 @@ describe("shared sortable interaction", () => {
 		]);
 	});
 
-	it.each([
-		["a", null],
-		["a", "a"],
-		["missing", "b"],
-		["a", "missing"],
-	] as const)("does not submit an invalid or unchanged drop (%s, %s)", async (active, over) => {
+	it("connects drag events to the real interaction and disables sensors while busy", () => {
 		const h = harness();
-		h.drop(active, over);
-		await Promise.resolve();
-		expect(h.onMove).not.toHaveBeenCalled();
-	});
-
-	it("submits indices once and locks all inputs until persistence settles", async () => {
-		let complete!: () => void;
-		const onMove = vi.fn(
-			() =>
-				new Promise<void>((resolve) => {
-					complete = resolve;
-				}),
-		);
-		const h = harness(onMove);
-		const captured = h.render();
-		h.drop("a", "c", captured);
-		h.drop("b", "a", captured);
-		await Promise.resolve();
-		expect(onMove).toHaveBeenCalledExactlyOnceWith(0, 2);
+		const props = h.render();
+		props.onDragStart!({ active: { id: "a" } } as DragStartEvent);
+		props.onDragEnd!({ active: { id: "a" }, over: { id: "c" } } as DragEndEvent);
+		expect(h.onMove).toHaveBeenCalledExactlyOnceWith({
+			activeId: "a",
+			overId: "c",
+			items: ["b", "c", "a"],
+		});
 		expect(h.render().sensors).toEqual([]);
-		complete();
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		expect(h.render().sensors).toHaveLength(3);
 	});
 
-	it("ignores late drops when the owner disables sorting", async () => {
-		const h = harness(vi.fn(), true);
-		expect(h.render().sensors).toEqual([]);
-		h.drop("a", "c");
-		await Promise.resolve();
+	it("cancels unfinished gestures on sensor cancellation and surface unmount", () => {
+		const h = harness();
+		const props = h.render();
+		props.onDragStart!({ active: { id: "a" } } as DragStartEvent);
+		props.onDragCancel!({} as DragEndEvent);
+		props.onDragEnd!({ active: { id: "a" }, over: { id: "c" } } as DragEndEvent);
+		props.onDragStart!({ active: { id: "a" } } as DragStartEvent);
+		for (const cleanup of cleanups) cleanup();
+		props.onDragEnd!({ active: { id: "a" }, over: { id: "c" } } as DragEndEvent);
 		expect(h.onMove).not.toHaveBeenCalled();
-	});
-
-	it("unlocks after a failed save and permits retry", async () => {
-		const error = vi.spyOn(console, "error").mockImplementation(() => {});
-		try {
-			const onMove = vi
-				.fn()
-				.mockRejectedValueOnce(new Error("failed"))
-				.mockResolvedValue(undefined);
-			const h = harness(onMove);
-			h.drop("a", "b");
-			await new Promise((resolve) => setTimeout(resolve, 0));
-			expect(h.render().sensors).toHaveLength(3);
-			h.drop("a", "b");
-			await new Promise((resolve) => setTimeout(resolve, 0));
-			expect(onMove).toHaveBeenCalledTimes(2);
-		} finally {
-			error.mockRestore();
-		}
 	});
 
 	it("only the handle activates sorting and the row carries motion", () => {

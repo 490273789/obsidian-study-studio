@@ -379,10 +379,12 @@ describe("renderSettingsControls", () => {
 			]!;
 		expect(call[1].map((row) => row.id)).toEqual(["first", "second"]);
 		expect(call[2]).toBe("en");
-		await call[3](0, 1);
+		call[3].move("first", "second");
+		await settle();
 		expect(moved).toHaveBeenCalledExactlyOnceWith(0, 1);
 		presentation.dispose();
-		await call[3](1, 0);
+		call[3].move("second", "first");
+		await settle();
 		expect(moved).toHaveBeenCalledTimes(1);
 		const unmount =
 			vi.mocked(mountSettingsSorting).mock.results[
@@ -392,6 +394,63 @@ describe("renderSettingsControls", () => {
 		dispose();
 		expect(unmount).toHaveBeenCalledTimes(1);
 	});
+
+	it.each(["drag", "button"] as const)(
+		"shares the pending lock between native move buttons and %s input",
+		async (firstInput) => {
+			let complete!: () => void;
+			const moved = vi.fn(
+				() =>
+					new Promise<void>((resolve) => {
+						complete = resolve;
+					}),
+			);
+			const presentation = defineSettings("example", (page) => {
+				page.group("general", "General", (group) => {
+					group.reorderable(
+						"sources",
+						{ name: "Sources" },
+						{
+							allowDrag: true,
+							items: ["first", "second"].map((id) => ({
+								id,
+								label: id,
+								kindLabel: "Local",
+								enabled: true,
+								onToggle: vi.fn(),
+							})),
+							onMove: moved,
+							tooltips: { drag: "Drag", moveUp: "Up", moveDown: "Down" },
+						},
+					);
+				});
+			});
+			const container = new MockElement("div", new MockDocument());
+			const dispose = renderSettingsControls({} as never, container as never, presentation);
+			const calls = vi.mocked(mountSettingsSorting).mock.calls;
+			const sorting = calls[calls.length - 1]![3];
+			const down = findAll(container, (node) => node.icon === "arrow-down")[0]!;
+			const up = findAll(container, (node) => node.icon === "arrow-up")[1]!;
+			if (firstInput === "drag") {
+				sorting.beginDrag("first");
+				sorting.drop("first", "second");
+			} else down.click();
+			expect(down.disabled).toBe(true);
+			expect(up.disabled).toBe(true);
+			// Deliberately dispatch the old callbacks even though native buttons are disabled.
+			up.click();
+			sorting.beginDrag("second");
+			sorting.drop("second", "first");
+			expect(moved).toHaveBeenCalledExactlyOnceWith(0, 1);
+			complete();
+			await settle();
+			expect(down.disabled).toBe(false);
+			expect(up.disabled).toBe(false);
+			dispose();
+			up.click();
+			expect(moved).toHaveBeenCalledTimes(1);
+		},
+	);
 
 	it.each([
 		{ allowDrag: false, disabled: false, count: 2 },

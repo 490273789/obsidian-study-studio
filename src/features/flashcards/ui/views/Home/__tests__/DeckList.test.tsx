@@ -1,11 +1,13 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { DndContext, KeyboardSensor, MouseSensor, TouchSensor } from "@dnd-kit/core";
-import type { DragEndEvent, DndContextProps } from "@dnd-kit/core";
+import { KeyboardSensor, MouseSensor, TouchSensor } from "@dnd-kit/core";
+import type { DragEndEvent, DragStartEvent, DndContextProps } from "@dnd-kit/core";
 import { rectSortingStrategy } from "@dnd-kit/sortable";
 import type { DeckHome, DeckHomeSnapshot } from "../../../../domain/decks/deckHome";
 import { restoreDailyLearningActivity } from "../../../../domain/history/dailyLearningActivity";
 import { DeckList } from "../DeckList";
+import { ReorderableList } from "../../../../../../core/ui/primitives/Sortable/Sortable";
+import type { SortableInteraction } from "../../../../../../core/ui/primitives/Sortable/sortableInteraction";
 
 // Exercise the component's events and emitted dnd-kit boundary in node. Sensor
 // classes remain real; native DOM hit testing is outside this adapter test.
@@ -30,7 +32,29 @@ vi.mock("react", async (original) => ({
 	useId: () => "completed-decks",
 	useCallback: (callback: unknown) => callback,
 	useEffect: () => {},
+	useLayoutEffect: () => {},
+	useSyncExternalStore: (_subscribe: unknown, read: () => unknown) => read(),
 }));
+const sortingAdapter = vi.hoisted(() => ({ interaction: null as SortableInteraction | null }));
+vi.mock("../../../../../../core/ui/primitives/Sortable/Sortable", async (original) => {
+	const actual =
+		await original<typeof import("../../../../../../core/ui/primitives/Sortable/Sortable")>();
+	const { SortableInteraction } =
+		await import("../../../../../../core/ui/primitives/Sortable/sortableInteraction");
+	return {
+		...actual,
+		useSortableInteraction: (input: ConstructorParameters<typeof SortableInteraction>[0]) => {
+			if (!sortingAdapter.interaction) {
+				sortingAdapter.interaction = new SortableInteraction(input);
+				sortingAdapter.interaction.mount();
+			} else sortingAdapter.interaction.update(input);
+			return {
+				interaction: sortingAdapter.interaction,
+				snapshot: sortingAdapter.interaction.getSnapshot(),
+			};
+		},
+	};
+});
 vi.mock("@dnd-kit/sortable", async (original) => ({
 	...(await original<typeof import("@dnd-kit/sortable")>()),
 	useSortable: ({ id }: { id: string }) => ({
@@ -56,6 +80,7 @@ vi.mock("../LearningFootprint", () => ({ LearningFootprint: () => null }));
 beforeEach(() => {
 	hooks.cursor = 0;
 	hooks.state = [];
+	sortingAdapter.interaction = null;
 	drag.activeId = null;
 	drag.transforms = {};
 	vi.stubGlobal("requestAnimationFrame", () => 1);
@@ -189,7 +214,11 @@ function harness(decks?: DeckOverrides[]) {
 		tree = component(props);
 	}
 	function dnd(): DndContextProps {
-		return findElement(tree, (element) => element.type === DndContext).props as DndContextProps;
+		const list = findElement(
+			tree,
+			(element) => element.type === ReorderableList,
+		) as React.ReactElement<React.ComponentProps<typeof ReorderableList>>;
+		return ReorderableList(list.props).props as DndContextProps;
 	}
 	function findAll(
 		node: React.ReactNode,
@@ -219,7 +248,9 @@ function harness(decks?: DeckOverrides[]) {
 		render();
 	}
 	function drop(): void {
-		dnd().onDragEnd!({ active: { id: "first" }, over: { id: "second" } } as DragEndEvent);
+		const props = dnd();
+		props.onDragStart!({ active: { id: "first" } } as DragStartEvent);
+		props.onDragEnd!({ active: { id: "first" }, over: { id: "second" } } as DragEndEvent);
 		render();
 	}
 	function clickTreeButton(className: string): void {
@@ -268,6 +299,9 @@ function renderDeckCard(
 describe("deck reorder availability", () => {
 	it("keeps scale on the dragged deck when another deck enters its original position", () => {
 		const h = harness();
+		expect((h.dnd().children as React.ReactElement<{ strategy: unknown }>).props.strategy).toBe(
+			rectSortingStrategy,
+		);
 		const cards = h.findAll(h.tree(), (element) => element.props.deck !== undefined);
 		const [first, second] = cards;
 		drag.activeId = first!.props.deck!.id;
@@ -338,6 +372,7 @@ describe("deck reorder availability", () => {
 			expect(h.act).toHaveBeenCalledTimes(1);
 			settle();
 			await Promise.resolve();
+			await Promise.resolve();
 			h.render();
 			expect(h.dnd().sensors?.map((entry) => entry.sensor)).toEqual([
 				MouseSensor,
@@ -349,9 +384,60 @@ describe("deck reorder availability", () => {
 
 	it("ignores a pending sensor's late drop after the menu disables sorting", () => {
 		const h = harness();
+		const pending = h.dnd();
+		pending.onDragStart!({ active: { id: "first" } } as DragStartEvent);
 		h.clickCardButton("flashcard-deck-action-more");
-		h.drop();
+		pending.onDragEnd!({ active: { id: "first" }, over: { id: "second" } } as DragEndEvent);
 		expect(h.act).not.toHaveBeenCalled();
+	});
+
+	it("previews the working order and appends completed decks only in the owner's save", () => {
+		const h = harness([
+			{ id: "first", totalCards: 5, newCards: 5 },
+			{ id: "finished", totalCards: 5, newCards: 0 },
+			{ id: "second", totalCards: 5, newCards: 5 },
+		]);
+		h.drop();
+		expect(h.deckIds()).toEqual(["second", "first"]);
+		expect(h.act).toHaveBeenCalledExactlyOnceWith({
+			kind: "reorder",
+			deckIds: ["second", "first", "finished"],
+		});
+	});
+
+	it("invalidates a pending gesture when the owner replaces the ordered deck IDs", () => {
+		const h = harness();
+		const pending = h.dnd();
+		pending.onDragStart!({ active: { id: "first" } } as DragStartEvent);
+		h.props.snapshot = { ...h.props.snapshot, decks: [...h.props.snapshot.decks].reverse() };
+		h.render();
+		pending.onDragEnd!({ active: { id: "first" }, over: { id: "second" } } as DragEndEvent);
+		expect(h.act).not.toHaveBeenCalled();
+	});
+
+	it("shows the latest owner snapshot after a failed save, including newly added decks", async () => {
+		const h = harness();
+		let fail!: () => void;
+		h.act.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					fail = () => resolve({ kind: "failed", message: "save failed" });
+				}),
+		);
+		h.drop();
+		h.props.snapshot = {
+			...h.props.snapshot,
+			decks: [{ ...h.props.snapshot.decks[0]!, id: "third" }, ...h.props.snapshot.decks],
+		};
+		h.render();
+		expect(h.deckIds()).toEqual(["third", "first", "second"]);
+		expect(h.dnd().sensors).toEqual([]);
+		fail();
+		await Promise.resolve();
+		await Promise.resolve();
+		h.render();
+		expect(h.deckIds()).toEqual(["third", "first", "second"]);
+		expect(h.dnd().sensors).toHaveLength(3);
 	});
 });
 

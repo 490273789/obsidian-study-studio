@@ -1,6 +1,7 @@
 import React from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { ReorderableList, SortableRow } from "../../../../core/ui/primitives/Sortable/Sortable";
+import type { SortableInteraction } from "../../../../core/ui/primitives/Sortable/sortableInteraction";
 import type { VideoPlayerSnapshot } from "../../domain/types";
 import type { VideoPlayerRuntime } from "../../domain/videoPlayerRuntime";
 import { normalizeVideoPlayerSettings } from "../../settings/slice";
@@ -15,6 +16,32 @@ vi.mock("react", async (original) => ({
 	useSyncExternalStore: (_subscribe: unknown, getSnapshot: () => unknown) => getSnapshot(),
 	useCallback: (callback: unknown) => callback,
 }));
+
+// Replace only the React hook lifecycle; reorder behavior uses the real shared module.
+const sortingAdapter = vi.hoisted(() => ({
+	interaction: null as SortableInteraction | null,
+}));
+vi.mock("../../../../core/ui/primitives/Sortable/Sortable", async (original) => {
+	const actual =
+		await original<typeof import("../../../../core/ui/primitives/Sortable/Sortable")>();
+	const { SortableInteraction } =
+		await import("../../../../core/ui/primitives/Sortable/sortableInteraction");
+	return {
+		...actual,
+		useSortableInteraction: (input: ConstructorParameters<typeof SortableInteraction>[0]) => {
+			if (!sortingAdapter.interaction) {
+				sortingAdapter.interaction = new SortableInteraction(input);
+				sortingAdapter.interaction.mount();
+			} else {
+				sortingAdapter.interaction.update(input);
+			}
+			return {
+				interaction: sortingAdapter.interaction,
+				snapshot: sortingAdapter.interaction.getSnapshot(),
+			};
+		},
+	};
+});
 
 function findElement<P>(
 	node: React.ReactNode,
@@ -49,6 +76,7 @@ function expectNoNativeDrag(node: React.ReactNode): void {
 }
 
 function harness() {
+	sortingAdapter.interaction = null;
 	const reorderSources = vi.fn();
 	const selectSource = vi.fn();
 	const snapshot: VideoPlayerSnapshot = {
@@ -85,21 +113,27 @@ function harness() {
 		act: () => ({ kind: "applied" }),
 		dispose: vi.fn(),
 	};
-	const tree = VideoPlayerView({
-		runtime,
-		view,
-		language: "en",
-		rootEl: { ownerDocument: {} } as HTMLElement,
-		settings: normalizeVideoPlayerSettings(undefined),
-		onFocusExisting: vi.fn(),
-		onOpenSettings: vi.fn(),
-		onPickVideos: vi.fn(async () => []),
-		onPickReplacement: vi.fn(async () => null),
-	});
-	const list = findElement<React.ComponentProps<typeof ReorderableList>>(
-		tree,
-		(element) => element.type === ReorderableList,
-	);
+	const render = () =>
+		VideoPlayerView({
+			runtime,
+			view,
+			language: "en",
+			rootEl: { ownerDocument: {} } as HTMLElement,
+			settings: normalizeVideoPlayerSettings(undefined),
+			onFocusExisting: vi.fn(),
+			onOpenSettings: vi.fn(),
+			onPickVideos: vi.fn(async () => []),
+			onPickReplacement: vi.fn(async () => null),
+		});
+	let list: React.ReactElement<React.ComponentProps<typeof ReorderableList>>;
+	function rerender() {
+		list = findElement<React.ComponentProps<typeof ReorderableList>>(
+			render(),
+			(element) => element.type === ReorderableList,
+		);
+		return list;
+	}
+	rerender();
 	function row(id: string) {
 		return findElement<React.ComponentProps<typeof SortableRow>>(
 			list.props.children,
@@ -109,15 +143,26 @@ function harness() {
 	function content(id: string) {
 		return row(id).props.children(<button type="button" aria-label="shared drag handle" />);
 	}
-	return { reorderSources, selectSource, snapshot, list, row, content };
+	return {
+		reorderSources,
+		selectSource,
+		snapshot,
+		get list() {
+			return list;
+		},
+		row,
+		content,
+		rerender,
+	};
 }
 
 describe("video queue sorting", () => {
-	it("passes source IDs and language to shared sorting and persists the moved order", async () => {
+	it("passes source IDs and language to shared sorting and persists the moved order", () => {
 		const h = harness();
-		expect(h.list.props.items).toEqual(["first", "second", "third"]);
+		expect(h.list.props.interaction.getSnapshot().items).toEqual(["first", "second", "third"]);
 		expect(h.list.props.language).toBe("en");
-		await h.list.props.onMove(0, 2);
+		h.list.props.interaction.beginDrag("first");
+		h.list.props.interaction.drop("first", "third");
 		expect(h.reorderSources).toHaveBeenCalledExactlyOnceWith(["second", "third", "first"]);
 		expect(h.selectSource).not.toHaveBeenCalled();
 		expect(h.snapshot.currentSourceId).toBe("second");
@@ -148,7 +193,7 @@ describe("video queue sorting", () => {
 
 	it("renders only the shared handle and removes native drag event wiring", () => {
 		const h = harness();
-		for (const id of h.list.props.items) {
+		for (const id of h.list.props.interaction.getSnapshot().items) {
 			const row = h.row(id);
 			expect(row.props.handleLabel).toBe(videoPlayerStrings("en").dragToReorder);
 			expect(row.props).not.toHaveProperty("onDrop");
@@ -181,5 +226,36 @@ describe("video queue sorting", () => {
 			(element) => element.props.label === "Move down",
 		);
 		expect(lastDown.props.disabled).toBe(true);
+	});
+
+	it("coordinates drag and move buttons through one busy interaction", async () => {
+		const h = harness();
+		const interaction = h.list.props.interaction;
+		interaction.beginDrag("first");
+		interaction.drop("first", "third");
+		expect(interaction.getSnapshot().busy).toBe(true);
+		h.rerender();
+		expect(h.list.props.interaction).toBe(interaction);
+		const down = findElement<{ label?: string; disabled?: boolean; onClick(): void }>(
+			h.content("first"),
+			(element) => element.props.label === "Move down",
+		);
+		expect(down.props.disabled).toBe(true);
+		// A stale handler must also respect the shared lock.
+		down.props.onClick();
+		expect(h.reorderSources).toHaveBeenCalledTimes(1);
+		await Promise.resolve();
+		h.rerender();
+		const availableDown = findElement<{ label?: string; disabled?: boolean; onClick(): void }>(
+			h.content("first"),
+			(element) => element.props.label === "Move down",
+		);
+		expect(availableDown.props.disabled).toBe(false);
+		availableDown.props.onClick();
+		expect(h.reorderSources).toHaveBeenNthCalledWith(2, ["second", "first", "third"]);
+		expect(interaction.getSnapshot().busy).toBe(true);
+		interaction.beginDrag("third");
+		interaction.drop("third", "first");
+		expect(h.reorderSources).toHaveBeenCalledTimes(2);
 	});
 });

@@ -3,6 +3,7 @@ import { createPortal, flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { Language } from "../shared/types";
 import { ReorderableList, useSortableItem } from "../ui/primitives/Sortable/Sortable";
+import type { SortableInteraction } from "../ui/primitives/Sortable/sortableInteraction";
 
 export interface SortableSettingRow {
 	id: string;
@@ -16,12 +17,12 @@ export function mountSettingsSorting(
 	container: HTMLElement,
 	rows: readonly SortableSettingRow[],
 	language: Language,
-	onMove: (fromIndex: number, toIndex: number) => Promise<void>,
+	interaction: SortableInteraction,
 ): () => void {
 	const root = createRoot(container);
 	flushSync(() => {
 		root.render(
-			<ReorderableList items={rows.map((row) => row.id)} language={language} onMove={onMove}>
+			<ReorderableList interaction={interaction} language={language}>
 				{rows.map((row) => (
 					<SettingsSortBinding key={row.id} row={row} />
 				))}

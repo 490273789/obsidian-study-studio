@@ -21,7 +21,11 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { FlashcardButton } from "../../../core/ui/primitives/Button";
 import { FlashcardHeader } from "../../../core/ui/primitives/Header";
-import { ReorderableList, SortableRow } from "../../../core/ui/primitives/Sortable/Sortable";
+import {
+	ReorderableList,
+	SortableRow,
+	useSortableInteraction,
+} from "../../../core/ui/primitives/Sortable/Sortable";
 import { cls } from "../../../core/shared/classNames";
 import type { Language } from "../../../core/shared/types";
 import type { LocalVideoSource, VideoPlayerSnapshot } from "../domain/types";
@@ -71,6 +75,11 @@ export function VideoPlayerView({
 		(listener) => view.subscribe(listener),
 		() => view.getSnapshot(),
 	);
+	const { interaction: sorting, snapshot: sortingSnapshot } = useSortableInteraction({
+		items: snapshot.sources.map((source) => source.id),
+		disabled: viewSnapshot.role !== "presenter" || !viewSnapshot.queueExpanded,
+		onMove: (move) => runtime.reorderSources(move.items),
+	});
 	const t = videoPlayerStrings(language);
 	const document = rootEl.ownerDocument;
 	const floating = viewSnapshot.presentation.kind === "floating";
@@ -224,13 +233,7 @@ export function VideoPlayerView({
 							</div>
 							{viewSnapshot.queueExpanded && (
 								<div className={styles.queueList}>
-									<ReorderableList
-										items={snapshot.sources.map((source) => source.id)}
-										language={language}
-										onMove={(from, to) =>
-											moveSource(runtime, snapshot.sources, from, to)
-										}
-									>
+									<ReorderableList interaction={sorting} language={language}>
 										{snapshot.sources.map((source, index) => {
 											const isActive = source.id === snapshot.currentSourceId;
 											const progressLabel = sourceProgressLabel(
@@ -303,13 +306,18 @@ export function VideoPlayerView({
 																				styles.actionBtn
 																			}
 																			label={t.moveUp}
-																			disabled={index === 0}
+																			disabled={
+																				sortingSnapshot.disabled ||
+																				index === 0
+																			}
 																			onClick={() =>
-																				moveSource(
-																					runtime,
-																					snapshot.sources,
-																					index,
-																					index - 1,
+																				sorting.move(
+																					source.id,
+																					snapshot
+																						.sources[
+																						index - 1
+																					]?.id ??
+																						source.id,
 																				)
 																			}
 																		/>
@@ -321,17 +329,20 @@ export function VideoPlayerView({
 																			}
 																			label={t.moveDown}
 																			disabled={
+																				sortingSnapshot.disabled ||
 																				index ===
-																				snapshot.sources
-																					.length -
-																					1
+																					snapshot.sources
+																						.length -
+																						1
 																			}
 																			onClick={() =>
-																				moveSource(
-																					runtime,
-																					snapshot.sources,
-																					index,
-																					index + 1,
+																				sorting.move(
+																					source.id,
+																					snapshot
+																						.sources[
+																						index + 1
+																					]?.id ??
+																						source.id,
 																				)
 																			}
 																		/>
@@ -703,18 +714,6 @@ function IconButton({
 			onClick={() => void onClick()}
 		/>
 	);
-}
-
-function moveSource(
-	runtime: VideoPlayerRuntime,
-	sources: readonly LocalVideoSource[],
-	from: number,
-	to: number,
-): void {
-	if (to < 0 || to >= sources.length) return;
-	const ids = sources.map((source) => source.id);
-	ids.splice(to, 0, ...ids.splice(from, 1));
-	runtime.reorderSources(ids);
 }
 
 function formatTime(value: number): string {
