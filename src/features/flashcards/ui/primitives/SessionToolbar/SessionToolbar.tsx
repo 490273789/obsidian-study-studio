@@ -34,7 +34,6 @@ export function SessionToolbar({
 	progressPercent,
 	startTime,
 	busy = false,
-	metrics,
 	onEdit,
 	onDelete,
 	onClose,
