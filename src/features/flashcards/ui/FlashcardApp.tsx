@@ -31,6 +31,7 @@ import { ModalProvider } from "../../../core/ui/primitives/Modal";
 import { createAnswerPresentationTransition } from "./answerPresentationTransition";
 import { ChallengeSetupModal, ChallengeView, ChallengeSummary } from "./views/Challenge";
 import { FlashcardNavigation } from "./flashcardNavigation";
+import styles from "./FlashcardApp.module.scss";
 
 interface FlashcardAppProps {
 	app: App;
@@ -528,9 +529,22 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 		}
 	};
 
+	// Only page changes restart the animation. Card progress, settings updates,
+	// and the challenge setup overlay keep the current page (and its local state).
+	const pageKey =
+		presentedLifecycleSnapshot.kind === "idle"
+			? viewState.type === "challenge-setup"
+				? "home"
+				: "deckId" in viewState
+					? `${viewState.type}:${viewState.deckId}`
+					: viewState.type
+			: `${presentedLifecycleSnapshot.kind}:${presentedLifecycleSnapshot.mode}`;
+
 	return (
 		<ModalProvider host={modalHost}>
-			{renderContent()}
+			<div key={pageKey} className={styles.pageTransition} data-page={pageKey}>
+				{renderContent()}
+			</div>
 			{viewState.type === "challenge-setup" && presentedLifecycleSnapshot.kind === "idle" && (
 				<ChallengeSetupModal
 					readiness={deckHomeSnapshot.challenge}
