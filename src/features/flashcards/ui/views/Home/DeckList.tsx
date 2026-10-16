@@ -136,6 +136,17 @@ const DeckCard = memo(function DeckCard({
 		id: deck.id,
 		disabled: isOverlayOpen,
 	});
+	// Keep pickup scale in the same transform as translation: dnd-kit can then
+	// exclude it from measurements. Never inherit another slot's size ratio.
+	const cardTransform =
+		transform || isDragging
+			? {
+					x: transform?.x ?? 0,
+					y: transform?.y ?? 0,
+					scaleX: isDragging ? 0.95 : 1,
+					scaleY: isDragging ? 0.95 : 1,
+				}
+			: null;
 	const setDragNodeRef = useCallback(
 		(node: HTMLElement | null) => {
 			setNodeRef(node);
@@ -181,21 +192,6 @@ const DeckCard = memo(function DeckCard({
 		},
 	];
 
-	/**
-	 * The row itself is the pointer affordance. Drag activation needs 6px of
-	 * travel (`useSortableSensors`), so a plain click never starts a drag and
-	 * reaches this handler; the action cluster stops propagation.
-	 *
-	 * Keyboard deliberately stays with dnd-kit: `listeners` binds Space/Enter to
-	 * drag activation on this same element, so an `onKeyDown` here would either
-	 * be overridden or break keyboard reordering. The 学习 button below is the
-	 * keyboard path to the same destination.
-	 */
-	const handleOpenDeck = useCallback(() => {
-		if (isOverlayOpen) return;
-		onNavigate("study", deck.id);
-	}, [isOverlayOpen, onNavigate, deck.id]);
-
 	return (
 		// oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- dnd-kit owns the keyboard contract here: it supplies role="button", tabIndex and Space/Enter drag handling via `attributes`/`listeners`, and the 学习 button is the keyboard route to the same destination.
 		<article
@@ -209,7 +205,7 @@ const DeckCard = memo(function DeckCard({
 			data-deck-id={deck.id}
 			data-state={state}
 			style={{
-				transform: CSS.Transform.toString(transform),
+				transform: CSS.Transform.toString(cardTransform),
 				transition: getDeckCardTransition(isDragging, isRecentlyDropped, transition),
 			}}
 			/* dnd-kit supplies `role="button"`, `tabIndex` and its drag keyboard
@@ -218,7 +214,6 @@ const DeckCard = memo(function DeckCard({
 			{...attributes}
 			{...listeners}
 			aria-label={t("home.openDeck", { deckName: deck.name })}
-			onClick={handleOpenDeck}
 		>
 			<div className={cls("flashcard-deck-main fc-rail-row__main", styles.deckMain)}>
 				<div className={cls("flashcard-deck-headline", styles.deckHeadline)}>
@@ -622,7 +617,10 @@ export const DeckList = React.memo(function DeckList({
 		async (deckIds: string[]) => {
 			setIsOrderSaving(true);
 			try {
-				await home.act({ kind: "reorder", deckIds: [...deckIds, ...completedDeckIds] });
+				await home.act({
+					kind: "reorder",
+					deckIds: [...deckIds, ...completedDeckIds],
+				});
 			} finally {
 				setPreviewDeckIds(null);
 				setIsOrderSaving(false);
@@ -854,7 +852,9 @@ export const DeckList = React.memo(function DeckList({
 										aria-hidden="true"
 									/>
 									<Trophy size={12} aria-hidden="true" />
-									{t("footprint.bestStreak", { count: streak.bestStreak })}
+									{t("footprint.bestStreak", {
+										count: streak.bestStreak,
+									})}
 								</span>
 								<FlashcardButton
 									variant="secondary"

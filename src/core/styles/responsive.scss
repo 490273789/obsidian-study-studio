@@ -166,12 +166,6 @@
 		display: none;
 	}
 
-	.flashcard-modal-footer,
-	.flashcard-identity-migration-card {
-		flex-direction: column;
-		align-items: stretch;
-	}
-
 	/* Confirmation choices remain adjacent so both actions are immediately
 	   comparable and use the modal width evenly on phones. */
 	.flashcard-modal-footer.flashcard-confirm-footer {

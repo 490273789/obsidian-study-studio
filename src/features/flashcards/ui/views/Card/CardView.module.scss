@@ -78,6 +78,10 @@
 	.ratingBtn {
 		grid-column: span 2;
 	}
+	:global(button.flashcard-btn).ratingBtn {
+		flex-direction: row;
+		gap: var(--fc-space-2);
+	}
 	.rating1,
 	.rating2 {
 		grid-column: span 3;

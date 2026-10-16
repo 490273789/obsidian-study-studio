@@ -148,6 +148,14 @@
 	border-radius: var(--fc-radius-sm);
 	background: var(--fc-surface-card);
 }
+@media (max-width: 640px), (pointer: coarse) {
+	.shortcut {
+		display: none;
+	}
+}
+:global(.is-mobile) .shortcut {
+	display: none;
+}
 @container (max-width: 640px) {
 	.body {
 		padding-inline: var(--fc-space-2);
@@ -165,10 +173,10 @@
 		padding-inline: var(--fc-space-3);
 	}
 	.action {
-		align-items: stretch;
-		flex-direction: column;
-		gap: var(--fc-space-3);
 		padding: var(--fc-space-3);
+	}
+	.footer {
+		padding-inline: var(--fc-space-2);
 	}
 }
 
@@ -189,12 +197,6 @@
 
 	:global(.flashcard-header-title-content) {
 		font-size: var(--fc-font-xl);
-	}
-}
-
-@container (max-width: 640px) {
-	.footer {
-		padding-inline: var(--fc-space-2);
 	}
 }
 

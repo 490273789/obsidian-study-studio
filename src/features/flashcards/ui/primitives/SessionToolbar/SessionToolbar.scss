@@ -90,7 +90,6 @@
 
 @container session (max-width: 640px) {
 	.flashcard-session-header {
-		flex-wrap: wrap;
 		gap: var(--fc-space-2);
 		padding: var(--fc-space-2);
 	}
@@ -98,7 +97,6 @@
 		flex: 1;
 	}
 	.flashcard-session-header-tools {
-		width: 100%;
 		margin: 0;
 		padding-inline-start: var(--fc-space-2);
 	}

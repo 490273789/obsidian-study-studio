@@ -6,10 +6,10 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: var(--fc-control-sm);
-	height: var(--fc-control-sm);
-	min-width: var(--fc-control-sm);
-	min-height: var(--fc-control-sm);
+	width: var(--fc-control-md);
+	height: var(--fc-control-md);
+	min-width: var(--fc-control-md);
+	min-height: var(--fc-control-md);
 	padding: 0;
 	border: 1px solid rgba(var(--fc-cyan-rgb), 0.3);
 	border-radius: var(--fc-radius-sm);
@@ -52,13 +52,6 @@
 	to {
 		transform: translateY(-1px);
 		box-shadow: none;
-	}
-}
-
-@media (max-width: 600px), (pointer: coarse) {
-	.flashcard-root button.flashcard-btn.flashcard-pronunciation-button {
-		top: var(--fc-space-3);
-		left: var(--fc-space-3);
 	}
 }
 

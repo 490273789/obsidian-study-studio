@@ -1,5 +1,5 @@
-import React, { memo, useId } from "react";
-import { Sparkles, TriangleAlert, X } from "lucide-react";
+import { memo, useId } from "react";
+import { TriangleAlert, X } from "lucide-react";
 import { cls } from "../../../../../core/shared/classNames";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardCheckbox } from "../../../../../core/ui/primitives/Checkbox";
@@ -74,9 +74,6 @@ export const DeckSettingsModal = memo(function DeckSettingsModal({
 				<>
 					<div className="flashcard-modal-header">
 						<div className="flashcard-modal-heading">
-							<div className="flashcard-modal-kicker fc-kicker">
-								<Sparkles size={14} /> {t("deckSettings.kicker")}
-							</div>
 							<span id={titleId} className="flashcard-modal-title">
 								{t("deckSettings.title", {
 									deckName: draft.deckName,

@@ -2,6 +2,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { DndContext, KeyboardSensor, MouseSensor, TouchSensor } from "@dnd-kit/core";
 import type { DragEndEvent, DndContextProps } from "@dnd-kit/core";
+import { rectSortingStrategy } from "@dnd-kit/sortable";
 import type { DeckHome, DeckHomeSnapshot } from "../../../../domain/decks/deckHome";
 import { restoreDailyLearningActivity } from "../../../../domain/history/dailyLearningActivity";
 import { DeckList } from "../DeckList";
@@ -9,6 +10,10 @@ import { DeckList } from "../DeckList";
 // Exercise the component's events and emitted dnd-kit boundary in node. Sensor
 // classes remain real; native DOM hit testing is outside this adapter test.
 const hooks = vi.hoisted(() => ({ cursor: 0, state: [] as unknown[] }));
+const drag = vi.hoisted(() => ({
+	activeId: null as string | null,
+	transforms: {} as Record<string, { x: number; y: number; scaleX: number; scaleY: number }>,
+}));
 vi.mock("react", async (original) => ({
 	...(await original<typeof import("react")>()),
 	useState: (initial: unknown) => {
@@ -28,11 +33,13 @@ vi.mock("react", async (original) => ({
 }));
 vi.mock("@dnd-kit/sortable", async (original) => ({
 	...(await original<typeof import("@dnd-kit/sortable")>()),
-	useSortable: () => ({
+	useSortable: ({ id }: { id: string }) => ({
 		attributes: {},
 		listeners: {},
 		setNodeRef: () => {},
 		setActivatorNodeRef: () => {},
+		isDragging: drag.activeId === id,
+		transform: drag.transforms[id] ?? null,
 	}),
 }));
 vi.mock("@dnd-kit/core", async (original) => ({
@@ -49,6 +56,8 @@ vi.mock("../LearningFootprint", () => ({ LearningFootprint: () => null }));
 beforeEach(() => {
 	hooks.cursor = 0;
 	hooks.state = [];
+	drag.activeId = null;
+	drag.transforms = {};
 	vi.stubGlobal("requestAnimationFrame", () => 1);
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -56,6 +65,7 @@ afterEach(() => vi.unstubAllGlobals());
 interface ElementProps {
 	children?: React.ReactNode;
 	className?: string;
+	style?: React.CSSProperties;
 	onClick?: (event: { stopPropagation(): void }) => void;
 	deck?: { id: string };
 	"data-state"?: string;
@@ -256,6 +266,36 @@ function renderDeckCard(
 }
 
 describe("deck reorder availability", () => {
+	it("keeps scale on the dragged deck when another deck enters its original position", () => {
+		const h = harness();
+		const cards = h.findAll(h.tree(), (element) => element.props.deck !== undefined);
+		const [first, second] = cards;
+		drag.activeId = first!.props.deck!.id;
+		// Reproduce the geometry after pickup: the active row has visually shrunk.
+		const rects = [
+			{ left: 0, top: 0, width: 380, height: 95, right: 380, bottom: 95 },
+			{ left: 0, top: 100, width: 400, height: 100, right: 400, bottom: 200 },
+		];
+		for (const overIndex of [0, 1, 0, 1]) {
+			cards.forEach((card, index) => {
+				drag.transforms[card.props.deck!.id] = rectSortingStrategy({
+					activeIndex: 0,
+					overIndex,
+					index,
+					rects,
+					activeNodeRect: rects[0]!,
+				})!;
+			});
+			const dragged = renderDeckCard(first!);
+			const displaced = renderDeckCard(second!);
+			expect(dragged.props.style?.transform).toContain("scaleX(0.95) scaleY(0.95)");
+			expect(displaced.props.style?.transform).toContain("scaleX(1) scaleY(1)");
+		}
+		drag.activeId = null;
+		drag.transforms = {};
+		expect(renderDeckCard(first!).props.style?.transform).toBeUndefined();
+	});
+
 	it.each([
 		["mouse", MouseSensor],
 		["touch", TouchSensor],
