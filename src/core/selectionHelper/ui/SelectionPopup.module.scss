@@ -394,19 +394,6 @@
 	}
 }
 
-@media (pointer: coarse) {
-	.card {
-		.tab,
-		.favoriteButton,
-		.closeButton,
-		.openButton,
-		.aiGenerateBtn {
-			min-height: var(--fc-control-touch);
-			min-width: var(--fc-control-touch);
-		}
-	}
-}
-
 @keyframes bubblePop {
 	from {
 		opacity: 0;

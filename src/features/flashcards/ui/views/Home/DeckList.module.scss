@@ -648,7 +648,7 @@
 
 @media (max-width: #{breakpoints.$phone}) {
 	:global(.flashcard-home.fc-page) {
-		gap: var(--fc-space-2);
+		gap: var(--fc-space-3);
 	}
 
 	.deckList {
@@ -722,12 +722,6 @@
 
 @media (max-width: #{breakpoints.$tablet}) {
 	@include home-actions-grid;
-}
-
-@media (pointer: coarse) {
-	.deckActions {
-		--fc-deck-tool-size: 40px;
-	}
 }
 
 @container flashcard-pane (max-width: #{breakpoints.$tablet}) {

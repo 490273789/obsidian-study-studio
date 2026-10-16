@@ -159,13 +159,16 @@
 }
 @container (max-width: #{breakpoints.$phone}) {
 	.body {
-		padding-inline: var(--fc-space-2);
+		padding: var(--fc-space-3) var(--fc-space-2);
 		scroll-padding-block: var(--fc-space-3);
 	}
 	.hero:global(.fc-hero) {
 		grid-template-columns: minmax(0, 1fr) auto;
 		gap: var(--fc-space-4);
 		padding: var(--fc-space-4);
+	}
+	.column {
+		gap: var(--fc-space-2);
 	}
 	.figure {
 		padding-inline-start: var(--fc-space-2);

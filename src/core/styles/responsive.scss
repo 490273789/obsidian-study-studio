@@ -23,9 +23,12 @@
 		border-radius: 0;
 	}
 
-	.fc-page,
+	.fc-page {
+		gap: var(--fc-space-2);
+	}
 	.fc-page__body {
-		gap: var(--fc-space-3);
+		gap: var(--fc-space-2);
+		padding: var(--fc-space-2);
 	}
 
 	@include patterns.fc-hero-stacked;

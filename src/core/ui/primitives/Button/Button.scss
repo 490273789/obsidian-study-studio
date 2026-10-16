@@ -106,18 +106,6 @@
 		--fc-button-border-hover: var(--fc-danger);
 		--fc-button-text: var(--fc-button-ink);
 	}
-
-	@media (pointer: coarse) {
-		// Preserve compact desktop density while giving touch controls a real target.
-		height: auto;
-		min-width: max(var(--fc-button-height), var(--fc-control-touch));
-		min-height: max(var(--fc-button-height), var(--fc-control-touch));
-
-		&:where(.flashcard-btn-icon, .flashcard-btn-prev) {
-			min-width: max(var(--fc-button-height), var(--fc-control-touch));
-			height: max(var(--fc-button-height), var(--fc-control-touch));
-		}
-	}
 }
 
 // Only appearance needs extra specificity against the host. Keep dimensions,

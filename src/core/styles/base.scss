@@ -44,12 +44,12 @@
 
 	--fc-control-sm: 30px;
 	--fc-control-md: 36px;
-	--fc-control-lg: 40px;
-	--fc-control-touch: 40px;
-	// @media (pointer: coarse) {
-	// 	--fc-control-md: var(--fc-control-touch);
-	// 	--fc-control-lg: var(--fc-control-touch);
-	// }
+	--fc-control-lg: 42px;
+	@media (max-width: #{breakpoints.$phone}) {
+		--fc-control-sm: 36px;
+		--fc-control-md: 40px;
+		--fc-control-lg: 44px;
+	}
 	--fc-header-height: 44px;
 	--fc-layout-max-width: #{breakpoints.$tablet};
 	--fc-mobile-bottom-padding: 46px;
