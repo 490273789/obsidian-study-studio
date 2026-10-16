@@ -84,6 +84,7 @@
 
 /* The container the mount seam adds for every workbench view. */
 .workspace-leaf-content .flashcard-container {
+	container: flashcard-pane / inline-size;
 	height: 100%;
 	overflow: hidden;
 	overscroll-behavior: contain;

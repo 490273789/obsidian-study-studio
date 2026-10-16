@@ -1,3 +1,4 @@
+@use "../../../../../core/styles/breakpoints.scss";
 @use "../../../../../core/styles/mixins.scss" as *;
 
 /*
@@ -640,12 +641,12 @@
 	}
 }
 
-@container flashcard-page (max-width: 640px) {
+@container flashcard-page (max-width: #{breakpoints.$phone}) {
 	@include compact-deck-layout;
 	@include home-header-compact;
 }
 
-@media (max-width: 640px) {
+@media (max-width: #{breakpoints.$phone}) {
 	:global(.flashcard-home.fc-page) {
 		gap: var(--fc-space-2);
 	}
@@ -719,11 +720,7 @@
 	}
 }
 
-@container flashcard-page (max-width: 768px) {
-	@include home-actions-grid;
-}
-
-@media (max-width: 768px) {
+@media (max-width: #{breakpoints.$tablet}) {
 	@include home-actions-grid;
 }
 
@@ -733,7 +730,9 @@
 	}
 }
 
-@container flashcard-page (max-width: 960px) {
+@container flashcard-pane (max-width: #{breakpoints.$tablet}) {
+	@include home-actions-grid;
+
 	.workspace {
 		display: flex;
 		flex-direction: column;

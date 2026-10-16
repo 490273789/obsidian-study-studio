@@ -1,3 +1,4 @@
+@use "../../../styles/breakpoints.scss";
 // =============================================================================
 // ConfirmDialog Primitive Styles (SCSS)
 // =============================================================================
@@ -130,7 +131,7 @@
 	}
 }
 
-@media (max-width: 640px) {
+@media (max-width: #{breakpoints.$phone}) {
 	/* Confirmation choices remain adjacent so both actions are immediately
 	   comparable and use the modal width evenly on phones. */
 	.flashcard-modal-footer.flashcard-confirm-footer {

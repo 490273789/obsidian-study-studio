@@ -1,3 +1,4 @@
+@use "../../../../../core/styles/breakpoints.scss";
 .responseControls {
 	display: grid;
 	grid-template-columns: var(--fc-control-md) minmax(0, 1fr);
@@ -40,7 +41,7 @@
 .btnCorrect {
 	--fc-button-accent: var(--fc-lime);
 }
-@container session (max-width: 640px) {
+@container session (max-width: #{breakpoints.$phone}) {
 	.responseControls,
 	.answerButtons {
 		gap: var(--fc-space-2);

@@ -1,3 +1,4 @@
+@use "../../../../../core/styles/breakpoints.scss";
 .flashcard-session-shell {
 	flex-shrink: 0;
 	position: relative;
@@ -88,7 +89,7 @@
 	font-variant-numeric: tabular-nums;
 }
 
-@container session (max-width: 640px) {
+@container session (max-width: #{breakpoints.$phone}) {
 	.flashcard-session-header {
 		gap: var(--fc-space-2);
 		padding: var(--fc-space-2);

@@ -1,3 +1,5 @@
+@use "./breakpoints.scss";
+
 /*
  * StudyStudio editorial UI foundations
  * Scope all styles to the plugin root/settings tab to avoid leaking into Obsidian.
@@ -49,7 +51,7 @@
 	// 	--fc-control-lg: var(--fc-control-touch);
 	// }
 	--fc-header-height: 44px;
-	--fc-layout-max-width: 960px;
+	--fc-layout-max-width: #{breakpoints.$tablet};
 	--fc-mobile-bottom-padding: 46px;
 
 	/* ── 文本层级 ───────────────────────────────────────────── */

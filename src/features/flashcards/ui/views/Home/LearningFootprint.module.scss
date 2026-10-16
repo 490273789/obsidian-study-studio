@@ -1,3 +1,4 @@
+@use "../../../../../core/styles/breakpoints.scss";
 @use "../../../../../core/styles/mixins.scss" as *;
 
 /*
@@ -342,7 +343,7 @@ button.cell:not(:disabled) {
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
 @mixin footprint-compact {
-	--fc-heatmap-cell: 10px;
+	--fc-heatmap-cell: clamp(9px, 2.5cqi, 10px);
 	--fc-heatmap-gap: 3px;
 
 	padding: var(--fc-space-3);
@@ -358,21 +359,15 @@ button.cell:not(:disabled) {
 	}
 }
 
-@container flashcard-page (max-width: 640px) {
+@container flashcard-page (max-width: #{breakpoints.$phone}) {
 	.panel {
 		@include footprint-compact;
 	}
 }
 
-@media (max-width: 640px) {
+@media (max-width: #{breakpoints.$phone}) {
 	.panel {
 		@include footprint-compact;
-	}
-}
-
-@media (max-width: 400px) {
-	.panel {
-		--fc-heatmap-cell: 9px;
 	}
 }
 

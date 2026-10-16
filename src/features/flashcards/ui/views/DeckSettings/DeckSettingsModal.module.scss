@@ -1,3 +1,4 @@
+@use "../../../../../core/styles/breakpoints.scss";
 // =============================================================================
 // DeckSettingsModal Styles (SCSS Module)
 // =============================================================================
@@ -123,7 +124,7 @@
 	}
 }
 
-@media (max-width: 640px) {
+@media (max-width: #{breakpoints.$phone}) {
 	.purposeHeading,
 	.warning {
 		flex-direction: column;

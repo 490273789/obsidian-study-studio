@@ -1,3 +1,4 @@
+@use "../../../../../core/styles/breakpoints.scss";
 .summary {
 	position: relative;
 	container-type: inline-size;
@@ -178,7 +179,7 @@
 	overflow-wrap: anywhere;
 }
 
-@container (max-width: 480px) {
+@container (max-width: #{breakpoints.$phone}) {
 	.overview {
 		padding: var(--fc-space-4);
 	}

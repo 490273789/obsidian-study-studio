@@ -1,3 +1,4 @@
+@use "../../../../../core/styles/breakpoints.scss";
 .view:global(.flashcard-study):focus-within {
 	padding-bottom: max(var(--fc-space-2), var(--fc-keyboard-inset, 0px));
 }
@@ -52,7 +53,7 @@
 .btnCorrect {
 	--fc-button-accent: var(--fc-lime);
 }
-@container session (max-width: 640px) {
+@container session (max-width: #{breakpoints.$phone}) {
 	.inputGroup,
 	.feedback {
 		padding-inline: var(--fc-space-4);

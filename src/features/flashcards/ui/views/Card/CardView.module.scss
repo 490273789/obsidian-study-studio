@@ -1,3 +1,4 @@
+@use "../../../../../core/styles/breakpoints.scss";
 .responseControls {
 	display: grid;
 	grid-template-columns: var(--fc-control-md) minmax(0, 1fr);
@@ -68,7 +69,7 @@
 .rating5 {
 	--fc-rating-color: var(--fc-primary);
 }
-@container session (max-width: 640px) {
+@container session (max-width: #{breakpoints.$phone}) {
 	.responseControls {
 		gap: var(--fc-space-2);
 	}

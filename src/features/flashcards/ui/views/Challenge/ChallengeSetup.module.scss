@@ -58,7 +58,7 @@
 
 .modeGrid {
 	display: grid;
-	grid-template-columns: repeat(2, minmax(0, 1fr));
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
 	gap: var(--fc-space-3);
 }
 
@@ -123,12 +123,6 @@
 	}
 }
 
-@container (max-width: 400px) {
-	.modeGrid {
-		grid-template-columns: 1fr;
-	}
-
-	.setupModal :global(.flashcard-modal-footer) > button {
-		flex: 1 1 auto;
-	}
+.setupModal :global(.flashcard-modal-footer) > button {
+	flex: 1 1 auto;
 }

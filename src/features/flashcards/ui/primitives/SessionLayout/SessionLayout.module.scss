@@ -1,3 +1,4 @@
+@use "../../../../../core/styles/breakpoints.scss";
 @use "../../../../../core/styles/mixins.scss" as *;
 
 .page:global(.flashcard-study) {
@@ -40,7 +41,7 @@
 	}
 }
 
-@container session (max-width: 640px) {
+@container session (max-width: #{breakpoints.$phone}) {
 	.footer:global(.flashcard-footer) {
 		gap: var(--fc-space-2);
 		padding: var(--fc-space-2) 0;
@@ -71,7 +72,7 @@
 	}
 }
 
-@media (max-width: 640px) {
+@media (max-width: #{breakpoints.$phone}) {
 	.page:global(.flashcard-study) {
 		overflow: hidden;
 	}

@@ -1,26 +1,22 @@
 /* Shared viewport and pane adaptations. Component overrides live beside their styles. */
 @use "./patterns.scss";
+@use "./breakpoints.scss";
 
-/* Tablet and narrow panes */
-@media (max-width: 900px) {
+@mixin tablet-layout {
 	.flashcard-root {
 		padding: 0 var(--fc-space-3) var(--fc-space-3);
 		padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--fc-mobile-bottom-padding));
 	}
-}
 
-@media (max-width: 768px) {
 	@include patterns.fc-rail-row-stacked;
-}
 
-@media (max-width: 720px) {
 	.fc-panel > header,
 	.fc-panel > footer {
 		padding-inline: var(--fc-space-2);
 	}
 }
 
-@media (max-width: 640px) {
+@mixin phone-layout {
 	.flashcard-root {
 		padding: var(--fc-space-2) var(--fc-space-2)
 			calc(env(safe-area-inset-bottom, 0px) + var(--fc-mobile-bottom-padding));
@@ -45,12 +41,25 @@
 	}
 }
 
-/* Pane queries also cover desktop split panes. */
-@container flashcard-page (max-width: 768px) {
-	@include patterns.fc-rail-row-stacked;
+@media (max-width: #{breakpoints.$tablet}) {
+	@include tablet-layout;
 }
 
-@container flashcard-page (max-width: 640px) {
+@media (max-width: #{breakpoints.$phone}) {
+	@include phone-layout;
+}
+
+/* Measure the leaf before the content's width cap, so wide desktop panes
+ * can still use desktop layouts. Page queries retain content-width adaptation. */
+@container flashcard-pane (max-width: #{breakpoints.$tablet}) {
+	@include tablet-layout;
+}
+
+@container flashcard-pane (max-width: #{breakpoints.$phone}) {
+	@include phone-layout;
+}
+
+@container flashcard-page (max-width: #{breakpoints.$phone}) {
 	@include patterns.fc-hero-stacked;
 }
 

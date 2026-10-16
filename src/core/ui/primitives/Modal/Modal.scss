@@ -1,3 +1,4 @@
+@use "../../../styles/breakpoints.scss";
 // =============================================================================
 // Modal Primitive Styles (SCSS)
 // =============================================================================
@@ -364,7 +365,7 @@
 	}
 }
 
-@media (max-width: 640px) {
+@media (max-width: #{breakpoints.$phone}) {
 	.flashcard-modal-backdrop {
 		align-items: center;
 		justify-content: center;
