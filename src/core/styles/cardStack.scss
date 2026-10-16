@@ -131,6 +131,10 @@
 	.flashcard-study .flashcard-markdown {
 		font-size: var(--fc-font-lg);
 	}
+	.flashcard-card-stack,
+	.flashcard-answer-section {
+		gap: var(--fc-space-2);
+	}
 }
 .flashcard-study .flashcard-pronunciation-row {
 	flex-direction: column;

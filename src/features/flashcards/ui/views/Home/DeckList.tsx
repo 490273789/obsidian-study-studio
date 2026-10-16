@@ -819,10 +819,8 @@ export const DeckList = React.memo(function DeckList({
 					{snapshot.decks.length > 0 && (
 						<section className={cls("flashcard-home-hero fc-hero", styles.hero)}>
 							<div className={styles.heroMain}>
-								<div className={cls("fc-hero__label", styles.heroLabel)}>
-									{t("home.heroLabel")}
-								</div>
-								<div className={cls("fc-hero__num", styles.heroNum)}>
+								<div className="fc-hero__num">
+									<div className="fc-hero__label">{t("home.heroLabel")}</div>
 									<b>{formatCount(language, snapshot.totals.newCards)}</b>
 									<span>{t("home.heroUnit")}</span>
 								</div>
