@@ -49,7 +49,9 @@
 
 @media (max-width: 640px) {
 	.flashcard-root {
-		padding: var(--fc-space-2) var(--fc-space-2) var(--fc-mobile-bottom-padding);
+		// padding: var(--fc-space-2) var(--fc-space-2) var(--view-bottom-spacing, 0px);
+		padding: var(--fc-space-2) var(--fc-space-2)
+			calc(env(safe-area-inset-bottom, 0px) + var(--fc-mobile-bottom-padding));
 		border-radius: 0;
 	}
 

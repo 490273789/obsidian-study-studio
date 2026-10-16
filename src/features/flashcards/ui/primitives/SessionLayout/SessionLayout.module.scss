@@ -30,7 +30,7 @@
 	max-width: var(--fc-layout-max-width);
 	margin-inline: auto;
 	gap: var(--fc-space-3);
-	padding: var(--fc-space-4) 0 max(var(--fc-space-3), env(safe-area-inset-bottom, 0px));
+	padding: var(--fc-space-4) 0 var(--fc-space-3);
 	border-top: 1px solid var(--fc-line-soft);
 	background: var(--fc-surface-canvas);
 

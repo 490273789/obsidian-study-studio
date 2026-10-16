@@ -123,7 +123,7 @@
 .footer {
 	flex: none;
 	padding: var(--fc-space-3) var(--fc-space-4);
-	padding-bottom: max(var(--fc-space-3), env(safe-area-inset-bottom));
+	padding-bottom: var(--fc-space-3);
 	border-top: 1px solid var(--fc-line-soft);
 	background: var(--fc-surface-canvas);
 }
