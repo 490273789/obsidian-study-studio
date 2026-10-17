@@ -1,6 +1,5 @@
-import React, { memo, useCallback, useEffect, useId, useMemo, useState } from "react";
-import { rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import React, { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { rectSortingStrategy } from "@dnd-kit/sortable";
 import {
 	ReorderableList,
 	useSortableInteraction,
@@ -10,32 +9,21 @@ import {
 	BookOpen,
 	Brain,
 	ChartNoAxesColumn,
-	Check,
 	ChevronDown,
 	ChevronRight,
 	CirclePlay,
-	Ellipsis,
-	FileDown,
-	FileText,
 	Flame,
 	Inbox,
-	Keyboard,
 	Languages,
-	List,
-	LoaderCircle,
 	Plus,
 	RefreshCcw,
 	Settings,
 	Sparkles,
 	Target,
 	Trophy,
-	TriangleAlert,
-	X,
-	type LucideIcon,
 } from "lucide-react";
 import type {
 	DeckHome,
-	DeckHomeDeckSnapshot,
 	DeckHomeDestination,
 	DeckHomeSnapshot,
 } from "../../../domain/decks/deckHome";
@@ -44,438 +32,11 @@ import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
 import { DeckSettingsModal } from "../DeckSettings";
 import { useFlashcardI18n } from "../../../strings/context";
+import { selectDeckCardPresentation, type DeckCardPresentation } from "../../deckCardPresentation";
+import { DeckCard } from "./DeckCard/DeckCard";
+import { formatDeckCount } from "./deckCountFormat";
 import styles from "./DeckList.module.scss";
 import { LearningFootprint } from "./LearningFootprint";
-
-interface DeckActionItem {
-	key: string;
-	label: string;
-	icon: LucideIcon;
-	iconClassName?: string;
-	onSelect: () => void;
-	disabled?: boolean;
-	title?: string;
-}
-
-/**
- * A deck's presentation state, derived only from the shared snapshot:
- * - `done`   — nothing left to learn; the deck keeps its reviews.
- * - `fresh`  — untouched, so progress is not worth rendering as a bar.
- * - `active` — partly learned; the row leads with progress.
- */
-type DeckVisualState = "active" | "fresh" | "done";
-
-function getDeckVisualState(deck: DeckHomeDeckSnapshot): DeckVisualState {
-	if (deck.stats.newCards <= 0) return "done";
-	if (deck.studyCount === 0 && deck.stats.newCards === deck.stats.totalCards) return "fresh";
-	return "active";
-}
-
-/** Counts are rendered in every row; cache the formatter the way the heatmap does. */
-const COUNT_FORMATTERS: Partial<Record<"zh" | "en", Intl.NumberFormat>> = {};
-
-function formatCount(language: "zh" | "en", value: number): string {
-	return (COUNT_FORMATTERS[language] ??= new Intl.NumberFormat(
-		language === "zh" ? "zh-CN" : "en-US",
-	)).format(value);
-}
-
-interface DeckCardProps {
-	deck: DeckHomeDeckSnapshot;
-	state: DeckVisualState;
-	language: "zh" | "en";
-	isRecentlyDropped: boolean;
-	isOverlayOpen: boolean;
-	onToggleOverlay: (deckId: string) => void;
-	onCloseOverlay: () => void;
-	onNavigate: (destination: DeckHomeDestination, deckId: string) => void;
-	onExportDeck: (deckId: string) => Promise<void>;
-	onOpenSourceFile: (filePath: string) => void;
-	onOpenSettings: (deckId: string) => void;
-	isExporting: boolean;
-	isExportBusy: boolean;
-	isSettingsLocked: boolean;
-}
-
-const DeckCard = memo(function DeckCard({
-	deck,
-	state,
-	language,
-	isRecentlyDropped,
-	isOverlayOpen,
-	onToggleOverlay,
-	onCloseOverlay,
-	onNavigate,
-	onExportDeck,
-	onOpenSourceFile,
-	onOpenSettings,
-	isExporting,
-	isExportBusy,
-	isSettingsLocked,
-}: DeckCardProps) {
-	const { t } = useFlashcardI18n();
-	const {
-		attributes,
-		isDragging,
-		listeners,
-		setActivatorNodeRef,
-		setNodeRef,
-		transform,
-		transition,
-	} = useSortable({
-		id: deck.id,
-		disabled: isOverlayOpen,
-	});
-	// Keep pickup scale in the same transform as translation: dnd-kit can then
-	// exclude it from measurements. Never inherit another slot's size ratio.
-	const cardTransform =
-		transform || isDragging
-			? {
-					x: transform?.x ?? 0,
-					y: transform?.y ?? 0,
-					scaleX: isDragging ? 0.95 : 1,
-					scaleY: isDragging ? 0.95 : 1,
-				}
-			: null;
-	const setDragNodeRef = useCallback(
-		(node: HTMLElement | null) => {
-			setNodeRef(node);
-			setActivatorNodeRef(node);
-		},
-		[setNodeRef, setActivatorNodeRef],
-	);
-	const totalCards = deck.stats.totalCards;
-	const newCards = deck.stats.newCards;
-	const learnedCards = Math.max(0, totalCards - newCards);
-	const progressPercent = totalCards > 0 ? Math.min(100, (learnedCards / totalCards) * 100) : 0;
-	const spellingReady = deck.spelling.ready;
-	const isDone = state === "done";
-
-	const moreActions: DeckActionItem[] = [
-		{
-			key: "export",
-			label: t("home.exportPdfTitle"),
-			icon: isExporting ? LoaderCircle : FileDown,
-			iconClassName: isExporting ? "spinning" : undefined,
-			onSelect: () => void onExportDeck(deck.id),
-			disabled: isExportBusy,
-			title: t("home.exportPdfTitle"),
-		},
-		{
-			key: "list",
-			label: t("home.list"),
-			icon: List,
-			onSelect: () => onNavigate("word-list", deck.id),
-		},
-		{
-			key: "source",
-			label: t("home.source"),
-			icon: FileText,
-			onSelect: () => onOpenSourceFile(deck.filePath),
-		},
-		{
-			key: "settings",
-			label: t("home.setting"),
-			icon: Settings,
-			onSelect: () => onOpenSettings(deck.id),
-			disabled: isSettingsLocked,
-		},
-	];
-
-	return (
-		// oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- dnd-kit owns the keyboard contract here: it supplies role="button", tabIndex and Space/Enter drag handling via `attributes`/`listeners`, and the 学习 button is the keyboard route to the same destination.
-		<article
-			ref={setDragNodeRef}
-			className={cls(
-				"flashcard-deck-item fc-rail-row",
-				styles.deckItem,
-				isOverlayOpen && styles.isOverlayOpen,
-				isDragging && styles.isDragging,
-			)}
-			data-deck-id={deck.id}
-			data-state={state}
-			style={{
-				transform: CSS.Transform.toString(cardTransform),
-				transition: getDeckCardTransition(isDragging, isRecentlyDropped, transition),
-			}}
-			/* dnd-kit supplies `role="button"`, `tabIndex` and its drag keyboard
-			   handling here; spreading last would clobber `onClick`, so spread
-			   first and keep only the additions below. */
-			{...attributes}
-			{...listeners}
-			aria-label={t("home.openDeck", { deckName: deck.name })}
-		>
-			<div className={cls("flashcard-deck-main fc-rail-row__main", styles.deckMain)}>
-				<div className={cls("flashcard-deck-headline", styles.deckHeadline)}>
-					<div className={cls("flashcard-deck-name-wrapper", styles.deckNameWrapper)}>
-						<span
-							className={cls(
-								"flashcard-deck-name fc-rail-row__title",
-								styles.deckName,
-							)}
-						>
-							{deck.name}
-						</span>
-						<span className={cls("flashcard-deck-tag", styles.deckTag)}>
-							{deck.tag}
-						</span>
-						{deck.spelling.enabled && (
-							<span
-								className={cls(
-									"flashcard-word-learning-badge",
-									styles.wordLearningBadge,
-									!spellingReady && styles.isInvalid,
-								)}
-								title={
-									spellingReady
-										? t("home.wordLearningDeck")
-										: t("home.wordLearningNeedsRepair")
-								}
-							>
-								{spellingReady ? (
-									<Keyboard size={12} />
-								) : (
-									<TriangleAlert size={12} />
-								)}
-								{spellingReady
-									? t("home.supportsSpelling")
-									: t("home.wordLearningNeedsRepair")}
-							</span>
-						)}
-					</div>
-
-					<div className={cls("flashcard-deck-meta fc-meta", styles.deckMeta)}>
-						{state === "active" && (
-							<>
-								<span
-									className={cls("fc-meter", styles.deckBar)}
-									aria-hidden="true"
-								>
-									<i style={{ width: `${progressPercent}%` }} />
-								</span>
-								<span className={cls("fc-meta__text", styles.deckMetaText)}>
-									{t("home.deckLearnedProgress", {
-										learned: formatCount(language, learnedCards),
-										total: formatCount(language, totalCards),
-									})}
-								</span>
-								{deck.studyCount > 0 && (
-									<>
-										<span
-											className={cls("fc-meta__dot", styles.dot)}
-											aria-hidden="true"
-										/>
-										<span className={cls("fc-meta__text", styles.deckMetaText)}>
-											{t("home.studyCountValue", {
-												count: deck.studyCount,
-											})}
-										</span>
-									</>
-								)}
-							</>
-						)}
-						{state === "fresh" && (
-							<>
-								<span className={cls("fc-meta__text", styles.deckMetaText)}>
-									{t("home.deckNotStarted")}
-								</span>
-								<span
-									className={cls("fc-meta__dot", styles.dot)}
-									aria-hidden="true"
-								/>
-								<span className={cls("fc-meta__text", styles.deckMetaText)}>
-									{t("home.deckTotalCards", {
-										count: formatCount(language, totalCards),
-									})}
-								</span>
-							</>
-						)}
-						{state === "done" && (
-							<>
-								<span
-									className={cls("fc-meter", styles.deckBar)}
-									data-tone="done"
-									aria-hidden="true"
-								>
-									<i style={{ width: "100%" }} />
-								</span>
-								<span className={cls("fc-meta__text", styles.deckMetaText)}>
-									{t("home.deckLearnedProgress", {
-										learned: formatCount(language, totalCards),
-										total: formatCount(language, totalCards),
-									})}
-								</span>
-								{deck.studyCount > 0 && (
-									<>
-										<span
-											className={cls("fc-meta__dot", styles.dot)}
-											aria-hidden="true"
-										/>
-										<span className={cls("fc-meta__text", styles.deckMetaText)}>
-											{t("home.studyCountValue", {
-												count: deck.studyCount,
-											})}
-										</span>
-									</>
-								)}
-							</>
-						)}
-					</div>
-				</div>
-			</div>
-
-			<div className={cls("flashcard-deck-count fc-rail-row__count", styles.deckCount)}>
-				{isDone ? (
-					<span
-						className={cls("flashcard-deck-done fc-rail-row__badge", styles.deckDone)}
-					>
-						<Check size={13} aria-hidden="true" />
-						{t("home.deckCompleted")}
-					</span>
-				) : (
-					<>
-						<b className={styles.deckCountValue}>{formatCount(language, newCards)}</b>
-						<span className={styles.deckCountLabel}>{t("home.deckPending")}</span>
-					</>
-				)}
-			</div>
-
-			<div
-				className={cls("flashcard-deck-side fc-rail-row__actions", styles.deckSide)}
-				role="presentation"
-				onMouseDown={(event) => event.stopPropagation()}
-				onTouchStart={(event) => event.stopPropagation()}
-				onClick={(event) => event.stopPropagation()}
-			>
-				<div
-					className={cls(
-						"flashcard-deck-actions2",
-						styles.deckActions,
-						deck.spelling.enabled && "has-spelling",
-						deck.spelling.enabled && styles.hasSpelling,
-					)}
-				>
-					<FlashcardButton
-						variant="primary"
-						size="md"
-						className="flashcard-deck-action-study"
-						icon={isDone ? RefreshCcw : Brain}
-						onClick={(event) => {
-							event.stopPropagation();
-							onNavigate("study", deck.id);
-						}}
-						title={isDone ? t("home.review") : t("home.studyModeTitle")}
-					>
-						<span>{isDone ? t("home.review") : t("home.study")}</span>
-					</FlashcardButton>
-					<FlashcardButton
-						variant="secondary"
-						size="md"
-						className="flashcard-deck-action-practice"
-						icon={Target}
-						onClick={(event) => {
-							event.stopPropagation();
-							onNavigate("practice", deck.id);
-						}}
-						title={t("home.practiceModeTitle")}
-					>
-						<span>{t("home.practice")}</span>
-					</FlashcardButton>
-					{deck.spelling.enabled && (
-						<FlashcardButton
-							preset="icon"
-							variant="neutral"
-							className={cls("flashcard-deck-action-spelling", styles.actionSpelling)}
-							icon={Keyboard}
-							onClick={(event) => {
-								event.stopPropagation();
-								onNavigate("spelling", deck.id);
-							}}
-							disabled={!spellingReady}
-							title={
-								spellingReady
-									? deck.spelling.ignoredCardCount > 0
-										? t("home.spellingModeIgnoredTitle", {
-												count: deck.spelling.ignoredCardCount,
-											})
-										: t("home.spellingModeTitle")
-									: t("home.spellingUnavailableTitle", {
-											count: deck.spelling.issueCount,
-										})
-							}
-							aria-label={t("home.spelling")}
-						/>
-					)}
-					<FlashcardButton
-						preset="icon"
-						variant="outline"
-						className={cls("flashcard-deck-action-more", styles.actionMore)}
-						icon={Ellipsis}
-						onClick={(event) => {
-							event.stopPropagation();
-							onToggleOverlay(deck.id);
-						}}
-						title={t("home.showMoreActions")}
-						aria-label={t("home.moreActions")}
-					/>
-				</div>
-			</div>
-
-			{isOverlayOpen && (
-				// oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- The overlay only stops the row's click from firing underneath it; every action inside is a real button and Escape is handled on the window.
-				<div
-					className={cls("flashcard-deck-overlay", styles.deckOverlay)}
-					onClick={(event) => event.stopPropagation()}
-				>
-					<div className={cls("flashcard-deck-overlay-actions", styles.overlayActions)}>
-						{moreActions.map((action) => (
-							<FlashcardButton
-								key={action.key}
-								variant="neutral"
-								size="sm"
-								className={cls(
-									"flashcard-deck-overlay-action",
-									styles.overlayActionBtn,
-								)}
-								icon={action.icon}
-								iconClassName={action.iconClassName}
-								disabled={action.disabled}
-								onClick={(event) => {
-									event.stopPropagation();
-									action.onSelect();
-									onCloseOverlay();
-								}}
-								title={action.title}
-							>
-								<span>{action.label}</span>
-							</FlashcardButton>
-						))}
-					</div>
-					<FlashcardButton
-						preset="icon"
-						variant="ghost"
-						className={cls("flashcard-deck-overlay-close", styles.overlayCloseBtn)}
-						icon={X}
-						onClick={(event) => {
-							event.stopPropagation();
-							onCloseOverlay();
-						}}
-						title={t("home.hideMoreActions")}
-						aria-label={t("home.hideMoreActions")}
-					/>
-				</div>
-			)}
-		</article>
-	);
-});
-
-function getDeckCardTransition(
-	isDragging: boolean,
-	isRecentlyDropped: boolean,
-	transition: string | undefined,
-): string | undefined {
-	return isDragging || isRecentlyDropped ? "none" : transition;
-}
 
 // ── DeckList ─────────────────────────────────────────────────────────────────
 
@@ -520,7 +81,7 @@ export const DeckList = React.memo(function DeckList({
 		snapshot.mutation.kind === "migrating";
 	const draft = snapshot.settingsDraft?.ownerId === ownerId ? snapshot.settingsDraft : null;
 	const [recentlyDroppedDeckId, setRecentlyDroppedDeckId] = useState<string | null>(null);
-	const [activeOverlayDeckId, setActiveOverlayDeckId] = useState<string | null>(null);
+	const [openMenuDeckId, setOpenMenuDeckId] = useState<string | null>(null);
 	const [isCompletedGroupOpen, setIsCompletedGroupOpen] = useState(false);
 	const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(true);
 	useEffect(() => {
@@ -540,38 +101,9 @@ export const DeckList = React.memo(function DeckList({
 		}
 	}, []);
 
-	const handleToggleOverlay = useCallback((deckId: string) => {
-		setActiveOverlayDeckId((current) => (current === deckId ? null : deckId));
+	const handleMenuOpenChange = useCallback((deckId: string, open: boolean) => {
+		setOpenMenuDeckId((current) => (open ? deckId : current === deckId ? null : current));
 	}, []);
-
-	const handleCloseOverlay = useCallback(() => {
-		setActiveOverlayDeckId(null);
-	}, []);
-
-	useEffect(() => {
-		if (!activeOverlayDeckId) return;
-
-		const handleKeyDown = (event: KeyboardEvent) => {
-			if (event.key === "Escape") {
-				setActiveOverlayDeckId(null);
-			}
-		};
-
-		const handlePointerDown = (event: PointerEvent) => {
-			const target = event.target as HTMLElement | null;
-			if (!target?.closest(`[data-deck-id="${activeOverlayDeckId}"]`)) {
-				setActiveOverlayDeckId(null);
-			}
-		};
-
-		window.addEventListener("keydown", handleKeyDown);
-		window.addEventListener("pointerdown", handlePointerDown, true);
-
-		return () => {
-			window.removeEventListener("keydown", handleKeyDown);
-			window.removeEventListener("pointerdown", handlePointerDown, true);
-		};
-	}, [activeOverlayDeckId]);
 
 	/**
 	 * Finished decks leave the sortable list so the working set stays readable.
@@ -579,21 +111,28 @@ export const DeckList = React.memo(function DeckList({
 	 * the reorder action writes the working set back with the finished
 	 * decks appended in their existing order.
 	 */
-	const { sortableDecks, completedDecks } = useMemo(() => {
-		const sortable: DeckHomeDeckSnapshot[] = [];
-		const completed: DeckHomeDeckSnapshot[] = [];
-		for (const deck of snapshot.decks) {
-			if (getDeckVisualState(deck) === "done") completed.push(deck);
-			else sortable.push(deck);
+	const deckPresentations = useMemo(
+		() => snapshot.decks.map((deck) => selectDeckCardPresentation(deck, snapshot, ownerId)),
+		[snapshot, ownerId],
+	);
+	const { sortableRows, completedRows } = useMemo(() => {
+		const sortable: DeckCardPresentation[] = [];
+		const completed: DeckCardPresentation[] = [];
+		for (const presentation of deckPresentations) {
+			if (presentation.isDone) completed.push(presentation);
+			else sortable.push(presentation);
 		}
-		return { sortableDecks: sortable, completedDecks: completed };
-	}, [snapshot.decks]);
+		return { sortableRows: sortable, completedRows: completed };
+	}, [deckPresentations]);
 
-	const sortableDeckIds = useMemo(() => sortableDecks.map((deck) => deck.id), [sortableDecks]);
-	const completedDeckIds = useMemo(() => completedDecks.map((deck) => deck.id), [completedDecks]);
+	const sortableDeckIds = useMemo(() => sortableRows.map((row) => row.deck.id), [sortableRows]);
+	const completedDeckIds = useMemo(
+		() => completedRows.map((row) => row.deck.id),
+		[completedRows],
+	);
 	const { interaction: sorting, snapshot: sortingSnapshot } = useSortableInteraction({
 		items: sortableDeckIds,
-		disabled: activeOverlayDeckId !== null,
+		disabled: openMenuDeckId !== null,
 		optimistic: true,
 		onMove: async ({ activeId, items }) => {
 			setRecentlyDroppedDeckId(activeId);
@@ -601,9 +140,9 @@ export const DeckList = React.memo(function DeckList({
 		},
 	});
 	const visibleDeckIds = sortingSnapshot.items;
-	const visibleDecks = useMemo(
-		() => orderDeckSnapshots(sortableDecks, visibleDeckIds),
-		[sortableDecks, visibleDeckIds],
+	const visibleRows = useMemo(
+		() => orderDeckRows(sortableRows, visibleDeckIds),
+		[sortableRows, visibleDeckIds],
 	);
 	const handleCloseModal = useCallback(() => {
 		void home.act({ kind: "cancel-settings", ownerId });
@@ -629,18 +168,20 @@ export const DeckList = React.memo(function DeckList({
 	 * inside each tier.
 	 */
 	const nextDeck = useMemo(() => {
-		let started: DeckHomeDeckSnapshot | null = null;
-		let untouched: DeckHomeDeckSnapshot | null = null;
-		for (const deck of sortableDecks) {
-			if (deck.stats.newCards <= 0) continue;
-			if (deck.studyCount > 0) {
-				if (!started || deck.stats.newCards > started.stats.newCards) started = deck;
-			} else if (!untouched || deck.stats.newCards > untouched.stats.newCards) {
-				untouched = deck;
+		let started: DeckCardPresentation | null = null;
+		let untouched: DeckCardPresentation | null = null;
+		for (const row of sortableRows) {
+			if (row.deck.stats.newCards <= 0) continue;
+			if (row.deck.studyCount > 0) {
+				if (!started || row.deck.stats.newCards > started.deck.stats.newCards) {
+					started = row;
+				}
+			} else if (!untouched || row.deck.stats.newCards > untouched.deck.stats.newCards) {
+				untouched = row;
 			}
 		}
-		return started ?? untouched;
-	}, [sortableDecks]);
+		return (started ?? untouched)?.deck ?? null;
+	}, [sortableRows]);
 
 	const learnedCards = snapshot.totals.totalCards - snapshot.totals.newCards;
 	const streak = snapshot.learningFootprint;
@@ -779,19 +320,19 @@ export const DeckList = React.memo(function DeckList({
 							<div className={styles.heroMain}>
 								<div className="fc-hero__num">
 									<div className="fc-hero__label">{t("home.heroLabel")}</div>
-									<b>{formatCount(language, snapshot.totals.newCards)}</b>
+									<b>{formatDeckCount(language, snapshot.totals.newCards)}</b>
 									<span>{t("home.heroUnit")}</span>
 								</div>
 								<div className={cls("fc-hero__summary", styles.heroSummary)}>
 									{nextDeck
 										? t("home.heroSummary", {
 												decks: snapshot.totals.deckCount,
-												learned: formatCount(language, learnedCards),
+												learned: formatDeckCount(language, learnedCards),
 												deck: nextDeck.name,
 											})
 										: t("home.heroSummaryNoTarget", {
 												decks: snapshot.totals.deckCount,
-												learned: formatCount(language, learnedCards),
+												learned: formatDeckCount(language, learnedCards),
 											})}
 								</div>
 							</div>
@@ -883,37 +424,23 @@ export const DeckList = React.memo(function DeckList({
 									strategy={rectSortingStrategy}
 								>
 									<div className={cls("flashcard-deck-list", styles.deckList)}>
-										{visibleDecks.map((deck) => (
+										{visibleRows.map((presentation) => (
 											<DeckCard
-												key={deck.id}
-												deck={deck}
-												state={getDeckVisualState(deck)}
+												key={presentation.deck.id}
+												presentation={presentation}
 												language={language}
 												isRecentlyDropped={
-													recentlyDroppedDeckId === deck.id
+													recentlyDroppedDeckId === presentation.deck.id
 												}
-												isOverlayOpen={activeOverlayDeckId === deck.id}
-												onToggleOverlay={handleToggleOverlay}
-												onCloseOverlay={handleCloseOverlay}
 												onNavigate={onNavigate}
-												onExportDeck={handleExportDeck}
+												onExport={handleExportDeck}
 												onOpenSourceFile={onOpenSourceFile}
 												onOpenSettings={handleOpenDeckSettings}
-												isExporting={
-													snapshot.export.kind === "exporting" &&
-													snapshot.export.deckId === deck.id
-												}
-												isExportBusy={snapshot.export.kind === "exporting"}
-												isSettingsLocked={
-													snapshot.settingsDraft !== null &&
-													snapshot.settingsDraft.ownerId !== ownerId &&
-													(snapshot.settingsDraft.ownerId !== "" ||
-														snapshot.settingsDraft.deckId !== deck.id)
-												}
+												onMenuOpenChange={handleMenuOpenChange}
 											/>
 										))}
 
-										{completedDecks.length > 0 && (
+										{completedRows.length > 0 && (
 											<div className={cls("fc-group", styles.completedGroup)}>
 												<button
 													type="button"
@@ -924,7 +451,7 @@ export const DeckList = React.memo(function DeckList({
 													aria-expanded={isCompletedGroupOpen}
 													aria-controls={completedGroupId}
 													aria-label={t("home.completedGroup", {
-														count: completedDecks.length,
+														count: completedRows.length,
 													})}
 													onClick={() =>
 														setIsCompletedGroupOpen(
@@ -945,9 +472,9 @@ export const DeckList = React.memo(function DeckList({
 														className={styles.completedCount}
 														aria-hidden="true"
 													>
-														{formatCount(
+														{formatDeckCount(
 															language,
-															completedDecks.length,
+															completedRows.length,
 														)}
 													</span>
 												</button>
@@ -961,45 +488,20 @@ export const DeckList = React.memo(function DeckList({
 													)}
 												>
 													{isCompletedGroupOpen &&
-														completedDecks.map((deck) => (
+														completedRows.map((presentation) => (
 															<DeckCard
-																key={deck.id}
-																deck={deck}
-																state="done"
+																key={presentation.deck.id}
+																presentation={presentation}
 																language={language}
 																isRecentlyDropped={false}
-																isOverlayOpen={
-																	activeOverlayDeckId === deck.id
-																}
-																onToggleOverlay={
-																	handleToggleOverlay
-																}
-																onCloseOverlay={handleCloseOverlay}
 																onNavigate={onNavigate}
-																onExportDeck={handleExportDeck}
+																onExport={handleExportDeck}
 																onOpenSourceFile={onOpenSourceFile}
 																onOpenSettings={
 																	handleOpenDeckSettings
 																}
-																isExporting={
-																	snapshot.export.kind ===
-																		"exporting" &&
-																	snapshot.export.deckId ===
-																		deck.id
-																}
-																isExportBusy={
-																	snapshot.export.kind ===
-																	"exporting"
-																}
-																isSettingsLocked={
-																	snapshot.settingsDraft !==
-																		null &&
-																	snapshot.settingsDraft
-																		.ownerId !== ownerId &&
-																	(snapshot.settingsDraft
-																		.ownerId !== "" ||
-																		snapshot.settingsDraft
-																			.deckId !== deck.id)
+																onMenuOpenChange={
+																	handleMenuOpenChange
 																}
 															/>
 														))}
@@ -1063,14 +565,14 @@ export const DeckList = React.memo(function DeckList({
 	);
 });
 
-function orderDeckSnapshots(
-	decks: readonly DeckHomeDeckSnapshot[],
+function orderDeckRows(
+	rows: readonly DeckCardPresentation[],
 	deckIds: readonly string[],
-): DeckHomeDeckSnapshot[] {
-	const decksById = new Map(decks.map((deck) => [deck.id, deck]));
-	const orderedDecks = deckIds
-		.map((deckId) => decksById.get(deckId))
-		.filter((deck): deck is DeckHomeDeckSnapshot => deck !== undefined);
-	const seen = new Set(orderedDecks.map((deck) => deck.id));
-	return [...orderedDecks, ...decks.filter((deck) => !seen.has(deck.id))];
+): DeckCardPresentation[] {
+	const rowsById = new Map(rows.map((row) => [row.deck.id, row]));
+	const orderedRows = deckIds
+		.map((deckId) => rowsById.get(deckId))
+		.filter((row): row is DeckCardPresentation => row !== undefined);
+	const seen = new Set(orderedRows.map((row) => row.deck.id));
+	return [...orderedRows, ...rows.filter((row) => !seen.has(row.deck.id))];
 }

@@ -93,7 +93,8 @@ interface ElementProps {
 	className?: string;
 	style?: React.CSSProperties;
 	onClick?: (event: { stopPropagation(): void }) => void;
-	deck?: { id: string };
+	presentation?: { deck: { id: string } };
+	onMenuOpenChange?: (deckId: string, open: boolean) => void;
 	"data-state"?: string;
 	"aria-expanded"?: boolean;
 	ariaExpanded?: boolean;
@@ -244,16 +245,9 @@ function harness(decks?: DeckOverrides[]) {
 		visit(node);
 		return found;
 	}
-	function clickCardButton(className: string): void {
-		const card = findElement(tree, (element) => element.props.deck?.id === "first");
-		const renderCard = (
-			card.type as unknown as { type: (props: ElementProps) => React.ReactNode }
-		).type;
-		const button = findElement(
-			renderCard(card.props),
-			(element) => element.props.className?.includes(className) === true,
-		);
-		button.props.onClick!({ stopPropagation: vi.fn() });
+	function setCardMenu(deckId: string, open: boolean): void {
+		const card = findElement(tree, (element) => element.props.presentation?.deck.id === deckId);
+		card.props.onMenuOpenChange!(deckId, open);
 		render();
 	}
 	function drop(): void {
@@ -272,8 +266,8 @@ function harness(decks?: DeckOverrides[]) {
 		render();
 	}
 	function deckIds(): string[] {
-		return findAll(tree, (element) => element.props.deck !== undefined).map(
-			(element) => element.props.deck!.id,
+		return findAll(tree, (element) => element.props.presentation !== undefined).map(
+			(element) => element.props.presentation!.deck.id,
 		);
 	}
 	render();
@@ -283,7 +277,7 @@ function harness(decks?: DeckOverrides[]) {
 		render,
 		dnd,
 		drop,
-		clickCardButton,
+		setCardMenu,
 		clickTreeButton,
 		deckIds,
 		findAll,
@@ -311,9 +305,9 @@ describe("deck reorder availability", () => {
 		expect((h.dnd().children as React.ReactElement<{ strategy: unknown }>).props.strategy).toBe(
 			rectSortingStrategy,
 		);
-		const cards = h.findAll(h.tree(), (element) => element.props.deck !== undefined);
+		const cards = h.findAll(h.tree(), (element) => element.props.presentation !== undefined);
 		const [first, second] = cards;
-		drag.activeId = first!.props.deck!.id;
+		drag.activeId = first!.props.presentation!.deck.id;
 		// Reproduce the geometry after pickup: the active row has visually shrunk.
 		const rects = [
 			{ left: 0, top: 0, width: 380, height: 95, right: 380, bottom: 95 },
@@ -321,7 +315,7 @@ describe("deck reorder availability", () => {
 		];
 		for (const overIndex of [0, 1, 0, 1]) {
 			cards.forEach((card, index) => {
-				drag.transforms[card.props.deck!.id] = rectSortingStrategy({
+				drag.transforms[card.props.presentation!.deck.id] = rectSortingStrategy({
 					activeIndex: 0,
 					overIndex,
 					index,
@@ -348,9 +342,9 @@ describe("deck reorder availability", () => {
 		(_name, sensor) => {
 			const h = harness();
 			expect(h.dnd().sensors?.some((entry) => entry.sensor === sensor)).toBe(true);
-			h.clickCardButton("flashcard-deck-action-more");
+			h.setCardMenu("first", true);
 			expect(h.dnd().sensors).toEqual([]);
-			h.clickCardButton("flashcard-deck-overlay-close");
+			h.setCardMenu("first", false);
 			expect(h.dnd().sensors?.some((entry) => entry.sensor === sensor)).toBe(true);
 		},
 	);
@@ -395,7 +389,7 @@ describe("deck reorder availability", () => {
 		const h = harness();
 		const pending = h.dnd();
 		pending.onDragStart!({ active: { id: "first" } } as DragStartEvent);
-		h.clickCardButton("flashcard-deck-action-more");
+		h.setCardMenu("first", true);
 		pending.onDragEnd!({ active: { id: "first" }, over: { id: "second" } } as DragEndEvent);
 		expect(h.act).not.toHaveBeenCalled();
 	});
@@ -485,9 +479,9 @@ describe("deck row presentation state", () => {
 			{ id: "started", totalCards: 10, newCards: 7, studyCount: 2 },
 		]);
 		const states = h
-			.findAll(h.tree(), (element) => element.props.deck !== undefined)
+			.findAll(h.tree(), (element) => element.props.presentation !== undefined)
 			.map((element) => [
-				element.props.deck!.id,
+				element.props.presentation!.deck.id,
 				renderDeckCard(element).props["data-state"],
 			]);
 		expect(states).toEqual([
@@ -501,7 +495,10 @@ describe("deck row presentation state", () => {
 		// state="done" routes the deck into the collapsed group, so it is not in
 		// the sortable list until that group is opened.
 		h.clickTreeButton("flashcard-completed-group-toggle");
-		const card = h.findElement(h.tree(), (element) => element.props.deck?.id === "finished");
+		const card = h.findElement(
+			h.tree(),
+			(element) => element.props.presentation?.deck.id === "finished",
+		);
 		const article = renderDeckCard(card);
 		expect(article.props["data-state"]).toBe("done");
 		const study = findElement(

@@ -218,14 +218,6 @@
 		opacity: 0.85;
 		z-index: 12;
 	}
-
-	&.isOverlayOpen {
-		z-index: 20;
-
-		&:hover {
-			transform: none;
-		}
-	}
 }
 
 .deckHeadline {
@@ -320,54 +312,6 @@
 	min-width: var(--fc-deck-tool-size);
 	padding-inline: 0;
 	flex: none;
-}
-
-/* ── Deck overlay (secondary actions) ────────────────────────────────────── */
-
-.deckOverlay {
-	position: absolute;
-	inset: -1px;
-	z-index: 25;
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--fc-space-2);
-	padding: var(--fc-space-2) var(--fc-space-3);
-	border-radius: var(--fc-radius-md);
-	background: color-mix(in srgb, var(--fc-surface-card) 88%, transparent);
-	backdrop-filter: blur(12px);
-	-webkit-backdrop-filter: blur(12px);
-	border: 1px solid color-mix(in srgb, var(--interactive-accent) 45%, var(--fc-line-soft));
-	box-shadow: var(--fc-shadow-card-hover);
-	animation: var(--fc-motion-fade-in);
-	overflow: hidden;
-	/* The overlay is a control surface, not the row's click target. */
-	cursor: default;
-}
-
-.overlayActions {
-	display: flex;
-	align-items: center;
-	gap: var(--fc-space-2);
-	min-width: 0;
-	flex: 1;
-	overflow-x: auto;
-
-	@include fc-hide-scrollbar;
-
-	:global(.flashcard-btn) {
-		font-size: var(--fc-font-xs);
-		min-width: 0;
-		white-space: nowrap;
-		flex-shrink: 0;
-	}
-}
-
-.overlayCloseBtn {
-	width: var(--fc-control-md);
-	min-width: var(--fc-control-md);
-	padding: 0;
-	flex-shrink: 0;
 }
 
 /* ── Completed group: Home-only parts ────────────────────────────────────── */
@@ -699,23 +643,6 @@
 		.actionMore {
 			width: var(--fc-deck-tool-size);
 			min-width: var(--fc-deck-tool-size);
-		}
-	}
-
-	.deckOverlay {
-		padding: var(--fc-space-2);
-	}
-
-	.overlayActions {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: var(--fc-space-2);
-		overflow-x: visible;
-
-		:global(.flashcard-btn) {
-			width: 100%;
-			justify-content: center;
-			padding: 0 var(--fc-space-2);
 		}
 	}
 }
