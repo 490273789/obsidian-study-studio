@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 vi.mock("obsidian", () => ({ normalizePath: (value: string) => value }));
 
 import { FlashcardRepository, type SerializedDeck } from "../flashcardRepository";
+import { decodePersistedLearning } from "../persistedLearningCodec";
 import { WorkbenchFlashcardAuthority } from "../../../obsidian/workbenchFlashcardAuthority";
 import { MemoryFlashcardAuthority } from "./memoryFlashcardAuthority";
 import { WorkbenchStore, type StorageBackend } from "../../../../../core/storage/workbenchStore";
@@ -407,10 +408,13 @@ describe("FlashcardRepository", () => {
 		});
 		expect(listener).toHaveBeenCalledTimes(1);
 
-		// WorkbenchStore partition was updated
-		const learning = store.getPartition<any>("learning");
-		expect(learning.decks["deck-1"].studyCount).toBe(1);
-		expect(learning.cards["c1"].fsrsCard.state).toBe(State.Review);
+		// WorkbenchStore partition was updated; the persisted card map is compact
+		// and decodes back to the in-memory learning document.
+		const persisted = store.getPartition<unknown>("learning");
+		expect(persisted).toMatchObject({ cardsFormat: 1 });
+		const learning = decodePersistedLearning(persisted);
+		expect(learning.decks["deck-1"]?.studyCount).toBe(1);
+		expect(learning.cards["c1"]?.fsrsCard.state).toBe(State.Review);
 	});
 
 	it("persists challenge progress, activity, and history atomically without changing FSRS", async () => {

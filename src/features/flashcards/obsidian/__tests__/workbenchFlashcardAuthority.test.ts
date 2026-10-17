@@ -5,8 +5,13 @@ vi.mock("obsidian", () => ({ normalizePath: (value: string) => value }));
 import { DEFAULT_SETTINGS } from "../../../../core/host/settingsSlices";
 import { WorkbenchStore, type StorageBackend } from "../../../../core/storage/workbenchStore";
 import {
+	encodePersistedLearning,
+	isCompactPersistedLearning,
+} from "../../domain/storage/persistedLearningCodec";
+import {
 	FlashcardAuthorityConflictError,
 	type LearningStateDocument,
+	type SerializedFSRSCard,
 } from "../../domain/storage/persistenceTypes";
 import { WorkbenchFlashcardAuthority } from "../workbenchFlashcardAuthority";
 
@@ -32,6 +37,22 @@ function emptyLearning(): LearningStateDocument {
 	};
 }
 
+function serializedFSRSCard(overrides: Partial<SerializedFSRSCard> = {}): SerializedFSRSCard {
+	return {
+		due: "2026-10-16T01:40:23.805Z",
+		stability: 0.212,
+		difficulty: 6.4133,
+		elapsed_days: 0,
+		scheduled_days: 0,
+		reps: 1,
+		lapses: 0,
+		state: 0,
+		last_review: null,
+		learning_steps: 0,
+		...overrides,
+	};
+}
+
 describe("WorkbenchFlashcardAuthority", () => {
 	it("isolates replacement learning and preserves other partitions while notifying peer authorities", async () => {
 		const backend = createBackend({
@@ -50,21 +71,28 @@ describe("WorkbenchFlashcardAuthority", () => {
 		const initial = await authority.read();
 		const learning = emptyLearning();
 		learning.decks["deck-1"] = { studyCount: 1, lastStudied: null };
+		learning.cards["card-1"] = { fsrsCard: serializedFSRSCard({ reps: 3 }) };
 		const expected = structuredClone(learning);
 
 		const result = await authority.commit(initial.version, { learning });
 
-		// The repository builds a fresh copy-on-write document per transition, so
-		// the store adopts it by reference instead of deep-cloning the whole card
-		// map on every answer. Mutating a committed document is a contract violation.
-		expect(store.getPartition("learning")).toBe(learning);
-		expect(store.getPartition("learning")).toEqual(expected);
+		// The persisted partition holds the compact tuple layout instead of the
+		// in-memory document. The store adopts the encoded document by reference
+		// (the repository builds a fresh copy-on-write document per transition),
+		// so mutating a committed document stays a contract violation.
+		const persisted = store.getPartition("learning");
+		expect(isCompactPersistedLearning(persisted)).toBe(true);
+		expect(persisted).not.toBe(learning);
 		expect(store.getPartition("other")).toEqual({ nested: ["preserved"] });
 		expect(store.getSettings().dailyNewCards).toBe(27);
 		expect(backend.data).toMatchObject({
-			learning: expected,
+			learning: { cardsFormat: 1 },
 			other: { nested: ["preserved"] },
 		});
+
+		// Reading decodes the compact partition back into the in-memory document.
+		expect((await authority.read()).content).toEqual({ kind: "current", learning: expected });
+
 		expect(result.version).toBe(initial.version + 1);
 		expect(ownChange).not.toHaveBeenCalled();
 		expect(peerChange).toHaveBeenCalledExactlyOnceWith({
@@ -207,6 +235,13 @@ describe("WorkbenchFlashcardAuthority", () => {
 			"plugins/study-studio/data.backup-v1.json",
 			expect.stringContaining('"decks"'),
 		);
+		// The migration commit also writes the first compact partition, so the
+		// downgrade backup is captured before any legacy key is discarded.
+		expect(exists).toHaveBeenCalledWith("plugins/study-studio/data.backup-v2.json");
+		expect(write).toHaveBeenCalledWith(
+			"plugins/study-studio/data.backup-v2.json",
+			expect.stringContaining('"decks"'),
+		);
 
 		// Raw document in store should have discarded legacy fields
 		expect(store.getRawDocument()).not.toHaveProperty("decks");
@@ -272,5 +307,123 @@ describe("WorkbenchFlashcardAuthority", () => {
 		);
 		authority.dispose();
 		warnSpy.mockRestore();
+	});
+
+	it("writes a one-time pre-compact backup before the first compact commit", async () => {
+		const preCompactLearning = emptyLearning();
+		preCompactLearning.decks["deck-1"] = { studyCount: 4, lastStudied: null };
+		preCompactLearning.cards["card-1"] = { fsrsCard: serializedFSRSCard({ reps: 7 }) };
+		const store = new WorkbenchStore(
+			createBackend({
+				schemaVersion: 2,
+				settings: DEFAULT_SETTINGS,
+				learning: preCompactLearning,
+			}),
+		);
+		const write = vi.fn().mockResolvedValue(undefined);
+		const exists = vi.fn().mockResolvedValue(false);
+		const adapter = { exists, write } as unknown as import("obsidian").DataAdapter;
+		const authority = new WorkbenchFlashcardAuthority({
+			store,
+			adapter,
+			pluginDirectory: "plugins/study-studio",
+		});
+
+		const initial = await authority.read();
+		const learning = emptyLearning();
+		await authority.commit(initial.version, { learning });
+
+		const backupPath = "plugins/study-studio/data.backup-v2.json";
+		expect(exists).toHaveBeenCalledWith(backupPath);
+		const backupCall = write.mock.calls.find(([path]) => path === backupPath);
+		expect(backupCall).toBeDefined();
+		const backup = JSON.parse(backupCall![1] as string);
+		// The backup holds the pre-compact object layout so the previous plugin
+		// version can still read the learning state after a downgrade.
+		expect(backup.learning.cardsFormat).toBeUndefined();
+		expect(backup.learning.cards["card-1"].fsrsCard.reps).toBe(7);
+		expect(backup.learning.decks["deck-1"].studyCount).toBe(4);
+		expect(isCompactPersistedLearning(store.getPartition("learning"))).toBe(true);
+
+		// Later compact writes must not touch the backup again.
+		exists.mockClear();
+		write.mockClear();
+		const next = await authority.read();
+		await authority.commit(next.version, { learning: emptyLearning() });
+		expect(exists).not.toHaveBeenCalledWith(backupPath);
+		expect(write).not.toHaveBeenCalledWith(backupPath, expect.anything());
+		authority.dispose();
+	});
+
+	it("keeps an existing pre-compact backup untouched", async () => {
+		const store = new WorkbenchStore(
+			createBackend({
+				schemaVersion: 2,
+				settings: DEFAULT_SETTINGS,
+				learning: emptyLearning(),
+			}),
+		);
+		const write = vi.fn().mockResolvedValue(undefined);
+		const exists = vi.fn().mockResolvedValue(true);
+		const adapter = { exists, write } as unknown as import("obsidian").DataAdapter;
+		const authority = new WorkbenchFlashcardAuthority({
+			store,
+			adapter,
+			pluginDirectory: "plugins/study-studio",
+		});
+
+		const initial = await authority.read();
+		await authority.commit(initial.version, { learning: emptyLearning() });
+
+		expect(exists).toHaveBeenCalledWith("plugins/study-studio/data.backup-v2.json");
+		expect(write).not.toHaveBeenCalled();
+		authority.dispose();
+	});
+
+	it("skips the pre-compact backup when the partition is already compact", async () => {
+		const compactLearning = encodePersistedLearning(emptyLearning());
+		const store = new WorkbenchStore(
+			createBackend({
+				schemaVersion: 2,
+				settings: DEFAULT_SETTINGS,
+				learning: compactLearning,
+			}),
+		);
+		const write = vi.fn().mockResolvedValue(undefined);
+		const exists = vi.fn().mockResolvedValue(false);
+		const adapter = { exists, write } as unknown as import("obsidian").DataAdapter;
+		const authority = new WorkbenchFlashcardAuthority({
+			store,
+			adapter,
+			pluginDirectory: "plugins/study-studio",
+		});
+
+		const initial = await authority.read();
+		await authority.commit(initial.version, { learning: emptyLearning() });
+
+		expect(exists).not.toHaveBeenCalled();
+		expect(write).not.toHaveBeenCalled();
+		authority.dispose();
+	});
+
+	it("skips the pre-compact backup when a fresh document holds no learning", async () => {
+		const store = new WorkbenchStore(
+			createBackend({ schemaVersion: 2, settings: DEFAULT_SETTINGS }),
+		);
+		const write = vi.fn().mockResolvedValue(undefined);
+		const exists = vi.fn().mockResolvedValue(false);
+		const adapter = { exists, write } as unknown as import("obsidian").DataAdapter;
+		const authority = new WorkbenchFlashcardAuthority({
+			store,
+			adapter,
+			pluginDirectory: "plugins/study-studio",
+		});
+
+		const initial = await authority.read();
+		await authority.commit(initial.version, { learning: emptyLearning() });
+
+		expect(exists).not.toHaveBeenCalled();
+		expect(write).not.toHaveBeenCalled();
+		authority.dispose();
 	});
 });

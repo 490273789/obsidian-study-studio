@@ -9,6 +9,7 @@ import { WorkbenchFlashcardAuthority } from "../../../obsidian/workbenchFlashcar
 import { createCardIdentityContinuity } from "../../identity/cardIdentityContinuity";
 import { createDeckHome } from "../../decks/deckHome";
 import { FlashcardRepository, type SerializedDeck } from "../flashcardRepository";
+import { decodePersistedLearning } from "../persistedLearningCodec";
 import type { LearningStateDocument } from "../persistenceTypes";
 import { MemoryFlashcardAuthority } from "./memoryFlashcardAuthority";
 
@@ -247,7 +248,7 @@ describe("continuity learning persistence", () => {
 		const f = await fixture();
 		const authority = new MemoryFlashcardAuthority(
 			DEFAULT_SETTINGS,
-			f.store.getPartition<LearningStateDocument>("learning"),
+			decodePersistedLearning(f.store.getPartition("learning")),
 		);
 		const repo = new FlashcardRepository({ authority, deckIndexCache: f.cache });
 		const state = await repo.createContinuityStateStore().load();
@@ -318,7 +319,8 @@ describe("continuity learning persistence", () => {
 
 	it("uses the latest external learning snapshot as the comparison baseline", async () => {
 		const f = await fixture();
-		const learning = structuredClone(f.store.getPartition<LearningStateDocument>("learning")!);
+		// The store partition is compact; decode it before editing the in-memory doc.
+		const learning = structuredClone(decodePersistedLearning(f.store.getPartition("learning")));
 		learning.decks[PATH]!.studyCount = 17;
 		learning.cards[ID]!.fsrsCard.reps = 9;
 		f.replaceExternalData({ ...f.store.getRawDocument(), learning });

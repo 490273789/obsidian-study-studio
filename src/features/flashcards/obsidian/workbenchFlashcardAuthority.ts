@@ -4,13 +4,17 @@ import {
 	type WorkbenchStore,
 	type WorkbenchStoreChange,
 } from "../../../core/storage/workbenchStore";
+import {
+	decodePersistedLearning,
+	encodePersistedLearning,
+	isCompactPersistedLearning,
+} from "../domain/storage/persistedLearningCodec";
 import { FlashcardAuthorityConflictError } from "../domain/storage/persistenceTypes";
 import type {
 	FlashcardAuthority,
 	FlashcardAuthorityChange,
 	FlashcardAuthorityCommit,
 	FlashcardAuthoritySnapshot,
-	LearningStateDocument,
 	LegacyFlashcardDocument,
 } from "../domain/storage/persistenceTypes";
 import { flashcardSettingsSlice, type FlashcardStudySettings } from "../settings/slice";
@@ -37,6 +41,11 @@ export interface WorkbenchFlashcardAuthorityOptions {
  * The caller must treat each committed learning document as immutable: the
  * store adopts it by reference (no defensive deep copy on the hot answer path).
  * `FlashcardRepository` builds a fresh copy-on-write document per transition.
+ *
+ * Only this seam knows the persisted card representation: commits store the
+ * compact tuple layout from `persistedLearningCodec`, reads decode both the
+ * compact and legacy object layouts, and the first compact write preserves a
+ * downgrade backup of the pre-compact document.
  */
 export class WorkbenchFlashcardAuthority implements FlashcardAuthority {
 	private readonly source = {};
@@ -45,6 +54,7 @@ export class WorkbenchFlashcardAuthority implements FlashcardAuthority {
 	>();
 	private readonly unsubscribeStore: () => void;
 	private settingsFingerprint: string;
+	private preCompactBackupAttempted = false;
 
 	constructor(private readonly options: WorkbenchFlashcardAuthorityOptions) {
 		this.settingsFingerprint = this.readSettingsFingerprint();
@@ -61,7 +71,9 @@ export class WorkbenchFlashcardAuthority implements FlashcardAuthority {
 		const settings = flashcardSettingsSlice.normalize(this.options.store.getSettings());
 		this.settingsFingerprint = JSON.stringify(settings);
 		const raw = structuredClone(this.options.store.getRawDocument());
-		const learning = raw.learning as LearningStateDocument | undefined;
+		const storedLearning = raw.learning;
+		const learning =
+			storedLearning === undefined ? undefined : decodePersistedLearning(storedLearning);
 
 		return {
 			version: this.options.store.getRevision(),
@@ -80,22 +92,28 @@ export class WorkbenchFlashcardAuthority implements FlashcardAuthority {
 		commit: FlashcardAuthorityCommit,
 	): Promise<{ readonly version: number }> {
 		if (commit.discardLegacy) await this.backupLegacyDocument();
+		await this.backupPreCompactDocument();
+		const learning = encodePersistedLearning(commit.learning);
 		try {
 			if (commit.discardLegacy) {
 				await this.options.store.mutateDocument(
 					(document) => {
-						document.learning = structuredClone(commit.learning);
+						// Replacing the whole learning partition drops the legacy top-level
+						// flashcard keys. `encodePersistedLearning` returns a fresh document
+						// graph for the card map, so the store can adopt it directly under
+						// the same immutable-document contract as the save path below.
+						document.learning = learning;
 						for (const key of LEGACY_FLASHCARD_KEYS) delete document[key];
 					},
 					{ expectedRevision: expectedVersion, source: this.source },
 				);
 			} else {
 				// The repository builds a fresh copy-on-write learning document for
-				// every transition and never mutates a committed one. The store can
-				// therefore adopt the document directly instead of deep-cloning the
-				// whole card map on every answer. Callers must keep that contract:
-				// a committed learning document is immutable.
-				await this.options.store.savePartition("learning", commit.learning, {
+				// every transition and never mutates a committed one. The encoded
+				// persisted document is fresh as well, so the store can adopt it
+				// instead of deep-cloning the whole document on every answer.
+				// Callers must keep that contract: a committed document is immutable.
+				await this.options.store.savePartition("learning", learning, {
 					expectedRevision: expectedVersion,
 					source: this.source,
 				});
@@ -173,6 +191,52 @@ export class WorkbenchFlashcardAuthority implements FlashcardAuthority {
 		} catch (error) {
 			console.warn("Failed to preserve the local legacy data backup:", error);
 		}
+	}
+
+	/**
+	 * One-time downgrade protection before the first compact-format write:
+	 * copies the still-legacy `data.json` to `data.backup-v2.json` so the user
+	 * can restore a document the previous plugin version can read. The existing
+	 * file is never overwritten, a failed attempt only warns (persistence must
+	 * still proceed), and the check is skipped when the partition is already
+	 * compact or the document holds no learning/legacy data to protect.
+	 */
+	private async backupPreCompactDocument(): Promise<void> {
+		if (this.preCompactBackupAttempted) return;
+		const { adapter, pluginDirectory } = this.options;
+		if (!adapter || !pluginDirectory) {
+			this.preCompactBackupAttempted = true;
+			return;
+		}
+		// Commits normally follow a read; loading here keeps a standalone first
+		// commit from backing up the not-yet-loaded empty document.
+		try {
+			await this.options.store.load();
+		} catch (error) {
+			console.warn(
+				"Failed to inspect the local data before the compact-format backup:",
+				error,
+			);
+			return;
+		}
+		const raw = this.options.store.getRawDocument();
+		if (isCompactPersistedLearning(raw.learning)) {
+			this.preCompactBackupAttempted = true;
+			return;
+		}
+		const hasLearning = raw.learning !== undefined && raw.learning !== null;
+		if (!hasLearning && !isLegacyFlashcardDocument(raw)) return;
+		const path = normalizePath(`${pluginDirectory}/data.backup-v2.json`);
+		try {
+			if (!(await adapter.exists(path))) {
+				await adapter.write(path, JSON.stringify(raw));
+			}
+		} catch (error) {
+			// Retried on the next commit until the original document is preserved.
+			console.warn("Failed to preserve the local pre-compact data backup:", error);
+			return;
+		}
+		this.preCompactBackupAttempted = true;
 	}
 }
 
