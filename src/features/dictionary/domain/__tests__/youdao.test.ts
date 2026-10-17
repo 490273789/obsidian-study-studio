@@ -408,6 +408,16 @@ describe("YoudaoDictionarySource never falls back between access modes", () => {
 		expect(calls.some((call) => call.url.includes(YOUDAO_FREE_ENDPOINT))).toBe(false);
 	});
 
+	it.each([
+		["108", "unauthorized"],
+		["411", "rate-limit"],
+	])("maps shared Youdao code %s to %s in official mode", async (errorCode, code) => {
+		const source = new YoudaoDictionarySource(settings({ accessMode: "official" }), {
+			request: async () => response({ errorCode }),
+		});
+		await expect(source.lookup({ text: "test" })).rejects.toMatchObject({ code });
+	});
+
 	it("requires credentials in official mode before any request", async () => {
 		const request = vi.fn(async () => response(OFFICIAL_FIXTURE));
 		const source = new YoudaoDictionarySource(

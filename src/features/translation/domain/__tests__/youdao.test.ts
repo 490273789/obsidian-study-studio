@@ -52,4 +52,27 @@ describe("translateYoudao", () => {
 		});
 		await expect(pending).rejects.toMatchObject({ code: "timeout" });
 	});
+
+	it("maps shared Youdao failures into the translation surface's existing categories", async () => {
+		await expect(
+			translateYoudao(connection, "hello", "en-zh", {
+				request: async () => ({ status: 200, text: JSON.stringify({ errorCode: "120" }) }),
+				readSecret: () => "secret",
+			}),
+		).rejects.toMatchObject({ code: "server" });
+
+		await expect(
+			translateYoudao({ ...connection, baseUrl: "not a url" }, "hello", "en-zh", {
+				request: async () => ({ status: 200, text: "{}" }),
+				readSecret: () => "secret",
+			}),
+		).rejects.toMatchObject({ code: "invalid-config" });
+
+		await expect(
+			translateYoudao(connection, "hello", "en-zh", {
+				request: async () => ({ status: 200, text: "{}" }),
+				readSecret: () => "",
+			}),
+		).rejects.toMatchObject({ code: "missing-key" });
+	});
 });

@@ -1,3 +1,4 @@
+import { EndpointValidationError, validateHttpEndpoint } from "../net/endpoint";
 import { isRecord } from "../shared/isRecord";
 import { settingsRecord, type SettingsSlice } from "../settings/slice";
 import { AiError, type AiEngineConfig, type AiProvider, type AiSettings } from "./types";
@@ -44,18 +45,10 @@ export function validateAiConnection(config: AiEngineConfig): void {
 	if (!AI_PROVIDERS.includes(config.provider) || !config.secretId.trim())
 		throw new AiError("invalid-config");
 	try {
-		const url = new URL(config.baseUrl);
-		if (
-			!["https:", "http:"].includes(url.protocol) ||
-			url.username ||
-			url.password ||
-			url.search ||
-			url.hash ||
-			/[{}<>]/.test(config.baseUrl)
-		)
-			throw new Error();
-	} catch {
-		throw new AiError("invalid-config");
+		validateHttpEndpoint(config.baseUrl);
+	} catch (error) {
+		if (error instanceof EndpointValidationError) throw new AiError("invalid-config");
+		throw error;
 	}
 }
 

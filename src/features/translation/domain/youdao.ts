@@ -1,9 +1,11 @@
 import { AiError } from "../../../core/ai/types";
 import { TransportError, type OutboundPort } from "../../../core/net/types";
 import {
-	buildYoudaoV3Body as buildYoudaoV3BodyFromSign,
-	youdaoV3SignInput,
-} from "../../../core/shared/youdaoSign";
+	requestYoudaoJson,
+	resolveYoudaoConnection,
+	YoudaoTransportError,
+} from "../../../core/net/youdaoTransport";
+import { youdaoV3SignInput } from "../../../core/shared/youdaoSign";
 
 export interface YoudaoConnection {
 	baseUrl: string;
@@ -11,75 +13,37 @@ export interface YoudaoConnection {
 	appSecretSecretId: string;
 }
 
-/**
- * The v3 signing algorithm is shared with the dictionary tool; only the form
- * fields differ between translation and dictionary lookups.
- */
 export { youdaoV3SignInput };
 
-export async function buildYoudaoV3Body(options: {
-	appKey: string;
-	appSecret: string;
-	query: string;
-	from: string;
-	to: string;
-}): Promise<string> {
-	return buildYoudaoV3BodyFromSign({
-		appKey: options.appKey,
-		appSecret: options.appSecret,
-		fields: { from: options.from, to: options.to },
-		query: options.query,
-	});
-}
-
-function validateConnection(connection: YoudaoConnection, text: string): string {
-	if (!connection.appKeySecretId.trim() || !connection.appSecretSecretId.trim())
-		throw new AiError("invalid-config");
-	if (!text.trim()) throw new AiError("invalid-input");
-	try {
-		const url = new URL(connection.baseUrl.trim());
-		if (
-			!["https:", "http:"].includes(url.protocol) ||
-			url.username ||
-			url.password ||
-			url.search ||
-			url.hash
-		)
-			throw new Error();
-		return url.toString();
-	} catch {
-		throw new AiError("invalid-config");
-	}
-}
-
-function parseResponse(text: string): { text: string; usage: null } {
-	let data: unknown;
-	try {
-		data = JSON.parse(text);
-	} catch {
-		throw new TransportError("invalid-response");
-	}
-	if (!data || typeof data !== "object" || Array.isArray(data))
-		throw new TransportError("invalid-response");
-	const result = data as Record<string, unknown>;
-	if (typeof result.errorCode !== "string" && typeof result.errorCode !== "number")
-		throw new TransportError("invalid-response");
-	const code = String(result.errorCode);
-	if (code !== "0") {
-		throw new TransportError(
-			["108", "111", "202", "203"].includes(code)
-				? "unauthorized"
-				: ["411", "412"].includes(code)
-					? "rate-limited"
-					: "server",
-		);
-	}
+function parseTranslationPayload(payload: unknown): { text: string; usage: null } {
+	const result = payload as Record<string, unknown>;
 	if (!Array.isArray(result.translation)) throw new TransportError("invalid-response");
 	const translations = result.translation.filter(
 		(value): value is string => typeof value === "string" && Boolean(value.trim()),
 	);
 	if (!translations.length) throw new TransportError("invalid-response");
 	return { text: translations.join("\n"), usage: null };
+}
+
+/** Keeps the translation surface's existing classification for shared Youdao failures. */
+function throwYoudaoTranslationError(error: YoudaoTransportError): never {
+	switch (error.kind) {
+		case "invalid-config":
+		case "missing-key":
+			throw new AiError(error.kind);
+		case "unauthorized":
+		case "rate-limited":
+			throw new TransportError(error.kind, { httpStatus: error.httpStatus ?? undefined });
+		case "not-found":
+			// The 词典 surface owns not-found semantics; translation keeps its old server bucket.
+			throw new TransportError("server", { httpStatus: error.httpStatus ?? undefined });
+		case "server":
+			throw new TransportError("server", { httpStatus: error.httpStatus ?? undefined });
+		case "invalid-response":
+			throw new TransportError("invalid-response");
+		case "network":
+			throw new TransportError("network", { cause: error });
+	}
 }
 
 export async function translateYoudao(
@@ -89,7 +53,7 @@ export async function translateYoudao(
 	net: Pick<OutboundPort, "request" | "readSecret">,
 	signal?: AbortSignal,
 ): Promise<{ text: string; usage: null }> {
-	const endpoint = validateConnection(connection, text);
+	if (!text.trim()) throw new AiError("invalid-input");
 	let appKey: string | null;
 	let appSecret: string | null;
 	try {
@@ -98,24 +62,24 @@ export async function translateYoudao(
 	} catch {
 		throw new AiError("missing-key");
 	}
-	if (!appKey?.trim() || !appSecret?.trim()) throw new AiError("missing-key");
-	const body = await buildYoudaoV3Body({
-		appKey: appKey.trim(),
-		appSecret: appSecret.trim(),
-		query: text.trim(),
-		...(direction === "zh-en" ? { from: "zh-CHS", to: "en" } : { from: "en", to: "zh-CHS" }),
-	});
 	try {
-		const response = await net.request({
-			label: "translation-youdao",
-			url: endpoint,
-			method: "POST",
-			headers: { "Content-Type": "application/x-www-form-urlencoded" },
-			body,
-			signal,
+		const resolved = resolveYoudaoConnection({
+			endpoint: connection.baseUrl,
+			appKey: appKey ?? "",
+			appSecret: appSecret ?? "",
 		});
-		return parseResponse(response.text);
+		const payload = await requestYoudaoJson({
+			connection: resolved,
+			query: text.trim(),
+			fields:
+				direction === "zh-en" ? { from: "zh-CHS", to: "en" } : { from: "en", to: "zh-CHS" },
+			net,
+			label: "translation-youdao",
+			...(signal === undefined ? {} : { signal }),
+		});
+		return parseTranslationPayload(payload);
 	} catch (error) {
+		if (error instanceof YoudaoTransportError) throwYoudaoTranslationError(error);
 		if (error instanceof AiError || error instanceof TransportError) throw error;
 		throw new TransportError("network", { cause: error });
 	}

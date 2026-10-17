@@ -1,15 +1,28 @@
 import { dictionaryText } from "./messages";
-import { buildYoudaoV3Body } from "../../../core/shared/youdaoSign";
+import {
+	requestYoudaoJson,
+	resolveYoudaoConnection,
+	YoudaoTransportError,
+} from "../../../core/net/youdaoTransport";
+import { TransportError } from "../../../core/net/types";
 import type { YoudaoDictionarySettings } from "./types";
 import {
 	DictionaryError,
+	dictionaryErrorCodeMessage,
+	type DictionaryErrorCode,
 	type DictionaryQuery,
 	type DictionaryResult,
 	type DictionarySection,
 	type DictionarySource,
 	type Pronunciation,
 } from "./types";
-import { requestOnlineResponse, type DictionaryOutboundPort } from "./online";
+import {
+	dictionaryErrorCodeForTransport,
+	MAX_ONLINE_DICTIONARY_RESPONSE_BYTES,
+	ONLINE_DICTIONARY_TIMEOUT_MS,
+	requestOnlineResponse,
+	type DictionaryOutboundPort,
+} from "./online";
 import { isRecord } from "../../../core/shared/isRecord";
 
 export const YOUDAO_FREE_ENDPOINT = "https://dict.youdao.com/jsonapi";
@@ -334,33 +347,65 @@ export class YoudaoDictionarySource implements DictionarySource {
 	}
 
 	private async lookupOfficial(query: string): Promise<DictionaryResult> {
-		if (!this.settings.appKey.trim() || !this.settings.appSecret.trim()) {
-			throw new DictionaryError("configuration", dictionaryText().errors.configuration);
-		}
 		const english = /^[\p{Script=Latin}\s'’-]+$/u.test(query);
 		const preferred = english ? ["ec", "ee"] : ["ce", "yw"];
 		const dictionary = preferred.find((candidate) =>
 			this.settings.dictionaries.includes(candidate),
 		);
-		const body = await buildYoudaoV3Body({
-			appKey: this.settings.appKey,
-			appSecret: this.settings.appSecret,
-			fields: {
-				dicts: dictionary ?? (english ? "ec" : "ce"),
-				docType: "json",
-				langType: english ? "en" : "zh-CHS",
-			},
-			query,
-		});
-		const response = await requestOnlineResponse(
-			{
-				body,
-				headers: { "Content-Type": "application/x-www-form-urlencoded" },
-				method: "POST",
-				url: YOUDAO_OFFICIAL_ENDPOINT,
-			},
-			this.net,
-		);
-		return parseYoudaoOfficialResponse(responseJson(response), query);
+		try {
+			const connection = resolveYoudaoConnection({
+				endpoint: YOUDAO_OFFICIAL_ENDPOINT,
+				appKey: this.settings.appKey,
+				appSecret: this.settings.appSecret,
+			});
+			const payload = await requestYoudaoJson({
+				connection,
+				query,
+				fields: {
+					dicts: dictionary ?? (english ? "ec" : "ce"),
+					docType: "json",
+					langType: english ? "en" : "zh-CHS",
+				},
+				net: this.net,
+				label: "dictionary-youdao-official",
+				timeoutMs: ONLINE_DICTIONARY_TIMEOUT_MS,
+				maxBytes: MAX_ONLINE_DICTIONARY_RESPONSE_BYTES,
+			});
+			return parseYoudaoOfficialResponse(payload, query);
+		} catch (error) {
+			if (error instanceof DictionaryError) throw error;
+			if (error instanceof YoudaoTransportError) {
+				throw new DictionaryError(
+					dictionaryCodeForTransport(error),
+					dictionaryErrorCodeMessage(dictionaryCodeForTransport(error)),
+					error.httpStatus,
+				);
+			}
+			if (error instanceof TransportError) {
+				const code = dictionaryErrorCodeForTransport(error.code);
+				throw new DictionaryError(code, dictionaryErrorCodeMessage(code), error.httpStatus);
+			}
+			throw new DictionaryError("invalid-response", dictionaryText().errors.invalidResponse);
+		}
+	}
+}
+
+function dictionaryCodeForTransport(error: YoudaoTransportError): DictionaryErrorCode {
+	switch (error.kind) {
+		case "invalid-config":
+		case "missing-key":
+			return "configuration";
+		case "unauthorized":
+			return "unauthorized";
+		case "rate-limited":
+			return "rate-limit";
+		case "not-found":
+			return "not-found";
+		case "server":
+			return "server";
+		case "invalid-response":
+			return "invalid-response";
+		case "network":
+			return "network";
 	}
 }

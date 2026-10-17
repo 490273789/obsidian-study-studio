@@ -5,6 +5,7 @@ Read this guide before changing anything under `src/features/dictionary/domain/*
 ## Source and boundary invariants
 
 - Online sources (Youdao, Cambridge, Hujiang, AI) send only the explicit query. Each keeps its own timeout, size bound, and failure; Youdao official and free modes are explicit and must never silently fall back to one another.
+- Official Youdao requests cross `src/core/net/youdaoTransport.ts` for endpoint/credential validation, v3 signing, JSON parsing and provider errorCode classification; the dictionary maps those shared failures into `DictionaryError` and keeps its own dicts/langType selection and payload parsing. Free mode stays on its own GET endpoint.
 - AI definitions are opt-in per query and use the shared AI engine configuration selected by `settings.dictionary.ai.configId`. Ordinary lookups must not trigger an AI request.
 - Favourites write to the Markdown file at `settings.dictionary.favoritePath` only after an explicit save. Persist the path setting first, then write the file; path suggestions may inspect existing Markdown paths but must not become a general content scan.
 - Desktop import may read user-selected MDX/MDD/CSS/JS/EUDIC files outside the vault. It compiles a package under the plugin's `dictionaries/{id}/compiled-v2/` directory and never copies the originals into the plugin folder. Mobile may only query fully synchronized compiled packages; it never compiles originals.
