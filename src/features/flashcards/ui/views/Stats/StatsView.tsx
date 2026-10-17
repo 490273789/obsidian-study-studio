@@ -21,7 +21,7 @@ const MODE_CLASSES: Record<StudyHistoryEntry["mode"], string> = {
 };
 
 interface StatsViewProps {
-	history: StudyHistoryEntry[];
+	history: ReadonlyArray<StudyHistoryEntry>;
 	onBack: () => void;
 }
 

@@ -44,6 +44,7 @@ export interface DeckHomeDeckSnapshot {
 	readonly tag: string;
 	readonly studyCount: number;
 	readonly stats: Readonly<DeckStats>;
+	readonly effectiveStudySettings: Readonly<StudySettings>;
 	readonly spelling: {
 		readonly enabled: boolean;
 		readonly ready: boolean;
@@ -130,6 +131,8 @@ export interface DeckHomeSnapshot {
 	readonly evaluatedAt: number;
 	readonly decks: ReadonlyArray<DeckHomeDeckSnapshot>;
 	readonly totals: Readonly<DeckHomeTotals>;
+	readonly studyHistory: ReadonlyArray<StudyHistoryEntry>;
+	readonly spellingProgress: Readonly<SpellingProgressSnapshot>;
 	readonly learningFootprint: LearningFootprintSnapshot;
 	readonly migration: Readonly<Pick<MigrationPreview, "sourceCount" | "cardCount">> | null;
 	readonly mutation: DeckHomeMutationActivity;
@@ -247,15 +250,15 @@ export interface DeckHomeRepository {
 	getRevision(): number;
 	subscribe(listener: () => void): () => void;
 	getAllDecks(): Deck[];
-	getChallengeProgress?(): ChallengeProgress | null;
-	getDeck?(deckId: string): Deck | undefined;
+	getChallengeProgress(): ChallengeProgress | null;
+	getDeck(deckId: string): Deck | undefined;
 	getDeckStats(deck: Deck, now?: Date): DeckStats;
 	getSettings(): FlashcardStudySettings;
-	getEffectiveStudySettings?(deckId: string): StudySettings;
-	getSpellingProgress?(): SpellingProgressSnapshot;
-	getStudyHistory?(): StudyHistoryEntry[];
+	getEffectiveStudySettings(deckId: string): StudySettings;
+	getSpellingProgress(): SpellingProgressSnapshot;
+	getStudyHistory(): StudyHistoryEntry[];
 	getLearningFootprint(now: Date): LearningFootprintSnapshot;
-	recordWordListVisit?(
+	recordWordListVisit(
 		deckId: string,
 		deckName: string,
 		startTimeMs: number,
@@ -295,9 +298,6 @@ export interface DeckHome {
 	subscribe(listener: () => void): () => void;
 	act(action: DeckHomeAction): Promise<DeckHomeOutcome>;
 	getDeck(deckId: string): Deck | undefined;
-	getEffectiveStudySettings(deckId: string): StudySettings;
-	getSpellingProgress(): SpellingProgressSnapshot;
-	getStudyHistory(): StudyHistoryEntry[];
 	recordWordListVisit(deckId: string, startTimeMs: number, endTimeMs: number): Promise<void>;
 	dispose(): void;
 }
@@ -418,36 +418,7 @@ class DefaultDeckHome implements DeckHome {
 	}
 
 	getDeck(deckId: string): Deck | undefined {
-		return (
-			this.options.repository.getDeck?.(deckId) ??
-			this.options.repository.getAllDecks().find((candidate) => candidate.id === deckId)
-		);
-	}
-
-	getEffectiveStudySettings(deckId: string): StudySettings {
-		if (this.options.repository.getEffectiveStudySettings) {
-			return this.options.repository.getEffectiveStudySettings(deckId);
-		}
-		const settings = this.options.repository.getSettings();
-		const overrides = settings.deckStudySettings?.[deckId] ?? {};
-		return {
-			dailyNewCards: settings.dailyNewCards,
-			dailyReviewCards: settings.dailyReviewCards,
-			studyOrder: settings.studyOrder,
-			fsrsParameters: {
-				...settings.fsrsParameters,
-				...overrides.fsrsParameters,
-			},
-			...overrides,
-		};
-	}
-
-	getSpellingProgress(): SpellingProgressSnapshot {
-		return this.options.repository.getSpellingProgress?.() ?? {};
-	}
-
-	getStudyHistory(): StudyHistoryEntry[] {
-		return this.options.repository.getStudyHistory?.() ?? [];
+		return this.options.repository.getDeck(deckId);
 	}
 
 	async recordWordListVisit(
@@ -455,7 +426,6 @@ class DefaultDeckHome implements DeckHome {
 		startTimeMs: number,
 		endTimeMs: number,
 	): Promise<void> {
-		if (!this.options.repository.recordWordListVisit) return;
 		const deck = this.getDeck(deckId);
 		const deckName = deck ? deck.name : deckId;
 		await this.options.repository.recordWordListVisit(deckId, deckName, startTimeMs, endTimeMs);
@@ -858,6 +828,7 @@ class DefaultDeckHome implements DeckHome {
 				tag: deck.tag,
 				studyCount: deck.studyCount,
 				stats: { ...stats },
+				effectiveStudySettings: this.options.repository.getEffectiveStudySettings(deck.id),
 				spelling: {
 					enabled: spelling.enabled,
 					ready: spelling.ready,
@@ -886,7 +857,7 @@ class DefaultDeckHome implements DeckHome {
 			},
 		);
 		const migration = this.options.identity.inspect().migration;
-		const challengeProgress = this.options.repository.getChallengeProgress?.();
+		const challengeProgress = this.options.repository.getChallengeProgress();
 		const round = challengeProgress?.round;
 		const resumable = round && round.completedLevelCount < round.levels.length;
 		const challenge: ChallengeReadiness = Object.freeze({
@@ -921,6 +892,8 @@ class DefaultDeckHome implements DeckHome {
 			evaluatedAt: now.getTime(),
 			decks: deckSnapshots,
 			totals,
+			studyHistory: this.options.repository.getStudyHistory(),
+			spellingProgress: this.options.repository.getSpellingProgress(),
 			learningFootprint: this.options.repository.getLearningFootprint(now),
 			migration: migration
 				? {
@@ -1096,10 +1069,13 @@ const frozenLearningFootprints = new WeakSet<LearningFootprintSnapshot>();
 function freezeDeckHomeSnapshot(snapshot: DeckHomeSnapshot): DeckHomeSnapshot {
 	for (const deck of snapshot.decks) {
 		Object.freeze(deck.stats);
+		Object.freeze(deck.effectiveStudySettings.fsrsParameters);
+		Object.freeze(deck.effectiveStudySettings);
 		Object.freeze(deck.spelling);
 		Object.freeze(deck);
 	}
 	Object.freeze(snapshot.decks);
+	Object.freeze(snapshot.studyHistory);
 	Object.freeze(snapshot.totals);
 	if (!frozenLearningFootprints.has(snapshot.learningFootprint)) {
 		Object.freeze(snapshot.learningFootprint.today.answers);

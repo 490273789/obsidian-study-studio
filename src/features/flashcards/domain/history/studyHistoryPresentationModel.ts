@@ -21,7 +21,7 @@ export interface StudyHistoryModePresentation {
 export interface StudyHistoryDayGroup {
 	date: string;
 	displayDate: string;
-	entries: StudyHistoryEntry[];
+	entries: ReadonlyArray<StudyHistoryEntry>;
 	totalDuration: number;
 	totalDurationLabel: string;
 	totalCards: number;
@@ -56,7 +56,7 @@ export const STUDY_HISTORY_MODE_PRESENTATION: Record<
 };
 
 export function buildStudyHistoryPresentationModel(
-	history: StudyHistoryEntry[],
+	history: ReadonlyArray<StudyHistoryEntry>,
 	{ language, t, now = new Date() }: BuildStudyHistoryPresentationModelOptions,
 ): StudyHistoryPresentationModel {
 	const dayGroups = buildStudyHistoryDayGroups(history, { language, t, now });
@@ -78,7 +78,7 @@ export function buildStudyHistoryPresentationModel(
 }
 
 function buildStudyHistoryDayGroups(
-	history: StudyHistoryEntry[],
+	history: ReadonlyArray<StudyHistoryEntry>,
 	options: BuildStudyHistoryPresentationModelOptions & { now: Date },
 ): StudyHistoryDayGroup[] {
 	const map = new Map<string, StudyHistoryEntry[]>();

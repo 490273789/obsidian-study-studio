@@ -7,7 +7,7 @@ import type {
 import {
 	type Deck,
 	type FlashcardSettings,
-	type SpellingCardProgress,
+	type SpellingProgressSnapshot,
 	type StudyHistoryEntry,
 	type StudySettings,
 } from "../../../../../core/shared/types";
@@ -23,6 +23,7 @@ import {
 	type DailyLearningActivity,
 } from "../../history/dailyLearningActivity";
 import { getStudySetupPlan } from "../../sessions/sessionPlanner";
+import type { ChallengeProgress } from "../../sessions/challengeSessionEngine";
 
 const STABLE_ONE = "550e8400-e29b-41d4-a716-446655440000";
 const STABLE_TWO = "7d444840-9dc0-11d1-b245-5ffdce74fad2";
@@ -77,22 +78,61 @@ class MemoryRepository implements DeckHomeRepository {
 	private readonly listeners = new Set<() => void>();
 	readonly statsReads = new Map<string, number>();
 
-	getDeck?: (deckId: string) => Deck | undefined;
-	getEffectiveStudySettings?: (deckId: string) => StudySettings;
-	getSpellingProgress?: () => Readonly<Record<string, SpellingCardProgress>>;
-	getStudyHistory?: () => StudyHistoryEntry[];
 	dailyLearningActivity: DailyLearningActivity = restoreDailyLearningActivity(undefined);
-	recordWordListVisit?: (
-		deckId: string,
-		deckName: string,
-		startTimeMs: number,
-		endTimeMs: number,
-	) => Promise<void>;
+	challengeProgress: ChallengeProgress | null = null;
+	spellingProgress: SpellingProgressSnapshot = {};
+	studyHistory: StudyHistoryEntry[] = [];
+	readonly wordListVisits: Array<{
+		deckId: string;
+		deckName: string;
+		startTimeMs: number;
+		endTimeMs: number;
+	}> = [];
 
 	constructor(
 		public decks: Deck[],
 		public settings: FlashcardSettings = makeSettings(),
 	) {}
+
+	getDeck(deckId: string): Deck | undefined {
+		return this.decks.find((deck) => deck.id === deckId);
+	}
+
+	getEffectiveStudySettings(deckId: string): StudySettings {
+		const settings = this.settings;
+		const overrides = settings.deckStudySettings[deckId] ?? {};
+		return {
+			dailyNewCards: settings.dailyNewCards,
+			dailyReviewCards: settings.dailyReviewCards,
+			studyOrder: settings.studyOrder,
+			fsrsParameters: {
+				...settings.fsrsParameters,
+				...overrides.fsrsParameters,
+			},
+			...overrides,
+		};
+	}
+
+	getSpellingProgress(): SpellingProgressSnapshot {
+		return this.spellingProgress;
+	}
+
+	getStudyHistory(): StudyHistoryEntry[] {
+		return [...this.studyHistory];
+	}
+
+	getChallengeProgress(): ChallengeProgress | null {
+		return this.challengeProgress;
+	}
+
+	async recordWordListVisit(
+		deckId: string,
+		deckName: string,
+		startTimeMs: number,
+		endTimeMs: number,
+	): Promise<void> {
+		this.wordListVisits.push({ deckId, deckName, startTimeMs, endTimeMs });
+	}
 
 	getRevision(): number {
 		return this.revision;
@@ -692,54 +732,51 @@ describe("DeckHome", () => {
 		expect(home.getSnapshot().totals.dueCards).toBe(1);
 	});
 
-	it("falls back safely for query and record facade methods when repository does not provide them", async () => {
+	it("publishes history, spelling progress and per-deck effective settings in the snapshot", () => {
 		const deck = makeDeck();
+		const memoryRepo = new MemoryRepository(
+			[deck],
+			makeSettings({ deckStudySettings: { [deck.id]: { dailyNewCards: 42 } } }),
+		);
+		memoryRepo.studyHistory = [
+			{
+				date: "2026-08-02",
+				deckId: deck.id,
+				deckName: deck.name,
+				mode: "study",
+				cardCount: 2,
+				duration: 60,
+				timestamp: 1,
+			},
+		];
+		memoryRepo.spellingProgress = {
+			[STABLE_ONE]: {
+				attempts: 1,
+				correctAttempts: 1,
+				correctStreak: 1,
+				lastAttemptAt: 1,
+			},
+		};
 		const home = createDeckHome({
-			repository: new MemoryRepository([deck]),
+			repository: memoryRepo,
 			identity: makeIdentity(),
 			saveSettingsPatch: vi.fn(),
 			exportDeck: vi.fn(),
 			report: (event) => events.push(event),
 		});
 
-		expect(home.getDeck(deck.id)).toEqual(deck);
-		expect(home.getDeck("non-existent")).toBeUndefined();
-		expect(home.getEffectiveStudySettings(deck.id)).toBeDefined();
-		expect(home.getEffectiveStudySettings(deck.id).dailyNewCards).toBe(
-			DEFAULT_SETTINGS.dailyNewCards,
+		const snapshot = home.getSnapshot();
+		expect(snapshot.studyHistory).toEqual(memoryRepo.studyHistory);
+		expect(snapshot.spellingProgress).toBe(memoryRepo.spellingProgress);
+		expect(snapshot.decks[0]?.effectiveStudySettings.dailyNewCards).toBe(42);
+		expect(snapshot.decks[0]?.effectiveStudySettings.fsrsParameters).toEqual(
+			memoryRepo.settings.fsrsParameters,
 		);
-		expect(home.getSpellingProgress()).toEqual({});
-		expect(home.getStudyHistory()).toEqual([]);
-
-		await expect(home.recordWordListVisit(deck.id, 1000, 2000)).resolves.toBeUndefined();
 	});
 
-	it("delegates query and record facade methods to repository when available", async () => {
+	it("reads decks through the required repository query and records word list visits", async () => {
 		const deck = makeDeck();
 		const memoryRepo = new MemoryRepository([deck]);
-		const customSettings = {
-			...DEFAULT_SETTINGS,
-			dailyNewCards: 42,
-		};
-		const customSpellingProgress = {
-			completedCounts: { "card-1": 3 },
-			history: [],
-		};
-		const customHistory = [
-			{
-				date: "2026-08-02",
-				cardsStudied: 10,
-				timeSpentSeconds: 120,
-			},
-		];
-		const recordWordListVisitSpy = vi.fn().mockResolvedValue(undefined);
-
-		memoryRepo.getDeck = (id: string) => (id === deck.id ? deck : undefined);
-		memoryRepo.getEffectiveStudySettings = vi.fn().mockReturnValue(customSettings);
-		memoryRepo.getSpellingProgress = vi.fn().mockReturnValue(customSpellingProgress);
-		memoryRepo.getStudyHistory = vi.fn().mockReturnValue(customHistory);
-		memoryRepo.recordWordListVisit = recordWordListVisitSpy;
-
 		const home = createDeckHome({
 			repository: memoryRepo,
 			identity: makeIdentity(),
@@ -749,11 +786,18 @@ describe("DeckHome", () => {
 		});
 
 		expect(home.getDeck(deck.id)).toBe(deck);
-		expect(home.getEffectiveStudySettings(deck.id)).toBe(customSettings);
-		expect(home.getSpellingProgress()).toBe(customSpellingProgress);
-		expect(home.getStudyHistory()).toBe(customHistory);
+		expect(home.getDeck("non-existent")).toBeUndefined();
 
 		await home.recordWordListVisit(deck.id, 1000, 2000);
-		expect(recordWordListVisitSpy).toHaveBeenCalledWith(deck.id, deck.name, 1000, 2000);
+		await home.recordWordListVisit("non-existent", 3000, 4000);
+		expect(memoryRepo.wordListVisits).toEqual([
+			{ deckId: deck.id, deckName: deck.name, startTimeMs: 1000, endTimeMs: 2000 },
+			{
+				deckId: "non-existent",
+				deckName: "non-existent",
+				startTimeMs: 3000,
+				endTimeMs: 4000,
+			},
+		]);
 	});
 });

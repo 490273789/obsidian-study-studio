@@ -5,6 +5,7 @@ import type { DragEndEvent, DragStartEvent, DndContextProps } from "@dnd-kit/cor
 import { rectSortingStrategy } from "@dnd-kit/sortable";
 import type { DeckHome, DeckHomeSnapshot } from "../../../../domain/decks/deckHome";
 import { restoreDailyLearningActivity } from "../../../../domain/history/dailyLearningActivity";
+import { DEFAULT_SETTINGS } from "../../../../../../core/host/settingsSlices";
 import { DeckList } from "../DeckList";
 import { ReorderableList } from "../../../../../../core/ui/primitives/Sortable/Sortable";
 import type { SortableInteraction } from "../../../../../../core/ui/primitives/Sortable/sortableInteraction";
@@ -168,6 +169,12 @@ function harness(decks?: DeckOverrides[]) {
 				reviewCards: 0,
 				relearningCards: 0,
 			},
+			effectiveStudySettings: {
+				dailyNewCards: DEFAULT_SETTINGS.dailyNewCards,
+				dailyReviewCards: DEFAULT_SETTINGS.dailyReviewCards,
+				studyOrder: DEFAULT_SETTINGS.studyOrder,
+				fsrsParameters: DEFAULT_SETTINGS.fsrsParameters,
+			},
 			spelling: {
 				enabled: false,
 				ready: false,
@@ -178,6 +185,8 @@ function harness(decks?: DeckOverrides[]) {
 				ignoredCardCount: 0,
 			},
 		})),
+		studyHistory: [],
+		spellingProgress: {},
 		totals: {
 			deckCount: deckInputs.length,
 			totalCards: deckInputs.reduce((sum, deck) => sum + deck.totalCards, 0),

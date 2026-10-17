@@ -4,10 +4,10 @@ import type { ScopedWorkbenchSettings } from "../../../core/host/settingsSlices"
 import type { DeckHome, DeckHomeDestination } from "../domain/decks/deckHome";
 import { type SessionLifecycle } from "../domain/sessions/sessionLifecycle";
 import {
-	getStudySetupPlan,
-	getPracticeSetupPlan,
-	getSpellingSetupPlan,
-} from "../domain/sessions/sessionPlanner";
+	selectPracticeSetupPlan,
+	selectSpellingSetupPlan,
+	selectStudySetupPlan,
+} from "./deckHomeSetupPlans";
 import { DeckList } from "./views/Home";
 import { CardView, CardEditorModal } from "./views/Card";
 import { PracticeSetup, PracticeView, PracticeSummary } from "./views/Practice";
@@ -198,43 +198,6 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 			void navigation.result(presentedLifecycleSnapshot.reference, "home");
 	}, [navigation, presentedLifecycleSnapshot]);
 
-	// Cached derived data keyed on the store revision.
-	const studyHistory = useMemo(() => {
-		void deckHomeSnapshot.revision;
-		if (viewState.type !== "stats") return null;
-		return deckHome.getStudyHistory();
-	}, [deckHome, deckHomeSnapshot.revision, viewState.type]);
-	const practiceSetupPlan = useMemo(() => {
-		void deckHomeSnapshot.revision;
-		if (viewState.type !== "practice-setup") return null;
-		const deck = deckHome.getDeck(viewState.deckId);
-		if (!deck) return null;
-		return getPracticeSetupPlan(deck, viewState.initialSelection);
-	}, [deckHome, deckHomeSnapshot.revision, viewState]);
-	const spellingSetupPlan = useMemo(() => {
-		void deckHomeSnapshot.revision;
-		if (viewState.type !== "spelling-setup") return null;
-		const deck = deckHome.getDeck(viewState.deckId);
-		if (!deck) return null;
-		return getSpellingSetupPlan(
-			deck,
-			deckHome.getSpellingProgress(),
-			viewState.initialSelection,
-		);
-	}, [deckHome, deckHomeSnapshot.revision, viewState]);
-	const studySetupPlan = useMemo(() => {
-		void deckHomeSnapshot.revision;
-		if (viewState.type !== "study-setup") return null;
-		const deck = deckHome.getDeck(viewState.deckId);
-		if (!deck) return null;
-		return getStudySetupPlan(
-			deck,
-			deckHome.getEffectiveStudySettings(viewState.deckId),
-			new Date(deckHomeSnapshot.evaluatedAt),
-			viewState.initialStudyOrder,
-		);
-	}, [deckHome, deckHomeSnapshot.revision, deckHomeSnapshot.evaluatedAt, viewState]);
-
 	const handleDeleteCardRequest = useCallback(
 		(deckId: string, cardId: string) => {
 			void cardEditing.delete(deckId, cardId);
@@ -374,17 +337,13 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 		switch (viewState.type) {
 			case "study-setup": {
 				const deck = deckHome.getDeck(viewState.deckId);
-				if (!deck) {
-					return renderHome();
-				}
-				const plan =
-					studySetupPlan ??
-					getStudySetupPlan(
-						deck,
-						deckHome.getEffectiveStudySettings(viewState.deckId),
-						new Date(deckHomeSnapshot.evaluatedAt),
-						viewState.initialStudyOrder,
-					);
+				if (!deck) return renderHome();
+				const plan = selectStudySetupPlan(
+					deckHomeSnapshot,
+					deck,
+					viewState.initialStudyOrder,
+				);
+				if (!plan) return renderHome();
 				return (
 					<StudySetup
 						key={deck.id}
@@ -400,11 +359,8 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 
 			case "practice-setup": {
 				const deck = deckHome.getDeck(viewState.deckId);
-				if (!deck) {
-					return renderHome();
-				}
-				const plan =
-					practiceSetupPlan ?? getPracticeSetupPlan(deck, viewState.initialSelection);
+				if (!deck) return renderHome();
+				const plan = selectPracticeSetupPlan(deck, viewState.initialSelection);
 				return (
 					<PracticeSetup
 						key={deck.id}
@@ -421,13 +377,11 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 			case "spelling-setup": {
 				const deck = deckHome.getDeck(viewState.deckId);
 				if (!deck) return renderHome();
-				const plan =
-					spellingSetupPlan ??
-					getSpellingSetupPlan(
-						deck,
-						deckHome.getSpellingProgress(),
-						viewState.initialSelection,
-					);
+				const plan = selectSpellingSetupPlan(
+					deckHomeSnapshot,
+					deck,
+					viewState.initialSelection,
+				);
 				return (
 					<SpellingSetup
 						key={deck.id}
@@ -457,7 +411,9 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 			}
 
 			case "stats":
-				return <StatsView history={studyHistory ?? []} onBack={handleBackHome} />;
+				return (
+					<StatsView history={deckHomeSnapshot.studyHistory} onBack={handleBackHome} />
+				);
 
 			case "home":
 			default:
