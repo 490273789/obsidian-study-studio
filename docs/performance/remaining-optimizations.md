@@ -372,6 +372,46 @@ ADR 范围——外部 `data.json` 的 `journalSeq` 高于本地日志序号时�
 「日志读取失败 + 后继写入也失败」的双重故障下，旧日志条目可能在下次启动按旧序重放，
 需要后续按设备 epoch 才能彻底区分。
 
+## 第 12 批：首页按需订阅与 due 时间增量（2026-10-17）
+
+状态：实施完成，工作区未提交。
+
+- `FlashcardApp` 不再在顶层订阅 DeckHome：首页、study/spelling setup、stats、challenge
+  设置弹层分别由 `HomeRoute`/`DeckHomeSnapshotRoute` 按需订阅，卡片编辑弹层现取快照。
+  学习/练习/拼写/challenge 视图渲染时 DeckHome 无订阅者，配合第 9 批的 dirty 延迟构建，
+  每次作答不再触发首页读模型重建（stats/拼写资格/challenge 计数扫描全部省掉）。
+- WAL 作答路径的 due 时间缓存改为增量维护：对变化卡片做有序数组删除 + 二分插入，
+  缓存失效时仍回退整 deck 重算，`getNextDueTime` 语义不变。
+- 验证：`pnpm run check:all`（155 文件 / 1747 用例）、`pnpm run build` 通过。
+
+## 剩余项与结论（2026-10-17）
+
+- **WAL 真实磁盘/Sync 测量（ADR-0005 前置）**：需要在 Obsidian 内执行。可在开发者控制台
+  运行下面的临时脚本，对比连续 50 次小文件 append 与整份 data.json write 的耗时；
+  若小文件写没有明显优势，WAL 收益主要在 Sync 流量而非延迟。
+    ```js
+    const app = window.app;
+    const adapter = app.vault.adapter;
+    const dir = app.plugins.plugins["study-studio"].manifest.dir;
+    const sample = "x".repeat(1024);
+    console.time("journal-append-50");
+    for (let i = 0; i < 50; i++) await adapter.append(`${dir}/_measure.jsonl`, sample + "\n");
+    console.timeEnd("journal-append-50");
+    const data = await adapter.read(`${dir}/data.json`);
+    console.time("data-write-50");
+    for (let i = 0; i < 50; i++) await adapter.write(`${dir}/_measure.json`, data);
+    console.timeEnd("data-write-50");
+    await adapter.remove(`${dir}/_measure.jsonl`);
+    await adapter.remove(`${dir}/_measure.json`);
+    ```
+- **冷启动 placeholder 物化**：真实 2.4k 卡约 1.9 ms、10k 卡约 8 ms，属于启动期一次性成本；
+  跳过物化会让首页在 deck-index 缓存读取前短暂显示 0 张卡，需要 Obsidian 内确认观感后再做，
+  本轮不做。
+- **`cards` 键浅拷贝**：WAL 落地后只在合并/flush 与非纯提交时发生，不再是每次作答成本，
+  收益已可忽略；若未来恢复每答整份写再评估。
+- **多设备 `journalSeq` 并发**：ADR-0005 已声明范围外（最后合并者覆盖）。
+- **发音 `lastAccess` 写放大**：IndexedDB 记录结构约束下无法只写元数据，已放弃。
+
 ## 不要动的地方
 
 以下实现经两轮独立审计确认是正确的，改动前请先说明理由：
