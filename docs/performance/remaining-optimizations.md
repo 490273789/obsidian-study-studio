@@ -325,6 +325,53 @@ Practice 结算分批、发音探测共享与同词单飞为工作区改动（�
 验证：`pnpm run check:all`（151 文件 / 1720 用例）、`pnpm run build`、`pnpm run lint`、
 模块边界检查通过。真实磁盘写入耗时、backup-v2 实际落盘未手动验证。
 
+## 第 11 批：作答 WAL（2026-10-17）
+
+状态：实施完成，工作区未提交。实现 [ADR-0005](../adr/0005-session-journal-for-per-answer-durability.md)
+的「本地会话日志 + 合并」：纯作答不再整份写 `data.json`，改为先追加本地 JSONL 日志，
+合并时机再写回。
+
+- 新增纯领域端口 `domain/storage/sessionJournal.ts`：`SessionJournalEntry` 以判别字段
+  `kind` 二选一携带 `cardUpdate {deckId, cardId, fsrsCard}` 或 `spellingAttempt
+  {cardId, correct, attemptedAt}`，`seq` 单调从 1 开始；`SessionJournalStore` 提供
+  `load`（损坏/被截断尾部只返回可解析前缀，绝不抛错）、`append`（返回前已落盘）、
+  `clear`。JSONL 行编解码同在该端口，便于纯逻辑测试。
+- 新增 Obsidian 适配器 `obsidian/sessionJournalAdapter.ts`：`DataAdapter` 读写
+  `${pluginDirectory}/session-journal.jsonl`；`append` 用 `DataAdapter.append`（O(1)
+  追加），`clear` 删除文件，`load` 容忍空行、损坏行与读取失败。`feature.tsx` 在
+  adapter + `manifest.dir` 可用时注入；测试用内存 fake。
+- 持久化 learning 文档新增可选 `journalSeq`（已合并进 `data.json` 的最大日志序号，
+  旧数据缺省按 0），`persistedLearningCodec` 原样编解码；它是幂等水位线，防止重放
+  已完成合并的拼写作答再次计数。
+- `FlashcardRepository`：纯作答（仅 cardSchedules/spellingAttempts）`await` 追加成功后
+  才安装内存、递增 revision 并发布下一题，**不构建 learning 文档、不写 `data.json`**。
+  合并触发：阈值（默认 128 条）、空闲 3 s（可注入计时器）、任何非纯提交前
+  （会话结束/记录、challenge、continuity、单词表、外部同步）、启动恢复后、dispose
+  尽力合并。合并走现有 authority 提交，成功后 `clear()`；失败保留日志并让该次提交
+  失败（可重试）。追加失败回退整份 `data.json` 提交，已确认作答不会记为成功却未耐久。
+- 崩溃恢复：启动/外部恢复时按 `seq > journalSeq` 重放，卡片更新 last-wins，拼写按
+  序号只应用一次；日志尾部损坏或被截断只丢弃尾部；`data.json` 仍是唯一权威，
+  `cache/` 仍只放可重建数据，`FlashcardRepository` 仍不直接做 Obsidian I/O。
+- 合并期间 `getCommittedCardStates()` 基线失效（返回 `undefined`），非纯提交先合并再
+  复用基线；纯作答期间 `getRevision()` 继续单调递增，UI/DeckHome 语义不变。
+
+验证：新增 journal 端口/适配器/repository/编解码用例 23 个，覆盖追加/加载/clear、
+损坏尾部、空文件、阈值与空闲合并、会话结束前合并、崩溃恢复与重复启动幂等、拼写
+不重复计数、合并后截断失败、追加失败回退、continuity/外部同步前合并、启动读取失败
+不阻塞恢复。`.obsidian` 真实规模 2,413 卡：连续 5 次作答 `saveData` **0 次**，空闲
+合并后 **1 次**；阈值 2 时平均每 2 次作答 1 次写；会话结束为先合并再记录（2 次写）。
+定向 `vp test run src/features/flashcards`（71 文件 / 859 用例）、全量
+`vp test run`（155 文件 / 1747 用例）、`tsc --noEmit --skipLibCheck` 均通过，改动文件
+`vp fmt`/`vp lint`（0 warning / 0 error）通过。
+
+风险与未测量项：本批只验证写入次数与行为，**没有**在真实 Obsidian 中测量单条
+`DataAdapter.append` 与整份 `write` 的磁盘/Sync 耗时（ADR 实施前置的真实磁盘测量
+仍缺）；日志文件放在插件目录，代码不会替用户设置 Sync 排除；多设备同时作答不在本
+ADR 范围——外部 `data.json` 的 `journalSeq` 高于本地日志序号时，本地未合并条目会被
+视为已合并而丢弃（按最后合并者覆盖）；dispose 合并是 fire-and-forget 尽力而为；
+「日志读取失败 + 后继写入也失败」的双重故障下，旧日志条目可能在下次启动按旧序重放，
+需要后续按设备 epoch 才能彻底区分。
+
 ## 不要动的地方
 
 以下实现经两轮独立审计确认是正确的，改动前请先说明理由：
