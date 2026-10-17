@@ -1,4 +1,4 @@
-import { extractCardIdentityMarker, hasFlashcardSyntax } from "../cards/cardFormat";
+import { hasFlashcardSyntax } from "../cards/cardFormat";
 import { editSourceCardBatch } from "../cards/sourceCardBatch";
 import type {
 	CardSourceMutation,
@@ -15,6 +15,12 @@ import {
 	type DeckSourceEditResult,
 } from "../cards/deckSourceEditor";
 import { extractFirstTag, parseFlashcards } from "../cards/parser";
+import {
+	guardSourceForEdit,
+	isLegacyIdentity,
+	type SourceEditGuardOutcome,
+} from "./sourceEditGuard";
+import { applySourceEditTransaction } from "./sourceEditTransaction";
 import { extractSpellingWord } from "../cards/spellingWord";
 import type { Deck, FlashCard } from "../../../../core/shared/types";
 
@@ -261,119 +267,44 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 		path: string,
 		expectedContent: string,
 	): Promise<CardSourcePreparation> {
-		try {
-			const state = await this.options.state.load();
-			if (state.continuity.journal) {
-				return { kind: "blocked", reason: "source-needs-repair" };
-			}
-			// No tag filter: source edits must see fresh targets and global identities,
-			// including sources whose metadata cache has not caught up yet.
-			const documents = await this.options.sources.list();
-			const target = this.options.sources.read
-				? await this.options.sources.read(path)
-				: documents.find((document) => document.path === path);
-			if (!target || target.content !== expectedContent) return { kind: "source-changing" };
-			const deck = state.decks.get(path);
-			const tag = extractFirstTag(target.content);
-			const managed =
-				Boolean(deck || state.continuity.sources[path]) ||
-				Boolean(
-					tag &&
-					state.configuredTags.some(
-						(configured) => configured.toLowerCase() === tag.toLowerCase(),
-					),
-				);
-			if (!managed) {
-				// Identity markers remain protected even after a source leaves the
-				// configured index. Raw block edits could orphan or reattach them.
-				const hasStableIdentity = target.content
-					.split(/\r?\n/)
-					.some((line) => extractCardIdentityMarker(line) !== null);
-				return hasStableIdentity
-					? { kind: "blocked", reason: "source-needs-repair" }
-					: { kind: "unmanaged" };
-			}
-			if (
-				deck &&
-				(!tag ||
-					!state.configuredTags.some(
-						(configured) => configured.toLowerCase() === tag.toLowerCase(),
-					))
-			) {
-				return { kind: "blocked", reason: "source-needs-repair" };
-			}
-			const condition = state.continuity.sources[path];
-			if (
-				condition?.type === "legacy" ||
-				deck?.cards.some((card) => isLegacyIdentity(path, card.id))
-			) {
-				return { kind: "blocked", reason: "migration-required" };
-			}
-			if (condition?.type === "last-known-good") {
-				return {
-					kind: "blocked",
-					reason: "source-needs-repair",
-					issueId: state.continuity.issues.find((issue) =>
-						issue.affectedSources.includes(path),
-					)?.id,
-				};
-			}
-			const cards = parseFlashcards(target.content, path);
-			if (cards.some((card) => isLegacyIdentity(path, card.id))) {
-				const currentIdentities = new Set(cards.map((card) => card.id));
-				const missingStableIdentity = deck?.cards.some(
-					(card) => !currentIdentities.has(card.id),
-				);
-				return {
-					kind: "blocked",
-					reason: missingStableIdentity ? "source-needs-repair" : "migration-required",
-				};
-			}
-			const counts = new Map<string, number>();
-			const authoritativeDocuments = documents.filter((document) => document.path !== path);
-			authoritativeDocuments.push(target);
-			for (const document of authoritativeDocuments) {
-				for (const line of document.content.split(/\r?\n/)) {
-					const identity = extractCardIdentityMarker(line);
-					if (identity) counts.set(identity, (counts.get(identity) ?? 0) + 1);
-				}
-			}
-			if (cards.some((card) => counts.get(card.id) !== 1)) {
-				return { kind: "blocked", reason: "source-needs-repair" };
-			}
-			return {
-				kind: "ready",
-				cards: cards.map((card) => ({
-					identity: card.id,
-					front: card.front,
-					back: card.back,
-					explanation: card.explanation,
-				})),
-			};
-		} catch (error) {
-			return {
-				kind: "failed",
-				retryable: true,
-				message: error instanceof Error ? error.message : "Card source preparation failed",
-			};
-		}
+		const state = await this.options.state.load();
+		const guard = await guardSourceForEdit({
+			path,
+			expectedContent,
+			state,
+			sourceStore: this.options.sources,
+		});
+		return toSourcePreparation(guard);
 	}
 
 	private async changeSourceNow(
 		request: Parameters<CardSourceMutation["change"]>[0],
 	): Promise<CardSourceChangeOutcome> {
-		const preparation = await this.prepareSourceNow(request.path, request.expectedContent);
-		if (preparation.kind !== "ready") {
-			return preparation.kind === "unmanaged"
-				? {
-						kind: "failed",
-						retryable: false,
-						message: "Source is not a managed card source",
-					}
-				: preparation;
+		const recovery = await this.recoverJournalForEdit();
+		if (recovery.kind === "failed") return recovery;
+
+		const state = await this.options.state.load();
+		const guard = await guardSourceForEdit({
+			path: request.path,
+			expectedContent: request.expectedContent,
+			state,
+			sourceStore: this.options.sources,
+		});
+		if (guard.kind === "unmanaged") {
+			return {
+				kind: "failed",
+				retryable: false,
+				message: "Source is not a managed card source",
+			};
 		}
+		if (guard.kind === "blocked") return guard;
+		if (guard.kind === "source-changing") return guard;
+		if (guard.kind === "failed") {
+			return { kind: "failed", retryable: true, message: guard.message };
+		}
+
 		try {
-			const identities = new Set(preparation.cards.map((card) => card.identity));
+			const identities = new Set(guard.cards.map((card) => card.id));
 			if (
 				request.changes.some(
 					(change) => change.kind !== "add" && !identities.has(change.identity),
@@ -386,17 +317,13 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 				request.changes,
 				this.options.createIdentity,
 			);
-			if (nextContent !== request.expectedContent) {
-				const result = await this.options.sources.replaceIfUnchanged(
-					request.path,
-					request.expectedContent,
-					nextContent,
-				);
-				if (result === "stale") return { kind: "source-changing" };
-			}
-			const sync = await this.synchronizeNow(request.path);
-			if (sync.kind === "failed") return sync;
-			return { kind: "applied" };
+			return await applySourceEditTransaction({
+				path: request.path,
+				expectedContent: request.expectedContent,
+				nextContent,
+				sourceStore: this.options.sources,
+				synchronize: (authoritativePath) => this.synchronizeNow(authoritativePath),
+			});
 		} catch (error) {
 			if (error instanceof DeckSourceEditException)
 				return { kind: "validation-failed", error: error.editError };
@@ -407,6 +334,7 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 			};
 		}
 	}
+
 	private snapshot: CardIdentityContinuitySnapshot = {
 		sources: {},
 		issues: [],
@@ -743,6 +671,24 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 		this.sourceSyntaxBytes += syntax.bytes;
 	}
 
+	/** Both edit doors recover one pending identity journal before touching a source. */
+	private async recoverJournalForEdit(): Promise<
+		{ kind: "applied" } | { kind: "failed"; retryable: boolean; message: string }
+	> {
+		const state = await this.options.state.load();
+		if (!state.continuity.journal) return { kind: "applied" };
+		const documents = await this.options.sources.list(state.configuredTags);
+		const recovery = await this.executeJournal(documents, state);
+		if (recovery.kind !== "applied") {
+			return {
+				kind: "failed",
+				retryable: true,
+				message: "An unfinished card identity operation is waiting to resume",
+			};
+		}
+		return { kind: "applied" };
+	}
+
 	prepareEdit(deckId: string, cardId: string): Promise<CardEditPreparation> {
 		return this.enqueue(() => this.prepareEditNow(deckId, cardId));
 	}
@@ -762,19 +708,16 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 			return { kind: "not-found" };
 		}
 
-		const condition = currentState.continuity.sources[deck.filePath];
-		if (condition?.type === "legacy") {
-			return { kind: "blocked", reason: "migration-required" };
+		const guard = await guardSourceForEdit({
+			path: deck.filePath,
+			state: currentState,
+			sourceStore: this.options.sources,
+		});
+		if (guard.kind === "blocked") {
+			return { kind: "blocked", reason: guard.reason, issueId: guard.issueId };
 		}
-		if (condition?.type === "last-known-good") {
-			const issue = currentState.continuity.issues.find((candidate) =>
-				candidate.affectedSources.includes(deck.filePath),
-			);
-			return {
-				kind: "blocked",
-				reason: "source-needs-repair",
-				issueId: issue?.id,
-			};
+		if (guard.kind !== "ready") {
+			return { kind: "blocked", reason: "source-needs-repair" };
 		}
 
 		const card =
@@ -782,6 +725,9 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 			(Number.isInteger(Number(cardId)) ? deck.cards[Number(cardId)] : undefined);
 		if (!card) {
 			return { kind: "not-found" };
+		}
+		if (!guard.cards.some((candidate) => candidate.id === card.id)) {
+			return { kind: "blocked", reason: "source-needs-repair" };
 		}
 
 		return { kind: "ready", card };
@@ -793,20 +739,10 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 
 	private async changeNow(change: PluginCardChange): Promise<CardChangeOutcome> {
 		try {
-			let currentState = await this.options.state.load();
-			let documents = await this.options.sources.list(currentState.configuredTags);
-			if (currentState.continuity.journal) {
-				const recovery = await this.executeJournal(documents, currentState);
-				if (recovery.kind !== "applied") {
-					return {
-						kind: "failed",
-						retryable: true,
-						message: "An unfinished card identity operation is waiting to resume",
-					};
-				}
-				currentState = await this.options.state.load();
-				documents = await this.options.sources.list(currentState.configuredTags);
-			}
+			const recovery = await this.recoverJournalForEdit();
+			if (recovery.kind === "failed") return recovery;
+
+			const currentState = await this.options.state.load();
 			const deck =
 				change.kind === "add"
 					? currentState.decks.get(change.deckId)
@@ -827,29 +763,27 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 				};
 			}
 
-			const condition = currentState.continuity.sources[deck.filePath];
-			if (condition?.type === "legacy") {
-				return { kind: "blocked", reason: "migration-required" };
-			}
-			if (condition?.type === "last-known-good") {
-				const issue = currentState.continuity.issues.find((candidate) =>
-					candidate.affectedSources.includes(deck.filePath),
-				);
-				return {
-					kind: "blocked",
-					reason: "source-needs-repair",
-					issueId: issue?.id,
-				};
-			}
-
-			const document = documents.find((candidate) => candidate.path === deck.filePath);
-			if (!document) {
+			const guard = await guardSourceForEdit({
+				path: deck.filePath,
+				state: currentState,
+				sourceStore: this.options.sources,
+			});
+			if (guard.kind === "blocked") return guard;
+			if (guard.kind === "unmanaged") {
 				return {
 					kind: "failed",
 					retryable: false,
-					message: "Source file not found",
+					message: "Source is not a managed card source",
 				};
 			}
+			if (guard.kind === "failed") {
+				return { kind: "failed", retryable: true, message: guard.message };
+			}
+			if (guard.kind !== "ready") {
+				return { kind: "source-changing", deckId: deck.id };
+			}
+
+			const document = guard.document;
 			const newIdentity = change.kind === "add" ? this.options.createIdentity() : undefined;
 			let editResult: DeckSourceEditResult;
 			try {
@@ -885,17 +819,17 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 				}
 				throw error;
 			}
-			const writeResult = await this.options.sources.replaceIfUnchanged(
-				deck.filePath,
-				document.content,
-				editResult.nextContent,
-			);
-			if (writeResult === "stale") {
+			const transaction = await applySourceEditTransaction({
+				path: deck.filePath,
+				expectedContent: document.content,
+				nextContent: editResult.nextContent,
+				sourceStore: this.options.sources,
+				synchronize: (authoritativePath) => this.synchronizeNow(authoritativePath),
+			});
+			if (transaction.kind === "source-changing") {
 				return { kind: "source-changing", deckId: deck.id };
 			}
-
-			const syncOutcome = await this.synchronizeNow();
-			if (syncOutcome.kind === "failed") return syncOutcome;
+			if (transaction.kind === "failed") return transaction;
 			return newIdentity
 				? { kind: "applied", cardIdentity: newIdentity }
 				: { kind: "applied" };
@@ -1274,10 +1208,6 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 	}
 }
 
-function isLegacyIdentity(filePath: string, cardIdentity: string): boolean {
-	return cardIdentity.startsWith(`${filePath}::`);
-}
-
 function canMigrateLegacyCards(
 	legacyCards: readonly FlashCard[],
 	currentCards: readonly FlashCard[],
@@ -1461,4 +1391,26 @@ function cloneJournal(journal: ContinuityJournal): ContinuityJournal {
 			identityMap: { ...source.identityMap },
 		})),
 	};
+}
+
+function toSourcePreparation(guard: SourceEditGuardOutcome): CardSourcePreparation {
+	switch (guard.kind) {
+		case "ready":
+			return {
+				kind: "ready",
+				cards: guard.cards.map((card) => ({
+					identity: card.id,
+					front: card.front,
+					back: card.back,
+					explanation: card.explanation,
+				})),
+			};
+		case "unmanaged":
+			return guard;
+		case "blocked":
+		case "source-changing":
+			return guard;
+		case "failed":
+			return { kind: "failed", retryable: true, message: guard.message };
+	}
 }
