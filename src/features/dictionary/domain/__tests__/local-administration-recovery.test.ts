@@ -104,9 +104,7 @@ class FakeSettingsStore implements DictionarySettingsStore {
 
 class FakeStorageAdapter implements LocalDictionaryStorageAdapter {
 	readonly stageImport = vi.fn(this.stageImportNow.bind(this));
-	readonly stageRemoval = vi.fn(async (): Promise<LocalDictionaryStorageRemoval> => {
-		throw new Error("Unexpected removal");
-	});
+	readonly stageRemoval = vi.fn(this.stageRemovalNow.bind(this));
 	cancelActive(): void {}
 
 	constructor(
@@ -115,6 +113,9 @@ class FakeStorageAdapter implements LocalDictionaryStorageAdapter {
 			onProgress?: LocalDictionaryStorageProgressListener,
 			signal?: AbortSignal,
 		) => Promise<LocalDictionaryStorageImportTransaction>,
+		private readonly stageRemovalNow = async (): Promise<LocalDictionaryStorageRemoval> => {
+			throw new Error("Unexpected removal");
+		},
 	) {}
 }
 
@@ -245,6 +246,83 @@ describe("LocalDictionaryAdministrationModule import recovery", () => {
 		expect(result.ok).toBe(true);
 		expect(settings.save).toHaveBeenCalledOnce();
 		expect(commit).toHaveBeenCalledOnce();
+	});
+
+	it("turns an import commit failure into a storage failure and restores the catalog", async () => {
+		const before = initialState();
+		const settings = new FakeSettingsStore(before);
+		const rollback = vi.fn(async () => undefined);
+		const storage = new FakeStorageAdapter(async (imports) =>
+			transaction(
+				packageFor(imports),
+				rollback,
+				vi.fn(async () => {
+					throw new Error("commit failed");
+				}),
+			),
+		);
+		const administration = new LocalDictionaryAdministrationModule(settings, storage);
+
+		expect(await administration.importFiles([file()])).toMatchObject({
+			error: { code: "storage-failed", recovery: "complete" },
+			ok: false,
+		});
+		expect(rollback).toHaveBeenCalledOnce();
+		expect(settings.save).toHaveBeenCalledTimes(2);
+		expectUnchanged(settings, before);
+	});
+
+	it("latches degraded state when import commit and rollback both fail", async () => {
+		const storage = new FakeStorageAdapter(async (imports) =>
+			transaction(
+				packageFor(imports),
+				vi.fn(async () => {
+					throw new Error("rollback failed");
+				}),
+				vi.fn(async () => {
+					throw new Error("commit failed");
+				}),
+			),
+		);
+		const administration = new LocalDictionaryAdministrationModule(
+			new FakeSettingsStore(),
+			storage,
+		);
+
+		expect(await administration.importFiles([file()])).toMatchObject({
+			error: { code: "recovery-incomplete", recovery: "incomplete" },
+			ok: false,
+		});
+		expect(await administration.importFiles([file("retry.eudic")])).toMatchObject({
+			error: { code: "recovery-incomplete", recovery: "incomplete" },
+			ok: false,
+		});
+	});
+
+	it("turns a remove commit failure into a storage failure and restores the catalog", async () => {
+		const before = initialState();
+		const settings = new FakeSettingsStore(before);
+		const rollback = vi.fn(async () => undefined);
+		const storage = new FakeStorageAdapter(
+			async () => {
+				throw new Error("Unexpected import");
+			},
+			async () => ({
+				commit: async () => {
+					throw new Error("commit failed");
+				},
+				rollback,
+			}),
+		);
+		const administration = new LocalDictionaryAdministrationModule(settings, storage);
+
+		expect(await administration.remove("old-dictionary")).toMatchObject({
+			error: { code: "storage-failed", recovery: "complete" },
+			ok: false,
+		});
+		expect(rollback).toHaveBeenCalledOnce();
+		expect(settings.save).toHaveBeenCalledTimes(2);
+		expectUnchanged(settings, before);
 	});
 
 	it("rolls back staged output and preserves the catalog when the package list is malformed", async () => {

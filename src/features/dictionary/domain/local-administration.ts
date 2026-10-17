@@ -16,6 +16,7 @@ import type {
 	LocalDictionaryStorageRemoval,
 } from "./local-storage";
 import { LocalDictionaryStorageError } from "./local-storage";
+import { commitLocalCatalogTransaction } from "./local-catalog-transaction";
 
 export interface LocalDictionaryListFile {
 	readonly name: string;
@@ -71,17 +72,19 @@ export type LocalDictionaryImportProgressListener = (
 	progress: LocalDictionaryImportProgress,
 ) => void;
 
+export interface LocalDictionaryAdministrationFailureResult {
+	readonly error: LocalDictionaryAdministrationFailure;
+	readonly ok: false;
+	readonly snapshot: LocalDictionarySnapshot;
+}
+
 export type LocalDictionaryImportResult =
 	| {
 			readonly imported: LocalDictionarySnapshot;
 			readonly ok: true;
 			readonly snapshot: LocalDictionarySnapshot;
 	  }
-	| {
-			readonly error: LocalDictionaryAdministrationFailure;
-			readonly ok: false;
-			readonly snapshot: LocalDictionarySnapshot;
-	  };
+	| LocalDictionaryAdministrationFailureResult;
 
 export type LocalDictionaryRemoveResult =
 	| {
@@ -89,11 +92,7 @@ export type LocalDictionaryRemoveResult =
 			readonly removed: LocalDictionaryListItem;
 			readonly snapshot: LocalDictionarySnapshot;
 	  }
-	| {
-			readonly error: LocalDictionaryAdministrationFailure;
-			readonly ok: false;
-			readonly snapshot: LocalDictionarySnapshot;
-	  };
+	| LocalDictionaryAdministrationFailureResult;
 
 export interface LocalDictionaryAdministration {
 	importFiles(
@@ -521,27 +520,14 @@ export class LocalDictionaryAdministrationModule implements LocalDictionaryAdmin
 		return result;
 	}
 
-	private importFailure(
+	private failure(
 		code: LocalDictionaryAdministrationFailureCode,
 		recovery: "complete" | "incomplete" = "complete",
-	): LocalDictionaryImportResult {
+	): LocalDictionaryAdministrationFailureResult {
 		return { error: failure(code, recovery), ok: false, snapshot: this.list() };
 	}
 
-	private importStorageFailure(error: unknown): LocalDictionaryImportResult {
-		const result = storageFailure(error);
-		if (result.recovery === "incomplete") this.enterDegraded();
-		return { error: result, ok: false, snapshot: this.list() };
-	}
-
-	private removeFailure(
-		code: LocalDictionaryAdministrationFailureCode,
-		recovery: "complete" | "incomplete" = "complete",
-	): LocalDictionaryRemoveResult {
-		return { error: failure(code, recovery), ok: false, snapshot: this.list() };
-	}
-
-	private removeStorageFailure(error: unknown): LocalDictionaryRemoveResult {
+	private storageFailureResult(error: unknown): LocalDictionaryAdministrationFailureResult {
 		const result = storageFailure(error);
 		if (result.recovery === "incomplete") this.enterDegraded();
 		return { error: result, ok: false, snapshot: this.list() };
@@ -572,10 +558,10 @@ export class LocalDictionaryAdministrationModule implements LocalDictionaryAdmin
 		onProgress?: LocalDictionaryImportProgressListener,
 		signal?: AbortSignal,
 	): Promise<LocalDictionaryImportResult> {
-		if (this.degraded) return this.importFailure("recovery-incomplete", "incomplete");
-		if (files.length === 0) return this.importFailure("invalid-selection");
+		if (this.degraded) return this.failure("recovery-incomplete", "incomplete");
+		if (files.length === 0) return this.failure("invalid-selection");
 		const candidates = groupDictionaryFiles(files);
-		if (!validCandidates(candidates)) return this.importFailure("invalid-selection");
+		if (!validCandidates(candidates)) return this.failure("invalid-selection");
 		const before = this.settings.getLocalDictionaryAdministrationState();
 
 		let imports: LocalDictionaryStorageImport[] | null = null;
@@ -585,7 +571,7 @@ export class LocalDictionaryAdministrationModule implements LocalDictionaryAdmin
 				candidates,
 				before.localDictionaries.map((dictionary) => dictionary.id),
 			);
-			if (!imports) return this.importFailure("storage-failed");
+			if (!imports) return this.failure("storage-failed");
 			try {
 				// oxlint-disable-next-line no-await-in-loop -- a collision requires fresh stable IDs.
 				transaction = await this.storage.stageImport(
@@ -597,10 +583,10 @@ export class LocalDictionaryAdministrationModule implements LocalDictionaryAdmin
 			} catch (error) {
 				if (error instanceof LocalDictionaryStorageError && error.code === "collision")
 					continue;
-				return this.importStorageFailure(error);
+				return this.storageFailureResult(error);
 			}
 		}
-		if (!imports || !transaction) return this.importFailure("storage-failed");
+		if (!imports || !transaction) return this.failure("storage-failed");
 
 		const imported = importedMembers(candidates, imports, transaction.packages);
 		if (!imported || imported.length !== candidates.length) {
@@ -608,27 +594,23 @@ export class LocalDictionaryAdministrationModule implements LocalDictionaryAdmin
 				await transaction.rollback();
 			} catch {
 				this.enterDegraded();
-				return this.importFailure("recovery-incomplete", "incomplete");
+				return this.failure("recovery-incomplete", "incomplete");
 			}
-			return this.importFailure("storage-failed");
+			return this.failure("storage-failed");
 		}
 
 		const next = stateWithCatalog(before, [...before.localDictionaries, ...imported]);
-		this.settings.setLocalDictionaryAdministrationState(next);
-		try {
-			await this.settings.save();
-		} catch {
-			this.settings.setLocalDictionaryAdministrationState(structuredClone(before));
-			try {
-				await transaction.rollback();
-			} catch {
-				this.enterDegraded();
-				return this.importFailure("recovery-incomplete", "incomplete");
-			}
-			return this.importFailure("persistence-failed");
+		const outcome = await commitLocalCatalogTransaction({
+			settings: this.settings,
+			before,
+			next,
+			stage: transaction,
+		});
+		if (outcome.kind === "failed") {
+			if (outcome.recovery === "incomplete") this.enterDegraded();
+			return this.failure(outcome.code, outcome.recovery);
 		}
 
-		transaction.commit();
 		const snapshot = this.commitSnapshot();
 		const importedIds = new Set(imported.map((dictionary) => dictionary.id));
 		return {
@@ -639,60 +621,33 @@ export class LocalDictionaryAdministrationModule implements LocalDictionaryAdmin
 	}
 
 	private async removeNow(dictionaryId: string): Promise<LocalDictionaryRemoveResult> {
-		if (this.degraded) return this.removeFailure("recovery-incomplete", "incomplete");
+		if (this.degraded) return this.failure("recovery-incomplete", "incomplete");
 		const before = this.settings.getLocalDictionaryAdministrationState();
 		const dictionary = before.localDictionaries.find(
 			(candidate) => candidate.id === dictionaryId,
 		);
-		if (!dictionary) return this.removeFailure("not-found");
+		if (!dictionary) return this.failure("not-found");
 
 		let removal: LocalDictionaryStorageRemoval;
 		try {
 			removal = await this.storage.stageRemoval(dictionaryId);
 		} catch (error) {
-			return this.removeStorageFailure(error);
+			return this.storageFailureResult(error);
 		}
 
 		const next = stateWithCatalog(
 			before,
 			before.localDictionaries.filter((candidate) => candidate.id !== dictionaryId),
 		);
-		this.settings.setLocalDictionaryAdministrationState(next);
-		try {
-			await this.settings.save();
-		} catch {
-			this.settings.setLocalDictionaryAdministrationState(structuredClone(before));
-			try {
-				await removal.rollback();
-			} catch {
-				this.enterDegraded();
-				return this.removeFailure("recovery-incomplete", "incomplete");
-			}
-			return this.removeFailure("persistence-failed");
-		}
-
-		try {
-			await removal.commit();
-		} catch {
-			let recoveryIncomplete = false;
-			try {
-				await removal.rollback();
-			} catch {
-				recoveryIncomplete = true;
-			}
-			if (!recoveryIncomplete) {
-				this.settings.setLocalDictionaryAdministrationState(structuredClone(before));
-				try {
-					await this.settings.save();
-				} catch {
-					recoveryIncomplete = true;
-				}
-			}
-			if (recoveryIncomplete) {
-				this.enterDegraded();
-				return this.removeFailure("recovery-incomplete", "incomplete");
-			}
-			return this.removeFailure("storage-failed");
+		const outcome = await commitLocalCatalogTransaction({
+			settings: this.settings,
+			before,
+			next,
+			stage: removal,
+		});
+		if (outcome.kind === "failed") {
+			if (outcome.recovery === "incomplete") this.enterDegraded();
+			return this.failure(outcome.code, outcome.recovery);
 		}
 
 		const snapshot = this.commitSnapshot();

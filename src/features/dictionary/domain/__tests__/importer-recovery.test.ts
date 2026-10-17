@@ -120,13 +120,13 @@ describe("dictionary import recovery", () => {
 	it("keeps committed files and makes rollback idempotent", async () => {
 		const { importer, root } = await fixture(async () => publication());
 		const committed = await importer.stageImport(plans(["first"]));
-		committed.commit();
+		await committed.commit();
 		await committed.rollback();
 		expect(await readdir(root)).toEqual(["first"]);
 		const discarded = await importer.stageImport(plans(["second"]));
 		await discarded.rollback();
 		await discarded.rollback();
-		discarded.commit();
+		await discarded.commit();
 		expect(await readdir(root)).toEqual(["first"]);
 	});
 

@@ -144,7 +144,7 @@ export class LocalDictionaryImporter implements LocalDictionaryStorageAdapter {
 		}
 
 		return {
-			commit: () => recovery.commit(),
+			commit: async () => recovery.commit(),
 			packages,
 			rollback: () => recovery.rollback(),
 		};

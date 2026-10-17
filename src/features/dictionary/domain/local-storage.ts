@@ -25,7 +25,8 @@ export interface LocalDictionaryStoragePackage {
 
 export interface LocalDictionaryStorageImportTransaction {
 	readonly packages: readonly LocalDictionaryStoragePackage[];
-	commit(): void;
+	/** May fail (e.g. pending recovery); callers must await and map the failure. */
+	commit(): Promise<void>;
 	rollback(): Promise<void>;
 }
 
