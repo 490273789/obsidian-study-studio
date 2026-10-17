@@ -251,6 +251,8 @@ export interface DeckHomeRepository {
 	subscribe(listener: () => void): () => void;
 	getAllDecks(): Deck[];
 	getChallengeProgress(): ChallengeProgress | null;
+	/** Revision of the installed challenge progress; changes invalidate its clone cache. */
+	getChallengeProgressRevision(): number;
 	getDeck(deckId: string): Deck | undefined;
 	getDeckStats(deck: Deck, now?: Date): DeckStats;
 	getSettings(): FlashcardStudySettings;
@@ -355,6 +357,12 @@ class DefaultDeckHome implements DeckHome {
 	>();
 
 	private readonly challengeCountCache = new WeakMap<Deck, { enabled: boolean; count: number }>();
+
+	/** Most recent challenge progress clone, reused until its repository revision changes. */
+	private challengeProgressCache: {
+		revision: number;
+		progress: ChallengeProgress | null;
+	} | null = null;
 
 	constructor(private readonly options: CreateDeckHomeOptions) {
 		this.clock = options.clock ?? systemClock;
@@ -871,7 +879,7 @@ class DefaultDeckHome implements DeckHome {
 			},
 		);
 		const migration = this.options.identity.inspect().migration;
-		const challengeProgress = this.options.repository.getChallengeProgress();
+		const challengeProgress = this.getChallengeProgressCached();
 		const round = challengeProgress?.round;
 		const resumable = round && round.completedLevelCount < round.levels.length;
 		const challenge: ChallengeReadiness = Object.freeze({
@@ -947,6 +955,21 @@ class DefaultDeckHome implements DeckHome {
 		const count = countEligibleChallengeCards(deck, enabled);
 		this.challengeCountCache.set(deck, { enabled, count });
 		return count;
+	}
+
+	/**
+	 * `getChallengeProgress` deep-clones the saved round, which on a large library
+	 * costs O(round questions) on every repository revision. The repository bumps
+	 * its challenge-progress revision only when the installed progress changes, so
+	 * reuse the last clone while that revision holds.
+	 */
+	private getChallengeProgressCached(): ChallengeProgress | null {
+		const revision = this.options.repository.getChallengeProgressRevision();
+		const cached = this.challengeProgressCache;
+		if (cached?.revision === revision) return cached.progress;
+		const progress = this.options.repository.getChallengeProgress();
+		this.challengeProgressCache = { revision, progress };
+		return progress;
 	}
 
 	private buildSettingsDraftSnapshot(

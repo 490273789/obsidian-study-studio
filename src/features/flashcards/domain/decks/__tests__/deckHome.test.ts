@@ -73,10 +73,46 @@ function makeSettings(overrides: Partial<FlashcardSettings> = {}): FlashcardSett
 	};
 }
 
+function makeChallengeProgress(
+	round: ChallengeProgress["round"] = {
+		id: "round-1",
+		mode: "normal",
+		startedAt: 1_000,
+		levels: [
+			[
+				{ identity: STABLE_ONE, originDeckId: "notes/words.md", questionMode: "normal" },
+				{ identity: STABLE_TWO, originDeckId: "notes/words.md", questionMode: "reversed" },
+			],
+			[{ identity: STABLE_ONE, originDeckId: "notes/words.md", questionMode: "spelling" }],
+		],
+		completedLevelCount: 1,
+		completedLevels: [
+			{
+				levelIndex: 0,
+				totalQuestions: 2,
+				firstTryCorrectCount: 1,
+				firstTryAccuracy: 0.5,
+				retryCount: 1,
+				durationSeconds: 30,
+				timeSpent: 30_000,
+				completedAt: 2_000,
+				incorrectIdentities: [STABLE_TWO],
+				removedCardCount: 0,
+			},
+		],
+		removedIdentities: [],
+	},
+	lastMode: ChallengeProgress["lastMode"] = "normal",
+): ChallengeProgress {
+	return { version: 1, lastMode, round };
+}
+
 class MemoryRepository implements DeckHomeRepository {
 	private revision = 1;
+	private challengeProgressRevision = 0;
 	private readonly listeners = new Set<() => void>();
 	readonly statsReads = new Map<string, number>();
+	challengeProgressReads = 0;
 
 	dailyLearningActivity: DailyLearningActivity = restoreDailyLearningActivity(undefined);
 	challengeProgress: ChallengeProgress | null = null;
@@ -122,7 +158,18 @@ class MemoryRepository implements DeckHomeRepository {
 	}
 
 	getChallengeProgress(): ChallengeProgress | null {
+		this.challengeProgressReads++;
 		return this.challengeProgress;
+	}
+
+	getChallengeProgressRevision(): number {
+		return this.challengeProgressRevision;
+	}
+
+	/** Install a challenge progress snapshot and bump its revision like the repository does. */
+	setChallengeProgress(progress: ChallengeProgress | null): void {
+		this.challengeProgress = progress;
+		this.challengeProgressRevision++;
 	}
 
 	async recordWordListVisit(
@@ -353,6 +400,112 @@ describe("DeckHome", () => {
 		});
 		expect(home.getSnapshot().challenge.eligibleCount).toBe(1);
 		expect(untouchedFrontReads).toBeGreaterThan(0);
+		home.dispose();
+	});
+
+	it("reuses the cloned challenge progress across publications while its revision holds", () => {
+		const deck = makeDeck();
+		const repository = new MemoryRepository(
+			[deck],
+			makeSettings({ wordLearningDecks: { [deck.id]: true } }),
+		);
+		repository.setChallengeProgress(makeChallengeProgress());
+		const home = createDeckHome({
+			repository,
+			identity: makeIdentity(),
+			saveSettingsPatch: vi.fn(),
+			exportDeck: vi.fn(),
+			report: vi.fn(),
+		});
+		// The constructor build and the first observed build each reused the clone.
+		const unsubscribe = home.subscribe(() => {});
+		expect(repository.challengeProgressReads).toBe(1);
+
+		for (let index = 0; index < 5; index++) {
+			repository.commit(() => {});
+		}
+		const snapshot = home.getSnapshot();
+		expect(repository.challengeProgressReads).toBe(1);
+		expect(snapshot.challenge).toEqual({
+			savedRoundId: "round-1",
+			eligibleCount: 1,
+			lastMode: "normal",
+			round: {
+				id: "round-1",
+				mode: "normal",
+				completedLevelCount: 1,
+				totalLevels: 2,
+				completedCardCount: 2,
+				totalCards: 3,
+			},
+		});
+		unsubscribe();
+		home.dispose();
+	});
+
+	it("re-reads the cloned challenge progress once its revision changes", () => {
+		const deck = makeDeck();
+		const repository = new MemoryRepository(
+			[deck],
+			makeSettings({ wordLearningDecks: { [deck.id]: true } }),
+		);
+		repository.setChallengeProgress(makeChallengeProgress());
+		const home = createDeckHome({
+			repository,
+			identity: makeIdentity(),
+			saveSettingsPatch: vi.fn(),
+			exportDeck: vi.fn(),
+			report: vi.fn(),
+		});
+		const unsubscribe = home.subscribe(() => {});
+		expect(repository.challengeProgressReads).toBe(1);
+
+		repository.setChallengeProgress(
+			makeChallengeProgress(
+				{
+					id: "round-2",
+					mode: "spelling",
+					startedAt: 3_000,
+					levels: [
+						[
+							{
+								identity: STABLE_TWO,
+								originDeckId: "notes/words.md",
+								questionMode: "spelling",
+							},
+						],
+					],
+					completedLevelCount: 1,
+					completedLevels: [
+						{
+							levelIndex: 0,
+							totalQuestions: 1,
+							firstTryCorrectCount: 1,
+							firstTryAccuracy: 1,
+							retryCount: 0,
+							durationSeconds: 10,
+							timeSpent: 10_000,
+							completedAt: 4_000,
+							incorrectIdentities: [],
+							removedCardCount: 0,
+						},
+					],
+					removedIdentities: [],
+				},
+				"spelling",
+			),
+		);
+		repository.commit(() => {});
+
+		// The completed round is no longer resumable, but its identity and mode stay readable.
+		expect(repository.challengeProgressReads).toBe(2);
+		expect(home.getSnapshot().challenge).toEqual({
+			savedRoundId: "round-2",
+			eligibleCount: 1,
+			lastMode: "spelling",
+			round: null,
+		});
+		unsubscribe();
 		home.dispose();
 	});
 
