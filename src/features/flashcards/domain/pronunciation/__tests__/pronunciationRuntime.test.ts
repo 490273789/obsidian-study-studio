@@ -115,6 +115,36 @@ function makeAudioFactory(options: { reject?: boolean } = {}) {
 	});
 }
 
+interface ControlledAudio {
+	src: string;
+	currentTime: number;
+	onended: ((event: Event) => void) | null;
+	onerror: ((event: Event) => void) | null;
+	pause: ReturnType<typeof vi.fn>;
+	play: ReturnType<typeof vi.fn>;
+}
+
+/** Playback that only ends when the test triggers `onended`. */
+function makeControlledAudioFactory(): {
+	createAudio: (url: string) => HTMLAudioElement;
+	audios: ControlledAudio[];
+} {
+	const audios: ControlledAudio[] = [];
+	const createAudio = vi.fn((url: string) => {
+		const audio: ControlledAudio = {
+			src: url,
+			currentTime: 0,
+			onended: null,
+			onerror: null,
+			pause: vi.fn(),
+			play: vi.fn().mockImplementation(async () => undefined),
+		};
+		audios.push(audio);
+		return audio as unknown as HTMLAudioElement;
+	});
+	return { createAudio, audios };
+}
+
 function makeRequester(status = 200): ReturnType<typeof vi.fn<PronunciationRequester>> {
 	return vi.fn<PronunciationRequester>().mockImplementation(async () => {
 		if (status >= 400) {
@@ -653,7 +683,7 @@ describe("pronunciation runtime order and resilience", () => {
 });
 
 describe("pronunciation cache key reuse", () => {
-	it("reuses one digest for 100 capability checks without local voices", async () => {
+	it("reuses one digest and one cache probe for 100 capability checks without local voices", async () => {
 		const digest = vi.spyOn(crypto.subtle, "digest");
 		const cache = new MemoryPronunciationAudioCache();
 		const get = vi.spyOn(cache, "get");
@@ -667,7 +697,8 @@ describe("pronunciation cache key reuse", () => {
 				expect(await runtime.canSpeak("hello")).toBe(true);
 			}
 			expect(digest).toHaveBeenCalledTimes(1);
-			expect(get).toHaveBeenCalledTimes(100);
+			// The miss is remembered until a cache write or clear invalidates it.
+			expect(get).toHaveBeenCalledTimes(1);
 		} finally {
 			runtime.dispose();
 			digest.mockRestore();
@@ -792,4 +823,291 @@ it("keeps the committed descriptor after configuration fails and rereads cache a
 		runtime.dispose();
 		digest.mockRestore();
 	}
+});
+
+describe("pronunciation cache probe sharing", () => {
+	async function cacheWord(
+		settings: PronunciationSettings,
+		word: string,
+	): Promise<MemoryPronunciationAudioCache> {
+		const descriptor = createPronunciationRequestDescriptor(word, settings);
+		if (!descriptor) throw new Error("Expected descriptor");
+		const cache = new MemoryPronunciationAudioCache();
+		await cache.put(await createPronunciationCacheKey(descriptor), {
+			data: new Uint8Array([1, 2, 3]).buffer,
+			mimeType: "audio/mpeg",
+		});
+		return cache;
+	}
+
+	it("reads cached audio once when the availability check precedes playback", async () => {
+		const settings = makeSettings({ azureSecretId: "" });
+		const cache = await cacheWord(settings, "hello");
+		const get = vi.spyOn(cache, "get");
+		const runtime = createPronunciationRuntime(makeApp(), settings, {
+			speechSynthesis: null,
+			cache,
+			isOnline: () => false,
+			createAudio: makeAudioFactory(),
+			createObjectUrl: () => "blob:test",
+			revokeObjectUrl: vi.fn(),
+		});
+		try {
+			expect(await runtime.canSpeak("hello")).toBe(true);
+			await expect(runtime.speak("hello", "manual")).resolves.toEqual({
+				status: "success",
+				source: "cache",
+			});
+			expect(get).toHaveBeenCalledTimes(1);
+		} finally {
+			runtime.dispose();
+		}
+	});
+
+	it("reads cached audio once when autoplay precedes the availability check", async () => {
+		const settings = makeSettings({ azureSecretId: "" });
+		const cache = await cacheWord(settings, "hello");
+		const get = vi.spyOn(cache, "get");
+		const runtime = createPronunciationRuntime(makeApp(), settings, {
+			speechSynthesis: null,
+			cache,
+			isOnline: () => false,
+			createAudio: makeAudioFactory(),
+			createObjectUrl: () => "blob:test",
+			revokeObjectUrl: vi.fn(),
+		});
+		try {
+			await expect(runtime.speak("hello", "manual")).resolves.toEqual({
+				status: "success",
+				source: "cache",
+			});
+			expect(await runtime.canSpeak("hello")).toBe(true);
+			expect(get).toHaveBeenCalledTimes(1);
+		} finally {
+			runtime.dispose();
+		}
+	});
+
+	it("shares freshly synthesized audio with availability and later playback", async () => {
+		const cache = new MemoryPronunciationAudioCache();
+		const get = vi.spyOn(cache, "get");
+		const requester = makeRequester();
+		let online = true;
+		const runtime = createPronunciationRuntime(makeApp(), makeSettings(), {
+			speechSynthesis: null,
+			cache,
+			net: { ...makeApp(), request: requester },
+			isOnline: () => online,
+			createAudio: makeAudioFactory(),
+			createObjectUrl: () => "blob:test",
+			revokeObjectUrl: vi.fn(),
+		});
+		try {
+			await expect(runtime.speak("hello", "manual")).resolves.toEqual({
+				status: "success",
+				source: "azure",
+			});
+			expect(get).toHaveBeenCalledTimes(1);
+			online = false;
+			expect(await runtime.canSpeak("hello")).toBe(true);
+			await expect(runtime.speak("hello", "manual")).resolves.toEqual({
+				status: "success",
+				source: "cache",
+			});
+			expect(get).toHaveBeenCalledTimes(1);
+			expect(requester).toHaveBeenCalledTimes(1);
+		} finally {
+			runtime.dispose();
+		}
+	});
+
+	it("drops shared probes when the cache is cleared", async () => {
+		const settings = makeSettings({ azureSecretId: "" });
+		const cache = await cacheWord(settings, "hello");
+		const get = vi.spyOn(cache, "get");
+		const runtime = createPronunciationRuntime(makeApp(), settings, {
+			speechSynthesis: null,
+			cache,
+			isOnline: () => false,
+			createAudio: makeAudioFactory(),
+			createObjectUrl: () => "blob:test",
+			revokeObjectUrl: vi.fn(),
+		});
+		try {
+			expect(await runtime.canSpeak("hello")).toBe(true);
+			await expect(runtime.clearCache()).resolves.toEqual({ status: "cleared" });
+			expect(await runtime.canSpeak("hello")).toBe(false);
+			await expect(runtime.speak("hello", "manual")).resolves.toEqual({
+				status: "unavailable",
+				reason: "offline",
+			});
+			expect(get).toHaveBeenCalledTimes(2);
+		} finally {
+			runtime.dispose();
+		}
+	});
+});
+
+describe("pronunciation playback single-flight", () => {
+	it("shares one in-flight provider request for concurrent same-word playback", async () => {
+		const response = deferred<{
+			status: number;
+			text: string;
+			arrayBuffer: ArrayBuffer;
+			headers: Record<string, string>;
+		}>();
+		const requester = vi.fn<PronunciationRequester>(() => response.promise);
+		const cache = new MemoryPronunciationAudioCache();
+		const put = vi.spyOn(cache, "put");
+		const runtime = createPronunciationRuntime(makeApp(), makeSettings(), {
+			speechSynthesis: null,
+			cache,
+			net: { ...makeApp(), request: requester },
+			createAudio: makeAudioFactory(),
+			createObjectUrl: () => "blob:test",
+			revokeObjectUrl: vi.fn(),
+		});
+		try {
+			const first = runtime.speak("hello", "manual");
+			const second = runtime.speak("hello", "manual");
+			await vi.waitFor(() => expect(requester).toHaveBeenCalledTimes(1));
+			response.resolve({
+				status: 200,
+				text: "",
+				arrayBuffer: new Uint8Array([1, 2, 3]).buffer,
+				headers: { "content-type": "audio/mpeg" },
+			});
+			await expect(first).resolves.toEqual({ status: "success", source: "azure" });
+			await expect(second).resolves.toEqual({ status: "success", source: "azure" });
+			expect(requester).toHaveBeenCalledTimes(1);
+			expect(put).toHaveBeenCalledTimes(1);
+		} finally {
+			runtime.dispose();
+		}
+	});
+
+	it("still cancels a different word's in-flight request", async () => {
+		const firstResponse = deferred<{
+			status: number;
+			text: string;
+			arrayBuffer: ArrayBuffer;
+			headers: Record<string, string>;
+		}>();
+		const signals: Array<AbortSignal | undefined> = [];
+		let requests = 0;
+		const requester = vi.fn<PronunciationRequester>((spec) => {
+			requests++;
+			signals.push(spec.signal);
+			if (requests === 1) return firstResponse.promise;
+			return Promise.resolve({
+				status: 200,
+				text: "",
+				arrayBuffer: new Uint8Array([1, 2, 3]).buffer,
+				headers: { "content-type": "audio/mpeg" },
+			});
+		});
+		const runtime = createPronunciationRuntime(makeApp(), makeSettings(), {
+			speechSynthesis: null,
+			cache: new MemoryPronunciationAudioCache(),
+			net: { ...makeApp(), request: requester },
+			createAudio: makeAudioFactory(),
+			createObjectUrl: () => "blob:test",
+			revokeObjectUrl: vi.fn(),
+		});
+		try {
+			const first = runtime.speak("hello", "manual");
+			await vi.waitFor(() => expect(requester).toHaveBeenCalledTimes(1));
+			const second = runtime.speak("world", "manual");
+			await expect(second).resolves.toEqual({ status: "success", source: "azure" });
+			expect(signals[0]?.aborted).toBe(true);
+			firstResponse.resolve({
+				status: 200,
+				text: "",
+				arrayBuffer: new Uint8Array([1, 2, 3]).buffer,
+				headers: { "content-type": "audio/mpeg" },
+			});
+			await expect(first).resolves.toEqual({ status: "cancelled" });
+			expect(requester).toHaveBeenCalledTimes(2);
+		} finally {
+			runtime.dispose();
+		}
+	});
+
+	it("cancels a shared in-flight request for every caller and allows a fresh attempt", async () => {
+		const firstResponse = deferred<{
+			status: number;
+			text: string;
+			arrayBuffer: ArrayBuffer;
+			headers: Record<string, string>;
+		}>();
+		let requests = 0;
+		const requester = vi.fn<PronunciationRequester>(() => {
+			requests++;
+			if (requests === 1) return firstResponse.promise;
+			return Promise.resolve({
+				status: 200,
+				text: "",
+				arrayBuffer: new Uint8Array([1, 2, 3]).buffer,
+				headers: { "content-type": "audio/mpeg" },
+			});
+		});
+		const runtime = createPronunciationRuntime(makeApp(), makeSettings(), {
+			speechSynthesis: null,
+			cache: new MemoryPronunciationAudioCache(),
+			net: { ...makeApp(), request: requester },
+			createAudio: makeAudioFactory(),
+			createObjectUrl: () => "blob:test",
+			revokeObjectUrl: vi.fn(),
+		});
+		try {
+			const first = runtime.speak("hello", "manual");
+			const second = runtime.speak("hello", "manual");
+			await vi.waitFor(() => expect(requester).toHaveBeenCalledTimes(1));
+			runtime.stop();
+			firstResponse.reject(new TransportError("cancelled"));
+			await expect(first).resolves.toEqual({ status: "cancelled" });
+			await expect(second).resolves.toEqual({ status: "cancelled" });
+
+			await expect(runtime.speak("hello", "manual")).resolves.toEqual({
+				status: "success",
+				source: "azure",
+			});
+			expect(requester).toHaveBeenCalledTimes(2);
+		} finally {
+			runtime.dispose();
+		}
+	});
+
+	it("restarts cached playback when pressed again after playback starts", async () => {
+		const settings = makeSettings();
+		const descriptor = createPronunciationRequestDescriptor("hello", settings);
+		if (!descriptor) throw new Error("Expected descriptor");
+		const cache = new MemoryPronunciationAudioCache();
+		await cache.put(await createPronunciationCacheKey(descriptor), {
+			data: new Uint8Array([1, 2, 3]).buffer,
+			mimeType: "audio/mpeg",
+		});
+		const get = vi.spyOn(cache, "get");
+		const { createAudio, audios } = makeControlledAudioFactory();
+		const runtime = createPronunciationRuntime(makeApp(), settings, {
+			speechSynthesis: null,
+			cache,
+			createAudio,
+			createObjectUrl: () => "blob:test",
+			revokeObjectUrl: vi.fn(),
+		});
+		try {
+			const first = runtime.speak("hello", "manual");
+			await vi.waitFor(() => expect(audios).toHaveLength(1));
+			const second = runtime.speak("hello", "manual");
+			await expect(first).resolves.toEqual({ status: "cancelled" });
+			await vi.waitFor(() => expect(audios).toHaveLength(2));
+			expect(audios[0]?.pause).toHaveBeenCalledTimes(1);
+			audios[1]?.onended?.({} as Event);
+			await expect(second).resolves.toEqual({ status: "success", source: "cache" });
+			expect(get).toHaveBeenCalledTimes(1);
+		} finally {
+			runtime.dispose();
+		}
+	});
 });

@@ -9,6 +9,7 @@ import {
 } from "./providers";
 import { normalizePronunciationSettings } from "./pronunciationSettings";
 import type {
+	CachedPronunciationAudio,
 	PronunciationAudioCache,
 	PronunciationCacheClearOutcome,
 	PronunciationCacheUsage,
@@ -24,9 +25,17 @@ import type {
 } from "./types";
 
 const CACHE_KEY_MEMO_LIMIT = 128;
+/** Recently probed audio records, so one card's presence check and playback share one read. */
+const CACHE_PROBE_MEMO_LIMIT = 16;
 
 interface ActivePlayback {
 	cancel(): void;
+}
+
+interface InFlightSpeak {
+	text: string;
+	operationId: number;
+	promise: Promise<PronunciationOutcome>;
 }
 
 export interface PronunciationRuntimeDependencies {
@@ -105,6 +114,7 @@ export function createPronunciationRuntime(
 class BrowserPronunciationRuntime implements PronunciationRuntime {
 	private settings: PronunciationSettings;
 	private readonly cacheKeys = new Map<string, Promise<string | null>>();
+	private readonly cacheProbes = new Map<string, Promise<CachedPronunciationAudio | null>>();
 	private readonly listeners = new Set<() => void>();
 	private voices: SpeechSynthesisVoice[] = [];
 	private voicesLoaded = false;
@@ -114,6 +124,7 @@ class BrowserPronunciationRuntime implements PronunciationRuntime {
 	private revision = 0;
 	private snapshot: PronunciationSnapshot | null = null;
 	private activePlayback: ActivePlayback | null = null;
+	private activeSpeak: InFlightSpeak | null = null;
 	private activeRequestController: AbortController | null = null;
 	private operationId = 0;
 	private configureQueue: Promise<void> = Promise.resolve();
@@ -196,6 +207,7 @@ class BrowserPronunciationRuntime implements PronunciationRuntime {
 				this.stop();
 				this.settings = nextSettings;
 				this.cacheKeys.clear();
+				this.cacheProbes.clear();
 				this.providerBlockedUntil.clear();
 				this.clearProviderCooldownTimers();
 				this.bump();
@@ -226,7 +238,7 @@ class BrowserPronunciationRuntime implements PronunciationRuntime {
 		const descriptor = this.createOnlineDescriptor(normalizedText);
 		if (!descriptor) return false;
 		const cacheKey = await this.tryCreateCacheKey(descriptor);
-		if (cacheKey && (await this.dependencies.cache.get(cacheKey))) return true;
+		if (cacheKey && (await this.probeCachedAudio(cacheKey))) return true;
 		return (
 			Boolean(this.getProviderSecret(descriptor)) &&
 			this.dependencies.isOnline() &&
@@ -235,15 +247,37 @@ class BrowserPronunciationRuntime implements PronunciationRuntime {
 	}
 
 	async speak(text: string, _intent: "manual" | "auto"): Promise<PronunciationOutcome> {
+		const normalizedText = extractSpellingWord(text);
+		const inFlight = this.activeSpeak;
+		// Repeated presses for the word that is still being fetched reuse that
+		// request instead of aborting it and paying for a second synthesis.
+		if (normalizedText && inFlight?.text === normalizedText) {
+			return inFlight.promise;
+		}
+
 		this.stop();
 		const operationId = ++this.operationId;
-		const normalizedText = extractSpellingWord(text);
 		if (!normalizedText) return { status: "unavailable", reason: "unsupported" };
+		const promise = this.runSpeak(normalizedText, operationId);
+		this.activeSpeak = { text: normalizedText, operationId, promise };
+		// Playback start or `stop()` clears the flight earlier so pressing again
+		// during playback still restarts it; this only covers early settlement.
+		void promise.then(
+			() => this.clearSpeakFlight(operationId),
+			() => this.clearSpeakFlight(operationId),
+		);
+		return promise;
+	}
 
+	private async runSpeak(
+		normalizedText: string,
+		operationId: number,
+	): Promise<PronunciationOutcome> {
 		await this.ensureVoicesLoaded();
 		if (operationId !== this.operationId) return { status: "cancelled" };
 		const voice = selectLocalEnglishVoice(this.voices, this.settings.accent);
 		if (voice) {
+			this.clearSpeakFlight(operationId);
 			return this.playLocal(normalizedText, voice, operationId);
 		}
 
@@ -252,9 +286,10 @@ class BrowserPronunciationRuntime implements PronunciationRuntime {
 		const cacheKey = await this.tryCreateCacheKey(descriptor);
 		if (operationId !== this.operationId) return { status: "cancelled" };
 		if (cacheKey) {
-			const cached = await this.dependencies.cache.get(cacheKey);
+			const cached = await this.probeCachedAudio(cacheKey);
 			if (operationId !== this.operationId) return { status: "cancelled" };
 			if (cached) {
+				this.clearSpeakFlight(operationId);
 				return this.playAudio(
 					normalizedText,
 					cached.data,
@@ -280,13 +315,13 @@ class BrowserPronunciationRuntime implements PronunciationRuntime {
 			const audio = await this.synthesizeOnline(descriptor, secret, requestController.signal);
 			if (operationId !== this.operationId) return { status: "cancelled" };
 			if (cacheKey) {
-				await this.dependencies.cache.put(cacheKey, {
-					data: audio.data,
-					mimeType: audio.mimeType,
-				});
+				const record = { data: audio.data, mimeType: audio.mimeType };
+				await this.dependencies.cache.put(cacheKey, record);
+				this.rememberCachedAudio(cacheKey, record);
 				this.requestCacheUsageRefresh();
 			}
 			if (operationId !== this.operationId) return { status: "cancelled" };
+			this.clearSpeakFlight(operationId);
 			return this.playAudio(
 				normalizedText,
 				audio.data,
@@ -379,6 +414,7 @@ class BrowserPronunciationRuntime implements PronunciationRuntime {
 
 	stop(): void {
 		this.operationId++;
+		this.activeSpeak = null;
 		this.activeRequestController?.abort();
 		this.activeRequestController = null;
 		this.cancelActiveTest?.();
@@ -436,6 +472,9 @@ class BrowserPronunciationRuntime implements PronunciationRuntime {
 
 		this.management = "clearing-cache";
 		this.bump();
+		// A clear may remove the records behind shared probes, so drop them even
+		// when the clear itself fails and the store still has to be read again.
+		this.cacheProbes.clear();
 		const active = this.dependencies.cache
 			.clear()
 			.then((): PronunciationCacheClearOutcome => {
@@ -461,6 +500,7 @@ class BrowserPronunciationRuntime implements PronunciationRuntime {
 	dispose(): void {
 		this.stop();
 		this.cacheKeys.clear();
+		this.cacheProbes.clear();
 		this.dependencies.speechSynthesis?.removeEventListener(
 			"voiceschanged",
 			this.voiceChangeListener,
@@ -723,8 +763,9 @@ class BrowserPronunciationRuntime implements PronunciationRuntime {
 	}
 
 	private tryCreateCacheKey(descriptor: PronunciationRequestDescriptor): Promise<string | null> {
-		// Cache only the immutable descriptor hash. Audio presence, credentials and
-		// provider availability must still be checked on every call.
+		// Cache only the immutable descriptor hash. Credentials and provider
+		// availability are still checked on every call; audio presence is shared
+		// through the bounded probe memo below, which writes and clears invalidate.
 		const identity = JSON.stringify([
 			descriptor.provider,
 			descriptor.variant,
@@ -748,6 +789,46 @@ class BrowserPronunciationRuntime implements PronunciationRuntime {
 			this.cacheKeys.delete(this.cacheKeys.keys().next().value!);
 		}
 		return pending;
+	}
+
+	private probeCachedAudio(cacheKey: string): Promise<CachedPronunciationAudio | null> {
+		const memoized = this.cacheProbes.get(cacheKey);
+		if (memoized) {
+			// Keep the memo ordered least- to most-recently used.
+			this.cacheProbes.delete(cacheKey);
+			this.cacheProbes.set(cacheKey, memoized);
+			return memoized;
+		}
+		const pending = this.dependencies.cache.get(cacheKey).then(
+			(audio) => audio,
+			(error: unknown) => {
+				// A transient read failure must be retried, not remembered.
+				if (this.cacheProbes.get(cacheKey) === pending) this.cacheProbes.delete(cacheKey);
+				throw error;
+			},
+		);
+		this.rememberCacheProbe(cacheKey, pending);
+		return pending;
+	}
+
+	/** Shares freshly synthesized audio with the next presence check or playback. */
+	private rememberCachedAudio(cacheKey: string, audio: CachedPronunciationAudio): void {
+		this.rememberCacheProbe(cacheKey, Promise.resolve(audio));
+	}
+
+	private rememberCacheProbe(
+		cacheKey: string,
+		probe: Promise<CachedPronunciationAudio | null>,
+	): void {
+		this.cacheProbes.delete(cacheKey);
+		this.cacheProbes.set(cacheKey, probe);
+		if (this.cacheProbes.size > CACHE_PROBE_MEMO_LIMIT) {
+			this.cacheProbes.delete(this.cacheProbes.keys().next().value!);
+		}
+	}
+
+	private clearSpeakFlight(operationId: number): void {
+		if (this.activeSpeak?.operationId === operationId) this.activeSpeak = null;
 	}
 
 	private requestCacheUsageRefresh(): void {
