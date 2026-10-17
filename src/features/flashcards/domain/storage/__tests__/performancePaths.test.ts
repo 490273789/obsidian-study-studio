@@ -8,7 +8,13 @@ import { WorkbenchFlashcardAuthority } from "../../../obsidian/workbenchFlashcar
 import { createCardIdentityContinuity } from "../../identity/cardIdentityContinuity";
 import { createDeckHome } from "../../decks/deckHome";
 import { createSessionLifecycle } from "../../sessions/sessionLifecycle";
-import { FlashcardRepository, type SerializedDeck } from "../flashcardRepository";
+import {
+	FlashcardRepository,
+	type SerializedDeck,
+	type SessionJournalTimer,
+} from "../flashcardRepository";
+import type { SessionJournalStore } from "../sessionJournal";
+import { MemorySessionJournal, createManualJournalTimer } from "./memorySessionJournal";
 
 vi.mock("obsidian", () => ({ normalizePath: (value: string) => value }));
 
@@ -16,7 +22,16 @@ const NOW = new Date(2026, 9, 14, 12).getTime();
 const SAMPLES = 20;
 const WARMUP = 3;
 
-async function fixture() {
+interface FixtureOptions {
+	sessionJournal?: SessionJournalStore;
+	journalTimer?: SessionJournalTimer;
+}
+
+async function fixture(options: FixtureOptions = {}) {
+	const journal =
+		options.sessionJournal instanceof MemorySessionJournal ? options.sessionJournal : null;
+	const journalTimer = options.journalTimer ? null : createManualJournalTimer();
+	const timer = options.journalTimer ?? journalTimer!.timer;
 	const paths = ["notes/words-a.md", "notes/words-b.md"];
 	const settings = {
 		...structuredClone(DEFAULT_SETTINGS),
@@ -44,6 +59,9 @@ async function fixture() {
 			invalidateSource: vi.fn(),
 			clear: vi.fn(),
 		},
+		...(options.sessionJournal
+			? { sessionJournal: options.sessionJournal, journalTimer: timer }
+			: {}),
 	});
 	const state = await repo.createContinuityStateStore().load();
 	const sources = paths.map((path, deckIndex) => {
@@ -91,7 +109,16 @@ async function fixture() {
 		now: () => NOW,
 		shuffle: (cards) => [...cards],
 	});
-	return { repo, store, home, lifecycle, writes: () => writes, path: paths[0]! };
+	return {
+		repo,
+		store,
+		home,
+		lifecycle,
+		journal,
+		journalTimer: journalTimer!,
+		writes: () => writes,
+		path: paths[0]!,
+	};
 }
 
 async function measure(action: (index: number) => Promise<void>) {
@@ -167,6 +194,41 @@ describe("synthetic performance paths (2413 cards / two decks / JSON backend)", 
 					publish,
 				}) + "\n",
 			);
+		} finally {
+			f.home.dispose();
+			f.repo.dispose();
+		}
+	});
+
+	it("answers through the session journal without rewriting data.json", async () => {
+		const f = await fixture({ sessionJournal: new MemorySessionJournal() });
+		try {
+			expect(
+				(
+					await f.lifecycle.start({
+						mode: "study",
+						deckId: f.path,
+						studyOrder: "sequential",
+						direction: "normal",
+					})
+				).kind,
+			).toBe("applied");
+			const journal = f.journal!;
+			const answerStart = f.writes();
+			for (let index = 0; index < 5; index++) {
+				const active = f.lifecycle.getSnapshot();
+				if (active.kind !== "active" || active.mode !== "study")
+					throw new Error("Expected study session");
+				expect(
+					(await f.lifecycle.act(active.reference, { kind: "answer", rating: 5 })).kind,
+				).toBe("applied");
+			}
+			expect(f.writes()).toBe(answerStart);
+			expect(journal.entries()).toHaveLength(5);
+
+			f.journalTimer.runAll();
+			await vi.waitFor(() => expect(f.writes()).toBe(answerStart + 1));
+			expect(journal.entries()).toHaveLength(0);
 		} finally {
 			f.home.dispose();
 			f.repo.dispose();

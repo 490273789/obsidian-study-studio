@@ -26,6 +26,7 @@ import { createPronunciationRuntime, type PronunciationRuntime } from "./domain/
 import { createSessionLifecycle, type SessionLifecycle } from "./domain/sessions/sessionLifecycle";
 import { CardIdentityMigrationModal, CardIdentityRepairModal } from "./obsidian/continuityModals";
 import { createObsidianContinuitySourceStore } from "./obsidian/continuityAdapters";
+import { createSessionJournalStore } from "./obsidian/sessionJournalAdapter";
 import { WorkbenchFlashcardAuthority } from "./obsidian/workbenchFlashcardAuthority";
 import { FlashcardApp } from "./ui/FlashcardApp";
 import { createReactItemView } from "../../core/host/reactItemView";
@@ -551,6 +552,10 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 							pluginDirectory: deps.plugin?.manifest?.dir,
 						}),
 						deckIndexCache: createDeckIndexCacheStore<SerializedDeck>(
+							host.app?.vault?.adapter,
+							deps.plugin?.manifest?.dir,
+						),
+						sessionJournal: createSessionJournalStore(
 							host.app?.vault?.adapter,
 							deps.plugin?.manifest?.dir,
 						),

@@ -56,6 +56,11 @@ export interface LearningStateDocument {
 	spellingProgress: Record<string, SpellingCardProgress>;
 	challengeProgress?: ChallengeProgress;
 	continuity: PersistedCardIdentityContinuityState;
+	/**
+	 * Highest local session-journal sequence already merged into this document.
+	 * Missing means 0 (no journal has ever been merged for this state).
+	 */
+	journalSeq?: number;
 }
 
 export interface LegacyFlashcardDocument {

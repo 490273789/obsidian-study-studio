@@ -233,6 +233,21 @@ describe("persisted learning codec", () => {
 		expect(decodePersistedLearning(encodePersistedLearning(document))).toEqual(document);
 	});
 
+	it("preserves the merged session-journal sequence through encode and decode", () => {
+		const document = {
+			...learningDocument({ card: { fsrsCard: fsrsCard() } }),
+			journalSeq: 42,
+		};
+
+		const encoded = encodePersistedLearning(document);
+		expect(encoded.journalSeq).toBe(42);
+		expect(decodePersistedLearning(encoded).journalSeq).toBe(42);
+		expect(decodePersistedLearning({ journalSeq: 0 }).journalSeq).toBeUndefined();
+		expect(decodePersistedLearning({ journalSeq: -3 }).journalSeq).toBeUndefined();
+		expect(decodePersistedLearning({ journalSeq: 2.5 }).journalSeq).toBeUndefined();
+		expect(decodePersistedLearning({ journalSeq: "7" }).journalSeq).toBeUndefined();
+	});
+
 	it("returns an empty document for missing, non-object, or unknown-format input", () => {
 		const empty = emptyLearningDocument();
 

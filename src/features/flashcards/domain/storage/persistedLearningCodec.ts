@@ -85,6 +85,10 @@ export function decodePersistedLearning(value: unknown): LearningStateDocument {
 		learning.challengeProgress =
 			source.challengeProgress as LearningStateDocument["challengeProgress"];
 	}
+	const journalSeq = source.journalSeq;
+	if (typeof journalSeq === "number" && Number.isInteger(journalSeq) && journalSeq > 0) {
+		learning.journalSeq = journalSeq;
+	}
 	return learning;
 }
 
