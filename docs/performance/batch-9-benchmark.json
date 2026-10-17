@@ -1,0 +1,40 @@
+{
+	"date": "2026-10-17",
+	"baseline": "d7be849 (before batch 9)",
+	"after": "4622526 plus uncommitted batch 9 changes",
+	"runtime": {
+		"node": "v26.11.1",
+		"architecture": "arm64",
+		"backend": "in-memory JSON.stringify / JSON.parse; no physical disk"
+	},
+	"fixture": {
+		"cards": 2413,
+		"decks": 2,
+		"warmup": 3,
+		"samplesPerPath": 20
+	},
+	"before": {
+		"2413": {
+			"answer": { "medianMs": 5.26, "p95Ms": 6.26 },
+			"open": { "medianMs": 7.14, "p95Ms": 11.65 },
+			"settings": { "medianMs": 9.86, "p95Ms": 11.06 }
+		},
+		"10000": {
+			"answer": { "medianMs": 24.36, "p95Ms": 25.71 },
+			"open": { "medianMs": 28.59, "p95Ms": 45.41 },
+			"settings": { "medianMs": 37.39, "p95Ms": 44.15 }
+		}
+	},
+	"after": {
+		"2413": {
+			"answer": { "medianMs": 2.8, "p95Ms": 4.09 },
+			"open": { "medianMs": 1.1, "p95Ms": 1.27 },
+			"settings": { "medianMs": 1.63, "p95Ms": 4.23 }
+		},
+		"10000": {
+			"answer": { "medianMs": 10.59, "p95Ms": 10.95 },
+			"open": { "medianMs": 3.74, "p95Ms": 4.46 },
+			"settings": { "medianMs": 5.96, "p95Ms": 6.26 }
+		}
+	}
+}

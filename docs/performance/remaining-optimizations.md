@@ -273,6 +273,36 @@ lint 仅有 4 条既有词典测试警告；尚未在 Obsidian 中手动验证�
 
 ---
 
+## 第 9 批：作答/同步/设置热路径（2026-10-17）
+
+状态：实施完成。第一部分已提交 `4622526`；DeckHome 懒发布与设置滑杆缓存、UI 行缓存、
+Practice 结算分批、发音探测共享与同词单飞为工作区改动（未提交）。
+
+- **作答**：移除 `workbenchFlashcardAuthority.ts` 对整份 learning 的防御性
+  `structuredClone`；契约改为「提交后的 learning 文档不可变」，由仓库 copy-on-write 和
+  新增回归测试守护。2,413 卡 5.26 → 2.6–2.8 ms；10k 24.4 → 10.6 ms。
+- **同步**：源内容未变时复用已有 `Deck`/`FlashCard` 对象并复用已持久化卡片基线；仅在
+  deck/tag 变化时重写 `deck-index.json`。无变化刷新 0 次缓存写、0 次 `data.json` 写。
+  开视图 7.1 → 1.0–1.1 ms（10k 28.6 → 3.7 ms）。
+- **设置**：`FlashcardAuthority.readSettings()` + 变更类型分发，设置-only 变更不再整仓
+  反序列化。9.9 → 1.5–1.6 ms（10k 37.4 → 6.0 ms）。`docs/agents/architecture.md` 的
+  不变量描述同步更新。
+- **challenge**：`challengeCards` 缓存改按新增的 `getDeckStructureRevision()`；active
+  challenge 记录已 reconcile 的结构 revision，自身提交不再触发第二次 revalidate；
+  无卡片移除时不再深克隆整个剩余 round。
+- **其他**：`getCard` 先查 `cardIndex`；DeckHome 无订阅者时延迟构建快照（关闭的视图不再
+  因仓库 revision 重建读模型或重启到期定时器）；设置滑杆复用 `getDeckEligibilityCached`；
+  DeckCard 行模型按 `deck.id` + 逐字段内容缓存，未变化行引用稳定；Practice 结算页首屏
+  只挂载 10 条错题、其余按需展开；`canSpeak`/`speak` 共享一次音频缓存探测（含失效策略），
+  同一单词并发播放共享 in-flight 请求。
+
+仍保留：A2 的「每次作答整份 `data.json` 序列化 + 写盘」未改（耐久语义；未采用 debounce
+的理由见第 7 批）；发音 `lastAccess` touch 仍重写整条音频记录（IndexedDB 记录结构约束）；
+`cards` 键浅拷贝、每次作答的 due 时间重排、冷启动 placeholder 等小项未动。
+
+验证：`pnpm run check:all`（150 文件 / 1709 用例）、`pnpm run build`、`pnpm run lint`
+通过。基准与操作量回归见 [第 9 批性能基准](batch-9-benchmark.md)。
+
 ## 不要动的地方
 
 以下实现经两轮独立审计确认是正确的，改动前请先说明理由：
