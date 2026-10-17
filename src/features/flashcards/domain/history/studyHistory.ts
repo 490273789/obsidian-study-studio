@@ -1,5 +1,12 @@
 import type { StudyHistoryEntry } from "../../../../core/shared/types";
-import type { PendingSessionHistoryEntry } from "../sessions/sessionLifecycle";
+export interface PendingStudyHistoryEntry {
+	readonly deckId: string;
+	readonly deckName: string;
+	readonly mode: "study" | "practice" | "spelling" | "challenge";
+	readonly cardCount: number;
+	readonly duration: number;
+	readonly occurredAt: number;
+}
 
 export const MAX_STUDY_HISTORY_DAYS = 20;
 export const MIN_WORD_LIST_VISIT_DURATION_SECONDS = 5;
@@ -57,7 +64,7 @@ export function createWordListHistoryEntry(
 }
 
 export type AppendableStudyHistoryEntry =
-	| PendingSessionHistoryEntry
+	| PendingStudyHistoryEntry
 	| StudyHistoryEntry
 	| {
 			deckId: string;

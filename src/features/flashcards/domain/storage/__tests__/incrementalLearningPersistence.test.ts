@@ -2,14 +2,14 @@ import { createEmptyCard } from "ts-fsrs";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { DEFAULT_SETTINGS } from "../../../../../core/host/settingsSlices";
 import type { Deck, FlashCard } from "../../../../../core/shared/types";
-import type { SessionPersistenceTransition } from "../../sessions/sessionLifecycle";
+import type { SessionWriteSet } from "../sessionCommitFormat";
 import { FlashcardRepository, type SerializedDeck } from "../flashcardRepository";
 import type { LearningStateDocument } from "../persistenceTypes";
 import { MemoryFlashcardAuthority } from "./memoryFlashcardAuthority";
 
 vi.mock("obsidian", () => ({ normalizePath: (value: string) => value }));
 
-const EMPTY_TRANSITION: SessionPersistenceTransition = {
+const EMPTY_TRANSITION: SessionWriteSet = {
 	cardUpdates: [],
 	incrementStudyCountFor: [],
 	historyEntries: [],

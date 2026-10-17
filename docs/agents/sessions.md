@@ -54,6 +54,12 @@ Pure engines and planners under `src/features/flashcards/domain/sessions/` are i
 - A new encounter (including returning/undoing, consecutive answers on the same identity, or front/back edits) hides the answer and creates one automatic pronunciation opportunity when the word becomes visible. Explanation/source-only changes preserve visibility and do not replay. Autoplay persists across cards, resets on session/mode changes or last unsubscribe, and presentation changes follow the committed snapshot after its delay.
 - Views retain mode-specific controls, inputs, shortcuts, and transactions. `src/features/flashcards/ui/presentation/` owns the shared 卡片呈现 derivation and question/answer/explanation rendering; challenge answer visibility and feedback stay with its view, and spelling input submission stays local. Do not reintroduce per-component timer/pending-action state.
 
+## Session persistence
+
+`src/features/flashcards/domain/sessions/sessionPersistence.ts` is the whole persistence seam the lifecycle sees: minimal reads, the card scheduler, and one atomic `commitSession`. A commit carries session facts only — scheduled card states, spelling attempts, finished/partial session records, and challenge progress with its expected revision. It never carries document-shaped fields such as history entries, learning-activity records, study-count increments, or serialized card maps.
+
+`src/features/flashcards/domain/storage/sessionCommitFormat.ts` owns the document conversion: history formatting, activity records, deck study counts, spelling progress, and challenge persistence. `FlashcardRepository.commitSession` validates every scheduled card and the challenge revision first, then applies the formatted write set atomically and returns a semantic result (`applied` with receipt, `rejected` with reason, or `failed` with retryability). A missing card or moved challenge revision is rejected explicitly; it is never skipped silently.
+
 ## Card presentation shortcuts
 
 `src/features/flashcards/ui/cardPresentationShortcuts.ts` owns the study, practice,

@@ -1,4 +1,3 @@
-import type { Card } from "ts-fsrs";
 import {
 	buildSpellingDiff,
 	extractSpellingWord,
@@ -17,7 +16,6 @@ import type {
 	PracticeResult,
 	PracticeSession,
 	SessionOriginDeckSnapshot,
-	SpellingProgressSnapshot,
 	SpellingResult,
 	SpellingSelection,
 	SpellingSession,
@@ -26,10 +24,7 @@ import type {
 	StudySettings,
 	ViewState,
 } from "../../../../core/shared/types";
-import type { FlashcardStudySettings } from "../../settings/slice";
-import type { LearningActivityRecord } from "../history/dailyLearningActivity";
 import { shuffleArray } from "../../../../core/shared/utils";
-import type { StudyCardScheduler } from "./studySessionEngine";
 import {
 	answerStudyCard,
 	canUndoStudyAnswer,
@@ -483,52 +478,26 @@ export type LifecycleOutcome =
 			readonly snapshot: SessionLifecycleSnapshot;
 	  };
 
-export interface PendingSessionHistoryEntry {
-	readonly deckId: string;
-	readonly deckName: string;
-	readonly mode: "study" | "practice" | "spelling" | "challenge";
-	readonly cardCount: number;
-	readonly duration: number;
-	readonly occurredAt: number;
-}
-
-export interface SessionPersistenceTransition {
-	readonly cardUpdates: readonly {
-		readonly deckId: string;
-		readonly cardId: string;
-		readonly fsrsCard: Card;
-	}[];
-	readonly spellingAttempts: readonly {
-		readonly cardId: string;
-		readonly correct: boolean;
-		readonly attemptedAt: number;
-	}[];
-	readonly incrementStudyCountFor: readonly string[];
-	readonly historyEntries: readonly PendingSessionHistoryEntry[];
-	readonly learningActivity?: LearningActivityRecord;
-	readonly challengeProgress?: ChallengeProgress;
-	readonly expectedChallengeProgress?: ChallengeProgress | null;
-}
-
-export interface SessionLifecycleRepository extends StudyCardScheduler {
-	getRevision(): number;
-	getDeck(id: string): Deck | undefined;
-	getAllDecks(): readonly Deck[];
-	getCard(deckId: string, cardId: string): FlashCard | undefined;
-	getEffectiveStudySettings(deckId: string): StudySettings;
-	getSettings(): Pick<FlashcardStudySettings, "wordLearningDecks">;
-	getSpellingProgress(): SpellingProgressSnapshot;
-	getChallengeProgress(): ChallengeProgress | null;
-	getChallengeProgressRevision(): number;
-	commitSessionTransition(
-		transition: SessionPersistenceTransition,
-	): Promise<SessionPersistenceReceipt>;
-}
-
-export interface SessionPersistenceReceipt {
-	/** Captured by the repository before announcing the committed revision. */
-	readonly challengeProgressRevision: number;
-}
+export type {
+	SessionCardSchedule,
+	SessionChallengeCommit,
+	SessionCommit,
+	SessionCommitResult,
+	SessionPersistencePort,
+	SessionPersistenceReceipt,
+	SessionRecord,
+	SessionSpellingAttempt,
+} from "./sessionPersistence";
+export type SessionLifecycleRepository = SessionPersistencePort;
+import type {
+	SessionCardSchedule,
+	SessionChallengeCommit,
+	SessionCommit,
+	SessionPersistencePort,
+	SessionPersistenceReceipt,
+	SessionRecord,
+	SessionSpellingAttempt,
+} from "./sessionPersistence";
 
 export interface SessionLifecycle {
 	getSnapshot(): SessionLifecycleSnapshot;
@@ -642,7 +611,14 @@ type AnyLifecycleAction =
 	| ResultLifecycleAction
 	| IdleLifecycleAction;
 
-class PersistenceFailure extends Error {}
+class PersistenceFailure extends Error {
+	constructor(
+		message: string,
+		readonly retryable: boolean,
+	) {
+		super(message);
+	}
+}
 
 export function createSessionLifecycle(
 	repository: SessionLifecycleRepository,
@@ -727,7 +703,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			return await this.applyAction(action as AnyLifecycleAction);
 		} catch (error) {
 			return error instanceof PersistenceFailure
-				? this.failed("persistence-failed", error, true)
+				? this.failed("persistence-failed", error, error.retryable)
 				: this.failed("invariant-violated", error, false);
 		} finally {
 			this.unlock();
@@ -758,12 +734,18 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			if (activityAnswerCount > 0) {
 				const occurredAt = this.now();
 				await this.commit({
-					...emptyTransition(),
-					historyEntries:
-						answerEventCount > 0
-							? [this.buildPartialHistory(current, answerEventCount, occurredAt)]
-							: [],
-					learningActivity: this.buildLearningActivity(current, false, occurredAt),
+					records: [
+						this.buildSessionRecord(current, {
+							completed: false,
+							occurredAt,
+							answerCount: activityAnswerCount,
+							durationSeconds: Math.max(
+								0,
+								Math.floor((occurredAt - current.session.startTime) / 1000),
+							),
+							cardCount: answerEventCount,
+						}),
+					],
 				});
 			}
 			const originDeck = getOriginDeck(current.session);
@@ -840,17 +822,13 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		if (!session) {
 			if (request.intent === "new") return this.rejected("no-eligible-cards");
 			await this.commit({
-				...emptyTransition(),
-				challengeProgress: { ...progress, round: null },
-				expectedChallengeProgress: saved,
+				challenge: { progress: { ...progress, round: null }, expectedProgress: saved },
 			});
 			this.endChallengeBySourceChange(0);
 			return this.applied();
 		}
 		const receipt = await this.commit({
-			...emptyTransition(),
-			challengeProgress: progress,
-			expectedChallengeProgress: saved,
+			challenge: { progress, expectedProgress: saved },
 		});
 		this.publish({
 			kind: "active",
@@ -895,9 +873,10 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			state.progress.round!.removedIdentities.length;
 		if (!session) {
 			await this.commit({
-				...emptyTransition(),
-				challengeProgress: { ...progress, round: null },
-				expectedChallengeProgress: state.progress,
+				challenge: {
+					progress: { ...progress, round: null },
+					expectedProgress: state.progress,
+				},
 			});
 			this.endChallengeBySourceChange(state.session.attempts.length);
 			return true;
@@ -905,9 +884,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		let progressRevision = state.progressRevision;
 		if (changed) {
 			const receipt = await this.commit({
-				...emptyTransition(),
-				challengeProgress: progress,
-				expectedChallengeProgress: state.progress,
+				challenge: { progress, expectedProgress: state.progress },
 			});
 			progressRevision = receipt.challengeProgressRevision;
 		}
@@ -970,11 +947,8 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			expectedAnswer,
 		});
 		const receipt = await this.commit({
-			...emptyTransition(),
-			challengeProgress: step.progress,
-			expectedChallengeProgress: state.progress,
-			learningActivity: step.learningActivity,
-			historyEntries: step.historyEntries,
+			challenge: { progress: step.progress, expectedProgress: state.progress },
+			records: [step.record],
 		});
 		if (step.type === "complete") {
 			this.publish({
@@ -1200,10 +1174,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		if (action.kind === "previous") {
 			const step = undoStudyAnswer(state.session);
 			if (!step) return this.rejected("action-not-available");
-			await this.commit({
-				...emptyTransition(),
-				cardUpdates: [step.cardUpdate],
-			});
+			await this.commit({ cardSchedules: [step.cardUpdate] });
 			this.publish({ ...state, session: step.session });
 			return this.applied();
 		}
@@ -1221,27 +1192,20 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			scheduler: this.repository,
 			now,
 		});
-		const transition = emptyTransition();
-		transition.cardUpdates.push(step.cardUpdate);
+		const commit = emptyCommit();
+		commit.cardSchedules.push(step.cardUpdate);
 		if (step.type === "complete") {
-			transition.incrementStudyCountFor.push(step.finishIntent.deckId);
-			transition.historyEntries.push(
-				this.buildHistory(
-					state,
-					step.finishIntent.cardCount,
-					step.finishIntent.duration,
-					now,
-				),
-			);
-			transition.learningActivity = this.buildLearningActivity(
-				state,
-				true,
-				now,
-				step.session.attemptCount ?? step.session.answerEvents.length,
-				step.finishIntent.duration,
+			commit.records.push(
+				this.buildSessionRecord(state, {
+					completed: true,
+					occurredAt: now,
+					answerCount: step.session.attemptCount ?? step.session.answerEvents.length,
+					durationSeconds: step.finishIntent.duration,
+					cardCount: step.finishIntent.cardCount,
+				}),
 			);
 		}
-		await this.commit(transition);
+		await this.commit(commit);
 		if (step.type === "complete") {
 			const ratingCounts: Record<StudyRating, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
 			for (const event of step.session.answerEvents) {
@@ -1299,17 +1263,15 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			step.result.incorrectCardIds,
 		);
 		await this.commit({
-			...emptyTransition(),
-			historyEntries: [
-				this.buildHistory(state, step.result.totalQuestions, step.result.timeSpent, now),
+			records: [
+				this.buildSessionRecord(state, {
+					completed: true,
+					occurredAt: now,
+					answerCount: (state.session.attemptCount ?? state.session.history.length) + 1,
+					durationSeconds: step.result.timeSpent,
+					cardCount: step.result.totalQuestions,
+				}),
 			],
-			learningActivity: this.buildLearningActivity(
-				state,
-				true,
-				now,
-				(state.session.attemptCount ?? state.session.history.length) + 1,
-				step.result.timeSpent,
-			),
 		});
 		this.publish({
 			kind: "result",
@@ -1344,27 +1306,26 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			isCorrect: correct,
 			now,
 		});
-		const transition = emptyTransition();
+		const commit = emptyCommit();
 		if (state.session.phase === "retrieval") {
-			transition.spellingAttempts.push({
+			commit.spellingAttempts.push({
 				cardId: card.id,
 				correct,
 				attemptedAt: now,
 			});
 		}
 		if (step.type === "complete") {
-			transition.historyEntries.push(
-				this.buildHistory(state, step.result.totalWords, step.result.timeSpent, now),
-			);
-			transition.learningActivity = this.buildLearningActivity(
-				state,
-				true,
-				now,
-				state.session.attempts.length + 1,
-				step.result.timeSpent,
+			commit.records.push(
+				this.buildSessionRecord(state, {
+					completed: true,
+					occurredAt: now,
+					answerCount: state.session.attempts.length + 1,
+					durationSeconds: step.result.timeSpent,
+					cardCount: step.result.totalWords,
+				}),
 			);
 		}
-		if (!isEmptyTransition(transition)) await this.commit(transition);
+		if (hasCommitContent(commit)) await this.commit(commit);
 		const feedback: SpellingLifecycleFeedback = {
 			kind: step.feedback,
 			submittedInput: action.input,
@@ -1464,62 +1425,53 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		if (activityAnswerCount > 0) {
 			const occurredAt = this.now();
 			await this.commit({
-				...emptyTransition(),
-				historyEntries:
-					answerEventCount > 0
-						? [this.buildPartialHistory(state, answerEventCount, occurredAt)]
-						: [],
-				learningActivity: this.buildLearningActivity(state, false, occurredAt),
+				records: [
+					this.buildSessionRecord(state, {
+						completed: false,
+						occurredAt,
+						answerCount: activityAnswerCount,
+						durationSeconds: Math.max(
+							0,
+							Math.floor((occurredAt - state.session.startTime) / 1000),
+						),
+						cardCount: answerEventCount,
+					}),
+				],
 			});
 		}
 		this.publish({ kind: "idle", key: this.makeKey("idle"), lastEnd: null });
 		return this.applied();
 	}
 
-	private buildPartialHistory(
+	private buildSessionRecord(
 		state: Exclude<InternalActiveState, { mode: "challenge" }>,
-		answerEventCount: number,
-		occurredAt = this.now(),
-	): PendingSessionHistoryEntry {
-		return this.buildHistory(
-			state,
-			answerEventCount,
-			Math.max(0, Math.floor((occurredAt - state.session.startTime) / 1000)),
-			occurredAt,
-		);
-	}
-
-	private buildHistory(
-		state: Exclude<InternalActiveState, { mode: "challenge" }>,
-		cardCount: number,
-		duration: number,
-		occurredAt = this.now(),
-	): PendingSessionHistoryEntry {
+		options: {
+			completed: boolean;
+			occurredAt: number;
+			answerCount: number;
+			durationSeconds: number;
+			cardCount: number;
+		},
+	): SessionRecord {
 		const originDeck = getOriginDeck(state.session);
+		const durationSeconds = Math.max(0, Math.floor(options.durationSeconds));
 		return {
+			mode: state.mode,
 			deckId: originDeck.id,
 			deckName: originDeck.name,
-			mode: state.mode,
-			cardCount,
-			duration: Math.max(0, duration),
-			occurredAt,
-		};
-	}
-
-	private buildLearningActivity(
-		state: InternalActiveState,
-		completed: boolean,
-		occurredAt = this.now(),
-		answerCount = getActivityAnswerCount(state),
-		duration = Math.max(0, Math.floor((occurredAt - state.session.startTime) / 1000)),
-	): LearningActivityRecord {
-		return {
-			kind: "session",
-			mode: state.mode,
-			completion: completed ? "completed" : "partial",
-			answerCount,
-			durationSeconds: duration,
-			occurredAt,
+			occurredAt: options.occurredAt,
+			activity: {
+				completion: options.completed ? "completed" : "partial",
+				answerCount: Math.max(0, Math.floor(options.answerCount)),
+				durationSeconds,
+			},
+			history:
+				options.cardCount > 0
+					? {
+							cardCount: options.cardCount,
+							durationSeconds,
+						}
+					: null,
 		};
 	}
 
@@ -1549,13 +1501,14 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		});
 	}
 
-	private async commit(
-		transition: SessionPersistenceTransition,
-	): Promise<SessionPersistenceReceipt> {
+	private async commit(commit: SessionCommit): Promise<SessionPersistenceReceipt> {
 		try {
-			return await this.repository.commitSessionTransition(transition);
+			const result = await this.repository.commitSession(commit);
+			if (result.kind === "applied") return result.receipt;
+			throw new PersistenceFailure(result.message, result.retryable);
 		} catch (error) {
-			throw new PersistenceFailure(errorMessage(error));
+			if (error instanceof PersistenceFailure) throw error;
+			throw new PersistenceFailure(errorMessage(error), true);
 		}
 	}
 
@@ -1832,28 +1785,23 @@ function getActivityAnswerCount(state: InternalActiveState): number {
 			: state.session.attempts.length;
 }
 
-function emptyTransition(): {
-	cardUpdates: Array<{ deckId: string; cardId: string; fsrsCard: Card }>;
-	spellingAttempts: Array<{ cardId: string; correct: boolean; attemptedAt: number }>;
-	incrementStudyCountFor: string[];
-	historyEntries: PendingSessionHistoryEntry[];
-	learningActivity?: LearningActivityRecord;
-} {
-	return {
-		cardUpdates: [],
-		spellingAttempts: [],
-		incrementStudyCountFor: [],
-		historyEntries: [],
-	};
+interface MutableSessionCommit {
+	cardSchedules: SessionCardSchedule[];
+	spellingAttempts: SessionSpellingAttempt[];
+	records: SessionRecord[];
+	challenge?: SessionChallengeCommit;
 }
 
-function isEmptyTransition(transition: SessionPersistenceTransition): boolean {
-	return (
-		transition.cardUpdates.length === 0 &&
-		transition.spellingAttempts.length === 0 &&
-		transition.incrementStudyCountFor.length === 0 &&
-		transition.historyEntries.length === 0 &&
-		transition.learningActivity === undefined
+function emptyCommit(): MutableSessionCommit {
+	return { cardSchedules: [], spellingAttempts: [], records: [] };
+}
+
+function hasCommitContent(commit: SessionCommit): boolean {
+	return Boolean(
+		commit.cardSchedules?.length ||
+		commit.spellingAttempts?.length ||
+		commit.records?.length ||
+		commit.challenge,
 	);
 }
 

@@ -102,22 +102,10 @@ type ChallengeSessionStep =
 			readonly result: ChallengeLevelResult;
 	  };
 
-interface ChallengeHistoryEntry {
-	readonly deckId: string;
-	readonly deckName: "";
-	readonly mode: "challenge";
-	readonly cardCount: number;
-	readonly duration: number;
-	readonly occurredAt: number;
-}
-
-/** The paired pure effects of one real submission, ready for an atomic commit. */
+/** The paired pure facts of one real submission, ready for an atomic commit. */
 export type ChallengeAnswerUpdate = ChallengeSessionStep & {
 	readonly progress: ChallengeProgress;
-	readonly learningActivity: Extract<LearningActivityRecord, { kind: "session" }> & {
-		readonly mode: "challenge";
-	};
-	readonly historyEntries: readonly ChallengeHistoryEntry[];
+	readonly record: SessionRecord;
 };
 
 const CHALLENGE_LEVEL_SIZE = 15;
@@ -250,29 +238,27 @@ export function answerChallengeQuestion(params: {
 			step.type === "complete"
 				? completeChallengeLevel(params.progress, step.result)
 				: params.progress,
-		learningActivity: {
-			kind: "session",
+		record: {
 			mode: "challenge",
-			completion: step.type === "complete" ? "completed" : "partial",
-			answerCount: 1,
-			completedAnswerCount:
-				step.type === "complete" ? step.session.attempts.length : undefined,
-			durationSeconds,
+			deckId: params.session.roundId,
+			deckName: "",
 			occurredAt: params.now,
-		},
-		historyEntries:
-			step.type === "complete"
-				? [
-						{
-							deckId: params.session.roundId,
-							deckName: "",
-							mode: "challenge",
+			activity: {
+				completion: step.type === "complete" ? "completed" : "partial",
+				answerCount: 1,
+				...(step.type === "complete"
+					? { completedAnswerCount: step.session.attempts.length }
+					: {}),
+				durationSeconds,
+			},
+			history:
+				step.type === "complete"
+					? {
 							cardCount: step.result.totalQuestions,
-							duration: step.result.durationSeconds,
-							occurredAt: params.now,
-						},
-					]
-				: [],
+							durationSeconds: step.result.durationSeconds,
+						}
+					: null,
+		},
 	};
 }
 
@@ -625,4 +611,4 @@ import { State } from "ts-fsrs";
 import type { Deck, FlashCard } from "../../../../core/shared/types";
 import { extractSpellingWord } from "../cards/spellingWord";
 import { isStableCardIdentity } from "../identity/cardIdentity";
-import type { LearningActivityRecord } from "../history/dailyLearningActivity";
+import type { SessionRecord } from "./sessionPersistence";

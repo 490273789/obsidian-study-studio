@@ -469,19 +469,20 @@ describe("challenge reconciliation and concurrency", () => {
 
 	it("uses the committed receipt if another progress write finishes before start resumes", async () => {
 		const h = await harness(2);
-		const commit = h.repo.commitSessionTransition.bind(h.repo);
-		vi.spyOn(h.repo, "commitSessionTransition").mockImplementationOnce(async (transition) => {
-			const receipt = await commit(transition);
+		const commit = h.repo.commitSession.bind(h.repo);
+		vi.spyOn(h.repo, "commitSession").mockImplementationOnce(async (sessionCommit) => {
+			const result = await commit(sessionCommit);
+			if (result.kind !== "applied") return result;
 			const saved = h.repo.getChallengeProgress()!;
 			const replacement = { ...saved, round: { ...saved.round!, id: "newer-round" } };
-			await commit({
+			await h.repo.commitSessionTransition({
 				cardUpdates: [],
 				spellingAttempts: [],
 				incrementStudyCountFor: [],
 				historyEntries: [],
 				challengeProgress: replacement,
 			});
-			return receipt;
+			return result;
 		});
 		await h.start();
 		await h.lifecycle.revalidateChallenge();

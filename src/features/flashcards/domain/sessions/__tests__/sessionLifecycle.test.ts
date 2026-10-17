@@ -11,9 +11,9 @@ import {
 	createSessionLifecycle,
 	getRestartViewState,
 	type SessionLifecycleRepository,
-	type SessionPersistenceTransition,
-	type SessionPersistenceReceipt,
 } from "../sessionLifecycle";
+import type { SessionCommit, SessionCommitResult } from "../sessionPersistence";
+import { formatSessionCommit, type SessionWriteSet } from "../../storage/sessionCommitFormat";
 import type { LearningActivityRecord } from "../../history/dailyLearningActivity";
 
 const DECK_ID = "notes/deck.md";
@@ -55,10 +55,10 @@ class MemoryLifecycleRepository implements SessionLifecycleRepository {
 		return null;
 	}
 	readonly decks = new Map<string, Deck>();
-	readonly history: SessionPersistenceTransition["historyEntries"][number][] = [];
+	readonly history: SessionWriteSet["historyEntries"][number][] = [];
 	readonly activity: LearningActivityRecord[] = [];
 	readonly spellingProgress: Record<string, SpellingCardProgress> = {};
-	commits: SessionPersistenceTransition[] = [];
+	commits: SessionWriteSet[] = [];
 	failNextCommit = false;
 	commitBarrier: Promise<void> | null = null;
 	settings: Pick<FlashcardSettings, "wordLearningDecks"> = {
@@ -116,12 +116,11 @@ class MemoryLifecycleRepository implements SessionLifecycleRepository {
 		};
 	}
 
-	async commitSessionTransition(
-		transition: SessionPersistenceTransition,
-	): Promise<SessionPersistenceReceipt> {
+	async commitSession(commit: SessionCommit): Promise<SessionCommitResult> {
+		const transition = formatSessionCommit(commit);
 		if (this.failNextCommit) {
 			this.failNextCommit = false;
-			throw new Error("disk unavailable");
+			return { kind: "failed", message: "disk unavailable", retryable: true };
 		}
 		if (this.commitBarrier) await this.commitBarrier;
 		this.commits.push(transition);
@@ -150,7 +149,7 @@ class MemoryLifecycleRepository implements SessionLifecycleRepository {
 		}
 		this.history.push(...transition.historyEntries);
 		if (transition.learningActivity) this.activity.push(transition.learningActivity);
-		return { challengeProgressRevision: 0 };
+		return { kind: "applied", receipt: { challengeProgressRevision: 0 } };
 	}
 }
 

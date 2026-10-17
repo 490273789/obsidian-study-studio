@@ -28,9 +28,12 @@ import type {
 	PersistedCardIdentityContinuityState,
 } from "../identity/cardIdentityContinuity";
 import type {
-	SessionPersistenceTransition,
+	SessionCommit,
+	SessionCommitResult,
+	SessionPersistencePort,
 	SessionPersistenceReceipt,
-} from "../sessions/sessionLifecycle";
+} from "../sessions/sessionPersistence";
+import { formatSessionCommit, type SessionWriteSet } from "./sessionCommitFormat";
 import { appendStudyHistory, createWordListHistoryEntry } from "../history/studyHistory";
 import {
 	type DailyLearningActivity,
@@ -86,7 +89,7 @@ export interface FlashcardRepositoryOptions {
  * through the feature-owned authority seam. It owns the semantic transition,
  * migration, revision, cache, and external-reload choreography.
  */
-export class FlashcardRepository implements DeckHomeRepository {
+export class FlashcardRepository implements DeckHomeRepository, SessionPersistencePort {
 	private readonly authority: FlashcardAuthority;
 	private readonly deckIndexCache: DeckIndexCacheStore<SerializedDeck> | null;
 
@@ -390,8 +393,53 @@ export class FlashcardRepository implements DeckHomeRepository {
 		return this.recordWordListVisit(deckId, deckName, now - duration * 1000, now);
 	}
 
-	async commitSessionTransition(
-		transition: SessionPersistenceTransition,
+	async commitSession(commit: SessionCommit): Promise<SessionCommitResult> {
+		await this.loadDeckIndex();
+		const writeSet = formatSessionCommit(commit);
+		const missing = writeSet.cardUpdates.find(
+			(update) => !findCardLocation(this.decks, update.deckId, update.cardId, this.cardIndex),
+		);
+		if (missing) {
+			return {
+				kind: "rejected",
+				reason: "card-missing",
+				message: `Card ${missing.cardId} is no longer part of deck ${missing.deckId}`,
+				retryable: true,
+			};
+		}
+		if (
+			writeSet.challengeProgress !== undefined &&
+			JSON.stringify(this.challengeProgress) !==
+				JSON.stringify(writeSet.expectedChallengeProgress ?? null)
+		) {
+			return {
+				kind: "rejected",
+				reason: "challenge-progress-changed",
+				message: "Challenge progress changed; reopen the challenge to continue.",
+				retryable: true,
+			};
+		}
+		try {
+			return { kind: "applied", receipt: await this.applySessionWriteSet(writeSet) };
+		} catch (error) {
+			if (error instanceof FlashcardPersistenceError) {
+				return { kind: "failed", message: error.message, retryable: error.retryable };
+			}
+			return {
+				kind: "failed",
+				message: error instanceof Error ? error.message : "Session commit failed",
+				retryable: false,
+			};
+		}
+	}
+
+	/** Document write set used by storage tests and by `commitSession` internally. */
+	async commitSessionTransition(transition: SessionWriteSet): Promise<SessionPersistenceReceipt> {
+		return this.applySessionWriteSet(transition);
+	}
+
+	private async applySessionWriteSet(
+		transition: SessionWriteSet,
 	): Promise<SessionPersistenceReceipt> {
 		await this.loadDeckIndex();
 		let receipt!: SessionPersistenceReceipt;
@@ -1119,7 +1167,7 @@ function equalLearningValue(left: unknown, right: unknown): boolean {
 
 function cloneDecksForTransition(
 	decks: ReadonlyMap<string, Deck>,
-	transition: SessionPersistenceTransition,
+	transition: SessionWriteSet,
 	cardIndex: ReadonlyMap<string, CardIndexLocation>,
 ): Map<string, Deck> {
 	const touched = new Set<string>();

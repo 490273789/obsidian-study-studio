@@ -72,16 +72,14 @@ describe("answerChallengeQuestion", () => {
 			{ identity: "card-1", correct: false, answeredAt: 600 },
 		]);
 		expect(update.progress).toEqual(state.progress);
-		expect(update.learningActivity).toEqual({
-			kind: "session",
+		expect(update.record).toEqual({
 			mode: "challenge",
-			completion: "partial",
-			answerCount: 1,
-			completedAnswerCount: undefined,
-			durationSeconds: 0,
+			deckId: "challenge-round",
+			deckName: "",
 			occurredAt: 600,
+			activity: { completion: "partial", answerCount: 1, durationSeconds: 0 },
+			history: null,
 		});
-		expect(update.historyEntries).toEqual([]);
 		expect(update).not.toHaveProperty("result");
 	});
 
@@ -121,20 +119,20 @@ describe("answerChallengeQuestion", () => {
 		);
 
 		const updates = [wrong, second, retry, completed];
-		expect(updates.map((update) => update.learningActivity.answerCount)).toEqual([1, 1, 1, 1]);
-		expect(updates.map((update) => update.learningActivity.completedAnswerCount)).toEqual([
+		expect(updates.map((update) => update.record.activity.answerCount)).toEqual([1, 1, 1, 1]);
+		expect(updates.map((update) => update.record.activity.completedAnswerCount)).toEqual([
 			undefined,
 			undefined,
 			undefined,
 			4,
 		]);
-		expect(updates.map((update) => update.learningActivity.durationSeconds)).toEqual([
+		expect(updates.map((update) => update.record.activity.durationSeconds)).toEqual([
 			0, 1, 0, 1,
 		]);
 		for (const update of updates.slice(0, -1)) {
 			expect(update.progress).toEqual(initial.progress);
-			expect(update.historyEntries).toEqual([]);
-			expect(update.learningActivity.completion).toBe("partial");
+			expect(update.record.history).toBeNull();
+			expect(update.record.activity.completion).toBe("partial");
 		}
 		if (completed.type !== "complete") throw new Error("Expected completed challenge");
 		expect(completed.session.queue).toEqual([]);
@@ -154,25 +152,19 @@ describe("answerChallengeQuestion", () => {
 		expect(completed.progress.round?.completedLevelCount).toBe(1);
 		expect(completed.progress.round?.completedLevels).toEqual([completed.result]);
 		expect(completed.progress.round?.levels).toEqual(initial.progress.round?.levels);
-		expect(completed.learningActivity).toEqual({
-			kind: "session",
+		expect(completed.record).toEqual({
 			mode: "challenge",
-			completion: "completed",
-			answerCount: 1,
-			completedAnswerCount: 4,
-			durationSeconds: 1,
+			deckId: "challenge-round",
+			deckName: "",
 			occurredAt: 2400,
-		});
-		expect(completed.historyEntries).toEqual([
-			{
-				mode: "challenge",
-				deckId: "challenge-round",
-				deckName: "",
-				cardCount: 2,
-				duration: 2,
-				occurredAt: 2400,
+			activity: {
+				completion: "completed",
+				answerCount: 1,
+				completedAnswerCount: 4,
+				durationSeconds: 1,
 			},
-		]);
+			history: { cardCount: 2, durationSeconds: 2 },
+		});
 	});
 
 	it("completes a first-try level with perfect accuracy and no retries", () => {
@@ -186,9 +178,9 @@ describe("answerChallengeQuestion", () => {
 			incorrectIdentities: [],
 			durationSeconds: 1,
 		});
-		expect(completed.learningActivity.completedAnswerCount).toBe(2);
+		expect(completed.record.activity.completedAnswerCount).toBe(2);
 		expect(
-			first.learningActivity.durationSeconds + completed.learningActivity.durationSeconds,
+			first.record.activity.durationSeconds + completed.record.activity.durationSeconds,
 		).toBe(1);
 	});
 
@@ -197,13 +189,13 @@ describe("answerChallengeQuestion", () => {
 		const second = answer(first, true, 1600);
 		const completed = answer(second, true, 900);
 		expect(
-			[first, second, completed].map((update) => update.learningActivity.durationSeconds),
+			[first, second, completed].map((update) => update.record.activity.durationSeconds),
 		).toEqual([1, 0, 0]);
 		if (completed.type !== "complete") throw new Error("Expected completed challenge");
 		expect(completed.result.durationSeconds).toBe(0);
 		expect(completed.result.timeSpent).toBe(0);
-		expect(completed.historyEntries[0]?.duration).toBe(0);
-		expect(completed.learningActivity.occurredAt).toBe(900);
+		expect(completed.record.history?.durationSeconds).toBe(0);
+		expect(completed.record.occurredAt).toBe(900);
 	});
 
 	it("advances only the completed level and retains earlier results when the next level completes", () => {
@@ -233,12 +225,8 @@ describe("answerChallengeQuestion", () => {
 			firstLevel.result,
 			secondLevel.result,
 		]);
-		expect(secondLevel.learningActivity.completedAnswerCount).toBe(1);
-		expect(secondLevel.historyEntries).toHaveLength(1);
-		expect(secondLevel.historyEntries[0]).toMatchObject({
-			cardCount: 1,
-			duration: 0,
-			occurredAt: 5600,
-		});
+		expect(secondLevel.record.activity.completedAnswerCount).toBe(1);
+		expect(secondLevel.record.history).toEqual({ cardCount: 1, durationSeconds: 0 });
+		expect(secondLevel.record.occurredAt).toBe(5600);
 	});
 });

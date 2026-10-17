@@ -103,6 +103,35 @@ function challengeProgress(id = "challenge-1"): ChallengeProgress {
 }
 
 describe("FlashcardRepository", () => {
+	it("rejects a semantic commit whose card is no longer present", async () => {
+		const repo = new FlashcardRepository({
+			authority: new MemoryFlashcardAuthority(DEFAULT_SETTINGS),
+		});
+		await repo.load();
+
+		const result = await repo.commitSession({
+			cardSchedules: [{ deckId: "missing", cardId: "card", fsrsCard: createEmptyCard() }],
+		});
+
+		expect(result).toMatchObject({ kind: "rejected", reason: "card-missing" });
+	});
+
+	it("rejects a challenge commit when the stored progress moved on", async () => {
+		const repo = new FlashcardRepository({
+			authority: new MemoryFlashcardAuthority(DEFAULT_SETTINGS),
+		});
+		await repo.load();
+
+		const result = await repo.commitSession({
+			challenge: {
+				progress: challengeProgress("next"),
+				expectedProgress: challengeProgress("previous"),
+			},
+		});
+
+		expect(result).toMatchObject({ kind: "rejected", reason: "challenge-progress-changed" });
+	});
+
 	it("reuses a deeply frozen spelling snapshot until committed progress changes", async () => {
 		const authority = new MemoryFlashcardAuthority(DEFAULT_SETTINGS);
 		const repo = new FlashcardRepository({ authority });
