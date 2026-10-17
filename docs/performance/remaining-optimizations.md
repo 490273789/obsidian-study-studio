@@ -303,6 +303,28 @@ Practice 结算分批、发音探测共享与同词单飞为工作区改动（�
 验证：`pnpm run check:all`（150 文件 / 1709 用例）、`pnpm run build`、`pnpm run lint`
 通过。基准与操作量回归见 [第 9 批性能基准](batch-9-benchmark.md)。
 
+## 第 10 批：持久化 learning 格式压缩（2026-10-17）
+
+状态：实施完成，工作区未提交。只改 authority seam 的持久化表示，内存
+`LearningStateDocument`、耐久语义与 repository 行为不变。
+
+- 新增 `domain/storage/persistedLearningCodec.ts`：`learning.cards` 持久化为
+  尾随截断元组 `[due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses,
+  state, last_review?, learning_steps?, sourceFile?]`，写 `cardsFormat: 1`；解码同时兼容
+  旧 `{fsrsCard:{...}}` 对象格式、元组格式、缺失/损坏/未知格式（绝不抛错）。
+- `workbenchFlashcardAuthority.ts` 在 commit 时编码、read 时解码；首次紧凑写入前写一次性
+  `data.backup-v2.json`（已存在不覆盖、失败 warn 后继续、下次重试），作为降级回滚快照。
+- 真实 2413 卡：learning 持久化字节 850,998 → 376,371 B（Obsidian prettified 磁盘格式，
+  −55.8%）；每次作答写入的 `data.json` 925,721 → 431,916 B（−53.3%，每次少约 482 KiB）。
+  耐久语义不变（仍是每次作答 1 次全量写，无 debounce）。encode 0.45 ms / decode 0.43 ms
+  （2413 卡）；作答序列化约 −0.4–0.5 ms。
+- 风险：格式单向升级。旧版插件读取紧凑 cards 会失败，只能手动用 `data.backup-v2.json`
+  回滚；备份只覆盖升级瞬间，之后继续作答会使备份变旧；多设备混合版本 Sync 不受保护。
+  前向格式（`cardsFormat > 1`）非设计目标。
+
+验证：`pnpm run check:all`（151 文件 / 1720 用例）、`pnpm run build`、`pnpm run lint`、
+模块边界检查通过。真实磁盘写入耗时、backup-v2 实际落盘未手动验证。
+
 ## 不要动的地方
 
 以下实现经两轮独立审计确认是正确的，改动前请先说明理由：
