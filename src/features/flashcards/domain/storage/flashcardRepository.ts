@@ -1136,7 +1136,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 				},
 				this.cardIndex,
 			);
-			const updatedDeckIds = new Set<string>();
+			const dueTimeChanges: DeckDueTimeChange[] = [];
 			for (const update of cardUpdates) {
 				const location = findCardLocation(
 					nextDecks,
@@ -1145,14 +1145,19 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 					this.cardIndex,
 				);
 				if (!location) continue;
-				updatedDeckIds.add(location.deckId);
+				const previous = location.deck.cards[location.cardIndex]!;
+				dueTimeChanges.push({
+					deckId: location.deckId,
+					previous: previous.fsrsCard,
+					next: update.fsrsCard,
+				});
 				location.deck.cards[location.cardIndex] = {
-					...location.deck.cards[location.cardIndex]!,
+					...previous,
 					fsrsCard: update.fsrsCard,
 				};
 			}
 			this.decks = nextDecks;
-			for (const deckId of updatedDeckIds) this.refreshDeckDueTimes(deckId, nextDecks);
+			this.applyDeckDueTimeChanges(dueTimeChanges);
 		}
 		if (spellingAttempts.length > 0) {
 			const nextSpellingProgress = cloneSpellingProgress(this.spellingProgress);
@@ -1486,6 +1491,26 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 		this.deckDueTimesValid = true;
 	}
 
+	/**
+	 * Updates the cached sorted due times for the answered cards only. The journal
+	 * path runs on every answer, so re-sorting the whole deck there would make the
+	 * cache incremental in name only.
+	 */
+	private applyDeckDueTimeChanges(changes: readonly DeckDueTimeChange[]): void {
+		if (!this.deckDueTimesValid) return;
+		for (const change of changes) {
+			const previousDue =
+				change.previous.state === State.New ? null : change.previous.due.getTime();
+			const nextDue = change.next.state === State.New ? null : change.next.due.getTime();
+			if (previousDue === nextDue) continue;
+			const dueTimes = this.deckDueTimes.get(change.deckId) ?? [];
+			if (previousDue !== null) removeSortedValue(dueTimes, previousDue);
+			if (nextDue !== null) insertSortedValue(dueTimes, nextDue);
+			if (dueTimes.length === 0) this.deckDueTimes.delete(change.deckId);
+			else this.deckDueTimes.set(change.deckId, dueTimes);
+		}
+	}
+
 	private refreshDeckDueTimes(deckId: string, decks: ReadonlyMap<string, Deck>): void {
 		if (!this.deckDueTimesValid) return;
 		const deck = decks.get(deckId);
@@ -1701,6 +1726,28 @@ function cloneDecksForTransition(
 		});
 	}
 	return next;
+}
+
+interface DeckDueTimeChange {
+	readonly deckId: string;
+	readonly previous: Card;
+	readonly next: Card;
+}
+
+function removeSortedValue(values: number[], value: number): void {
+	const index = values.indexOf(value);
+	if (index >= 0) values.splice(index, 1);
+}
+
+function insertSortedValue(values: number[], value: number): void {
+	let low = 0;
+	let high = values.length;
+	while (low < high) {
+		const middle = low + Math.floor((high - low) / 2);
+		if (values[middle]! < value) low = middle + 1;
+		else high = middle;
+	}
+	values.splice(low, 0, value);
 }
 
 function collectDeckDueTimes(deck: Deck): number[] {
