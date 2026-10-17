@@ -8,7 +8,7 @@ import {
 	selectSpellingSetupPlan,
 	selectStudySetupPlan,
 } from "./deckHomeSetupPlans";
-import { DeckList } from "./views/Home";
+import { HomeRoute, DeckHomeSnapshotRoute } from "./views/Home/HomeRoute";
 import { CardView, CardEditorModal } from "./views/Card";
 import { PracticeSetup, PracticeView, PracticeSummary } from "./views/Practice";
 import { WordListView } from "./views/WordList";
@@ -111,17 +111,6 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 	);
 	const presentedLifecycleSnapshot = answerPresentationSnapshot.lifecycle;
 	const isAnswerTransitioning = answerPresentationSnapshot.activity.kind === "transitioning";
-	const subscribeDeckHome = useCallback(
-		(listener: () => void) => deckHome.subscribe(listener),
-		[deckHome],
-	);
-	const readDeckHomeSnapshot = useCallback(() => deckHome.getSnapshot(), [deckHome]);
-	const deckHomeSnapshot = useSyncExternalStore(
-		subscribeDeckHome,
-		readDeckHomeSnapshot,
-		readDeckHomeSnapshot,
-	);
-
 	const cardEditing = useMemo(
 		() =>
 			new CardEditingInteraction({
@@ -162,8 +151,8 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 	);
 
 	const handleOpenAddCard = useCallback(() => {
-		cardEditing.openCreate(deckHomeSnapshot.decks[0]?.id ?? null);
-	}, [cardEditing, deckHomeSnapshot.decks]);
+		cardEditing.openCreate(deckHome.getSnapshot().decks[0]?.id ?? null);
+	}, [cardEditing, deckHome]);
 
 	const handleConfirmDialogConfirm = useCallback(() => {
 		if (confirmation) navigation.respond(confirmation.id, true);
@@ -222,8 +211,7 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 	);
 
 	const renderHome = () => (
-		<DeckList
-			snapshot={deckHomeSnapshot}
+		<HomeRoute
 			home={deckHome}
 			ownerId={deckHomeOwnerId}
 			onNavigate={handleHomeNavigate}
@@ -342,22 +330,30 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 			case "study-setup": {
 				const deck = deckHome.getDeck(viewState.deckId);
 				if (!deck) return renderHome();
-				const plan = selectStudySetupPlan(
-					deckHomeSnapshot,
-					deck,
-					viewState.initialStudyOrder,
-				);
-				if (!plan) return renderHome();
 				return (
-					<StudySetup
-						key={deck.id}
-						deck={deck}
-						plan={plan}
-						defaultDirection={viewState.initialDirection ?? "normal"}
-						spellingEnabled={Boolean(settings.wordLearningDecks[viewState.deckId])}
-						onStartSession={handleStartSession}
-						onBack={handleBackHome}
-					/>
+					<DeckHomeSnapshotRoute home={deckHome}>
+						{(snapshot) => {
+							const plan = selectStudySetupPlan(
+								snapshot,
+								deck,
+								viewState.initialStudyOrder,
+							);
+							if (!plan) return renderHome();
+							return (
+								<StudySetup
+									key={deck.id}
+									deck={deck}
+									plan={plan}
+									defaultDirection={viewState.initialDirection ?? "normal"}
+									spellingEnabled={Boolean(
+										settings.wordLearningDecks[viewState.deckId],
+									)}
+									onStartSession={handleStartSession}
+									onBack={handleBackHome}
+								/>
+							);
+						}}
+					</DeckHomeSnapshotRoute>
 				);
 			}
 
@@ -381,19 +377,25 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 			case "spelling-setup": {
 				const deck = deckHome.getDeck(viewState.deckId);
 				if (!deck) return renderHome();
-				const plan = selectSpellingSetupPlan(
-					deckHomeSnapshot,
-					deck,
-					viewState.initialSelection,
-				);
 				return (
-					<SpellingSetup
-						key={deck.id}
-						deck={deck}
-						plan={plan}
-						onStartSession={handleStartSession}
-						onBack={handleBackHome}
-					/>
+					<DeckHomeSnapshotRoute home={deckHome}>
+						{(snapshot) => {
+							const plan = selectSpellingSetupPlan(
+								snapshot,
+								deck,
+								viewState.initialSelection,
+							);
+							return (
+								<SpellingSetup
+									key={deck.id}
+									deck={deck}
+									plan={plan}
+									onStartSession={handleStartSession}
+									onBack={handleBackHome}
+								/>
+							);
+						}}
+					</DeckHomeSnapshotRoute>
 				);
 			}
 
@@ -414,7 +416,11 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 
 			case "stats":
 				return (
-					<StatsView history={deckHomeSnapshot.studyHistory} onBack={handleBackHome} />
+					<DeckHomeSnapshotRoute home={deckHome}>
+						{(snapshot) => (
+							<StatsView history={snapshot.studyHistory} onBack={handleBackHome} />
+						)}
+					</DeckHomeSnapshotRoute>
 				);
 
 			case "home":
@@ -446,29 +452,33 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 					</div>
 					{viewState.type === "challenge-setup" &&
 						presentedLifecycleSnapshot.kind === "idle" && (
-							<ChallengeSetupModal
-								readiness={deckHomeSnapshot.challenge}
-								isStarting={navigationBusy}
-								onStart={(challengeMode, intent) =>
-									void navigation.startChallenge(
-										{
-											mode: "challenge",
-											challengeMode,
-											intent,
-											expectedRoundId:
-												deckHomeSnapshot.challenge.savedRoundId,
-										},
-										deckHomeSnapshot.challenge.round !== null,
-									)
-								}
-								onClose={handleBackHome}
-							/>
+							<DeckHomeSnapshotRoute home={deckHome}>
+								{(snapshot) => (
+									<ChallengeSetupModal
+										readiness={snapshot.challenge}
+										isStarting={navigationBusy}
+										onStart={(challengeMode, intent) =>
+											void navigation.startChallenge(
+												{
+													mode: "challenge",
+													challengeMode,
+													intent,
+													expectedRoundId:
+														snapshot.challenge.savedRoundId,
+												},
+												snapshot.challenge.round !== null,
+											)
+										}
+										onClose={handleBackHome}
+									/>
+								)}
+							</DeckHomeSnapshotRoute>
 						)}
 					{cardEditor && (
 						<CardEditorModal
 							key={cardEditor.id}
 							mode={cardEditor.mode}
-							decks={deckHomeSnapshot.decks}
+							decks={deckHome.getSnapshot().decks}
 							initialDeckId={cardEditor.deckId}
 							initialFront={cardEditor.front}
 							initialBack={cardEditor.back}
