@@ -1,19 +1,19 @@
 import type { CardMotion } from "../../answerPresentationTransition";
 import React, { memo, useCallback, useRef, useState } from "react";
 import { Check, CornerDownLeft, Lightbulb, X } from "lucide-react";
-import { Notice } from "obsidian";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardInput } from "../../../../../core/ui/primitives/Input";
 import { useCardPresentationShortcuts } from "../../hooks/useCardPresentationShortcuts";
-import { getDisplayCardContent } from "../../../domain/cards/cardDisplay";
 import type { ActiveChallengeSnapshot } from "../../../domain/sessions/sessionLifecycle";
 import { useFlashcardI18n } from "../../../strings/context";
-import { useCardContextMenu } from "../../hooks/useCardContextMenu";
 import type { AnswerPresentationTransition } from "../../answerPresentationTransition";
-import { MarkdownContent } from "../../primitives/Markdown";
 import { useSessionInputVisibility } from "../../hooks/useSessionInputVisibility";
 import { SessionLayout } from "../../primitives/SessionLayout/SessionLayout";
 import { SessionToolbar } from "../../primitives/SessionToolbar";
+import { deriveCardPresentation } from "../../presentation/cardPresentation";
+import { CardAnswerSection, CardQuestionPanel } from "../../presentation/CardPanels";
+import { CardPresentationStack } from "../../presentation/CardPresentationStack";
+import { reportPresentationOutcome } from "../../presentation/presentationOutcome";
 import styles from "./Challenge.module.scss";
 
 interface ChallengeViewProps {
@@ -22,7 +22,6 @@ interface ChallengeViewProps {
 	isTransitioning: boolean;
 	cardMotion?: CardMotion;
 	onClose: () => void;
-	markdownRenderer: (content: string, el: HTMLElement) => Promise<void>;
 }
 
 export const ChallengeView = memo(function ChallengeView(props: ChallengeViewProps) {
@@ -44,10 +43,8 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 	isTransitioning,
 	cardMotion,
 	onClose,
-	markdownRenderer,
 }: ChallengeViewProps & { question: string }) {
 	const { t } = useFlashcardI18n();
-	const handleContextMenu = useCardContextMenu();
 	const [answerVisible, setAnswerVisible] = useState(false);
 	const [input, setInput] = useState("");
 	const inputRef = useRef<HTMLInputElement>(null);
@@ -56,11 +53,14 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 	const isSpelling = session.questionMode === "spelling";
 	const feedback = session.feedback;
 	const isFeedback = session.phase === "feedback";
-	const display = getDisplayCardContent(
-		currentCard,
-		session.questionMode === "normal" ? "normal" : "reversed",
-	);
 	const showAnswer = isFeedback || (!isSpelling && answerVisible);
+	const model = deriveCardPresentation({
+		card: currentCard,
+		direction: session.questionMode === "normal" ? "normal" : "reversed",
+		answerVisible: showAnswer,
+		questionLabel: isSpelling ? "challenge.spellingPrompt" : "common.question",
+		explanation: currentCard.explanation ?? "",
+	});
 
 	const { keepInputVisible, handleInputBlur } = useSessionInputVisibility(
 		inputRef,
@@ -69,17 +69,10 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 		isSpelling && !isFeedback,
 	);
 
-	const report = useCallback(
-		(outcome: Awaited<ReturnType<AnswerPresentationTransition["act"]>>) => {
-			if (outcome.kind === "failed") new Notice(outcome.message);
-		},
-		[],
-	);
-
 	const answer = useCallback(
 		async (correct: boolean) => {
 			if (isTransitioning || isFeedback) return;
-			report(
+			reportPresentationOutcome(
 				await transition.act({
 					kind: "challenge-answer",
 					reference: session.reference,
@@ -87,13 +80,13 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 				}),
 			);
 		},
-		[isFeedback, isTransitioning, report, session.reference, transition],
+		[isFeedback, isTransitioning, session.reference, transition],
 	);
 
 	const submitSpelling = useCallback(
 		async (value: string, reveal = false) => {
 			if (isTransitioning || isFeedback || (!reveal && !value.trim())) return;
-			report(
+			reportPresentationOutcome(
 				await transition.act(
 					reveal
 						? { kind: "challenge-reveal", reference: session.reference }
@@ -101,13 +94,15 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 				),
 			);
 		},
-		[isFeedback, isTransitioning, report, session.reference, transition],
+		[isFeedback, isTransitioning, session.reference, transition],
 	);
 
 	const continueAfterFeedback = useCallback(async () => {
 		if (isTransitioning || !isFeedback) return;
-		report(await transition.act({ kind: "challenge-continue", reference: session.reference }));
-	}, [isFeedback, isTransitioning, report, session.reference, transition]);
+		reportPresentationOutcome(
+			await transition.act({ kind: "challenge-continue", reference: session.reference }),
+		);
+	}, [isFeedback, isTransitioning, session.reference, transition]);
 
 	const shortcutRootRef = useCardPresentationShortcuts(
 		{
@@ -276,48 +271,11 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 				</>
 			}
 		>
-			<div
-				className="flashcard-card-stack"
-				key={currentCard.identity}
-				onContextMenu={handleContextMenu}
-			>
-				<div className="flashcard-question fc-panel">
-					<div className="flashcard-label flashcard-label-question">
-						{isSpelling ? t("challenge.spellingPrompt") : t("common.question")}
-					</div>
-					<MarkdownContent
-						content={display.prompt}
-						className="flashcard-markdown"
-						markdownRenderer={markdownRenderer}
-					/>
-				</div>
-				{showAnswer && (
-					<div className="flashcard-answer-section">
-						<div className="flashcard-divider" />
-						<div className="flashcard-answer fc-panel">
-							<div className="flashcard-label flashcard-label-answer">
-								{t("common.answer")}
-							</div>
-							<MarkdownContent
-								content={display.answer}
-								className="flashcard-markdown"
-								markdownRenderer={markdownRenderer}
-							/>
-						</div>
-						{currentCard.explanation && (
-							<div className="flashcard-explanation fc-panel">
-								<div className="flashcard-label flashcard-label-explanation">
-									{t("common.explanation")}
-								</div>
-								<MarkdownContent
-									content={currentCard.explanation}
-									className="flashcard-markdown"
-									markdownRenderer={markdownRenderer}
-								/>
-							</div>
-						)}
-					</div>
-				)}
+			<CardPresentationStack key={currentCard.identity}>
+				<CardQuestionPanel block={model.question} />
+				{model.answer ? (
+					<CardAnswerSection answer={model.answer} explanation={model.explanation} />
+				) : null}
 				{isFeedback && feedback && (
 					<output className={styles.feedback}>
 						<X size={18} />
@@ -354,7 +312,7 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 						/>
 					</label>
 				)}
-			</div>
+			</CardPresentationStack>
 		</SessionLayout>
 	);
 });

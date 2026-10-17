@@ -1,25 +1,23 @@
 import type { CardMotion } from "../../answerPresentationTransition";
 import React, { useCallback, useMemo } from "react";
 import { PartyPopper, RotateCcw } from "lucide-react";
-import { Notice } from "obsidian";
 import { cls } from "../../../../../core/shared/classNames";
 import type { StudyRating } from "../../../../../core/shared/types";
 import { getRatingButtons } from "../../../domain/sessions/scheduler";
-import { getDisplayCardContent } from "../../../domain/cards/cardDisplay";
 import type { ActiveStudySnapshot } from "../../../domain/sessions/sessionLifecycle";
 import type {
 	AnswerPresentationTransition,
 	CardPresentationSnapshot,
 } from "../../answerPresentationTransition";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
-import { MarkdownContent, PronounceableMarkdown } from "../../primitives/Markdown";
 import { SessionLayout } from "../../primitives/SessionLayout/SessionLayout";
 import { SessionToolbar } from "../../primitives/SessionToolbar";
 import { SessionTimer } from "../../../../../core/ui/primitives/SessionTimer";
 import { useCardPresentationShortcuts } from "../../hooks/useCardPresentationShortcuts";
 import { useFlashcardI18n } from "../../../strings/context";
-import { useCardContextMenu } from "../../hooks/useCardContextMenu";
-import type { PronunciationRuntime } from "../../../domain/pronunciation";
+import { deriveCardPresentation } from "../../presentation/cardPresentation";
+import { CardPresentationBody } from "../../presentation/CardPresentationBody";
+import { reportPresentationOutcome } from "../../presentation/presentationOutcome";
 import styles from "./CardView.module.scss";
 
 const RATING_CLASSES: Record<StudyRating, string> = {
@@ -39,8 +37,6 @@ interface CardViewProps {
 	onEditCard: (deckId: string, cardId: string) => void;
 	onDeleteCard: (deckId: string, cardId: string) => void;
 	onClose: () => void;
-	markdownRenderer: (content: string, el: HTMLElement) => Promise<void>;
-	pronunciationRuntime: PronunciationRuntime;
 	cardPresentation: CardPresentationSnapshot;
 }
 
@@ -53,12 +49,9 @@ export const CardView = React.memo(function CardView({
 	onEditCard,
 	onDeleteCard,
 	onClose,
-	markdownRenderer,
-	pronunciationRuntime,
 	cardPresentation,
 }: CardViewProps) {
 	const { t, language } = useFlashcardI18n();
-	const handleContextMenu = useCardContextMenu();
 	const {
 		answerVisible: showAnswer,
 		autoPronunciationEnabled,
@@ -68,9 +61,15 @@ export const CardView = React.memo(function CardView({
 
 	const currentCard = session.currentCard;
 	const ratingButtons = useMemo(() => getRatingButtons(language), [language]);
-	const displayContent = useMemo(
-		() => (currentCard ? getDisplayCardContent(currentCard, session.direction) : null),
-		[currentCard, session.direction],
+	const model = useMemo(
+		() =>
+			deriveCardPresentation({
+				card: currentCard ?? null,
+				direction: session.direction,
+				answerVisible: showAnswer,
+				pronunciationWord,
+			}),
+		[currentCard, session.direction, showAnswer, pronunciationWord],
 	);
 
 	const handleShowAnswer = useCallback(() => {
@@ -94,7 +93,7 @@ export const CardView = React.memo(function CardView({
 				reference: session.reference,
 				rating,
 			});
-			if (outcome.kind === "failed") new Notice(outcome.message);
+			reportPresentationOutcome(outcome);
 			if (outcome.kind === "applied" && outcome.studyCompleted) onComplete();
 		},
 		[currentCard, isTransitioning, onComplete, session.reference, transition],
@@ -106,7 +105,7 @@ export const CardView = React.memo(function CardView({
 			kind: "study-previous",
 			reference: session.reference,
 		});
-		if (outcome.kind === "failed") new Notice(outcome.message);
+		reportPresentationOutcome(outcome);
 	}, [isTransitioning, session.canPrevious, session.reference, transition]);
 
 	const shortcutRootRef = useCardPresentationShortcuts(
@@ -261,68 +260,10 @@ export const CardView = React.memo(function CardView({
 				</>
 			}
 		>
-			<div
-				className="flashcard-card-stack"
-				key={JSON.stringify([currentCard.identity, session.answerEventCount])}
-				onContextMenu={handleContextMenu}
-			>
-				<div className="flashcard-question fc-panel">
-					<div className="flashcard-label flashcard-label-question">
-						{t("common.question")}
-					</div>
-					{session.direction === "normal" && pronunciationWord ? (
-						<PronounceableMarkdown
-							content={displayContent?.prompt ?? ""}
-							word={pronunciationWord}
-							runtime={pronunciationRuntime}
-							markdownRenderer={markdownRenderer}
-						/>
-					) : (
-						<MarkdownContent
-							content={displayContent?.prompt ?? ""}
-							className="flashcard-markdown"
-							markdownRenderer={markdownRenderer}
-						/>
-					)}
-				</div>
-
-				{showAnswer && (
-					<div className="flashcard-answer-section">
-						<div className="flashcard-divider" />
-						<div className="flashcard-answer fc-panel">
-							<div className="flashcard-label flashcard-label-answer">
-								{t("common.answer")}
-							</div>
-							{session.direction === "reversed" && pronunciationWord ? (
-								<PronounceableMarkdown
-									content={displayContent?.answer ?? ""}
-									word={pronunciationWord}
-									runtime={pronunciationRuntime}
-									markdownRenderer={markdownRenderer}
-								/>
-							) : (
-								<MarkdownContent
-									content={displayContent?.answer ?? ""}
-									className="flashcard-markdown"
-									markdownRenderer={markdownRenderer}
-								/>
-							)}
-						</div>
-						{displayContent?.explanation && (
-							<div className="flashcard-explanation fc-panel">
-								<div className="flashcard-label flashcard-label-explanation">
-									{t("common.explanation")}
-								</div>
-								<MarkdownContent
-									content={displayContent.explanation}
-									className="flashcard-markdown"
-									markdownRenderer={markdownRenderer}
-								/>
-							</div>
-						)}
-					</div>
-				)}
-			</div>
+			<CardPresentationBody
+				model={model}
+				encounterKey={JSON.stringify([currentCard.identity, session.answerEventCount])}
+			/>
 		</SessionLayout>
 	);
 });

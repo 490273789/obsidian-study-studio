@@ -2,22 +2,22 @@ import type { CardMotion } from "../../answerPresentationTransition";
 /* oxlint-disable jsx-a11y/prefer-tag-over-role -- Feedback status regions contain structured block-level diff content. */
 import React, { useCallback, useEffect, useRef, useState, useId } from "react";
 import { Check, CornerDownLeft, Lightbulb, X } from "lucide-react";
-import { Notice } from "obsidian";
 import { cls } from "../../../../../core/shared/classNames";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardInput } from "../../../../../core/ui/primitives/Input";
-import type { PronunciationRuntime } from "../../../domain/pronunciation";
 import type {
 	ActiveSpellingSnapshot,
 	SpellingLifecycleFeedback,
 } from "../../../domain/sessions/sessionLifecycle";
 import { useFlashcardI18n } from "../../../strings/context";
-import { useCardContextMenu } from "../../hooks/useCardContextMenu";
 import type { AnswerPresentationTransition } from "../../answerPresentationTransition";
-import { MarkdownContent } from "../../primitives/Markdown";
 import { useSessionInputVisibility } from "../../hooks/useSessionInputVisibility";
 import { SessionLayout } from "../../primitives/SessionLayout/SessionLayout";
 import { SessionToolbar } from "../../primitives/SessionToolbar";
+import { CardExplanationPanel, CardQuestionPanel } from "../../presentation/CardPanels";
+import { CardPresentationStack } from "../../presentation/CardPresentationStack";
+import { useCardPresentationDependencies } from "../../presentation/context";
+import { reportPresentationOutcome } from "../../presentation/presentationOutcome";
 import styles from "./Spelling.module.scss";
 
 const DIFF_CLASSES = {
@@ -36,8 +36,6 @@ interface SpellingViewProps {
 	onEditCard: (deckId: string, cardId: string) => void;
 	onDeleteCard: (deckId: string, cardId: string) => void;
 	onClose: () => void;
-	markdownRenderer: (content: string, el: HTMLElement) => Promise<void>;
-	pronunciationRuntime: PronunciationRuntime;
 }
 
 export const SpellingView = React.memo(function SpellingView(props: SpellingViewProps) {
@@ -81,11 +79,9 @@ const SpellingQuestion = React.memo(function SpellingQuestion({
 	onEditCard,
 	onDeleteCard,
 	onClose,
-	markdownRenderer,
-	pronunciationRuntime,
 }: SpellingViewProps & { question: string }) {
 	const { t } = useFlashcardI18n();
-	const handleContextMenu = useCardContextMenu();
+	const { pronunciationRuntime } = useCardPresentationDependencies();
 	const [input, setInput] = useState("");
 	const inputRef = useRef<HTMLInputElement>(null);
 	const feedbackId = useId();
@@ -114,7 +110,7 @@ const SpellingQuestion = React.memo(function SpellingQuestion({
 				input: submittedInput,
 			});
 			if (outcome.kind !== "applied" || !outcome.feedback) {
-				if (outcome.kind === "failed") new Notice(outcome.message);
+				reportPresentationOutcome(outcome);
 				return;
 			}
 
@@ -201,22 +197,14 @@ const SpellingQuestion = React.memo(function SpellingQuestion({
 				</>
 			}
 		>
-			<div
-				className="flashcard-card-stack"
-				key={currentCard.identity}
-				onContextMenu={handleContextMenu}
-			>
-				<div className="flashcard-question fc-panel">
-					<div className="flashcard-label flashcard-label-question">
-						{t("spelling.meaningPrompt")}
-					</div>
-					<MarkdownContent
-						content={currentCard.back}
-						className="flashcard-markdown"
-						markdownRenderer={markdownRenderer}
-					/>
-				</div>
-
+			<CardPresentationStack key={currentCard.identity}>
+				<CardQuestionPanel
+					block={{
+						label: "spelling.meaningPrompt",
+						content: currentCard.back,
+						pronunciationWord: null,
+					}}
+				/>
 				{feedback &&
 					(feedback.kind === "retrieval-incorrect" ||
 						feedback.kind === "correction-incorrect") && (
@@ -276,16 +264,13 @@ const SpellingQuestion = React.memo(function SpellingQuestion({
 				)}
 
 				{isCorrection && currentCard.explanation && (
-					<div className="flashcard-explanation fc-panel">
-						<div className="flashcard-label flashcard-label-explanation">
-							{t("common.explanation")}
-						</div>
-						<MarkdownContent
-							content={currentCard.explanation}
-							className="flashcard-markdown"
-							markdownRenderer={markdownRenderer}
-						/>
-					</div>
+					<CardExplanationPanel
+						block={{
+							label: "common.explanation",
+							content: currentCard.explanation,
+							pronunciationWord: null,
+						}}
+					/>
 				)}
 
 				<label className={styles.inputGroup}>
@@ -327,7 +312,7 @@ const SpellingQuestion = React.memo(function SpellingQuestion({
 						aria-invalid={isCorrection || undefined}
 					/>
 				</label>
-			</div>
+			</CardPresentationStack>
 		</SessionLayout>
 	);
 });

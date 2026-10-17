@@ -25,6 +25,7 @@ import { createAnswerPresentationTransition } from "./answerPresentationTransiti
 import { ChallengeSetupModal, ChallengeView, ChallengeSummary } from "./views/Challenge";
 import { FlashcardNavigation } from "./flashcardNavigation";
 import { InputVisibilityProvider } from "./hooks/useSessionInputVisibility";
+import { CardPresentationProvider } from "./presentation/context";
 import styles from "./FlashcardApp.module.scss";
 
 interface FlashcardAppProps {
@@ -281,7 +282,6 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 						isTransitioning={isAnswerTransitioning}
 						cardMotion={answerPresentationSnapshot.cardMotion}
 						onClose={handleExitActive}
-						markdownRenderer={renderMarkdown}
 					/>
 				);
 			if (presentedLifecycleSnapshot.mode === "study") {
@@ -295,8 +295,6 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 						onEditCard={handleOpenEditCard}
 						onDeleteCard={handleDeleteCardRequest}
 						onClose={handleExitActive}
-						markdownRenderer={renderMarkdown}
-						pronunciationRuntime={pronunciationRuntime}
 						cardPresentation={answerPresentationSnapshot.cardPresentation}
 					/>
 				);
@@ -311,8 +309,6 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 						onEditCard={handleOpenEditCard}
 						onDeleteCard={handleDeleteCardRequest}
 						onClose={handleExitActive}
-						markdownRenderer={renderMarkdown}
-						pronunciationRuntime={pronunciationRuntime}
 						cardPresentation={answerPresentationSnapshot.cardPresentation}
 					/>
 				);
@@ -327,8 +323,6 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 					onEditCard={handleOpenEditCard}
 					onDeleteCard={handleDeleteCardRequest}
 					onClose={handleExitActive}
-					markdownRenderer={renderMarkdown}
-					pronunciationRuntime={pronunciationRuntime}
 				/>
 			);
 		}
@@ -485,56 +479,62 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 	return (
 		<InputVisibilityProvider host={modalHost}>
 			<ModalProvider host={modalHost}>
-				<div key={pageKey} className={styles.pageTransition} data-page={pageKey}>
-					{renderContent()}
-				</div>
-				{viewState.type === "challenge-setup" &&
-					presentedLifecycleSnapshot.kind === "idle" && (
-						<ChallengeSetupModal
-							readiness={deckHomeSnapshot.challenge}
-							isStarting={navigationBusy}
-							onStart={(challengeMode, intent) =>
-								void navigation.startChallenge(
-									{
-										mode: "challenge",
-										challengeMode,
-										intent,
-										expectedRoundId: deckHomeSnapshot.challenge.savedRoundId,
-									},
-									deckHomeSnapshot.challenge.round !== null,
-								)
-							}
-							onClose={handleBackHome}
+				<CardPresentationProvider
+					markdownRenderer={renderMarkdown}
+					pronunciationRuntime={pronunciationRuntime}
+				>
+					<div key={pageKey} className={styles.pageTransition} data-page={pageKey}>
+						{renderContent()}
+					</div>
+					{viewState.type === "challenge-setup" &&
+						presentedLifecycleSnapshot.kind === "idle" && (
+							<ChallengeSetupModal
+								readiness={deckHomeSnapshot.challenge}
+								isStarting={navigationBusy}
+								onStart={(challengeMode, intent) =>
+									void navigation.startChallenge(
+										{
+											mode: "challenge",
+											challengeMode,
+											intent,
+											expectedRoundId:
+												deckHomeSnapshot.challenge.savedRoundId,
+										},
+										deckHomeSnapshot.challenge.round !== null,
+									)
+								}
+								onClose={handleBackHome}
+							/>
+						)}
+					{cardEditor && (
+						<CardEditorModal
+							key={cardEditor.id}
+							mode={cardEditor.mode}
+							decks={deckHomeSnapshot.decks}
+							initialDeckId={cardEditor.deckId}
+							initialFront={cardEditor.front}
+							initialBack={cardEditor.back}
+							initialExplanation={cardEditor.explanation}
+							isSaving={cardEditor.saving}
+							error={cardEditor.error}
+							onSave={(draft) => cardEditing.save(cardEditor.id, draft)}
+							onClose={() => cardEditing.close(cardEditor.id)}
 						/>
 					)}
-				{cardEditor && (
-					<CardEditorModal
-						key={cardEditor.id}
-						mode={cardEditor.mode}
-						decks={deckHomeSnapshot.decks}
-						initialDeckId={cardEditor.deckId}
-						initialFront={cardEditor.front}
-						initialBack={cardEditor.back}
-						initialExplanation={cardEditor.explanation}
-						isSaving={cardEditor.saving}
-						error={cardEditor.error}
-						onSave={(draft) => cardEditing.save(cardEditor.id, draft)}
-						onClose={() => cardEditing.close(cardEditor.id)}
-					/>
-				)}
-				{confirmation && (
-					<ConfirmDialog
-						key={confirmation.id}
-						title={confirmation.title}
-						message={confirmation.message}
-						confirmText={confirmation.confirmText}
-						cancelText={t("common.cancel")}
-						kicker={t("common.confirmAction")}
-						tone={confirmation.tone}
-						onConfirm={handleConfirmDialogConfirm}
-						onCancel={handleConfirmDialogCancel}
-					/>
-				)}
+					{confirmation && (
+						<ConfirmDialog
+							key={confirmation.id}
+							title={confirmation.title}
+							message={confirmation.message}
+							confirmText={confirmation.confirmText}
+							cancelText={t("common.cancel")}
+							kicker={t("common.confirmAction")}
+							tone={confirmation.tone}
+							onConfirm={handleConfirmDialogConfirm}
+							onCancel={handleConfirmDialogCancel}
+						/>
+					)}
+				</CardPresentationProvider>
 			</ModalProvider>
 		</InputVisibilityProvider>
 	);

@@ -52,7 +52,7 @@ Pure engines and planners under `src/features/flashcards/domain/sessions/` are i
 - It owns answer-transition delays, spelling feedback retention, optional pronunciation wait, and unsubscribe cleanup.
 - Its `cardPresentation` snapshot owns study/practice answer visibility and automatic pronunciation. Reveal/toggle actions carry the presented revision-bound reference; word-learning deck eligibility is updated through `setWordLearningDecks()`.
 - A new encounter (including returning/undoing, consecutive answers on the same identity, or front/back edits) hides the answer and creates one automatic pronunciation opportunity when the word becomes visible. Explanation/source-only changes preserve visibility and do not replay. Autoplay persists across cards, resets on session/mode changes or last unsubscribe, and presentation changes follow the committed snapshot after its delay.
-- Views retain rendering and mode-specific controls; spelling input submission stays local. Do not reintroduce per-component timer/pending-action state.
+- Views retain mode-specific controls, inputs, shortcuts, and transactions. `src/features/flashcards/ui/presentation/` owns the shared 卡片呈现 derivation and question/answer/explanation rendering; challenge answer visibility and feedback stay with its view, and spelling input submission stays local. Do not reintroduce per-component timer/pending-action state.
 
 ## Card presentation shortcuts
 

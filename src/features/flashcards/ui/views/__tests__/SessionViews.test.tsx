@@ -2,7 +2,6 @@ import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardInput } from "../../../../../core/ui/primitives/Input";
-import type { PronunciationRuntime } from "../../../domain/pronunciation";
 import type {
 	ActiveStudySnapshot,
 	ActivePracticeSnapshot,
@@ -11,12 +10,13 @@ import type {
 	SpellingLifecycleFeedback,
 } from "../../../domain/sessions/sessionLifecycle";
 import type { AnswerPresentationTransition } from "../../answerPresentationTransition";
-import { MarkdownContent, PronounceableMarkdown } from "../../primitives/Markdown";
 import { SessionToolbar } from "../../primitives/SessionToolbar";
 import { CardView } from "../Card/CardView";
 import { PracticeView } from "../Practice/PracticeView";
 import { SpellingView } from "../Spelling/SpellingView";
 import { ChallengeView } from "../Challenge/ChallengeView";
+import { CardPresentationBody } from "../../presentation/CardPresentationBody";
+import { CardAnswerSection, CardQuestionPanel } from "../../presentation/CardPanels";
 
 // Exercise view adapters and slot content in node; effects and DOM renderers are external seams.
 const hooks = vi.hoisted(() => ({
@@ -82,11 +82,14 @@ vi.mock("obsidian", () => ({ Notice: vi.fn() }));
 vi.mock("../../../strings/context", () => ({
 	useFlashcardI18n: () => ({ language: "en", t: (key: string) => key }),
 }));
-vi.mock("../../primitives/Markdown", () => ({
-	MarkdownContent: () => null,
-	PronounceableMarkdown: () => null,
-}));
 vi.mock("../../hooks/useCardContextMenu", () => ({ useCardContextMenu: () => vi.fn() }));
+const presentation = vi.hoisted(() => ({
+	markdownRenderer: vi.fn(),
+	pronunciationRuntime: { stop: vi.fn() },
+}));
+vi.mock("../../presentation/context", () => ({
+	useCardPresentationDependencies: () => presentation,
+}));
 vi.mock("../../hooks/useCardPresentationShortcuts", () => ({
 	useCardPresentationShortcuts: () => ({ current: null }),
 }));
@@ -101,6 +104,7 @@ beforeEach(() => {
 	inputVisibility.current = true;
 	inputVisibility.focus.mockClear();
 	inputVisibility.captureReturn.mockClear();
+	presentation.pronunciationRuntime.stop.mockClear();
 	inputVisibility.bind.mockClear();
 });
 
@@ -135,11 +139,42 @@ function renderMemo<P>(component: unknown, props: P): React.ReactNode {
 	return (component as { type: (props: P) => React.ReactNode }).type(props);
 }
 function markdown(node: React.ReactNode): (string | undefined)[] {
-	return elements(node)
-		.filter(
-			(element) => element.type === MarkdownContent || element.type === PronounceableMarkdown,
-		)
-		.map((element) => element.props.content);
+	const elementsInTree = elements(node);
+	const body = elementsInTree.find((element) => element.type === CardPresentationBody);
+	if (body) {
+		const model = (
+			body.props as unknown as {
+				model: {
+					question: { content: string };
+					answer: { content: string } | null;
+					explanation: { content: string } | null;
+				};
+			}
+		).model;
+		return [model.question.content, model.answer?.content, model.explanation?.content].filter(
+			(value): value is string => typeof value === "string" && value.length > 0,
+		);
+	}
+	const questionBlocks = elementsInTree
+		.filter((element) => element.type === CardQuestionPanel)
+		.map(
+			(element) =>
+				(
+					element.props as unknown as {
+						block: { content: string };
+					}
+				).block.content,
+		);
+	const answerSections = elementsInTree
+		.filter((element) => element.type === CardAnswerSection)
+		.flatMap((element) => {
+			const { answer, explanation } = element.props as unknown as {
+				answer: { content: string };
+				explanation: { content: string } | null;
+			};
+			return explanation ? [answer.content, explanation.content] : [answer.content];
+		});
+	return [...questionBlocks, ...answerSections];
 }
 type ButtonProps = React.ComponentProps<typeof FlashcardButton>;
 function buttons(node: React.ReactNode): ButtonProps[] {
@@ -224,9 +259,6 @@ function fixture() {
 		onEditCard: vi.fn(),
 		onDeleteCard: vi.fn(),
 		onClose: vi.fn(),
-		markdownRenderer: vi.fn<(content: string, el: HTMLElement) => Promise<void>>(),
-		// Effects and pronunciation children are mocked, so only stop is used at this seam.
-		pronunciationRuntime: { stop: vi.fn() } as unknown as PronunciationRuntime,
 	};
 	const cardPresentation = {
 		answerVisible: false,
