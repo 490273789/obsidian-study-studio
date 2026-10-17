@@ -3,10 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { KeyboardSensor, MouseSensor, TouchSensor } from "@dnd-kit/core";
 import type { DragEndEvent, DragStartEvent, DndContextProps } from "@dnd-kit/core";
 import { rectSortingStrategy } from "@dnd-kit/sortable";
-import type { DeckHome, DeckHomeSnapshot } from "../../../../domain/decks/deckHome";
+import type {
+	DeckHome,
+	DeckHomeSettingsDraft,
+	DeckHomeSnapshot,
+} from "../../../../domain/decks/deckHome";
 import { restoreDailyLearningActivity } from "../../../../domain/history/dailyLearningActivity";
 import { DEFAULT_SETTINGS } from "../../../../../../core/host/settingsSlices";
 import { DeckList } from "../DeckList";
+import type { DeckCardPresentation } from "../../../deckCardPresentation";
 import { ReorderableList } from "../../../../../../core/ui/primitives/Sortable/Sortable";
 import type { SortableInteraction } from "../../../../../../core/ui/primitives/Sortable/sortableInteraction";
 
@@ -93,7 +98,7 @@ interface ElementProps {
 	className?: string;
 	style?: React.CSSProperties;
 	onClick?: (event: { stopPropagation(): void }) => void;
-	presentation?: { deck: { id: string } };
+	presentation?: DeckCardPresentation;
 	onMenuOpenChange?: (deckId: string, open: boolean) => void;
 	"data-state"?: string;
 	"aria-expanded"?: boolean;
@@ -266,8 +271,11 @@ function harness(decks?: DeckOverrides[]) {
 		render();
 	}
 	function deckIds(): string[] {
+		return presentations().map((presentation) => presentation.deck.id);
+	}
+	function presentations(): DeckCardPresentation[] {
 		return findAll(tree, (element) => element.props.presentation !== undefined).map(
-			(element) => element.props.presentation!.deck.id,
+			(element) => element.props.presentation!,
 		);
 	}
 	render();
@@ -280,6 +288,7 @@ function harness(decks?: DeckOverrides[]) {
 		setCardMenu,
 		clickTreeButton,
 		deckIds,
+		presentations,
 		findAll,
 		findElement: (
 			node: React.ReactNode,
@@ -297,6 +306,31 @@ function renderDeckCard(
 		element.type as unknown as { type: (props: ElementProps) => React.ReactNode }
 	).type;
 	return renderCard(element.props) as React.ReactElement<ElementProps>;
+}
+
+function makeSettingsDraft(ownerId: string, deckId: string): DeckHomeSettingsDraft {
+	return {
+		ownerId,
+		deckId,
+		deckName: deckId,
+		filePath: `${deckId}.md`,
+		totalCards: 1,
+		useCustom: false,
+		dailyNewCards: DEFAULT_SETTINGS.dailyNewCards,
+		dailyReviewCards: DEFAULT_SETTINGS.dailyReviewCards,
+		studyOrder: DEFAULT_SETTINGS.studyOrder,
+		requestRetention: DEFAULT_SETTINGS.fsrsParameters.requestRetention,
+		maximumInterval: "36500",
+		daysToComplete: "10",
+		wordLearningEnabled: false,
+		global: {
+			dailyNewCards: DEFAULT_SETTINGS.dailyNewCards,
+			dailyReviewCards: DEFAULT_SETTINGS.dailyReviewCards,
+			studyOrder: DEFAULT_SETTINGS.studyOrder,
+			fsrsParameters: DEFAULT_SETTINGS.fsrsParameters,
+		},
+		spelling: { canStart: false, hasStableIdentities: true, invalidCards: [] },
+	};
 }
 
 describe("deck reorder availability", () => {
@@ -506,6 +540,93 @@ describe("deck row presentation state", () => {
 			(element) => element.props.className?.includes("flashcard-deck-action-study") === true,
 		);
 		expect(textOf(study.props.children)).toContain("home.review");
+	});
+
+	it("keeps unchanged row models referentially stable across unrelated publishes", () => {
+		const h = harness([
+			{ id: "started", totalCards: 10, newCards: 7, studyCount: 2 },
+			{ id: "untouched", totalCards: 10, newCards: 10 },
+		]);
+		const before = h.presentations();
+		// A publish that only touches unrelated read model fields: same deck
+		// objects, new snapshot wrapper.
+		h.props.snapshot = {
+			...h.props.snapshot,
+			revision: 1,
+			mutation: { kind: "refreshing" },
+			totals: { ...h.props.snapshot.totals },
+		};
+		h.render();
+		const after = h.presentations();
+
+		expect(after).toHaveLength(2);
+		expect(after[0]).toBe(before[0]);
+		expect(after[1]).toBe(before[1]);
+	});
+
+	it("rebuilds only the rows whose deck content changed", () => {
+		const h = harness([
+			{ id: "started", totalCards: 10, newCards: 7, studyCount: 2 },
+			{ id: "untouched", totalCards: 10, newCards: 10 },
+		]);
+		const before = h.presentations();
+		// Deck home rebuilds every deck wrapper on each publish, so unchanged
+		// content must still keep its row model.
+		h.props.snapshot = {
+			...h.props.snapshot,
+			decks: h.props.snapshot.decks.map((deck) =>
+				deck.id === "untouched"
+					? { ...deck, stats: { ...deck.stats, newCards: 4 } }
+					: { ...deck },
+			),
+		};
+		h.render();
+		const after = h.presentations();
+
+		expect(after[0]).toBe(before[0]);
+		expect(after[1]).not.toBe(before[1]);
+		expect(after[1]!.learnedCards).toBe(6);
+	});
+
+	it("refreshes row models when the settings draft or export target changes", () => {
+		const h = harness();
+		const before = h.presentations();
+
+		h.props.snapshot = {
+			...h.props.snapshot,
+			settingsDraft: makeSettingsDraft("", "first"),
+		};
+		h.render();
+		const locked = h.presentations();
+
+		expect(locked[0]).not.toBe(before[0]);
+		expect(locked[1]).not.toBe(before[1]);
+		expect(locked[0]!.isSettingsLocked).toBe(false);
+		expect(locked[1]!.isSettingsLocked).toBe(true);
+
+		h.props.snapshot = {
+			...h.props.snapshot,
+			settingsDraft: makeSettingsDraft("", "second"),
+		};
+		h.render();
+		const retargeted = h.presentations();
+
+		expect(retargeted[0]).not.toBe(locked[0]);
+		expect(retargeted[0]!.isSettingsLocked).toBe(true);
+		expect(retargeted[1]!.isSettingsLocked).toBe(false);
+
+		h.props.snapshot = {
+			...h.props.snapshot,
+			settingsDraft: null,
+			export: { kind: "exporting", deckId: "second", phase: null, completed: 0, total: 1 },
+		};
+		h.render();
+		const exporting = h.presentations();
+
+		expect(exporting[0]).not.toBe(retargeted[0]);
+		expect(exporting[0]!.isExporting).toBe(false);
+		expect(exporting[0]!.isExportBusy).toBe(true);
+		expect(exporting[1]!.isExporting).toBe(true);
 	});
 });
 

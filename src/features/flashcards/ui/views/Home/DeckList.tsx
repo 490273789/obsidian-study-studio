@@ -32,7 +32,7 @@ import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
 import { DeckSettingsModal } from "../DeckSettings";
 import { useFlashcardI18n } from "../../../strings/context";
-import { selectDeckCardPresentation, type DeckCardPresentation } from "../../deckCardPresentation";
+import { selectDeckCardPresentations, type DeckCardPresentation } from "../../deckCardPresentation";
 import { DeckCard } from "./DeckCard/DeckCard";
 import { formatDeckCount } from "./deckCountFormat";
 import styles from "./DeckList.module.scss";
@@ -112,7 +112,7 @@ export const DeckList = React.memo(function DeckList({
 	 * decks appended in their existing order.
 	 */
 	const deckPresentations = useMemo(
-		() => snapshot.decks.map((deck) => selectDeckCardPresentation(deck, snapshot, ownerId)),
+		() => selectDeckCardPresentations(snapshot.decks, snapshot, ownerId),
 		[snapshot, ownerId],
 	);
 	const { sortableRows, completedRows } = useMemo(() => {

@@ -1,4 +1,4 @@
-import React, { memo } from "react";
+import React, { memo, useState } from "react";
 import { CircleCheck, CircleX, House, RotateCw } from "lucide-react";
 import type {
 	PracticeResultSnapshot,
@@ -7,10 +7,18 @@ import type {
 import { MarkdownContent } from "../../primitives/Markdown";
 import { SessionSummary } from "../../primitives/SessionSummary/SessionSummary";
 import { cls } from "../../../../../core/shared/classNames";
+import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { useFlashcardI18n } from "../../../strings/context";
 import { formatCompactDuration } from "../../../strings/index";
 import { getDisplayCardContent } from "../../../domain/cards/cardDisplay";
 import styles from "../../primitives/SessionSummary/SessionSummary.module.scss";
+
+/**
+ * Each incorrect row mounts up to three Obsidian Markdown renders, so a long
+ * list would parse on a single result-screen commit. Mount one screenful first
+ * and let the learner reveal the rest on demand.
+ */
+const INITIAL_INCORRECT_VISIBLE_COUNT = 10;
 
 interface PracticeSummaryProps {
 	result: PracticeResultSnapshot;
@@ -30,6 +38,13 @@ export const PracticeSummary = memo(function PracticeSummary({
 	const { t, language } = useFlashcardI18n();
 	const incorrectCards = result.incorrectCards;
 	const hasIncorrect = result.incorrectCount > 0;
+	// Remember which result was expanded: a replacement result starts collapsed.
+	const [expandedResult, setExpandedResult] = useState<PracticeResultSnapshot | null>(null);
+	const isExpanded = expandedResult === result;
+	const visibleCards = isExpanded
+		? incorrectCards
+		: incorrectCards.slice(0, INITIAL_INCORRECT_VISIBLE_COUNT);
+	const hiddenCardCount = incorrectCards.length - visibleCards.length;
 	return (
 		<SessionSummary
 			mode={t("practice.title")}
@@ -77,7 +92,7 @@ export const PracticeSummary = memo(function PracticeSummary({
 						{t("practice.incorrectList", { count: incorrectCards.length })}
 					</h2>
 					<div className={styles.incorrectList}>
-						{incorrectCards.map((card, index) => (
+						{visibleCards.map((card, index) => (
 							<IncorrectCardItem
 								key={card.identity}
 								card={card}
@@ -87,6 +102,17 @@ export const PracticeSummary = memo(function PracticeSummary({
 							/>
 						))}
 					</div>
+					{hiddenCardCount > 0 && (
+						<div className={styles.incorrectMore}>
+							<FlashcardButton
+								variant="secondary"
+								size="md"
+								onClick={() => setExpandedResult(result)}
+							>
+								{t("practice.showMoreIncorrect", { count: hiddenCardCount })}
+							</FlashcardButton>
+						</div>
+					)}
 				</section>
 			)}
 		</SessionSummary>

@@ -171,6 +171,12 @@
 	color: var(--fc-muted);
 }
 
+.incorrectMore {
+	display: flex;
+	justify-content: center;
+	margin-top: var(--fc-space-3);
+}
+
 .summaryAnswerRow {
 	display: flex;
 	flex-wrap: wrap;
