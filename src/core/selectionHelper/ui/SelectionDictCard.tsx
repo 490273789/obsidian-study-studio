@@ -1,13 +1,10 @@
 import React, { useEffect, useRef } from "react";
 import { Bookmark, RotateCcw, Sparkles } from "lucide-react";
 import { cls } from "../../shared/classNames";
-import type {
-	SelectionLookupSection,
-	SelectionLookupSession,
-	SelectionLookupSnapshot,
-} from "../domain/types";
+import type { SelectionLookupSession, SelectionLookupSnapshot } from "../domain/types";
 import type { SelectionHelperStrings } from "../strings/selectionPopup";
-import type { SelectionEmbeddedContentRenderer } from "./types";
+import type { Language } from "../../shared/types";
+import type { SelectionResultContentRenderer } from "./types";
 import styles from "./SelectionPopup.module.scss";
 
 export interface SelectionDictCardProps {
@@ -15,8 +12,9 @@ export interface SelectionDictCardProps {
 	lookup: SelectionLookupSnapshot;
 	session: SelectionLookupSession;
 	strings: SelectionHelperStrings;
+	language: Language;
 	theme: "dark" | "light";
-	renderEmbeddedContent?: SelectionEmbeddedContentRenderer;
+	renderResultContent?: SelectionResultContentRenderer;
 	onOpenInMainTab: (word: string) => void;
 	onFavorite?: (word: string) => void;
 	onClose: () => void;
@@ -35,55 +33,6 @@ export class SelectionContentBoundary extends React.Component<
 	render(): React.ReactNode {
 		return this.state.failed ? this.props.fallback : this.props.children;
 	}
-}
-
-function SectionContent({
-	section,
-	props,
-	title,
-	fitContent,
-}: {
-	section: SelectionLookupSection;
-	props: SelectionDictCardProps;
-	title: string;
-	fitContent: boolean;
-}): React.ReactNode {
-	if (section.kind === "list") {
-		return (
-			<ol className={styles.list}>
-				{section.items.map((item, index) => (
-					<li key={`${index}-${item}`}>{item}</li>
-				))}
-			</ol>
-		);
-	}
-	if (section.kind === "embedded") {
-		const Renderer = props.renderEmbeddedContent;
-		if (!Renderer) throw new Error("Dictionary content renderer unavailable");
-		return (
-			<Renderer
-				handle={section.handle}
-				theme={props.theme}
-				title={title}
-				className={styles.embedded}
-				fitContent={fitContent}
-				onLookup={(word) => void props.session.lookup(word)}
-				onClose={props.onClose}
-			/>
-		);
-	}
-	return (
-		<div>
-			{section.definitions.map((def, index) => (
-				<div key={`${index}-${def.partOfSpeech}`} className={styles.aiSense}>
-					{def.partOfSpeech && (
-						<span className={styles.sensePos}>{def.partOfSpeech}</span>
-					)}
-					<span className={styles.senseMeaning}>{def.meaning}</span>
-				</div>
-			))}
-		</div>
-	);
 }
 
 /** Enter belongs to focused controls and dictionary documents, not the popup shortcut. */
@@ -112,17 +61,7 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 	const activeWord = lookup.query || query;
 	const activeSource =
 		lookup.sources.find((source) => source.id === lookup.activeSourceId) ?? lookup.sources[0];
-	const sections = activeSource?.sections ?? [];
-	const tabs = sections
-		.map((section, index) => ({ section, index }))
-		.filter(({ section }) => section.presentation === "tab");
-	const visible = sections
-		.map((section, index) => ({ section, index }))
-		.filter(
-			({ section, index }) =>
-				section.presentation === "stack" || index === activeSource?.activeSectionIndex,
-		);
-	const rich = visible.some(({ section }) => section.kind === "embedded");
+	const ResultContent = props.renderResultContent;
 	const retry = () =>
 		activeSource &&
 		void (activeSource.kind === "ai" ? session.generateAi() : session.retry(activeSource.id));
@@ -215,10 +154,7 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 			</header>
 			<main
 				key={`${activeWord}-${activeSource?.id}`}
-				className={cls(
-					styles.body,
-					rich && activeSource?.status === "success" && styles.bodyRich,
-				)}
+				className={cls(styles.body, activeSource?.result && styles.resultBody)}
 			>
 				{activeSource?.kind === "ai" && activeSource.status === "idle" ? (
 					<div className={styles.aiAction}>
@@ -249,54 +185,23 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 							<span>{strings.retry}</span>
 						</button>
 					</div>
-				) : visible.length > 0 ? (
+				) : activeSource?.result ? (
 					<SelectionContentBoundary fallback={failure}>
-						{tabs.length > 0 && (
-							<div
-								className={styles.sectionTabs}
-								role="tablist"
-								aria-label={strings.details}
-							>
-								{tabs.map(({ section, index }) => (
-									<button
-										key={index}
-										type="button"
-										role="tab"
-										aria-selected={index === activeSource?.activeSectionIndex}
-										className={cls(
-											styles.tab,
-											index === activeSource?.activeSectionIndex &&
-												styles.tabActive,
-										)}
-										onClick={() =>
-											activeSource &&
-											session.selectSection(activeSource.id, index)
-										}
-									>
-										{section.title}
-									</button>
-								))}
-							</div>
-						)}
-						{visible.map(({ section, index }) => (
-							<section
-								key={index}
-								className={
-									section.kind === "embedded"
-										? styles.documentSection
-										: styles.plainSection
+						{ResultContent ? (
+							<ResultContent
+								handle={activeSource.result}
+								language={props.language}
+								theme={props.theme}
+								onLookup={(word) => void session.lookup(word)}
+								onSelectSection={(sectionIndex) =>
+									activeSource &&
+									session.selectSection(activeSource.id, sectionIndex)
 								}
-								aria-label={section.title}
-								role={section.presentation === "tab" ? "tabpanel" : undefined}
-							>
-								<SectionContent
-									section={section}
-									props={props}
-									title={`${activeSource?.label} · ${section.title}`}
-									fitContent
-								/>
-							</section>
-						))}
+								onClose={onClose}
+							/>
+						) : (
+							failure
+						)}
 					</SelectionContentBoundary>
 				) : (
 					<output className={styles.status}>

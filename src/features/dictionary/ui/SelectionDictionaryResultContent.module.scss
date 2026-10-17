@@ -1,0 +1,62 @@
+/* Lookup assistant sizing for the dictionary-owned result body. The body lives
+   inside the 选区助手 popup, but every section's content and tabs are owned by
+   the 词典 feature. */
+
+.result {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 12px 14px;
+	font-size: var(--fc-font-sm);
+	line-height: var(--fc-line-body);
+	overflow-wrap: anywhere;
+}
+
+.rich {
+	padding: 0;
+	gap: 0;
+}
+
+.detailTabs {
+	display: flex;
+	flex-shrink: 0;
+	gap: 4px;
+	overflow-x: auto;
+	padding: 4px;
+}
+
+.tab {
+	padding: 3px 8px;
+	font-size: var(--fc-font-xs);
+	border-radius: var(--fc-radius-sm);
+	background: transparent;
+	color: var(--text-muted);
+	border: 1px solid transparent;
+	cursor: pointer;
+	white-space: nowrap;
+
+	&:hover {
+		color: var(--text-normal);
+		background: var(--background-modifier-hover);
+	}
+}
+
+.tabActive {
+	color: var(--text-accent);
+	background: var(--background-primary);
+	border-color: var(--fc-border-color);
+	font-weight: var(--fc-weight-medium);
+}
+
+.section {
+	display: block;
+	min-width: 0;
+}
+
+.documentSection {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-height: 120px;
+	overflow: hidden;
+}

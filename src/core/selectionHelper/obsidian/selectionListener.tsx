@@ -5,7 +5,7 @@ import type { SelectionHelper } from "../domain/selectionHelper";
 import type { SelectionRead, SelectionSource } from "../domain/types";
 import { selectionHelperStrings } from "../strings/selectionPopup";
 import { SelectionPopupHost } from "../ui/SelectionPopupHost";
-import type { SelectionEmbeddedContentRenderer } from "../ui/types";
+import type { SelectionResultContentRenderer } from "../ui/types";
 import {
 	captureSelection,
 	isAssistantElement,
@@ -20,7 +20,7 @@ export interface SelectionListenerDeps {
 	document?: Document;
 	owner?: object;
 	isEnabled?: () => boolean;
-	renderEmbeddedContent?: SelectionEmbeddedContentRenderer;
+	renderResultContent?: SelectionResultContentRenderer;
 }
 
 interface DocumentBinding {
@@ -325,7 +325,8 @@ export class SelectionListener {
 				helper={this.deps.helper}
 				strings={selectionHelperStrings(this.deps.getLanguage())}
 				theme={this.deps.getTheme()}
-				renderEmbeddedContent={this.deps.renderEmbeddedContent}
+				language={this.deps.getLanguage()}
+				renderResultContent={this.deps.renderResultContent}
 			/>,
 		);
 	}

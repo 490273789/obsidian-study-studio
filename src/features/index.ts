@@ -4,7 +4,7 @@ import type { WorkbenchStore } from "../core/storage/workbenchStore";
 import type { AnyWorkbenchModule } from "../core/host/workbench";
 import type { OutboundPort } from "../core/net";
 import { createDictionaryFeature } from "./dictionary/feature";
-import { SelectionDictionaryContent } from "./dictionary/ui/SelectionDictionaryContent";
+import { SelectionDictionaryResultContent } from "./dictionary/ui/SelectionDictionaryResultContent";
 import { createFlashcardFeature } from "./flashcards/feature";
 import { createTranslationFeature } from "./translation/feature";
 import { createSelectionHelperModule } from "../core/selectionHelper/module";
@@ -39,7 +39,7 @@ export function createWorkbenchModules(deps: WorkbenchModuleDeps): AnyWorkbenchM
 
 	const selectionHelper = createSelectionHelperModule({
 		dictionary: dictionary.selectionAdapter,
-		renderEmbeddedContent: SelectionDictionaryContent,
+		renderResultContent: SelectionDictionaryResultContent,
 		translation: translation.selectionAdapter,
 	});
 

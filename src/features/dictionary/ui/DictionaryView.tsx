@@ -1,18 +1,16 @@
-import React, { memo, useCallback, useRef, useState, useSyncExternalStore } from "react";
+import React, { useCallback, useRef, useState, useSyncExternalStore } from "react";
 import { Bookmark, Copy, Play, RotateCcw, Search, Settings2, Sparkles, Trash2 } from "lucide-react";
 import type { DictionaryQuerySession } from "../domain/querySession";
-import type {
-	AiDictionaryDefinition,
-	DictionarySection,
-	DictionarySectionContent,
-	DictionarySourceState,
-} from "../domain/types";
+import type { DictionarySourceState } from "../domain/types";
 import { dictionaryStrings, type DictionaryStrings } from "../strings/dictionary";
+import {
+	DictionarySectionContent as DictionarySectionContentView,
+	getTabSections,
+} from "./resultPresentation/DictionarySectionContent";
 import type { Language } from "../../../core/shared/types";
 import { FlashcardButton } from "../../../core/ui/primitives/Button";
 import { FlashcardInput } from "../../../core/ui/primitives/Input";
 import { canPlayDictionaryAudio } from "./audio";
-import { SandboxDocumentFrame } from "./SandboxDocumentFrame";
 import { cls } from "../../../core/shared/classNames";
 import styles from "./Dictionary.module.scss";
 
@@ -24,11 +22,6 @@ export interface DictionaryViewProps {
 	onPlayAudio: (url: string) => Promise<void>;
 	/** Obsidian theme, seeded before the sandbox document loads. */
 	theme: "dark" | "light";
-}
-
-interface ExamplePart {
-	highlighted: boolean;
-	text: string;
 }
 
 interface ExampleCopyStatus {
@@ -60,48 +53,6 @@ function sourceStatusLabel(source: DictionarySourceState, strings: DictionaryStr
 	return strings.sourceIdle;
 }
 
-/** Sections the source presents as detail tabs, with their original indices. */
-function tabSections(
-	source: DictionarySourceState,
-): { index: number; section: DictionarySection }[] {
-	return (source.result?.sections ?? []).flatMap((section, index) =>
-		section.presentation === "tab" ? [{ index, section }] : [],
-	);
-}
-
-/**
- * Splits an example sentence around every occurrence of the looked-up word so
- * the view can wrap matches in `<mark>` without touching the source text.
- */
-function exampleParts(sentence: string, word: string): ExamplePart[] {
-	const query = word.trim();
-	if (!query) return [{ highlighted: false, text: sentence }];
-	const lowerSentence = sentence.toLocaleLowerCase();
-	const lowerQuery = query.toLocaleLowerCase();
-	const parts: ExamplePart[] = [];
-	let cursor = 0;
-	let index = lowerSentence.indexOf(lowerQuery);
-	while (index >= 0) {
-		if (index > cursor) parts.push({ highlighted: false, text: sentence.slice(cursor, index) });
-		const end = index + query.length;
-		parts.push({ highlighted: true, text: sentence.slice(index, end) });
-		cursor = end;
-		index = lowerSentence.indexOf(lowerQuery, cursor);
-	}
-	if (cursor < sentence.length) parts.push({ highlighted: false, text: sentence.slice(cursor) });
-	return parts.length > 0 ? parts : [{ highlighted: false, text: sentence }];
-}
-
-function highlightedSentence(sentence: string, word: string): React.ReactNode[] {
-	return exampleParts(sentence, word).map((part, index) =>
-		part.highlighted ? (
-			<mark key={`${index}-${part.text}`}>{part.text}</mark>
-		) : (
-			<React.Fragment key={`${index}-${part.text}`}>{part.text}</React.Fragment>
-		),
-	);
-}
-
 /** Arrow/Home/End roving focus shared by the source and detail tab strips. */
 function moveTabFocus(
 	event: React.KeyboardEvent<HTMLElement>,
@@ -124,119 +75,6 @@ function moveTabFocus(
 	select(nextIndex);
 	container?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[nextIndex]?.focus();
 }
-
-function AiSense({
-	definition,
-	number,
-	word,
-	strings,
-}: {
-	definition: AiDictionaryDefinition;
-	number: number;
-	word: string;
-	strings: DictionaryStrings;
-}) {
-	return (
-		<article className={cls("flashcard-dictionary-ai-sense", styles.aiSense)}>
-			<header className={cls("flashcard-dictionary-ai-sense-heading", styles.aiSenseHeading)}>
-				<span
-					className={cls("flashcard-dictionary-ai-sense-number", styles.aiSenseNumber)}
-					aria-hidden="true"
-				>
-					{number}
-				</span>
-				{definition.partOfSpeech && (
-					<span className={cls("flashcard-dictionary-ai-pos", styles.aiPos)}>
-						{definition.partOfSpeech}
-					</span>
-				)}
-				<strong>{definition.meaning}</strong>
-			</header>
-			<dl className={cls("flashcard-dictionary-ai-sense-details", styles.aiSenseDetails)}>
-				{definition.explanation && (
-					<div>
-						<dt>{strings.sections.explanation}</dt>
-						<dd>{definition.explanation}</dd>
-					</div>
-				)}
-				{definition.synonyms.length > 0 && (
-					<div>
-						<dt>{strings.sections.synonyms}</dt>
-						<dd>{definition.synonyms.join("、")}</dd>
-					</div>
-				)}
-				{definition.antonyms.length > 0 && (
-					<div>
-						<dt>{strings.sections.antonyms}</dt>
-						<dd>{definition.antonyms.join("、")}</dd>
-					</div>
-				)}
-				{definition.examples.length > 0 && (
-					<div>
-						<dt>{strings.sections.examples}</dt>
-						<dd className={cls("flashcard-dictionary-ai-examples", styles.aiExamples)}>
-							{definition.examples.map((example, index) => (
-								<div key={`${index}-${example.sentence}`}>
-									<p lang="en">{highlightedSentence(example.sentence, word)}</p>
-									<p lang="zh-CN">{example.translation}</p>
-								</div>
-							))}
-						</dd>
-					</div>
-				)}
-			</dl>
-		</article>
-	);
-}
-
-const SectionContent = memo(function SectionContent({
-	content,
-	word,
-	theme,
-	title,
-	onLookup,
-	strings,
-}: {
-	content: DictionarySectionContent;
-	word: string;
-	theme: "dark" | "light";
-	title: string;
-	onLookup: (word: string) => void;
-	strings: DictionaryStrings;
-}) {
-	if (content.kind === "list") {
-		return (
-			<ol className={cls("flashcard-dictionary-list", styles.list)}>
-				{content.items.map((item, index) => (
-					<li key={`${index}-${item}`}>{item}</li>
-				))}
-			</ol>
-		);
-	}
-	if (content.kind === "ai-definitions") {
-		return (
-			<div className={cls("flashcard-dictionary-ai-senses", styles.aiSenses)}>
-				{content.definitions.map((definition, index) => (
-					<AiSense
-						key={`${index}-${definition.partOfSpeech}-${definition.meaning}`}
-						definition={definition}
-						number={index + 1}
-						word={word}
-						strings={strings}
-					/>
-				))}
-			</div>
-		);
-	}
-	return (
-		<SandboxDocumentFrame
-			document={content.document}
-			theme={theme}
-			title={title}
-			onLookup={onLookup}
-		/>
-	);
-});
 
 export function DictionaryView({
 	query,
@@ -496,7 +334,7 @@ export function DictionaryView({
 			>
 				{state.sources.map((source) => {
 					const selected = state.activeSourceId === source.id;
-					const sections = tabSections(source);
+					const sections = getTabSections(source.result?.sections ?? []);
 					const result = source.result;
 					const word = result?.word || queryWord;
 					return (
@@ -641,7 +479,7 @@ export function DictionaryView({
 													{source.kind !== "local" && (
 														<h4>{section.title}</h4>
 													)}
-													<SectionContent
+													<DictionarySectionContentView
 														content={section.content}
 														word={word}
 														theme={theme}
@@ -751,7 +589,7 @@ export function DictionaryView({
 																item.index,
 															)}
 														>
-															<SectionContent
+															<DictionarySectionContentView
 																content={item.section.content}
 																word={word}
 																theme={theme}

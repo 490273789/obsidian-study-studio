@@ -31,6 +31,12 @@ Read this guide before changing anything under `src/features/dictionary/domain/*
 - UI copy comes from `src/features/dictionary/strings/dictionary.ts` (`dictionaryStrings(language)`, Chinese-first with English overrides). Add keys there, not as literals in components.
 - Dictionary styles are appended to `src/core/styles/index.scss` before the motion/responsive layers and use `flashcard-dictionary-*` classes plus `--fc-*` and Obsidian theme variables.
 
+## Lookup assistant result presentation
+
+`src/features/dictionary/ui/resultPresentation/DictionarySectionContent.tsx` owns the shared AI sense, list, and sandbox document markup. Both `DictionaryView` and `SelectionDictionaryResultContent` render through it, so definition fields and section visibility cannot drift between surfaces.
+
+The selection adapter hands the 选区助手 one opaque `DictionarySelectionResultHandle` per successful source (the whole `DictionaryResult`, the active section index, and the looked-up word) as `result`. The helper owns only source tabs, pronunciations, AI generate/retry states, and the popup frame; it delegates the success body to the renderer injected by `src/features/index.ts` and forwards section selection through the session's semantic action. Do not narrow the result mirror in core or reimplement AI sense markup in the helper.
+
 ## Favorite presentation
 
 `src/features/dictionary/obsidian/favoritePresentation.ts` owns the shared

@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { DEFAULT_DICTIONARY_SETTINGS } from "../domain/configuration";
 import type { DictionaryQuerySession } from "../domain/querySession";
 import type { DictionaryViewState } from "../domain/types";
-import { createDictionarySelectionAdapter } from "../selectionAdapter";
+import {
+	createDictionarySelectionAdapter,
+	type DictionarySelectionResultHandle,
+} from "../selectionAdapter";
 import { defineSandboxDocument } from "../domain/sandbox-document/document";
 
 describe("dictionary selection adapter", () => {
@@ -15,7 +18,7 @@ describe("dictionary selection adapter", () => {
 		]);
 	});
 
-	it("preserves local sandbox handles and chapter metadata alongside text", () => {
+	it("preserves the whole dictionary result through one opaque handle", () => {
 		const document = defineSandboxDocument("oald", "private HTML");
 		const state = emptyDictionarySnapshot();
 		state.sources = [
@@ -54,17 +57,22 @@ describe("dictionary selection adapter", () => {
 
 		const snapshot = adapter.startLookup("science", ["youdao"])?.getSnapshot();
 
-		expect(snapshot?.sources[0]).toMatchObject({
-			id: "youdao",
-			pronunciations: [{ label: "英", phonetic: "saɪəns" }],
-			sections: [
-				{ kind: "list", items: ["科学"], title: "释义", presentation: "stack" },
-				{ kind: "embedded", handle: document, title: "HTML", presentation: "tab" },
-			],
-			activeSectionIndex: 1,
+		const source = snapshot?.sources[0];
+		expect(source?.id).toBe("youdao");
+		expect(source?.pronunciations).toEqual([{ label: "英", phonetic: "saɪəns" }]);
+		const handle = source?.result as DictionarySelectionResultHandle;
+		expect(handle.activeSectionIndex).toBe(1);
+		expect(handle.word).toBe("science");
+		expect(handle.result).toBe(state.sources[0]?.result);
+		expect(handle.result.sections[0]).toEqual({
+			title: "释义",
+			presentation: "stack",
+			content: { kind: "list", items: ["科学"] },
 		});
-		const section = snapshot?.sources[0]?.sections[1];
-		expect(section?.kind === "embedded" && section.handle).toBe(document);
+		const documentSection = handle.result.sections[1];
+		expect(
+			documentSection?.content.kind === "document" && documentSection.content.document,
+		).toBe(document);
 		expect(JSON.stringify(snapshot)).not.toContain("private HTML");
 	});
 

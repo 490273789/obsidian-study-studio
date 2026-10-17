@@ -35,7 +35,7 @@ the production adapter alone knows WorkbenchStore's generic document mechanics. 
 and `词典` own their runtimes the same way. Shared services reach a feature through its factory in
 `features/index.ts`, never through the host.
 
-`src/core/selectionHelper/` is the 工作台-owned 选区助手 interaction module, not a 工作台功能. It runs through the same `WorkbenchModule` lifecycle without contributing a catalog entry. 词典 and AI 翻译 each provide a narrow adapter; the composition module connects them without reading either feature's runtime.
+`src/core/selectionHelper/` is the 工作台-owned 选区助手 interaction module, not a 工作台功能. It runs through the same `WorkbenchModule` lifecycle without contributing a catalog entry. 词典 and AI 翻译 each provide a narrow adapter, and 词典 also injects its result-body renderer through the composition module; the composition module connects them without reading either feature's runtime.
 
 For selection-source registration, expiry, or delayed capture ordering, read
 [Selection helper sources](ui-and-obsidian.md#selection-helper-sources).

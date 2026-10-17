@@ -1,15 +1,14 @@
 import type { ComponentType } from "react";
+import type { Language } from "../../shared/types";
 
-/** Rendering stays in the supplying feature; the assistant sees only an opaque handle. */
-export interface SelectionEmbeddedContentProps {
+/** Rendering stays in the supplying feature; the assistant sees only an opaque result handle. */
+export interface SelectionResultContentProps {
 	handle: object;
-	title: string;
+	language: Language;
 	theme: "dark" | "light";
-	className?: string;
-	/** Documents fit their content so the popup grows and the surrounding reader owns scrolling. */
-	fitContent?: boolean;
 	onLookup: (word: string) => void;
+	onSelectSection: (sectionIndex: number) => void;
 	onClose: () => void;
 }
 
-export type SelectionEmbeddedContentRenderer = ComponentType<SelectionEmbeddedContentProps>;
+export type SelectionResultContentRenderer = ComponentType<SelectionResultContentProps>;

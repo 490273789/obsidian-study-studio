@@ -65,18 +65,6 @@ export interface SelectionLookupPronunciation {
 	phonetic: string;
 }
 
-export type SelectionLookupSection = {
-	title: string;
-	presentation: "stack" | "tab";
-} & (
-	| { kind: "list"; items: readonly string[] }
-	| {
-			kind: "ai-definitions";
-			definitions: readonly { partOfSpeech: string; meaning: string }[];
-	  }
-	| { kind: "embedded"; /** Opaque content owned by the dictionary adapter. */ handle: object }
-);
-
 export interface SelectionLookupSourceSnapshot {
 	id: string;
 	label: string;
@@ -84,8 +72,8 @@ export interface SelectionLookupSourceSnapshot {
 	status: SelectionLookupSourceStatus;
 	error: string;
 	pronunciations: readonly SelectionLookupPronunciation[];
-	sections: readonly SelectionLookupSection[];
-	activeSectionIndex: number | null;
+	/** Opaque success body owned by the supplying feature; the helper never interprets it. */
+	result: object | null;
 }
 
 export interface SelectionLookupSnapshot {

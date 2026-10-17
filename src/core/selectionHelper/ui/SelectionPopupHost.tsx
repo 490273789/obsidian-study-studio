@@ -5,20 +5,23 @@ import { SelectionBubble } from "./SelectionBubble";
 import { SelectionDictCard } from "./SelectionDictCard";
 import styles from "./SelectionPopup.module.scss";
 import { popupPosition } from "./popupPosition";
-import type { SelectionEmbeddedContentRenderer } from "./types";
+import type { Language } from "../../shared/types";
+import type { SelectionResultContentRenderer } from "./types";
 
 export interface SelectionPopupHostProps {
 	helper: SelectionHelper;
 	strings: SelectionHelperStrings;
+	language: Language;
 	theme: "dark" | "light";
-	renderEmbeddedContent?: SelectionEmbeddedContentRenderer;
+	renderResultContent?: SelectionResultContentRenderer;
 }
 
 export const SelectionPopupHost: React.FC<SelectionPopupHostProps> = ({
 	helper,
 	strings,
+	language,
 	theme,
-	renderEmbeddedContent,
+	renderResultContent,
 }) => {
 	const subscribe = useCallback((listener: () => void) => helper.subscribe(listener), [helper]);
 	const getSnapshot = useCallback(() => helper.getSnapshot(), [helper]);
@@ -104,7 +107,8 @@ export const SelectionPopupHost: React.FC<SelectionPopupHostProps> = ({
 					lookup={state.lookup}
 					session={state.session}
 					theme={theme}
-					renderEmbeddedContent={renderEmbeddedContent}
+					language={language}
+					renderResultContent={renderResultContent}
 					strings={strings}
 					onOpenInMainTab={() => void helper.openDictionaryInMainTab()}
 					onFavorite={

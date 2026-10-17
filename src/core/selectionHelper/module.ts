@@ -12,14 +12,14 @@ import { SelectionListener } from "./obsidian/selectionListener";
 import { WebviewSelectionAdapter, type WebviewSelectionStatus } from "./obsidian/webviewSelection";
 import { buildSelectionHelperSettingsViewModel } from "./settings/viewModel";
 import { selectionHelperStrings } from "./strings/selectionPopup";
-import type { SelectionEmbeddedContentRenderer } from "./ui/types";
+import type { SelectionResultContentRenderer } from "./ui/types";
 
 export const SELECTION_HELPER_SECTION_ID = "selectionPopup";
 
 export interface SelectionHelperModuleDeps {
 	dictionary: SelectionDictionaryAdapter;
 	translation: SelectionTranslationAdapter;
-	renderEmbeddedContent?: SelectionEmbeddedContentRenderer;
+	renderResultContent?: SelectionResultContentRenderer;
 }
 
 type SelectionHelperWorkbenchHost = WorkbenchHost<"selectionHelper">;
@@ -127,7 +127,7 @@ export function createSelectionHelperModule(
 					isEnabled: () => host.settings.read().selectionPopup.enabled,
 					getLanguage: () => host.settings.read().language,
 					getTheme: () => (host.app.isDarkMode() ? "dark" : "light"),
-					renderEmbeddedContent: deps.renderEmbeddedContent,
+					renderResultContent: deps.renderResultContent,
 				});
 				const web = Platform.isDesktopApp
 					? new WebviewSelectionAdapter({

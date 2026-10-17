@@ -1,11 +1,17 @@
 import type {
 	SelectionDictionaryAdapter,
-	SelectionLookupSection,
 	SelectionLookupSession,
 	SelectionLookupSnapshot,
 } from "../../core/selectionHelper/domain/types";
-import type { DictionarySettings, DictionaryViewState } from "./domain/types";
+import type { DictionaryResult, DictionarySettings, DictionaryViewState } from "./domain/types";
 import type { DictionaryQuerySession } from "./domain/querySession";
+
+/** The opaque success body handed to the 选区助手; only the 词典 feature renders it. */
+export interface DictionarySelectionResultHandle {
+	readonly result: DictionaryResult;
+	readonly activeSectionIndex: number | null;
+	readonly word: string;
+}
 
 export interface DictionarySelectionRuntime {
 	readonly settings: { getDictionarySettings(): Readonly<DictionarySettings> };
@@ -89,44 +95,23 @@ function toSelectionSnapshot(state: DictionaryViewState): SelectionLookupSnapsho
 		activeSourceId: state.activeSourceId,
 		aiEngineName: state.aiEngineName,
 		status: state.status,
-		sources: state.sources.map((source) => {
-			const sections: SelectionLookupSection[] = [];
-			for (const section of source.result?.sections ?? []) {
-				const metadata = { title: section.title, presentation: section.presentation };
-				if (section.content.kind === "list") {
-					sections.push({ ...metadata, kind: "list", items: [...section.content.items] });
-				} else if (section.content.kind === "ai-definitions") {
-					sections.push({
-						...metadata,
-						kind: "ai-definitions",
-						definitions: section.content.definitions.map((definition) => ({
-							partOfSpeech: definition.partOfSpeech,
-							meaning: definition.meaning,
-						})),
-					});
-				} else {
-					sections.push({
-						...metadata,
-						kind: "embedded",
-						handle: section.content.document,
-					});
-				}
-			}
-			return {
-				id: source.id,
-				label: source.label,
-				kind: source.kind === "ai" ? ("ai" as const) : ("dictionary" as const),
-				status: source.status,
-				error: source.error,
-				pronunciations: (source.result?.pronunciations ?? []).map(
-					({ label, phonetic }) => ({
-						label,
-						phonetic,
-					}),
-				),
-				sections,
-				activeSectionIndex: source.activeSectionIndex,
-			};
-		}),
+		sources: state.sources.map((source) => ({
+			id: source.id,
+			label: source.label,
+			kind: source.kind === "ai" ? ("ai" as const) : ("dictionary" as const),
+			status: source.status,
+			error: source.error,
+			pronunciations: (source.result?.pronunciations ?? []).map(({ label, phonetic }) => ({
+				label,
+				phonetic,
+			})),
+			result: source.result
+				? ({
+						result: source.result,
+						activeSectionIndex: source.activeSectionIndex,
+						word: source.result.word || state.query,
+					} satisfies DictionarySelectionResultHandle)
+				: null,
+		})),
 	};
 }
