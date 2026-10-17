@@ -550,6 +550,8 @@ type InternalActiveState =
 			session: ChallengeSession;
 			progress: ChallengeProgress;
 			progressRevision: number;
+			/** Deck-structure revision the active round was last reconciled against. */
+			structureRevision: number;
 			setupDefaults: Extract<SessionStartRequest, { mode: "challenge" }>;
 	  };
 
@@ -643,7 +645,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 	private readonly shuffle: (identities: string[]) => string[];
 	private readonly random: () => number;
 	private challengeCardsCache: {
-		revision: number;
+		structureRevision: number;
 		cards: ReadonlyMap<string, { card: FlashCard; deck: Deck }>;
 	} | null = null;
 
@@ -766,8 +768,11 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 	}
 
 	private challengeCards(): ReadonlyMap<string, { card: FlashCard; deck: Deck }> {
-		const revision = this.repository.getRevision();
-		if (this.challengeCardsCache?.revision === revision) return this.challengeCardsCache.cards;
+		// Eligibility depends on card text and deck membership, not on FSRS state.
+		// Keying on the deck-structure revision keeps this map warm between answers.
+		const structureRevision = this.repository.getDeckStructureRevision();
+		if (this.challengeCardsCache?.structureRevision === structureRevision)
+			return this.challengeCardsCache.cards;
 		const decks = this.repository.getAllDecks();
 		const eligible = new Set(
 			selectEligibleChallengeCards(
@@ -782,7 +787,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 					.map((card) => [card.id, { card, deck }] as const),
 			),
 		);
-		this.challengeCardsCache = { revision, cards };
+		this.challengeCardsCache = { structureRevision, cards };
 		return cards;
 	}
 
@@ -837,6 +842,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			session,
 			progress,
 			progressRevision: receipt.challengeProgressRevision,
+			structureRevision: this.repository.getDeckStructureRevision(),
 			setupDefaults: { ...request, expectedRoundId: session.roundId },
 		});
 		return this.applied();
@@ -862,6 +868,10 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			this.endChallengeBySourceChange(state.session.attempts.length);
 			return true;
 		}
+		// Nothing about card content or deck membership changed since the last
+		// reconciliation, so there is nothing to re-derive. This also absorbs the
+		// revision echo produced by the session's own answer commit.
+		if (this.repository.getDeckStructureRevision() === state.structureRevision) return false;
 		const cards = this.challengeCards();
 		const { progress, session } = reconcileChallengeRound(
 			state.progress,
@@ -901,6 +911,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 				...state,
 				progress,
 				progressRevision,
+				structureRevision: this.repository.getDeckStructureRevision(),
 				session: contentChanged ? { ...session, feedback: null } : session,
 			});
 			return true;

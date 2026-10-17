@@ -67,6 +67,18 @@ describe("continuity source reuse", () => {
 		expect(state().decks.get("b.md")?.cards[0]?.front).toBe("term");
 	});
 
+	it("keeps deck object identity stable across a no-op synchronization", async () => {
+		const { continuity, state } = setup();
+		await continuity.synchronize();
+		const firstDeck = state().decks.get("a.md")!;
+		const secondDeck = state().decks.get("b.md")!;
+		await continuity.synchronize();
+		// Re-synchronizing unchanged sources must reuse the committed deck objects so
+		// the repository's WeakMap caches and DeckHome's per-deck caches stay warm.
+		expect(state().decks.get("a.md")).toBe(firstDeck);
+		expect(state().decks.get("b.md")).toBe(secondDeck);
+	});
+
 	it("still detects a global conflict between changed and reused sources", async () => {
 		const parse = vi.spyOn(parser, "parseFlashcards");
 		const { continuity, documents, state } = setup();

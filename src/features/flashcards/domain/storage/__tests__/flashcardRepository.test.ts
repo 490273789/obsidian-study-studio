@@ -819,4 +819,121 @@ describe("FlashcardRepository", () => {
 		expect(readSpy).toHaveBeenCalledTimes(1);
 		expect(repo.getRevision()).toBe(1);
 	});
+	it("applies a settings-only change without reloading learning state", async () => {
+		const backend = createMockBackend({
+			schemaVersion: 2,
+			settings: DEFAULT_SETTINGS,
+		});
+		const store = new WorkbenchStore(backend);
+		const authority = new WorkbenchFlashcardAuthority({ store });
+		const repo = new FlashcardRepository({ authority, deckIndexCache: null });
+		await repo.loadDeckIndex();
+		const state = await repo.createContinuityStateStore().load();
+		state.decks.set(
+			"deck-1",
+			makeDeck("deck-1", [makeCard("c1", State.New, new Date("2026-03-01T00:00:00Z"), 0)]),
+		);
+		await repo.commit(state);
+
+		const deck = repo.getDeck("deck-1");
+		const structureRevision = repo.getDeckStructureRevision();
+		const read = vi.spyOn(authority, "read");
+
+		await store.saveSettings({ ...store.getSettings(), dailyNewCards: 99 });
+		await vi.waitFor(() => expect(repo.getSettings().dailyNewCards).toBe(99));
+
+		// Settings-only commits must not re-deserialize every deck and card.
+		expect(repo.getDeck("deck-1")).toBe(deck);
+		expect(read).not.toHaveBeenCalled();
+		// Eligibility read models still invalidate through the structure revision.
+		expect(repo.getDeckStructureRevision()).toBe(structureRevision + 1);
+		repo.dispose();
+	});
+
+	it("skips the rebuildable deck-index cache write when continuity is unchanged", async () => {
+		let cached: unknown = null;
+		const save = vi.fn(async (next: unknown) => {
+			cached = next;
+		});
+		const authority = new MemoryFlashcardAuthority(DEFAULT_SETTINGS);
+		const repo = new FlashcardRepository({
+			authority,
+			deckIndexCache: {
+				load: async () => cached as never,
+				save,
+				loadOrRebuild: vi.fn(),
+				invalidateSource: vi.fn(),
+				clear: vi.fn(),
+			},
+		});
+		await repo.loadDeckIndex();
+		const state = await repo.createContinuityStateStore().load();
+		state.decks.set(
+			"deck-1",
+			makeDeck("deck-1", [makeCard("c1", State.New, new Date("2026-03-01T00:00:00Z"), 0)]),
+		);
+		await repo.commit(state);
+		expect(save).toHaveBeenCalledTimes(1);
+
+		const unchanged = await repo.createContinuityStateStore().load();
+		await repo.commit(unchanged);
+
+		// The no-op sync must not rewrite the rebuildable cache.
+		expect(save).toHaveBeenCalledTimes(1);
+		repo.dispose();
+	});
+
+	it("adds answers without mutating a previously committed learning document", async () => {
+		const backend = createMockBackend({
+			schemaVersion: 2,
+			settings: DEFAULT_SETTINGS,
+			learning: {
+				cards: {},
+				decks: {},
+				studyHistory: [],
+				spellingProgress: {},
+				continuity: { sources: {}, issues: [], journal: null },
+			},
+		});
+		const store = new WorkbenchStore(backend);
+		const repo = new FlashcardRepository({
+			authority: new WorkbenchFlashcardAuthority({ store }),
+			deckIndexCache: null,
+		});
+		await repo.loadDeckIndex();
+		const state = await repo.createContinuityStateStore().load();
+		state.decks.set(
+			"deck-1",
+			makeDeck("deck-1", [makeCard("c1", State.Review, new Date("2026-03-01T00:00:00Z"), 0)]),
+		);
+		await repo.commit(state);
+
+		// The authority adopts the repository's copy-on-write document by reference,
+		// so every later transition must produce a new document instead of mutating
+		// the one the store already committed.
+		const committed = store.getPartition("learning");
+		const committedJson = JSON.stringify(committed);
+
+		for (const day of [2, 3]) {
+			await repo.commitSessionTransition({
+				cardUpdates: [
+					{
+						deckId: "deck-1",
+						cardId: "c1",
+						fsrsCard: {
+							...createEmptyCard(new Date(`2026-03-0${day}T00:00:00Z`)),
+							reps: day,
+						},
+					},
+				],
+				spellingAttempts: [],
+				incrementStudyCountFor: [],
+				historyEntries: [],
+			});
+		}
+
+		expect(JSON.stringify(committed)).toBe(committedJson);
+		expect(store.getPartition("learning")).not.toBe(committed);
+		repo.dispose();
+	});
 });

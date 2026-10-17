@@ -45,6 +45,7 @@ import {
 	FlashcardAuthorityConflictError,
 	FlashcardPersistenceError,
 	type FlashcardAuthority,
+	type FlashcardAuthorityChange,
 	type FlashcardAuthoritySnapshot,
 	type LearningStateDocument,
 	type LegacyFlashcardDocument,
@@ -108,6 +109,8 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	private continuity: PersistedCardIdentityContinuityState = createEmptyContinuityState();
 
 	private revision = 0;
+	/** Bumped only when the derived deck index changes, never by scheduling commits. */
+	private deckStructureRevision = 0;
 	private readonly revisionListeners = new Set<() => void>();
 	private cardIndex = new Map<string, CardIndexLocation>();
 	private serializedDeckCache = new WeakMap<Deck, SerializedDeck>();
@@ -149,7 +152,9 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 				};
 		this.scheduler = new FSRSScheduler(this.settings);
 
-		this.authorityUnsubscribe = this.authority.subscribe(() => this.handleAuthorityChange());
+		this.authorityUnsubscribe = this.authority.subscribe((change) =>
+			this.handleAuthorityChange(change),
+		);
 	}
 
 	async load(): Promise<void> {
@@ -190,6 +195,10 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 
 	getRevision(): number {
 		return this.revision;
+	}
+
+	getDeckStructureRevision(): number {
+		return this.deckStructureRevision;
 	}
 
 	subscribe(listener: () => void): () => void {
@@ -280,15 +289,17 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	}
 
 	getCard(deckId: string, cardId: string): FlashCard | undefined {
+		// Session reads hit the current card several times per answer, so consult
+		// the maintained identity index before falling back to linear deck scans.
+		const location = this.cardIndex.get(cardId);
+		if (location) {
+			const indexedDeck = this.decks.get(location.deckId);
+			const indexedCard = indexedDeck?.cards[location.cardIndex];
+			if (indexedCard && indexedCard.id === cardId) return indexedCard;
+		}
 		const deck = this.decks.get(deckId);
 		const cardInOriginDeck = deck?.cards.find((card) => card.id === cardId);
 		if (cardInOriginDeck) return cardInOriginDeck;
-		const location = this.cardIndex.get(cardId);
-		if (location && location.deckId !== deckId) {
-			const candidateDeck = this.decks.get(location.deckId);
-			const card = candidateDeck?.cards[location.cardIndex];
-			if (card && card.id === cardId) return card;
-		}
 		for (const candidateDeck of this.decks.values()) {
 			const card = candidateDeck.cards.find((candidate) => candidate.id === cardId);
 			if (card) return card;
@@ -558,29 +569,48 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 			commit: async (state: CardIdentityContinuityState): Promise<void> => {
 				await this.loadDeckIndex();
 				await this.enqueueOperation(async () => {
+					const nextDecks = new Map(state.decks);
 					let cacheDecks: ReadonlyMap<string, Deck> | null = null;
 					let cacheTags: readonly string[] = [];
 					await this.commitAuthority(() => {
 						const nextAvailableTags = [...(state.availableTags ?? this.availableTags)];
-						const nextDecks = new Map(state.decks);
 						const nextSpellingProgress = cloneSpellingProgress(this.spellingProgress);
 						this.pruneSpellingProgress(this.decks, nextDecks, nextSpellingProgress);
 						const nextContinuity = cloneContinuityState(state.continuity);
+						const previousDecks = this.decks;
+						const previousTags = this.availableTags;
+						const hadTagsSnapshot = this.hasAvailableTagsSnapshotValue;
+						// Unchanged decks mean the persisted card baseline still applies, so
+						// the learning document does not need a full card-record rebuild.
+						const committedCards = sameDeckObjects(previousDecks, nextDecks)
+							? this.getCommittedCardStates()
+							: undefined;
 						return {
 							learning: this.buildLearningState(
 								nextDecks,
 								this.studyHistory,
 								nextSpellingProgress,
 								nextContinuity,
+								this.dailyLearningActivity,
+								this.challengeProgress,
+								committedCards,
 							),
 							install: () => {
+								const decksChanged = !sameDeckObjects(previousDecks, nextDecks);
+								const tagsChanged =
+									!hadTagsSnapshot ||
+									!sameStringValues(previousTags, nextAvailableTags);
 								this.decks = nextDecks;
 								this.spellingProgress = nextSpellingProgress;
 								this.availableTags = nextAvailableTags;
 								this.hasAvailableTagsSnapshotValue = true;
 								this.continuity = nextContinuity;
-								this.refreshDerivedState();
-								cacheDecks = nextDecks;
+								// Reusing deck objects keeps the derived index and due-time
+								// caches valid; only a real deck change invalidates them.
+								if (decksChanged) this.refreshDerivedState();
+								if (decksChanged || tagsChanged) {
+									cacheDecks = nextDecks;
+								}
 								cacheTags = nextAvailableTags;
 							},
 						};
@@ -603,8 +633,20 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 		this.revisionListeners.clear();
 	}
 
-	private handleAuthorityChange(): Promise<void> {
+	private handleAuthorityChange(change: FlashcardAuthorityChange): Promise<void> {
 		if (this.disposed) return Promise.resolve();
+		if (change.kind === "settings") {
+			// A settings-only commit leaves the learning partition untouched. Apply the
+			// new slice and scheduler without re-deserializing every card and deck.
+			return this.enqueueOperation(async () => {
+				const settings = await this.authority.readSettings();
+				this.settings = structuredClone(settings);
+				this.scheduler = new FSRSScheduler(this.settings);
+				// Eligibility and effective study settings derive from the slice.
+				this.deckStructureRevision++;
+				this.publishRevision();
+			});
+		}
 		return this.enqueueOperation(async () => {
 			await this.restoreAuthority(false);
 			this.dataLoaded = true;
@@ -985,6 +1027,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	}
 
 	private refreshDerivedState(): void {
+		this.deckStructureRevision++;
 		this.rebuildCardIndex();
 		this.deckDueTimesValid = false;
 	}
@@ -1075,6 +1118,21 @@ function emptyLearningState(): LearningStateDocument {
 		spellingProgress: {},
 		continuity: createEmptyContinuityState(),
 	};
+}
+
+function sameDeckObjects(
+	left: ReadonlyMap<string, Deck>,
+	right: ReadonlyMap<string, Deck>,
+): boolean {
+	if (left.size !== right.size) return false;
+	for (const [deckId, deck] of right) {
+		if (left.get(deckId) !== deck) return false;
+	}
+	return true;
+}
+
+function sameStringValues(left: readonly string[], right: readonly string[]): boolean {
+	return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function cloneContinuityState(

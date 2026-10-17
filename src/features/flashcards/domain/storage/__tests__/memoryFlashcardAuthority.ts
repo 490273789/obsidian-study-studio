@@ -35,6 +35,10 @@ export class MemoryFlashcardAuthority implements FlashcardAuthority {
 		};
 	}
 
+	async readSettings(): Promise<FlashcardStudySettings> {
+		return structuredClone(this.settings);
+	}
+
 	async commit(
 		expectedVersion: number,
 		commit: FlashcardAuthorityCommit,

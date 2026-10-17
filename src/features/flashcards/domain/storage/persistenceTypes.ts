@@ -88,6 +88,8 @@ export interface FlashcardAuthorityCommit {
 
 export interface FlashcardAuthority {
 	read(): Promise<FlashcardAuthoritySnapshot>;
+	/** Reads only the flashcard settings slice, without materializing learning state. */
+	readSettings(): Promise<FlashcardStudySettings>;
 	commit(
 		expectedVersion: number,
 		commit: FlashcardAuthorityCommit,

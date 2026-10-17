@@ -53,9 +53,11 @@ describe("WorkbenchFlashcardAuthority", () => {
 		const expected = structuredClone(learning);
 
 		const result = await authority.commit(initial.version, { learning });
-		learning.decks["deck-1"]!.studyCount = 99;
-		learning.continuity.issues.length = 10;
 
+		// The repository builds a fresh copy-on-write document per transition, so
+		// the store adopts it by reference instead of deep-cloning the whole card
+		// map on every answer. Mutating a committed document is a contract violation.
+		expect(store.getPartition("learning")).toBe(learning);
 		expect(store.getPartition("learning")).toEqual(expected);
 		expect(store.getPartition("other")).toEqual({ nested: ["preserved"] });
 		expect(store.getSettings().dailyNewCards).toBe(27);

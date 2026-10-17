@@ -532,15 +532,18 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 					continue;
 				}
 
-				nextDecks.set(source.document.path, {
-					id: source.document.path,
-					name: source.document.basename,
-					filePath: source.document.path,
-					tag: source.tag,
-					cards: source.cards,
-					studyCount: source.existingDeck?.studyCount ?? 0,
-					lastStudied: source.existingDeck?.lastStudied ?? null,
-				});
+				nextDecks.set(
+					source.document.path,
+					reuseUnchangedDeck(source) ?? {
+						id: source.document.path,
+						name: source.document.basename,
+						filePath: source.document.path,
+						tag: source.tag,
+						cards: source.cards,
+						studyCount: source.existingDeck?.studyCount ?? 0,
+						lastStudied: source.existingDeck?.lastStudied ?? null,
+					},
+				);
 				nextSources[source.document.path] = { type: "current" };
 			}
 
@@ -1355,6 +1358,38 @@ function hashText(value: string): string {
 		hash = Math.imul(hash, 16777619);
 	}
 	return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * Re-synchronizing an unchanged source parses every card into fresh objects. Reusing
+ * the previous deck object keeps the repository's WeakMap serialization caches, the
+ * deck-index cache, and DeckHome's per-deck caches warm across no-op syncs. The
+ * comparison covers the derived index only: FSRS state is already carried over from
+ * the current learning state by `parseSource`. Any difference falls back to the
+ * fresh deck, so this is a pure object-identity optimization.
+ */
+function reuseUnchangedDeck(source: PreparedSource): Deck | null {
+	const existing = source.existingDeck;
+	if (!existing) return null;
+	if (existing.tag !== source.tag) return null;
+	if (existing.name !== source.document.basename) return null;
+	if (existing.cards.length !== source.cards.length) return null;
+	for (let index = 0; index < source.cards.length; index++) {
+		const previous = existing.cards[index]!;
+		const next = source.cards[index]!;
+		if (
+			previous.id !== next.id ||
+			previous.front !== next.front ||
+			previous.back !== next.back ||
+			(previous.explanation ?? "") !== (next.explanation ?? "") ||
+			previous.sourceFile !== next.sourceFile ||
+			previous.indexInFile !== next.indexInFile ||
+			previous.fsrsCard !== next.fsrsCard
+		) {
+			return null;
+		}
+	}
+	return existing;
 }
 
 function cloneSnapshot(

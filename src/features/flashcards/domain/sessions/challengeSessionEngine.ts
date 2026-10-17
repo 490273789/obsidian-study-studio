@@ -412,7 +412,9 @@ function removeChallengeQuestions(
 	progress: ChallengeProgress,
 	identities: ReadonlySet<string>,
 ): ChallengeProgress {
-	if (!progress.round || identities.size === 0) return cloneChallengeProgress(progress);
+	// Challenge progress is treated as immutable everywhere, so an unchanged
+	// round is returned as-is instead of deep-cloning every remaining question.
+	if (!progress.round || identities.size === 0) return progress;
 	return {
 		...progress,
 		round: {

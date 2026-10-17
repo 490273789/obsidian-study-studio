@@ -13,7 +13,7 @@ import type {
 	LearningStateDocument,
 	LegacyFlashcardDocument,
 } from "../domain/storage/persistenceTypes";
-import { flashcardSettingsSlice } from "../settings/slice";
+import { flashcardSettingsSlice, type FlashcardStudySettings } from "../settings/slice";
 
 const LEGACY_FLASHCARD_KEYS = [
 	"decks",
@@ -33,6 +33,10 @@ export interface WorkbenchFlashcardAuthorityOptions {
  * Production adapter at the flashcard authority seam. It is the only flashcard
  * module that knows WorkbenchStore revisions, the learning partition name, or
  * the legacy top-level document shape.
+ *
+ * The caller must treat each committed learning document as immutable: the
+ * store adopts it by reference (no defensive deep copy on the hot answer path).
+ * `FlashcardRepository` builds a fresh copy-on-write document per transition.
  */
 export class WorkbenchFlashcardAuthority implements FlashcardAuthority {
 	private readonly source = {};
@@ -45,6 +49,11 @@ export class WorkbenchFlashcardAuthority implements FlashcardAuthority {
 	constructor(private readonly options: WorkbenchFlashcardAuthorityOptions) {
 		this.settingsFingerprint = this.readSettingsFingerprint();
 		this.unsubscribeStore = options.store.subscribe((change) => this.handleStoreChange(change));
+	}
+
+	async readSettings(): Promise<FlashcardStudySettings> {
+		await this.options.store.load();
+		return flashcardSettingsSlice.normalize(this.options.store.getSettings());
 	}
 
 	async read(): Promise<FlashcardAuthoritySnapshot> {
@@ -81,16 +90,15 @@ export class WorkbenchFlashcardAuthority implements FlashcardAuthority {
 					{ expectedRevision: expectedVersion, source: this.source },
 				);
 			} else {
-				// Replace only learning: cloning the old document would copy the
-				// learning state we are about to discard. Keep the new state isolated.
-				await this.options.store.savePartition(
-					"learning",
-					structuredClone(commit.learning),
-					{
-						expectedRevision: expectedVersion,
-						source: this.source,
-					},
-				);
+				// The repository builds a fresh copy-on-write learning document for
+				// every transition and never mutates a committed one. The store can
+				// therefore adopt the document directly instead of deep-cloning the
+				// whole card map on every answer. Callers must keep that contract:
+				// a committed learning document is immutable.
+				await this.options.store.savePartition("learning", commit.learning, {
+					expectedRevision: expectedVersion,
+					source: this.source,
+				});
 			}
 		} catch (error) {
 			if (error instanceof WorkbenchStoreConflictError) {

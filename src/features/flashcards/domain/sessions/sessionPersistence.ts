@@ -74,6 +74,12 @@ export type SessionCommitResult =
 /** The session lifecycle's whole view of persistence: reads, scheduling, one atomic commit. */
 export interface SessionPersistencePort extends StudyCardScheduler {
 	getRevision(): number;
+	/**
+	 * Monotonic revision of deck structure (card set, text, and deck metadata).
+	 * Session scheduling commits do not bump it, so read models that depend only
+	 * on card content can cache between answers.
+	 */
+	getDeckStructureRevision(): number;
 	getDeck(id: string): Deck | undefined;
 	getAllDecks(): readonly Deck[];
 	getCard(deckId: string, cardId: string): FlashCard | undefined;

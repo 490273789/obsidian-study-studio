@@ -418,9 +418,11 @@ describe("challenge reconciliation and concurrency", () => {
 		expect(decks).not.toHaveBeenCalled();
 		expect(progress).not.toHaveBeenCalled();
 		await act(h.lifecycle, { kind: "answer", correct: true });
-		expect(decks).toHaveBeenCalledOnce();
+		// A scheduling commit changes FSRS state, not eligibility, so the eligible
+		// card index must stay warm across answers and revalidations.
+		expect(decks).not.toHaveBeenCalled();
 		await h.lifecycle.revalidateChallenge();
-		expect(decks).toHaveBeenCalledOnce();
+		expect(decks).not.toHaveBeenCalled();
 		expect(progress).not.toHaveBeenCalled();
 		h.repo.dispose();
 	});

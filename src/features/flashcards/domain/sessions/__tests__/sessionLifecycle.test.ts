@@ -45,6 +45,10 @@ class MemoryLifecycleRepository implements SessionLifecycleRepository {
 	getRevision() {
 		return this.commits.length;
 	}
+	getDeckStructureRevision() {
+		return this.structureRevision;
+	}
+	structureRevision = 0;
 	getChallengeProgressRevision() {
 		return 0;
 	}
