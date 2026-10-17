@@ -150,11 +150,15 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 		[app],
 	);
 
+	// Keep one callback identity per word-list deck so the memoized WordListView
+	// keeps its props when an unrelated deck-home revision re-renders this app.
+	const wordListDeckId = viewState.type === "word-list" ? viewState.deckId : null;
 	const handleRecordWordListVisit = useCallback(
-		(deckId: string, startTimeMs: number, endTimeMs: number) => {
-			void deckHome.recordWordListVisit(deckId, startTimeMs, endTimeMs);
+		(startTimeMs: number, endTimeMs: number) => {
+			if (wordListDeckId === null) return;
+			void deckHome.recordWordListVisit(wordListDeckId, startTimeMs, endTimeMs);
 		},
-		[deckHome],
+		[deckHome, wordListDeckId],
 	);
 
 	const handleOpenAddCard = useCallback(() => {
@@ -403,9 +407,7 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 						key={deck.id}
 						deck={deck}
 						onBack={handleBackHome}
-						onRecordVisit={(startTimeMs, endTimeMs) => {
-							handleRecordWordListVisit(deck.id, startTimeMs, endTimeMs);
-						}}
+						onRecordVisit={handleRecordWordListVisit}
 					/>
 				);
 			}
