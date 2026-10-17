@@ -276,6 +276,28 @@ describe("DeckHome", () => {
 		home.dispose();
 	});
 
+	it("defers read-model rebuilds while no view observes the home snapshot", async () => {
+		const repository = new MemoryRepository([makeDeck()]);
+		const home = createDeckHome({
+			repository,
+			identity: makeIdentity(),
+			saveSettingsPatch: vi.fn(),
+			exportDeck: vi.fn(),
+			report: vi.fn(),
+		});
+		const settingsReads = vi.spyOn(repository, "getSettings");
+		settingsReads.mockClear();
+
+		repository.commit(() => {});
+		repository.commit(() => {});
+		expect(settingsReads).not.toHaveBeenCalled();
+
+		// The next reader materializes the current state exactly once.
+		home.getSnapshot();
+		expect(settingsReads).toHaveBeenCalledOnce();
+		home.dispose();
+	});
+
 	it("reuses challenge counts across local publications and invalidates changed decks and enable flags", async () => {
 		const changed = makeDeck("notes/changed.md");
 		const untouched = makeDeck("notes/untouched.md");

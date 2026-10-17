@@ -343,6 +343,7 @@ class DefaultDeckHome implements DeckHome {
 	private pendingMigration: PendingMigration | null = null;
 	private continuationSequence = 0;
 	private timer: unknown = null;
+	private dirty = false;
 	private disposed = false;
 	private readonly unsubscribeRepository: () => void;
 	/** Per-deck statistics keyed by stable deck object identity. */
@@ -362,6 +363,10 @@ class DefaultDeckHome implements DeckHome {
 	}
 
 	getSnapshot(): DeckHomeSnapshot {
+		if (this.dirty) {
+			this.dirty = false;
+			this.snapshot = this.buildSnapshot();
+		}
 		return this.snapshot;
 	}
 
@@ -373,6 +378,7 @@ class DefaultDeckHome implements DeckHome {
 			this.deckStatsCache.clear();
 			this.deckEligibilityCache.clear();
 			this.snapshot = this.buildSnapshot();
+			this.dirty = false;
 			this.scheduleTimer();
 		}
 		return () => {
@@ -799,6 +805,14 @@ class DefaultDeckHome implements DeckHome {
 			this.deckStatsCache.clear();
 			this.deckEligibilityCache.clear();
 		}
+		if (this.listeners.size === 0) {
+			// No mounted view observes the read model. Defer the rebuild until the
+			// next getSnapshot/subscribe and keep the due timer stopped; a closed
+			// view must not pay for (or restart timers from) repository revisions.
+			this.dirty = true;
+			return;
+		}
+		this.dirty = false;
 		this.snapshot = this.buildSnapshot();
 		this.scheduleTimer();
 		for (const listener of this.listeners) {
@@ -946,7 +960,9 @@ class DefaultDeckHome implements DeckHome {
 			this.settingsDraft = null;
 			return null;
 		}
-		const spelling = evaluateSpellingDeckEligibility(deck, draft.wordLearningEnabled);
+		// Dragging a settings slider republishes the draft; reuse the cached
+		// eligibility scan instead of walking every card of the deck per event.
+		const spelling = this.getDeckEligibilityCached(deck, draft.wordLearningEnabled);
 		return {
 			...draft,
 			deckName: deck.name,
