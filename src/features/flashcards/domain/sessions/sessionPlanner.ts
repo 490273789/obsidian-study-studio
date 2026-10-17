@@ -46,11 +46,11 @@ export interface SpellingSetupPlan {
 	readonly initialSelectionMode: "smart" | "range";
 }
 
-export type PracticeSessionPlanSource = "study-day" | "random" | "range" | "incorrect-retry";
+type PracticeSessionPlanSource = "study-day" | "random" | "range";
 
 export type ShuffleCardIds = (cardIds: string[]) => string[];
 
-export interface PracticeSessionPlan {
+interface PracticeSessionPlan {
 	source: PracticeSessionPlanSource;
 	deckId: string;
 	direction: CardDirection;
@@ -63,9 +63,9 @@ export interface PracticeSessionPlan {
 	studyOrder?: StudySettings["studyOrder"];
 }
 
-export type SpellingSessionPlanSource = "smart" | "range" | "incorrect-retry";
+type SpellingSessionPlanSource = "smart" | "range";
 
-export interface SpellingSessionPlan {
+interface SpellingSessionPlan {
 	source: SpellingSessionPlanSource;
 	deckId: string;
 	cardIds: string[];
@@ -87,7 +87,7 @@ export interface SpellingDeckEligibility {
 	invalidCards: Array<{ cardId: string; indexInFile: number; front: string }>;
 }
 
-export type SpellingShuffle = (cardIds: string[]) => string[];
+type SpellingShuffle = (cardIds: string[]) => string[];
 
 export interface SessionPlanningContext {
 	readonly settings: Pick<StudySettings, "dailyNewCards" | "dailyReviewCards" | "studyOrder">;
@@ -111,11 +111,11 @@ export type SessionQueuePlanResult =
 				| "stable-card-identity-required";
 	  };
 
-export function sortDeckCards(cards: readonly FlashCard[]): FlashCard[] {
+function sortDeckCards(cards: readonly FlashCard[]): FlashCard[] {
 	return [...cards].sort((a, b) => a.indexInFile - b.indexInFile);
 }
 
-export function getDayList(deck: Pick<Deck, "cards">, dailyNewCards: number): StudyDayInfo[] {
+function getDayList(deck: Pick<Deck, "cards">, dailyNewCards: number): StudyDayInfo[] {
 	const validDailyNew = Math.max(1, Math.floor(dailyNewCards));
 	const sortedCards = sortDeckCards(deck.cards);
 	const totalCards = sortedCards.length;
@@ -149,7 +149,7 @@ export function getDayList(deck: Pick<Deck, "cards">, dailyNewCards: number): St
 	return days;
 }
 
-export function getTodayStudyCounts(
+function getTodayStudyCounts(
 	deck: Pick<Deck, "cards">,
 	settings: Pick<StudySettings, "dailyNewCards" | "dailyReviewCards">,
 	now: Date = new Date(),
@@ -173,7 +173,7 @@ export function getTodayStudyCounts(
 	};
 }
 
-export function getCardsForDay(
+function getCardsForDay(
 	deck: Pick<Deck, "cards">,
 	dayIndex: number,
 	dailyNewCards: number,
@@ -301,7 +301,7 @@ export function evaluateSpellingDeckEligibility(
 	};
 }
 
-export function getSpellingDeckProgressStats(
+function getSpellingDeckProgressStats(
 	cards: readonly FlashCard[],
 	progress: SpellingProgressSnapshot,
 ): SpellingDeckProgressStats {
@@ -316,7 +316,7 @@ export function getSpellingDeckProgressStats(
 	return { total: eligibleCards.length, unpracticed };
 }
 
-export function planDayPracticeSession(params: {
+function planDayPracticeSession(params: {
 	deckId: string;
 	direction: CardDirection;
 	cards: FlashCard[];
@@ -335,7 +335,7 @@ export function planDayPracticeSession(params: {
 	};
 }
 
-export function planRandomPracticeSession(params: {
+function planRandomPracticeSession(params: {
 	deckId: string;
 	direction: CardDirection;
 	cards: FlashCard[];
@@ -357,7 +357,7 @@ export function planRandomPracticeSession(params: {
 	};
 }
 
-export function planRangePracticeSession(params: {
+function planRangePracticeSession(params: {
 	deckId: string;
 	direction: CardDirection;
 	cards: FlashCard[];
@@ -381,21 +381,7 @@ export function planRangePracticeSession(params: {
 	};
 }
 
-export function planIncorrectPracticeSession(params: {
-	deckId: string;
-	direction: CardDirection;
-	cardIds: string[];
-	shuffle?: ShuffleCardIds;
-}): PracticeSessionPlan {
-	return {
-		source: "incorrect-retry",
-		deckId: params.deckId,
-		direction: params.direction,
-		cardIds: (params.shuffle ?? shuffleArray)(Array.from(new Set(params.cardIds))),
-	};
-}
-
-export function planSmartSpellingSession(params: {
+function planSmartSpellingSession(params: {
 	deckId: string;
 	cards: FlashCard[];
 	progress: SpellingProgressSnapshot;
@@ -429,7 +415,7 @@ export function planSmartSpellingSession(params: {
 	};
 }
 
-export function planRangeSpellingSession(params: {
+function planRangeSpellingSession(params: {
 	deckId: string;
 	cards: FlashCard[];
 	startIndex: number;
@@ -444,18 +430,6 @@ export function planRangeSpellingSession(params: {
 		source: "range",
 		deckId: params.deckId,
 		cardIds: (params.shuffle ?? shuffleArray)(cardIds),
-	};
-}
-
-export function planIncorrectSpellingSession(params: {
-	deckId: string;
-	cardIds: string[];
-	shuffle?: SpellingShuffle;
-}): SpellingSessionPlan {
-	return {
-		source: "incorrect-retry",
-		deckId: params.deckId,
-		cardIds: (params.shuffle ?? shuffleArray)(Array.from(new Set(params.cardIds))),
 	};
 }
 
