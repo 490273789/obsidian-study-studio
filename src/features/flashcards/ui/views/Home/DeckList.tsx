@@ -124,6 +124,9 @@ export const DeckList = React.memo(function DeckList({
 		}
 		return { sortableRows: sortable, completedRows: completed };
 	}, [deckPresentations]);
+	const visibleOpenMenuDeckId = deckPresentations.some((row) => row.deck.id === openMenuDeckId)
+		? openMenuDeckId
+		: null;
 
 	const sortableDeckIds = useMemo(() => sortableRows.map((row) => row.deck.id), [sortableRows]);
 	const completedDeckIds = useMemo(
@@ -132,7 +135,7 @@ export const DeckList = React.memo(function DeckList({
 	);
 	const { interaction: sorting, snapshot: sortingSnapshot } = useSortableInteraction({
 		items: sortableDeckIds,
-		disabled: openMenuDeckId !== null,
+		disabled: visibleOpenMenuDeckId !== null,
 		optimistic: true,
 		onMove: async ({ activeId, items }) => {
 			setRecentlyDroppedDeckId(activeId);
@@ -432,6 +435,9 @@ export const DeckList = React.memo(function DeckList({
 												isRecentlyDropped={
 													recentlyDroppedDeckId === presentation.deck.id
 												}
+												isMenuOpen={
+													visibleOpenMenuDeckId === presentation.deck.id
+												}
 												onNavigate={onNavigate}
 												onExport={handleExportDeck}
 												onOpenSourceFile={onOpenSourceFile}
@@ -453,11 +459,12 @@ export const DeckList = React.memo(function DeckList({
 													aria-label={t("home.completedGroup", {
 														count: completedRows.length,
 													})}
-													onClick={() =>
+													onClick={() => {
 														setIsCompletedGroupOpen(
 															(current) => !current,
-														)
-													}
+														);
+														setOpenMenuDeckId(null);
+													}}
 												>
 													{isCompletedGroupOpen ? (
 														<ChevronDown size={13} aria-hidden="true" />
@@ -494,6 +501,10 @@ export const DeckList = React.memo(function DeckList({
 																presentation={presentation}
 																language={language}
 																isRecentlyDropped={false}
+																isMenuOpen={
+																	visibleOpenMenuDeckId ===
+																	presentation.deck.id
+																}
 																onNavigate={onNavigate}
 																onExport={handleExportDeck}
 																onOpenSourceFile={onOpenSourceFile}

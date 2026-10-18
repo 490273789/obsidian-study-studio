@@ -36,6 +36,7 @@ vi.mock("react", async (original) => ({
 	},
 	useMemo: (build: () => unknown) => build(),
 	useId: () => "completed-decks",
+	useRef: () => ({ current: null }),
 	useCallback: (callback: unknown) => callback,
 	useEffect: () => {},
 	useLayoutEffect: () => {},
@@ -100,6 +101,7 @@ interface ElementProps {
 	onClick?: (event: { stopPropagation(): void }) => void;
 	presentation?: DeckCardPresentation;
 	onMenuOpenChange?: (deckId: string, open: boolean) => void;
+	isMenuOpen?: boolean;
 	"data-state"?: string;
 	"aria-expanded"?: boolean;
 	ariaExpanded?: boolean;
@@ -255,6 +257,11 @@ function harness(decks?: DeckOverrides[]) {
 		card.props.onMenuOpenChange!(deckId, open);
 		render();
 	}
+	function openCardMenuIds(): string[] {
+		return findAll(tree, (element) => element.props.isMenuOpen === true).map(
+			(element) => element.props.presentation!.deck.id,
+		);
+	}
 	function drop(): void {
 		const props = dnd();
 		props.onDragStart!({ active: { id: "first" } } as DragStartEvent);
@@ -286,6 +293,7 @@ function harness(decks?: DeckOverrides[]) {
 		dnd,
 		drop,
 		setCardMenu,
+		openCardMenuIds,
 		clickTreeButton,
 		deckIds,
 		presentations,
@@ -382,6 +390,18 @@ describe("deck reorder availability", () => {
 			expect(h.dnd().sensors?.some((entry) => entry.sensor === sensor)).toBe(true);
 		},
 	);
+
+	it("keeps the action overlay on only one deck row", () => {
+		const h = harness();
+		h.setCardMenu("first", true);
+		expect(h.openCardMenuIds()).toEqual(["first"]);
+		h.setCardMenu("second", true);
+		expect(h.openCardMenuIds()).toEqual(["second"]);
+		h.setCardMenu("first", false);
+		expect(h.openCardMenuIds()).toEqual(["second"]);
+		h.setCardMenu("second", false);
+		expect(h.openCardMenuIds()).toEqual([]);
+	});
 
 	it.each(["applied", "failed"] as const)(
 		"blocks all input methods until the reorder save settles (%s)",
