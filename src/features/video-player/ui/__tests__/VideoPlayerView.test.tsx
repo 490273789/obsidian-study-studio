@@ -1,5 +1,6 @@
 import React from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { FlashcardButton } from "../../../../core/ui/primitives/Button";
 import { ReorderableList, SortableRow } from "../../../../core/ui/primitives/Sortable/Sortable";
 import type { SortableInteraction } from "../../../../core/ui/primitives/Sortable/sortableInteraction";
 import type { VideoPlayerSnapshot } from "../../domain/types";
@@ -170,9 +171,10 @@ describe("video queue sorting", () => {
 
 	it("keeps source selection separate from sorting and preserves progress labels", () => {
 		const h = harness();
-		const source = findElement<React.ComponentProps<"button">>(
+		const source = findElement<React.ComponentProps<typeof FlashcardButton>>(
 			h.content("third"),
-			(element) => element.type === "button" && element.props.title === "third\nthird.mp4",
+			(element) =>
+				element.type === FlashcardButton && element.props.title === "third\nthird.mp4",
 		);
 		source.props.onClick!({} as React.MouseEvent<HTMLButtonElement>);
 		expect(h.selectSource).toHaveBeenCalledExactlyOnceWith("third");

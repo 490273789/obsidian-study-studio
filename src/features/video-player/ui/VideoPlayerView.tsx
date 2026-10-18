@@ -191,8 +191,8 @@ export function VideoPlayerView({
 						</section>
 						<aside className={styles.queue} aria-label={t.queue}>
 							<div className={styles.queueHeader}>
-								<button
-									type="button"
+								<FlashcardButton
+									variant="ghost"
 									className={styles.queueHeading}
 									aria-expanded={viewSnapshot.queueExpanded}
 									title={
@@ -215,20 +215,19 @@ export function VideoPlayerView({
 									<span className={styles.queueSummaryText}>
 										{t.queueSummary(snapshot.sources.length, currentIndex + 1)}
 									</span>
-								</button>
+								</FlashcardButton>
 								<div className={styles.queueHeaderActions}>
-									<button
-										type="button"
+									<FlashcardButton
+										variant="ghost"
+										size="sm"
+										icon={FolderPlus}
+										iconSize={14}
 										className={styles.queueAddBtn}
-										onClick={(event) => {
-											event.stopPropagation();
-											void addVideos();
-										}}
 										title={t.addVideos}
+										onClick={() => void addVideos()}
 									>
-										<FolderPlus size={14} aria-hidden="true" />
 										<span>{t.addVideos}</span>
-									</button>
+									</FlashcardButton>
 								</div>
 							</div>
 							{viewSnapshot.queueExpanded && (
@@ -267,9 +266,12 @@ export function VideoPlayerView({
 																	<span>{index + 1}</span>
 																)}
 															</div>
-															<button
-																type="button"
+															<FlashcardButton
+																variant="ghost"
 																className={styles.sourceContent}
+																aria-current={
+																	isActive ? "true" : undefined
+																}
 																onClick={() =>
 																	runtime.selectSource(source.id)
 																}
@@ -295,7 +297,7 @@ export function VideoPlayerView({
 																		</span>
 																	</span>
 																)}
-															</button>
+															</FlashcardButton>
 															<div className={styles.itemActions}>
 																{snapshot.sources.length > 1 && (
 																	<>
@@ -393,22 +395,24 @@ export function VideoPlayerView({
 
 			{viewSnapshot.presentation.kind === "floating" &&
 				createPortal(
-					<FloatingPlayer
-						presentation={viewSnapshot.presentation}
-						floatingHeaderRef={view.refs.floatingHeader}
-						resizeLeftRef={view.refs.resizeLeft}
-						resizeRightRef={view.refs.resizeRight}
-						onClose={() => view.act({ type: "dock-and-pause" })}
-						onToggleMaximize={() => view.act({ type: "toggle-maximized" })}
-						title={t.title}
-						closeLabel={t.dockAndPause}
-						maximizeLabel={t.maximize}
-						restoreLabel={t.restore}
-						resizeLeftLabel={t.resizeLeft}
-						resizeRightLabel={t.resizeRight}
-					>
-						{renderPlayer()}
-					</FloatingPlayer>,
+					<div className="fc-overlay">
+						<FloatingPlayer
+							presentation={viewSnapshot.presentation}
+							floatingHeaderRef={view.refs.floatingHeader}
+							resizeLeftRef={view.refs.resizeLeft}
+							resizeRightRef={view.refs.resizeRight}
+							onClose={() => view.act({ type: "dock-and-pause" })}
+							onToggleMaximize={() => view.act({ type: "toggle-maximized" })}
+							title={t.title}
+							closeLabel={t.dockAndPause}
+							maximizeLabel={t.maximize}
+							restoreLabel={t.restore}
+							resizeLeftLabel={t.resizeLeft}
+							resizeRightLabel={t.resizeRight}
+						>
+							{renderPlayer()}
+						</FloatingPlayer>
+					</div>,
 					document.body,
 				)}
 		</div>

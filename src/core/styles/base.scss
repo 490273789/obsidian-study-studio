@@ -9,6 +9,7 @@
 .flashcard-settings-tab,
 .flashcard-modal-backdrop,
 .fc-selection-popup-container,
+.fc-overlay,
 .study-studio-dictionary-prompt {
 	--fc-font-2xs: 10px;
 	--fc-font-xs: 11px;
@@ -239,6 +240,15 @@
 .flashcard-root > * {
 	position: relative;
 	z-index: 1;
+}
+
+/*
+ * Portaled plugin surface: the floating video player renders outside
+ * `.flashcard-root`, so it keeps the token and primitive scope through this
+ * zero-box wrapper.
+ */
+.fc-overlay {
+	display: contents;
 }
 
 /* Reset Obsidian default button shadow */

@@ -104,6 +104,8 @@
 
 页面外壳的手机 / 平板适配统一在 `responsive.scss`，断点来自 `breakpoints.scss`，因此新视图无需再写外壳级响应式。视图可通过自身类名覆盖个别数值（例如统计页保留自己的内边距）。
 
+Portal 到 `document.body` 的插件浮层（如浮动视频窗口）必须包在 `.fc-overlay`（`display: contents`）内：它同时挂载 `--fc-*` token 与 `button.flashcard-btn` 的宿主覆盖规则，否则浮层里的基元拿不到 token，裸 `button` 会被宿主样式涂成强调色。
+
 ## 通用 UI 模式 (`patterns.scss`)
 
 `layout.scss` 管的是"页面怎么摆"，`patterns.scss` 管的是"页面里的内容长什么样"。后者收录跨视图重复出现的结构配方；视图在自己的类名旁叠加这些类名消费，不重写配方。**新增页面时优先复用这里的模式**，只有确实不复用时才在视图样式里新写。

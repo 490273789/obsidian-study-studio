@@ -111,7 +111,7 @@
 // Only appearance needs extra specificity against the host. Keep dimensions,
 // typography and variant tokens in the low-priority recipe above.
 .flashcard-btn,
-:is(.flashcard-root, .flashcard-settings-tab, .flashcard-modal-backdrop)
+:is(.flashcard-root, .flashcard-settings-tab, .flashcard-modal-backdrop, .fc-overlay)
 	:is(button.flashcard-btn, .setting-item button.flashcard-btn) {
 	appearance: none;
 	border: 1px solid var(--fc-button-border);
