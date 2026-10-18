@@ -354,6 +354,7 @@
 	display: flex;
 	justify-content: flex-end;
 	gap: var(--fc-space-2);
+	margin-right: var(--fc-space-3);
 }
 
 :global(.flashcard-root) .overlayAction {
@@ -365,9 +366,10 @@
 :global(.flashcard-root) .overlayClose {
 	position: absolute;
 	inset-inline-end: var(--fc-space-2);
-	top: 50%;
+	inset-block: 0;
 	z-index: 1;
-	transform: translateY(-50%);
+	height: var(--fc-control-md);
+	margin-block: auto;
 	width: var(--fc-control-md);
 	min-width: var(--fc-control-md);
 	padding-inline: 0;
