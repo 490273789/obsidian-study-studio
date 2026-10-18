@@ -267,6 +267,15 @@ export class SubtitleGeneration {
 	): void {
 		this.change(this.snapshot.cues.map((cue) => (cue.id === id ? { ...cue, ...patch } : cue)));
 	}
+	/** Confirms the whole draft at once; individual timing errors still block saving. */
+	confirmAllCues(): void {
+		if (!this.snapshot.cues.some((cue) => cue.needsReview)) return;
+		this.change(
+			this.snapshot.cues.map((cue) =>
+				cue.needsReview ? { ...cue, needsReview: false } : cue,
+			),
+		);
+	}
 	addCue(): string {
 		const id = `manual-${crypto.randomUUID()}`;
 		this.change([

@@ -635,7 +635,7 @@ function MaterialForm(props: MaterialFormProps): React.ReactNode {
 interface DraftReviewBodyProps {
 	draft: GenerationSnapshot;
 	material: AudioMaterial;
-	generation: Pick<SubtitleGeneration, "editCue" | "addCue" | "removeCue">;
+	generation: Pick<SubtitleGeneration, "editCue" | "addCue" | "removeCue" | "confirmAllCues">;
 	runtime: Pick<AudioPracticeRuntime, "preview">;
 	t: AudioPracticeStrings;
 	busy: boolean;
@@ -702,6 +702,14 @@ export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
 			<div className={cls("flashcard-modal-body", styles.reviewBody)}>
 				<div className={styles.reviewSummary}>
 					<span>{t.reviewSummary(pending, draft.cues.length)}</span>
+					<Button
+						size="sm"
+						icon={ListChecks}
+						disabled={busy || pending === 0}
+						onClick={() => generation.confirmAllCues()}
+					>
+						{t.markAllReviewed}
+					</Button>
 				</div>
 				{error && (
 					<p role="alert" className={styles.alert}>

@@ -11,6 +11,7 @@ interface ControlProps {
 	children?: React.ReactNode;
 	"aria-label"?: string;
 	"aria-pressed"?: boolean;
+	disabled?: boolean;
 	onClick?: () => void;
 	onChange?: (event: {
 		target: { value: string; checked?: boolean; valueAsNumber?: number };
@@ -161,6 +162,7 @@ describe("subtitle draft review", () => {
 		const previews: number[][] = [];
 		let saves = 0;
 		let closes = 0;
+		let confirms = 0;
 		const body = DraftReviewBody({
 			draft,
 			material,
@@ -170,6 +172,9 @@ describe("subtitle draft review", () => {
 				},
 				addCue: () => "manual-cue",
 				removeCue: () => undefined,
+				confirmAllCues: () => {
+					confirms++;
+				},
 			} as unknown as Parameters<typeof DraftReviewBody>[0]["generation"],
 			runtime: {
 				preview: (start: number, end: number) => {
@@ -189,6 +194,13 @@ describe("subtitle draft review", () => {
 			},
 		});
 		expect(text(body)).toContain(t.reviewSummary(1, 2));
+
+		const confirmAll = elements(body).find(
+			(element) => text(element.props.children) === t.markAllReviewed,
+		);
+		expect(confirmAll?.props.disabled).toBe(false);
+		confirmAll!.props.onClick!();
+		expect(confirms).toBe(1);
 
 		const textareas = elements(body).filter(
 			(element) => typeof element.props.value === "string",

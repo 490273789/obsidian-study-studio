@@ -316,6 +316,24 @@ describe("subtitle generation", () => {
 		controller.editCue(id, { end: 1, needsReview: false });
 		expect(controller.validatedCues()).toHaveLength(1);
 	});
+	it("confirms every draft cue in one action", async () => {
+		const twoCues: Transcript = {
+			cues: [
+				{ id: "first", text: "First", start: 0, end: 1, needsReview: true },
+				{ id: "second", text: "Second", start: 1, end: 2, needsReview: true },
+			],
+			words: [],
+		};
+		const controller = new SubtitleGeneration({
+			prepare: async () => ({ duration: 2, chunks: [chunk] }),
+			transcribe: async () => twoCues,
+		});
+		await controller.generate(input);
+		expect(controller.getSnapshot().cues.every((cue) => cue.needsReview)).toBe(true);
+		controller.confirmAllCues();
+		expect(controller.getSnapshot().cues.every((cue) => !cue.needsReview)).toBe(true);
+		expect(controller.validatedCues()).toHaveLength(2);
+	});
 	it("ignores late restore and clears missing material drafts", async () => {
 		let resolveOld: (draft: GenerationDraft | null) => void = () => {};
 		const controller = new SubtitleGeneration({
