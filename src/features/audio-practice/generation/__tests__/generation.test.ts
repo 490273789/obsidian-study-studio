@@ -147,6 +147,77 @@ describe("subtitle generation", () => {
 		).toEqual(["corrected"]);
 		expect(() => parseBailianResponse('{"code":"InvalidApiKey"}')).toThrow();
 	});
+	it("folds cumulative SSE snapshots into one cue per sentence", () => {
+		const event = (
+			id: number,
+			end: number,
+			text: string,
+			words: ReadonlyArray<readonly [string, number, number]>,
+		) =>
+			`data:${JSON.stringify({
+				output: {
+					sentence: {
+						sentence_id: id,
+						sentence_end: true,
+						begin_time: 2190,
+						end_time: end,
+						text,
+						words: words.map(([word, begin, finish]) => ({
+							text: word,
+							begin_time: begin,
+							end_time: finish,
+						})),
+					},
+				},
+			})}\n\n`;
+		const first = [
+			["你", 2190, 2500],
+			["好", 2500, 2800],
+		] as const;
+		const second = [...first, ["text", 9000, 9300], [" one", 9300, 9800]] as const;
+		const third = [...second, ["再", 12000, 12400], ["见", 12400, 12800]] as const;
+		const transcript = parseBailianResponse(
+			event(1, 8520, "你好。", first) +
+				event(2, 14480, "你好。text one. ", second) +
+				event(3, 27020, "你好。text one. 再见。", third),
+		);
+		expect(transcript.cues.map((cue) => cue.text)).toEqual(["你好。", "text one.", "再见。"]);
+		expect(transcript.cues.map((cue) => [cue.start, cue.end])).toEqual([
+			[2.19, 8.52],
+			[9, 14.48],
+			[12, 27.02],
+		]);
+		expect(transcript.words.map((word) => word.text)).toEqual([
+			"你",
+			"好",
+			"text",
+			" one",
+			"再",
+			"见",
+		]);
+	});
+	it("keeps independent sentences when a later text extends an earlier one", () => {
+		const event = (id: number, begin: number, end: number, text: string) =>
+			`data:${JSON.stringify({
+				output: {
+					sentence: {
+						sentence_id: id,
+						sentence_end: true,
+						begin_time: begin,
+						end_time: end,
+						text,
+						words: [],
+					},
+				},
+			})}\n\n`;
+		expect(
+			parseBailianResponse(event(1, 0, 1000, "Hello") + event(2, 1000, 3000, "Hello world."))
+				.cues,
+		).toMatchObject([
+			{ text: "Hello", start: 0, end: 1 },
+			{ text: "Hello world.", start: 1, end: 3 },
+		]);
+	});
 	it("sends only audio through outbound and pins workspace host and language", async () => {
 		const request = vi.fn().mockResolvedValue({
 			text: JSON.stringify({
