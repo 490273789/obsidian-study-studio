@@ -2,8 +2,10 @@ import React from "react";
 import { describe, expect, it } from "vite-plus/test";
 import { AudioPracticeRuntime } from "../../domain/audioPracticeRuntime";
 import { emptyAudioPracticeData } from "../../domain/repository";
+import type { AudioMaterial } from "../../domain/types";
+import type { GenerationSnapshot } from "../../generation/subtitleGeneration";
 import { audioPracticeStrings } from "../../strings/audioPractice";
-import { PracticeSurface } from "../AudioPracticeView";
+import { DraftReviewBody, PracticeSurface } from "../AudioPracticeView";
 
 interface ControlProps {
 	children?: React.ReactNode;
@@ -14,6 +16,7 @@ interface ControlProps {
 		target: { value: string; checked?: boolean; valueAsNumber?: number };
 	}) => void;
 	type?: string;
+	value?: unknown;
 }
 function elements(node: React.ReactNode): React.ReactElement<ControlProps>[] {
 	const result: React.ReactElement<ControlProps>[] = [];
@@ -90,9 +93,7 @@ describe("audio practice UI interaction", () => {
 	});
 	it("ignores empty offset edits and applies finite signed offsets", async () => {
 		const { runtime, render } = await setup();
-		const input = elements(render()).find(
-			(element) => element.type === "input" && element.props.type === "number",
-		);
+		const input = elements(render()).find((element) => element.props.type === "number");
 		input!.props.onChange!({ target: { value: "", valueAsNumber: NaN } });
 		expect(
 			runtime.getSnapshot().progress[runtime.getSnapshot().currentMaterialId!]!.offset,
@@ -130,5 +131,83 @@ describe("audio practice UI interaction", () => {
 		expect(invoke("ArrowRight", false)).toBe(true);
 		expect(runtime.getSnapshot().currentCueId).not.toBe(first);
 		runtime.dispose();
+	});
+});
+
+describe("subtitle draft review", () => {
+	it("edits cue text, previews timing, and saves through the dialog body", () => {
+		const t = audioPracticeStrings("en");
+		const material: AudioMaterial = {
+			id: "material-1",
+			title: "Audio",
+			audioPath: "audio.mp3",
+			subtitlePath: null,
+			originalText: "",
+		};
+		const draft: GenerationSnapshot = {
+			status: "review",
+			cues: [
+				{ id: "cue-1", text: "First sentence", start: 1, end: 2, needsReview: true },
+				{ id: "cue-2", text: "Second sentence", start: 3, end: 4, needsReview: false },
+			],
+			completedChunks: 1,
+			totalChunks: 1,
+			duration: 120,
+			error: null,
+			taskKey: material.id,
+		};
+		const edits: { id: string; patch: Record<string, unknown> }[] = [];
+		const previews: number[][] = [];
+		let saves = 0;
+		let closes = 0;
+		const body = DraftReviewBody({
+			draft,
+			material,
+			generation: {
+				editCue: (id: string, patch: Record<string, unknown>) => {
+					edits.push({ id, patch });
+				},
+				addCue: () => "manual-cue",
+				removeCue: () => undefined,
+			} as unknown as Parameters<typeof DraftReviewBody>[0]["generation"],
+			runtime: {
+				preview: (start: number, end: number) => {
+					previews.push([start, end]);
+				},
+			} as unknown as Parameters<typeof DraftReviewBody>[0]["runtime"],
+			t,
+			busy: false,
+			error: null,
+			titleId: "review-title",
+			hintId: "review-hint",
+			requestClose: () => {
+				closes++;
+			},
+			onSave: () => {
+				saves++;
+			},
+		});
+		expect(text(body)).toContain(t.reviewSummary(1, 2));
+
+		const textareas = elements(body).filter(
+			(element) => typeof element.props.value === "string",
+		);
+		expect(textareas).toHaveLength(2);
+		textareas[0]!.props.onChange!({ target: { value: "First sentence, fixed" } });
+		expect(edits).toEqual([{ id: "cue-1", patch: { text: "First sentence, fixed" } }]);
+
+		const audition = elements(body).find(
+			(element) => text(element.props.children) === t.audition,
+		);
+		audition!.props.onClick!();
+		expect(previews).toEqual([[1, 2]]);
+
+		const save = elements(body).find((element) => text(element.props.children) === t.saveDraft);
+		save!.props.onClick!();
+		expect(saves).toBe(1);
+
+		const close = elements(body).find((element) => text(element.props.children) === t.close);
+		close!.props.onClick!();
+		expect(closes).toBe(1);
 	});
 });

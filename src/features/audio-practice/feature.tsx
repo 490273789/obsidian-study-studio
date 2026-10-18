@@ -7,6 +7,7 @@ import type { WorkbenchStore } from "../../core/storage/workbenchStore";
 import type { OutboundPort } from "../../core/net/types";
 import type { Language } from "../../core/shared/types";
 import { FlashcardButton } from "../../core/ui/primitives/Button";
+import { ModalProvider } from "../../core/ui/primitives/Modal";
 import { AudioPracticeRuntime } from "./domain/audioPracticeRuntime";
 import type { AudioMaterial } from "./domain/types";
 import { AudioGenerationActions } from "./obsidian/generationActions";
@@ -100,17 +101,19 @@ export function createAudioPracticeFeature(deps: {
 							},
 						};
 					},
-					render: ({ language, settings }) =>
+					render: ({ language, settings, rootEl }) =>
 						settings.audioPractice.enabled ? (
-							<AudioPracticeHost
-								app={host.app}
-								runtime={runtime}
-								generation={generation}
-								language={language}
-								onReadText={(path) => files.readText(path)}
-								onGenerate={onGenerate}
-								onOpenSettings={openSettings}
-							/>
+							<ModalProvider host={rootEl}>
+								<AudioPracticeHost
+									app={host.app}
+									runtime={runtime}
+									generation={generation}
+									language={language}
+									onReadText={(path) => files.readText(path)}
+									onGenerate={onGenerate}
+									onOpenSettings={openSettings}
+								/>
+							</ModalProvider>
 						) : (
 							<div className="fc-page">
 								<p>{audioSettingsCopy(language).disabled}</p>

@@ -1,23 +1,40 @@
-import React, { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import React, { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import {
+	AudioLines,
+	Captions,
+	CircleAlert,
+	EyeOff,
 	Headphones,
+	ListChecks,
+	ListMusic,
+	LoaderCircle,
+	NotebookPen,
 	Pause,
+	Pencil,
 	Play,
 	Plus,
 	RotateCcw,
 	Settings,
 	SkipBack,
 	SkipForward,
+	Sparkles,
 	Star,
 	Trash2,
+	X,
 } from "lucide-react";
+import { cls } from "../../../core/shared/classNames";
 import type { Language } from "../../../core/shared/types";
 import { FlashcardButton as Button } from "../../../core/ui/primitives/Button";
+import { FlashcardCheckbox } from "../../../core/ui/primitives/Checkbox";
 import { FlashcardHeader } from "../../../core/ui/primitives/Header";
+import { FlashcardInput, FlashcardTextarea } from "../../../core/ui/primitives/Input";
+import { ModalSurface } from "../../../core/ui/primitives/Modal";
+import { FlashcardSelect } from "../../../core/ui/primitives/Select";
+import { FlashcardSlider } from "../../../core/ui/primitives/Slider";
 import type { AudioMaterial, AudioPracticeSnapshot } from "../domain/types";
 import { AUDIO_PLAYBACK_RATES } from "../domain/types";
 import type { AudioPracticeRuntime } from "../domain/audioPracticeRuntime";
-import type { SubtitleGeneration } from "../generation/subtitleGeneration";
+import type { GenerationSnapshot, SubtitleGeneration } from "../generation/subtitleGeneration";
 import { audioPracticeStrings } from "../strings/audioPractice";
 import type { AudioPracticeStrings } from "../strings/audioPractice";
 import styles from "./AudioPractice.module.scss";
@@ -35,6 +52,8 @@ export interface AudioPracticeViewProps {
 	onOpenSettings: () => void;
 }
 
+type MaterialDialogMode = "add" | "edit";
+
 export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNode {
 	const { runtime, generation, language, onOpenSettings } = props;
 	const snapshot = useSyncExternalStore(
@@ -47,12 +66,20 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 	);
 	const t = audioPracticeStrings(language);
 	const media = useRef<HTMLAudioElement>(null);
-	const [adding, setAdding] = useState(false);
-	const [editingId, setEditingId] = useState<string | null>(null);
+	const practiceRef = useRef<HTMLElement>(null);
+	const [materialDialog, setMaterialDialog] = useState<MaterialDialogMode | null>(null);
+	const [reviewOpen, setReviewOpen] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
 	const material = snapshot.currentMaterial;
 	const generating = ["preparing", "transcribing", "aligning"].includes(draft.status);
+	const draftForMaterial = material !== null && draft.taskKey === material.id;
+	const reviewReady = draftForMaterial && draft.status === "review";
+	const pendingCues = reviewReady ? draft.cues.filter((cue) => cue.needsReview).length : 0;
+	const openMaterialDialog = (mode: MaterialDialogMode) => {
+		setError(null);
+		setMaterialDialog(mode);
+	};
 	const run = async (action: () => void | Promise<unknown>) => {
 		setError(null);
 		setBusy(true);
@@ -77,12 +104,32 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 			release();
 		};
 	}, [runtime]);
-	const draftForMaterial = material !== null && draft.taskKey === material.id;
+	useEffect(() => {
+		// A finished draft opens its review dialog once; dismissing it stays dismissed
+		// until the next completed generation changes the review state again.
+		// oxlint-disable-next-line react/set-state-in-effect
+		if (reviewReady) setReviewOpen(true);
+	}, [reviewReady, draft.taskKey]);
+	useEffect(() => {
+		const container = practiceRef.current;
+		const cueId = snapshot.currentCueId;
+		if (!container || !cueId) return;
+		const active = container.querySelector<HTMLElement>('[data-current-cue="true"]');
+		if (!active) return;
+		const reduceMotion =
+			active.ownerDocument.defaultView?.matchMedia?.("(prefers-reduced-motion: reduce)")
+				.matches ?? false;
+		active.scrollIntoView({
+			block: "nearest",
+			behavior: reduceMotion ? "auto" : "smooth",
+		});
+	}, [snapshot.currentCueId, snapshot.playing]);
 	return (
-		<div className={`fc-page fc-page--fill ${styles.page}`}>
+		<div className={cls("fc-page fc-page--fill", styles.page)}>
 			<FlashcardHeader
 				icon={Headphones}
 				title={t.title}
+				badge={snapshot.materials.length || undefined}
 				right={
 					<Button
 						preset="icon"
@@ -96,264 +143,278 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 			{/* Captions are rendered as accessible, interactive sentence text below. */}
 			{/* oxlint-disable-next-line jsx-a11y/media-has-caption */}
 			<audio ref={media} preload="metadata" />
-			<div className={styles.layout}>
-				<aside className={`fc-panel ${styles.library}`} aria-label={t.title}>
-					<Button variant="primary" icon={Plus} onClick={() => setAdding(!adding)}>
-						{t.add}
-					</Button>
-					{snapshot.materials.map((item) => (
-						<div key={item.id} className={styles.material}>
-							<Button
-								variant="ghost"
-								active={item.id === material?.id}
-								onClick={() => void run(() => runtime.selectMaterial(item.id))}
-							>
-								{item.title}
-							</Button>
-							<Button
-								preset="icon"
-								icon={Trash2}
-								aria-label={`${t.remove}: ${item.title}`}
-								title={t.remove}
-								disabled={busy}
-								onClick={() => void run(() => runtime.removeMaterial(item.id))}
-							/>
-						</div>
-					))}
-					<small>{t.removeHint}</small>
-				</aside>
-				<main className={styles.main}>
-					{adding && (
-						<MaterialForm
-							{...props}
-							t={t}
-							busy={busy}
-							onCancel={() => setAdding(false)}
-							onSubmit={(value) =>
-								void run(async () => {
-									await runtime.addMaterial(value);
-									setAdding(false);
-								})
-							}
+			<div className={styles.workspace}>
+				<aside className={cls("fc-panel", styles.library)} aria-label={t.library}>
+					<header className={styles.libraryHeader}>
+						<h2 className={styles.libraryTitle}>
+							{t.library}
+							<span className={styles.libraryCount}>{snapshot.materials.length}</span>
+						</h2>
+						<Button
+							preset="icon"
+							icon={Plus}
+							aria-label={t.add}
+							title={t.add}
+							onClick={() => openMaterialDialog("add")}
 						/>
-					)}
-					{!material && !adding && (
-						<div className={`fc-panel ${styles.empty}`}>{t.empty}</div>
+					</header>
+					<div className={styles.materialList}>
+						{snapshot.materials.length === 0 && (
+							<p className={styles.libraryEmpty}>{t.libraryEmpty}</p>
+						)}
+						{snapshot.materials.map((item) => {
+							const active = item.id === material?.id;
+							return (
+								<div
+									key={item.id}
+									className={cls(
+										styles.materialRow,
+										active && styles.materialRowActive,
+									)}
+								>
+									<button
+										type="button"
+										className={styles.materialSelect}
+										aria-current={active ? "true" : undefined}
+										onClick={() =>
+											void run(() => runtime.selectMaterial(item.id))
+										}
+									>
+										<span className={styles.materialName}>{item.title}</span>
+										<span className={styles.materialPath}>
+											{fileName(item.audioPath)}
+										</span>
+									</button>
+									<Button
+										preset="icon"
+										size="sm"
+										icon={Trash2}
+										className={styles.materialRemove}
+										aria-label={`${t.remove}: ${item.title}`}
+										title={t.remove}
+										disabled={busy}
+										onClick={() =>
+											void run(() => runtime.removeMaterial(item.id))
+										}
+									/>
+								</div>
+							);
+						})}
+					</div>
+					<p className={styles.libraryHint}>{t.removeHint}</p>
+				</aside>
+				<main className={styles.stage}>
+					{!material && (
+						<div className={cls("fc-panel", styles.empty)}>
+							<span className={styles.emptyIcon} aria-hidden="true">
+								<Headphones size={26} strokeWidth={1.6} />
+							</span>
+							<p className={styles.emptyText}>{t.empty}</p>
+							<Button
+								variant="primary"
+								icon={Plus}
+								onClick={() => openMaterialDialog("add")}
+							>
+								{t.add}
+							</Button>
+						</div>
 					)}
 					{material && (
 						<>
-							<section className={`fc-panel ${styles.panel}`}>
-								<div className={styles.row}>
-									<h2>{material.title}</h2>
+							<section className={styles.materialBar} aria-label={material.title}>
+								<div className={styles.materialIdentity}>
+									<h2 className={styles.materialTitle}>{material.title}</h2>
+									<div className={cls("fc-meta", styles.materialMeta)}>
+										<span className="fc-meta__text" title={material.audioPath}>
+											{material.audioPath}
+										</span>
+										<span className="fc-meta__dot" aria-hidden="true" />
+										<span className="fc-meta__text">
+											{snapshot.cues.length
+												? t.segments(snapshot.cues.length)
+												: t.noSubtitlesYet}
+										</span>
+										{snapshot.duration ? (
+											<>
+												<span className="fc-meta__dot" aria-hidden="true" />
+												<span className="fc-meta__text">
+													{timeLabel(snapshot.duration)}
+												</span>
+											</>
+										) : null}
+									</div>
+								</div>
+								<div className={styles.materialActions}>
+									{reviewReady && (
+										<Button
+											variant="secondary"
+											icon={ListChecks}
+											title={t.reviewHint}
+											onClick={() => {
+												setError(null);
+												setReviewOpen(true);
+											}}
+										>
+											{t.review}
+											{pendingCues > 0 && (
+												<span className={styles.countBadge}>
+													{pendingCues}
+												</span>
+											)}
+										</Button>
+									)}
 									<Button
-										size="sm"
+										preset="icon"
+										icon={Pencil}
+										aria-label={t.original}
+										title={t.original}
+										disabled={busy || generating}
+										onClick={() => openMaterialDialog("edit")}
+									/>
+									<Button
+										icon={Sparkles}
 										disabled={busy || generating}
 										onClick={() =>
-											setEditingId(
-												editingId === material.id ? null : material.id,
-											)
+											void run(() => props.onGenerate(material, true))
 										}
 									>
-										{t.original}
+										{snapshot.cues.length ? t.regenerate : t.generate}
 									</Button>
 								</div>
-								<small>{material.audioPath}</small>
-								{editingId === material.id && (
-									<MaterialForm
-										key={material.id}
-										{...props}
-										material={material}
-										t={t}
-										busy={busy}
-										onCancel={() => setEditingId(null)}
-										onSubmit={(value) =>
-											void run(async () => {
-												runtime.updateMaterial(material.id, {
-													title: value.title,
-													originalText: value.originalText,
-													audioPath: value.audioPath,
-												});
-												if (value.subtitlePath !== material.subtitlePath)
-													await runtime.setSubtitle(
-														material.id,
-														value.subtitlePath ?? null,
-													);
-												setEditingId(null);
-											})
-										}
-									/>
-								)}
-								<p className={styles.hint}>{t.generateHint}</p>
-								<Button
-									disabled={busy || generating}
-									onClick={() => void run(() => props.onGenerate(material, true))}
-								>
-									{snapshot.cues.length ? t.regenerate : t.generate}
-								</Button>
 							</section>
-							<PracticeSurface runtime={runtime} snapshot={snapshot} t={t} />
+							{(generating ||
+								(draftForMaterial &&
+									(draft.status === "error" ||
+										draft.status === "cancelled"))) && (
+								<output
+									className={styles.statusStrip}
+									data-tone={
+										generating
+											? "busy"
+											: draft.status === "error"
+												? "error"
+												: "muted"
+									}
+								>
+									<span className={styles.statusIcon} aria-hidden="true">
+										{generating ? (
+											<LoaderCircle size={16} className={styles.spinning} />
+										) : (
+											<CircleAlert size={16} />
+										)}
+									</span>
+									<span className={styles.statusText}>
+										{generating
+											? `${draft.status === "preparing" ? t.preparing : draft.status === "aligning" ? t.aligning : t.transcribing}${draft.totalChunks > 0 ? ` · ${t.chunks(draft.completedChunks, draft.totalChunks)}` : ""}`
+											: draft.status === "error"
+												? (draft.error ?? t.failed)
+												: t.cancelled}
+									</span>
+									{generating && (
+										<Button size="sm" onClick={() => generation.cancel()}>
+											{t.cancel}
+										</Button>
+									)}
+									{draftForMaterial &&
+										!generating &&
+										(draft.status === "error" ||
+											draft.status === "cancelled") && (
+											<Button
+												size="sm"
+												icon={RotateCcw}
+												disabled={busy}
+												onClick={() =>
+													void run(() =>
+														props.onGenerate(material, false),
+													)
+												}
+											>
+												{t.retry}
+											</Button>
+										)}
+								</output>
+							)}
+							{(error || snapshot.error) && (
+								<p role="alert" className={styles.alert}>
+									{error ?? snapshot.error}
+								</p>
+							)}
+							{snapshot.invalidatedMarks > 0 && (
+								<p className={styles.notice}>
+									{t.marksInvalidated(snapshot.invalidatedMarks)}
+								</p>
+							)}
+							<PracticeSurface
+								runtime={runtime}
+								snapshot={snapshot}
+								t={t}
+								surfaceRef={practiceRef}
+							/>
 						</>
 					)}
-					{(error || snapshot.error) && (
-						<p role="alert" className={styles.error}>
+					{!material && (error || snapshot.error) && (
+						<p role="alert" className={styles.alert}>
 							{error ?? snapshot.error}
 						</p>
 					)}
-					{snapshot.invalidatedMarks > 0 && (
-						<output>{t.marksInvalidated(snapshot.invalidatedMarks)}</output>
-					)}
-					{(generating || draftForMaterial) && draft.status !== "idle" && (
-						<section className={`fc-panel ${styles.panel}`} aria-label={t.review}>
-							<h3>{t.review}</h3>
-							{generating && (
-								<output>
-									{draft.status === "preparing"
-										? t.preparing
-										: draft.status === "aligning"
-											? t.aligning
-											: t.transcribing}{" "}
-									{draft.totalChunks > 0
-										? t.chunks(draft.completedChunks, draft.totalChunks)
-										: ""}
-								</output>
-							)}
-							{draft.error && (
-								<p role="alert" className={styles.error}>
-									{draft.error}
-								</p>
-							)}
-							{draft.status === "cancelled" && <output>{t.cancelled}</output>}
-							{generating && (
-								<Button onClick={() => generation.cancel()}>{t.cancel}</Button>
-							)}
-							{draftForMaterial &&
-								(draft.status === "error" || draft.status === "cancelled") && (
-									<Button
-										disabled={busy}
-										onClick={() =>
-											void run(() => props.onGenerate(material, false))
-										}
-									>
-										{t.retry}
-									</Button>
-								)}
-							{draftForMaterial && draft.status === "review" && (
-								<>
-									<p>{t.reviewHint}</p>
-									<div className={styles.draftList}>
-										{draft.cues.map((cue, index) => (
-											<div key={cue.id} className={styles.draftCue}>
-												<span>{index + 1}</span>
-												<label>
-													{t.cueText}
-													<textarea
-														value={cue.text}
-														onChange={(event) =>
-															generation.editCue(cue.id, {
-																text: event.target.value,
-															})
-														}
-													/>
-												</label>
-												<div className={styles.row}>
-													<label>
-														{t.start}
-														<input
-															type="number"
-															min="0"
-															step="0.01"
-															value={cue.start ?? ""}
-															onChange={(event) =>
-																generation.editCue(cue.id, {
-																	start:
-																		event.target.value === ""
-																			? null
-																			: Number(
-																					event.target
-																						.value,
-																				),
-																})
-															}
-														/>
-													</label>
-													<label>
-														{t.end}
-														<input
-															type="number"
-															min="0"
-															step="0.01"
-															value={cue.end ?? ""}
-															onChange={(event) =>
-																generation.editCue(cue.id, {
-																	end:
-																		event.target.value === ""
-																			? null
-																			: Number(
-																					event.target
-																						.value,
-																				),
-																})
-															}
-														/>
-													</label>
-													<Button
-														disabled={
-															cue.start === null ||
-															cue.end === null ||
-															cue.end <= cue.start
-														}
-														onClick={() => {
-															if (
-																cue.start !== null &&
-																cue.end !== null
-															)
-																runtime.preview(cue.start, cue.end);
-														}}
-													>
-														{t.audition}
-													</Button>
-													<Button
-														preset="icon"
-														icon={Trash2}
-														aria-label={`${t.deleteCue} ${index + 1}`}
-														onClick={() => generation.removeCue(cue.id)}
-													/>
-												</div>
-												<label className={styles.checkbox}>
-													<input
-														type="checkbox"
-														checked={!cue.needsReview}
-														onChange={(event) =>
-															generation.editCue(cue.id, {
-																needsReview: !event.target.checked,
-															})
-														}
-													/>
-													{cue.needsReview ? t.pending : t.checked}
-												</label>
-											</div>
-										))}
-									</div>
-									<div className={styles.row}>
-										<Button icon={Plus} onClick={() => generation.addCue()}>
-											{t.addCue}
-										</Button>
-										<Button
-											variant="primary"
-											disabled={busy}
-											onClick={() =>
-												void run(() => props.onSaveDraft(material!.id))
-											}
-										>
-											{busy ? t.busy : t.saveDraft}
-										</Button>
-									</div>
-								</>
-							)}
-						</section>
-					)}
 				</main>
 			</div>
+			{materialDialog !== null && (
+				<MaterialDialog
+					material={materialDialog === "edit" ? (material ?? undefined) : undefined}
+					audioPaths={props.audioPaths}
+					subtitlePaths={props.subtitlePaths}
+					textPaths={props.textPaths}
+					onReadText={props.onReadText}
+					t={t}
+					busy={busy}
+					error={error}
+					onCancel={() => {
+						setError(null);
+						setMaterialDialog(null);
+					}}
+					onSubmit={(value) =>
+						void run(async () => {
+							if (materialDialog === "edit" && material) {
+								runtime.updateMaterial(material.id, {
+									title: value.title,
+									originalText: value.originalText,
+									audioPath: value.audioPath,
+								});
+								if (value.subtitlePath !== material.subtitlePath)
+									await runtime.setSubtitle(
+										material.id,
+										value.subtitlePath ?? null,
+									);
+							} else {
+								await runtime.addMaterial(value);
+							}
+							setMaterialDialog(null);
+						})
+					}
+				/>
+			)}
+			{reviewOpen && reviewReady && material && (
+				<DraftReviewDialog
+					draft={draft}
+					material={material}
+					generation={generation}
+					runtime={runtime}
+					t={t}
+					busy={busy}
+					error={error}
+					onRequestClose={() => {
+						setError(null);
+						setReviewOpen(false);
+					}}
+					onSave={() =>
+						void run(async () => {
+							await props.onSaveDraft(material.id);
+							setReviewOpen(false);
+						})
+					}
+				/>
+			)}
 		</div>
 	);
 }
@@ -364,15 +425,66 @@ interface MaterialInput {
 	subtitlePath: string | null;
 	originalText: string;
 }
-function MaterialForm(
-	props: AudioPracticeViewProps & {
-		material?: AudioMaterial;
-		t: AudioPracticeStrings;
-		busy: boolean;
+
+interface MaterialFormProps {
+	material?: AudioMaterial;
+	error?: string | null;
+	audioPaths: readonly string[];
+	subtitlePaths: readonly string[];
+	textPaths: readonly string[];
+	onReadText: (path: string) => Promise<string>;
+	t: AudioPracticeStrings;
+	busy: boolean;
+	initialFocusProps?: { "data-modal-initial-focus": string };
+	onCancel(): void;
+	onSubmit(value: MaterialInput): void;
+}
+
+function MaterialDialog(
+	props: MaterialFormProps & {
 		onCancel(): void;
-		onSubmit(value: MaterialInput): void;
 	},
 ): React.ReactNode {
+	const { t } = props;
+	const titleId = useId();
+	return (
+		<ModalSurface
+			className={styles.materialDialog}
+			labelledBy={titleId}
+			onRequestClose={props.onCancel}
+			isDismissible={!props.busy}
+		>
+			{({ requestClose, initialFocusProps }) => (
+				<>
+					<div className="flashcard-modal-header">
+						<div className="flashcard-modal-heading">
+							<span id={titleId} className="flashcard-modal-title">
+								<NotebookPen size={17} />
+								{props.material ? t.original : t.add}
+							</span>
+							<span className="flashcard-modal-subtitle">{t.materialDialogHint}</span>
+						</div>
+						<Button
+							preset="icon"
+							icon={X}
+							disabled={props.busy}
+							aria-label={t.close}
+							title={t.close}
+							onClick={requestClose}
+						/>
+					</div>
+					<MaterialForm
+						{...props}
+						initialFocusProps={initialFocusProps}
+						onCancel={requestClose}
+					/>
+				</>
+			)}
+		</ModalSurface>
+	);
+}
+
+function MaterialForm(props: MaterialFormProps): React.ReactNode {
 	const { material, t } = props;
 	const [title, setTitle] = useState(material?.title ?? "");
 	const [audioPath, setAudioPath] = useState(material?.audioPath ?? props.audioPaths[0] ?? "");
@@ -389,7 +501,7 @@ function MaterialForm(
 	);
 	return (
 		<form
-			className={`fc-panel ${styles.form}`}
+			className={styles.materialForm}
 			onSubmit={(event) => {
 				event.preventDefault();
 				if (reading || props.busy || !audioPath) return;
@@ -401,91 +513,114 @@ function MaterialForm(
 				});
 			}}
 		>
-			<label>
-				{t.name}
-				<input value={title} onChange={(event) => setTitle(event.target.value)} />
-			</label>
-			<label>
-				{t.audio}
-				<select
-					value={audioPath}
-					onChange={(event) => setAudioPath(event.target.value)}
-					required
-				>
-					<option value="">{t.choose}</option>
-					{Array.from(
-						new Set([...(material ? [material.audioPath] : []), ...props.audioPaths]),
-					).map((path) => (
-						<option key={path}>{path}</option>
-					))}
-				</select>
-			</label>
-			<label>
-				{t.subtitle}
-				<select
-					value={subtitlePath}
-					onChange={(event) => setSubtitlePath(event.target.value)}
-				>
-					<option value="">{t.noSubtitle}</option>
-					{Array.from(
-						new Set([
-							...(material?.subtitlePath ? [material.subtitlePath] : []),
-							...props.subtitlePaths,
-						]),
-					).map((path) => (
-						<option key={path}>{path}</option>
-					))}
-				</select>
-			</label>
-			<label>
-				{t.textFile}
-				<select
-					defaultValue=""
-					onChange={(event) => {
-						const path = event.target.value;
-						const version = ++readVersion.current;
-						if (!path) {
+			<div className={cls("flashcard-modal-body", styles.materialBody)}>
+				{props.error && (
+					<p role="alert" className={styles.alert}>
+						{props.error}
+					</p>
+				)}
+				<label className={styles.field}>
+					<span>{t.name}</span>
+					<FlashcardInput
+						value={title}
+						onChange={(event) => setTitle(event.target.value)}
+						{...props.initialFocusProps}
+					/>
+				</label>
+				<label className={styles.field}>
+					<span>{t.audio}</span>
+					<FlashcardSelect
+						value={audioPath}
+						onChange={(event) => setAudioPath(event.target.value)}
+						required
+					>
+						<option value="">{t.choose}</option>
+						{Array.from(
+							new Set([
+								...(material ? [material.audioPath] : []),
+								...props.audioPaths,
+							]),
+						).map((path) => (
+							<option key={path}>{path}</option>
+						))}
+					</FlashcardSelect>
+				</label>
+				<div className={styles.fieldGrid}>
+					<label className={styles.field}>
+						<span>{t.subtitle}</span>
+						<FlashcardSelect
+							value={subtitlePath}
+							onChange={(event) => setSubtitlePath(event.target.value)}
+						>
+							<option value="">{t.noSubtitle}</option>
+							{Array.from(
+								new Set([
+									...(material?.subtitlePath ? [material.subtitlePath] : []),
+									...props.subtitlePaths,
+								]),
+							).map((path) => (
+								<option key={path}>{path}</option>
+							))}
+						</FlashcardSelect>
+					</label>
+					<label className={styles.field}>
+						<span>{t.textFile}</span>
+						<FlashcardSelect
+							defaultValue=""
+							onChange={(event) => {
+								const path = event.target.value;
+								const version = ++readVersion.current;
+								if (!path) {
+									setReading(false);
+									return;
+								}
+								setReadError(null);
+								setReading(true);
+								void props.onReadText(path).then(
+									(value) => {
+										if (readVersion.current === version) {
+											setText(value);
+											setReading(false);
+										}
+									},
+									(cause) => {
+										if (readVersion.current === version) {
+											setReadError(
+												cause instanceof Error ? cause.message : t.failed,
+											);
+											setReading(false);
+										}
+									},
+								);
+							}}
+						>
+							<option value="">{t.choose}</option>
+							{props.textPaths.map((path) => (
+								<option key={path}>{path}</option>
+							))}
+						</FlashcardSelect>
+					</label>
+				</div>
+				<label className={styles.field}>
+					<span>{t.text}</span>
+					<FlashcardTextarea
+						value={text}
+						onChange={(event) => {
+							readVersion.current++;
 							setReading(false);
-							return;
-						}
-						setReadError(null);
-						setReading(true);
-						void props.onReadText(path).then(
-							(value) => {
-								if (readVersion.current === version) {
-									setText(value);
-									setReading(false);
-								}
-							},
-							(cause) => {
-								if (readVersion.current === version) {
-									setReadError(cause instanceof Error ? cause.message : t.failed);
-									setReading(false);
-								}
-							},
-						);
-					}}
-				>
-					<option value="">{t.choose}</option>
-					{props.textPaths.map((path) => (
-						<option key={path}>{path}</option>
-					))}
-				</select>
-			</label>
-			<label>
-				{t.text}
-				<textarea
-					value={text}
-					onChange={(event) => {
-						readVersion.current++;
-						setReading(false);
-						setText(event.target.value);
-					}}
-					rows={5}
-				/>
-			</label>
-			{readError && <p role="alert">{readError}</p>}
-			<div className={styles.row}>
+							setText(event.target.value);
+						}}
+						rows={5}
+					/>
+				</label>
+				{readError && (
+					<p role="alert" className={styles.alert}>
+						{readError}
+					</p>
+				)}
+			</div>
+			<div className={cls("flashcard-modal-footer", styles.dialogFooter)}>
+				<Button onClick={() => props.onCancel()}>{t.cancel}</Button>
 				<Button
 					type="submit"
 					variant="primary"
@@ -493,9 +628,201 @@ function MaterialForm(
 				>
 					{material ? t.save : t.create}
 				</Button>
-				<Button onClick={() => props.onCancel()}>{t.cancel}</Button>
 			</div>
 		</form>
+	);
+}
+
+interface DraftReviewBodyProps {
+	draft: GenerationSnapshot;
+	material: AudioMaterial;
+	generation: Pick<SubtitleGeneration, "editCue" | "addCue" | "removeCue">;
+	runtime: Pick<AudioPracticeRuntime, "preview">;
+	t: AudioPracticeStrings;
+	busy: boolean;
+	error: string | null;
+	titleId: string;
+	hintId: string;
+	initialFocusProps?: { "data-modal-initial-focus": string };
+	requestClose(): void;
+	onSave(): void;
+}
+
+function DraftReviewDialog(
+	props: Omit<DraftReviewBodyProps, "titleId" | "hintId" | "requestClose"> & {
+		onRequestClose(): void;
+	},
+): React.ReactNode {
+	const titleId = useId();
+	const hintId = useId();
+	return (
+		<ModalSurface
+			className={styles.reviewDialog}
+			labelledBy={titleId}
+			describedBy={hintId}
+			onRequestClose={() => props.onRequestClose()}
+			isDismissible={!props.busy}
+		>
+			{({ requestClose, initialFocusProps }) => (
+				<DraftReviewBody
+					{...props}
+					titleId={titleId}
+					hintId={hintId}
+					initialFocusProps={initialFocusProps}
+					requestClose={requestClose}
+				/>
+			)}
+		</ModalSurface>
+	);
+}
+
+export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
+	const { draft, material, generation, runtime, t, busy, error } = props;
+	const pending = draft.cues.filter((cue) => cue.needsReview).length;
+	return (
+		<>
+			<div className="flashcard-modal-header">
+				<div className="flashcard-modal-heading">
+					<span id={props.titleId} className="flashcard-modal-title">
+						<Captions size={17} />
+						{t.review}
+					</span>
+					<span id={props.hintId} className="flashcard-modal-subtitle">
+						{material.title} · {t.reviewHint}
+					</span>
+				</div>
+				<Button
+					preset="icon"
+					icon={X}
+					disabled={busy}
+					aria-label={t.close}
+					title={t.close}
+					onClick={() => props.requestClose()}
+				/>
+			</div>
+			<div className={cls("flashcard-modal-body", styles.reviewBody)}>
+				<div className={styles.reviewSummary}>
+					<span>{t.reviewSummary(pending, draft.cues.length)}</span>
+				</div>
+				{error && (
+					<p role="alert" className={styles.alert}>
+						{error}
+					</p>
+				)}
+				<ol className={styles.draftList}>
+					{draft.cues.map((cue, index) => {
+						const invalid =
+							cue.start === null || cue.end === null || cue.end <= cue.start;
+						return (
+							<li key={cue.id} className={styles.draftCue}>
+								<div className={styles.draftCueHeader}>
+									<span className={styles.draftCueIndex}>
+										{String(index + 1).padStart(2, "0")}
+									</span>
+									<FlashcardCheckbox
+										checked={!cue.needsReview}
+										onChange={(event) =>
+											generation.editCue(cue.id, {
+												needsReview: !event.target.checked,
+											})
+										}
+										label={cue.needsReview ? t.pending : t.checked}
+									/>
+									<span className={styles.draftCueTime}>
+										{cue.start === null ? "—" : timeLabel(cue.start)}
+										<span aria-hidden="true">–</span>
+										{cue.end === null ? "—" : timeLabel(cue.end)}
+									</span>
+									<Button
+										preset="icon"
+										size="sm"
+										icon={Trash2}
+										className={styles.draftDelete}
+										aria-label={`${t.deleteCue} ${index + 1}`}
+										title={t.deleteCue}
+										onClick={() => generation.removeCue(cue.id)}
+									/>
+								</div>
+								<FlashcardTextarea
+									value={cue.text}
+									onChange={(event) =>
+										generation.editCue(cue.id, {
+											text: event.target.value,
+										})
+									}
+									aria-label={`${t.cueText} ${index + 1}`}
+									rows={2}
+									{...(index === 0 ? props.initialFocusProps : undefined)}
+								/>
+								<div className={styles.draftTimeRow}>
+									<label className={styles.timeField}>
+										<span>{t.start}</span>
+										<FlashcardInput
+											type="number"
+											min="0"
+											step="0.01"
+											inputSize="sm"
+											fullWidth={false}
+											value={cue.start ?? ""}
+											onChange={(event) =>
+												generation.editCue(cue.id, {
+													start:
+														event.target.value === ""
+															? null
+															: Number(event.target.value),
+												})
+											}
+										/>
+									</label>
+									<label className={styles.timeField}>
+										<span>{t.end}</span>
+										<FlashcardInput
+											type="number"
+											min="0"
+											step="0.01"
+											inputSize="sm"
+											fullWidth={false}
+											value={cue.end ?? ""}
+											onChange={(event) =>
+												generation.editCue(cue.id, {
+													end:
+														event.target.value === ""
+															? null
+															: Number(event.target.value),
+												})
+											}
+										/>
+									</label>
+									<Button
+										size="sm"
+										icon={Play}
+										disabled={invalid}
+										onClick={() => {
+											if (cue.start !== null && cue.end !== null)
+												runtime.preview(cue.start, cue.end);
+										}}
+									>
+										{t.audition}
+									</Button>
+								</div>
+							</li>
+						);
+					})}
+				</ol>
+			</div>
+			<div className={cls("flashcard-modal-footer", styles.dialogFooter)}>
+				<Button icon={Plus} onClick={() => generation.addCue()} disabled={busy}>
+					{t.addCue}
+				</Button>
+				<span className={styles.footerSpacer} />
+				<Button onClick={() => props.requestClose()} disabled={busy}>
+					{t.close}
+				</Button>
+				<Button variant="primary" disabled={busy} onClick={() => props.onSave()}>
+					{busy ? t.busy : t.saveDraft}
+				</Button>
+			</div>
+		</>
 	);
 }
 
@@ -503,10 +830,12 @@ export function PracticeSurface({
 	runtime,
 	snapshot,
 	t,
+	surfaceRef,
 }: {
 	runtime: AudioPracticeRuntime;
 	snapshot: AudioPracticeSnapshot;
 	t: AudioPracticeStrings;
+	surfaceRef?: React.Ref<HTMLElement>;
 }): React.ReactNode {
 	const marks = snapshot.currentMaterial
 		? (snapshot.progress[snapshot.currentMaterial.id]?.difficultCueIds ?? [])
@@ -518,7 +847,8 @@ export function PracticeSurface({
 		// The practice panel is a composite keyboard surface with its own focus target.
 		/* oxlint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */
 		<section
-			className={`fc-panel fc-focus-ring ${styles.practice}`}
+			ref={surfaceRef}
+			className={cls("fc-panel fc-focus-ring", styles.practice)}
 			aria-label={t.captions}
 			tabIndex={0}
 			onKeyDown={(event) => {
@@ -545,120 +875,208 @@ export function PracticeSurface({
 				}
 			}}
 		>
-			<div className={styles.row}>
-				<label>
-					{t.mode}
-					<select
-						value={snapshot.mode}
-						onChange={(event) =>
-							runtime.setMode(
-								event.target.value === "sentence" ? "sentence" : "continuous",
-							)
-						}
+			<header className={styles.practiceHeader}>
+				<fieldset className={styles.modeSwitch} aria-label={t.mode}>
+					<Button
+						size="sm"
+						variant="ghost"
+						icon={ListMusic}
+						active={snapshot.mode === "sentence"}
+						aria-pressed={snapshot.mode === "sentence"}
+						onClick={() => runtime.setMode("sentence")}
 					>
-						<option value="sentence">{t.sentence}</option>
-						<option value="continuous">{t.continuous}</option>
-					</select>
-				</label>
-				<label className={styles.checkbox}>
-					<input
-						type="checkbox"
+						{t.sentence}
+					</Button>
+					<Button
+						size="sm"
+						variant="ghost"
+						icon={AudioLines}
+						active={snapshot.mode === "continuous"}
+						aria-pressed={snapshot.mode === "continuous"}
+						disabled={snapshot.difficultOnly}
+						title={snapshot.difficultOnly ? t.modeLocked : t.continuous}
+						onClick={() => runtime.setMode("continuous")}
+					>
+						{t.continuous}
+					</Button>
+				</fieldset>
+				<span className={styles.toolbarDivider} aria-hidden="true" />
+				<div className={styles.toggleGroup}>
+					<FlashcardCheckbox
 						checked={snapshot.blind}
 						onChange={(event) => runtime.setBlind(event.target.checked)}
+						label={t.blind}
 					/>
-					{t.blind}
-				</label>
-				<label className={styles.checkbox}>
-					<input
-						type="checkbox"
+					<FlashcardCheckbox
 						checked={snapshot.difficultOnly}
 						onChange={(event) => runtime.setDifficultOnly(event.target.checked)}
+						label={t.difficultOnly}
 					/>
-					{t.difficultOnly}
-				</label>
+				</div>
 				{snapshot.blind && (
-					<Button disabled={!snapshot.currentCueId} onClick={() => runtime.reveal()}>
+					<Button
+						size="sm"
+						icon={EyeOff}
+						disabled={!snapshot.currentCueId}
+						onClick={() => runtime.reveal()}
+					>
 						{t.reveal}
 					</Button>
 				)}
-			</div>
-			<div className={styles.cues}>
-				{cues.length === 0 && <p>{snapshot.cues.length ? t.noDifficult : t.noCues}</p>}
-				{cues.map((cue) => (
-					<div
-						key={cue.id}
-						className={`${styles.cue} ${cue.id === snapshot.currentCueId ? styles.active : ""}`}
-					>
-						<Button variant="ghost" onClick={() => runtime.selectCue(cue.id, true)}>
-							<small>
-								{timeLabel(cue.start)}–{timeLabel(cue.end)}
-							</small>
-							<span>
-								{snapshot.blind &&
-								!(cue.id === snapshot.currentCueId && snapshot.revealed)
-									? t.hidden
-									: cue.text}
-							</span>
-						</Button>
-						<Button
-							preset="icon"
-							icon={Star}
-							active={marks.includes(cue.id)}
-							aria-pressed={marks.includes(cue.id)}
-							aria-label={`${t.difficult}: ${timeLabel(cue.start)}`}
-							onClick={() => runtime.toggleDifficult(cue.id)}
-						/>
+				<span className={styles.toolbarSpacer} />
+				<span className={styles.shortcutHint} aria-hidden="true">
+					{t.shortcuts}
+				</span>
+				<span className={styles.cueCount}>{t.segments(cues.length)}</span>
+			</header>
+			<div className={styles.cueScroll}>
+				{cues.length === 0 ? (
+					<div className={styles.cueEmpty}>
+						<ListMusic size={22} strokeWidth={1.6} aria-hidden="true" />
+						<p>{snapshot.cues.length ? t.noDifficult : t.noCues}</p>
 					</div>
-				))}
+				) : (
+					<ol className={styles.cueList}>
+						{cues.map((cue) => {
+							const active = cue.id === snapshot.currentCueId;
+							const marked = marks.includes(cue.id);
+							const hidden = snapshot.blind && !(active && snapshot.revealed);
+							return (
+								<li
+									key={cue.id}
+									data-current-cue={active ? "true" : undefined}
+									className={cls(styles.cue, active && styles.cueActive)}
+								>
+									<button
+										type="button"
+										className={styles.cueSelect}
+										aria-current={active ? "true" : undefined}
+										onClick={() => runtime.selectCue(cue.id, true)}
+									>
+										<span className={styles.cueTime}>
+											{timeLabel(cue.start)}
+										</span>
+										<span className={styles.cueText}>
+											{hidden ? (
+												<span className={styles.cueHidden}>
+													<EyeOff size={13} aria-hidden="true" />
+													{t.hidden}
+												</span>
+											) : (
+												cue.text
+											)}
+										</span>
+									</button>
+									<button
+										type="button"
+										className={cls(
+											styles.cueStar,
+											marked && styles.cueStarActive,
+										)}
+										aria-pressed={marked}
+										aria-label={`${t.difficult}: ${timeLabel(cue.start)}`}
+										title={t.difficult}
+										onClick={() => runtime.toggleDifficult(cue.id)}
+									>
+										<Star size={15} aria-hidden="true" />
+									</button>
+								</li>
+							);
+						})}
+					</ol>
+				)}
 			</div>
-			<div className={styles.controls}>
-				<label className={styles.seek}>
-					{t.progress}
-					<input
-						type="range"
-						min="0"
-						max={snapshot.duration ?? 0}
-						step="0.05"
-						value={snapshot.currentTime}
-						disabled={!snapshot.duration}
-						onChange={(event) => runtime.seekTo(Number(event.target.value))}
-					/>
-					<small>
-						{timeLabel(snapshot.currentTime)} / {timeLabel(snapshot.duration ?? 0)}
-					</small>
-				</label>
-				<div className={styles.row}>
+			{renderPlayerDock(runtime, snapshot, t)}
+		</section>
+	);
+}
+
+function renderPlayerDock(
+	runtime: AudioPracticeRuntime,
+	snapshot: AudioPracticeSnapshot,
+	t: AudioPracticeStrings,
+): React.ReactNode {
+	const duration = snapshot.duration ?? 0;
+	const position = snapshot.currentCueId
+		? snapshot.cues.findIndex((cue) => cue.id === snapshot.currentCueId)
+		: -1;
+	const offset = snapshot.currentMaterial
+		? (snapshot.progress[snapshot.currentMaterial.id]?.offset ?? 0)
+		: 0;
+	const hasCues = snapshot.cues.length > 0;
+	return (
+		<footer className={styles.player} aria-label={t.playbackOptions}>
+			<div className={styles.seekRow}>
+				<span className={styles.time}>{timeLabel(snapshot.currentTime)}</span>
+				<FlashcardSlider
+					wrapperClassName={styles.seek}
+					aria-label={t.progress}
+					min={0}
+					max={duration}
+					step={0.05}
+					value={Math.min(snapshot.currentTime, duration)}
+					disabled={!duration}
+					onChange={(event) => runtime.seekTo(Number(event.target.value))}
+				/>
+				<span className={styles.time}>{timeLabel(duration)}</span>
+			</div>
+			<div className={styles.playerRow}>
+				<div className={styles.nowPlaying}>
+					<span className={styles.nowPlayingTitle}>
+						{snapshot.currentMaterial?.title ?? ""}
+					</span>
+					<span className={styles.nowPlayingMeta}>
+						<span>{snapshot.mode === "sentence" ? t.sentence : t.continuous}</span>
+						<span aria-hidden="true">·</span>
+						<span>
+							{position >= 0
+								? t.cueCounter(position + 1, snapshot.cues.length)
+								: t.noCues}
+						</span>
+					</span>
+				</div>
+				<fieldset className={styles.transport} aria-label={t.captions}>
 					<Button
 						preset="icon"
 						icon={SkipBack}
 						aria-label={t.previous}
-						disabled={!cues.length}
+						title={t.previous}
+						disabled={!hasCues}
 						onClick={() => runtime.previous()}
 					/>
-					<Button
-						icon={snapshot.playing ? Pause : Play}
-						variant="primary"
-						onClick={() => runtime.togglePlayback()}
-					>
-						{snapshot.playing ? t.pause : t.play}
-					</Button>
 					<Button
 						preset="icon"
 						icon={RotateCcw}
 						aria-label={t.repeat}
-						disabled={!cues.length}
+						title={t.repeat}
+						disabled={!hasCues}
 						onClick={() => runtime.repeat()}
+					/>
+					<Button
+						preset="icon"
+						variant="primary"
+						icon={snapshot.playing ? Pause : Play}
+						iconSize={20}
+						className={styles.playButton}
+						aria-label={snapshot.playing ? t.pause : t.play}
+						title={snapshot.playing ? t.pause : t.play}
+						onClick={() => runtime.togglePlayback()}
 					/>
 					<Button
 						preset="icon"
 						icon={SkipForward}
 						aria-label={t.next}
-						disabled={!cues.length}
+						title={t.next}
+						disabled={!hasCues}
 						onClick={() => runtime.next()}
 					/>
-					<label>
-						{t.rate}
-						<select
+				</fieldset>
+				<div className={styles.playerOptions}>
+					<label className={styles.option}>
+						<span>{t.rate}</span>
+						<FlashcardSelect
+							wrapperClassName={styles.rateSelect}
+							aria-label={t.rate}
 							value={snapshot.playbackRate}
 							onChange={(event) =>
 								runtime.setPlaybackRate(
@@ -673,18 +1091,18 @@ export function PracticeSurface({
 									{rate}×
 								</option>
 							))}
-						</select>
+						</FlashcardSelect>
 					</label>
-					<label>
-						{t.offset}
-						<input
+					<label className={styles.option}>
+						<span>{t.offset}</span>
+						<FlashcardInput
 							type="number"
 							step="0.1"
-							value={
-								snapshot.currentMaterial
-									? (snapshot.progress[snapshot.currentMaterial.id]?.offset ?? 0)
-									: 0
-							}
+							inputSize="sm"
+							fullWidth={false}
+							className={styles.offsetInput}
+							aria-label={t.offset}
+							value={offset}
 							onChange={(event) => {
 								if (Number.isFinite(event.target.valueAsNumber))
 									runtime.setOffset(event.target.valueAsNumber);
@@ -693,9 +1111,15 @@ export function PracticeSurface({
 					</label>
 				</div>
 			</div>
-		</section>
+		</footer>
 	);
 }
+
+function fileName(path: string): string {
+	return path.split("/").pop() ?? path;
+}
+
 function timeLabel(seconds: number): string {
+	if (!Number.isFinite(seconds) || seconds < 0) return "0:00.0";
 	return `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(1).padStart(4, "0")}`;
 }
