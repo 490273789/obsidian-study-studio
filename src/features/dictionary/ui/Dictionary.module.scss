@@ -623,11 +623,9 @@
 }
 
 .favoriteHeader {
-	display: flex;
-	flex-direction: column;
-	gap: var(--fc-space-half);
-
+	margin-top: var(--fc-space-4);
 	h2 {
+		text-align: center;
 		margin: 0;
 		font-size: var(--fc-font-lg);
 		font-weight: var(--fc-weight-semibold);

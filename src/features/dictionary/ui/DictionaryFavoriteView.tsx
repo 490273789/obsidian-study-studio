@@ -40,7 +40,6 @@ export function DictionaryFavoriteView({
 			aria-busy={busy}
 		>
 			<header className={cls("flashcard-dictionary-favorite-header", styles.favoriteHeader)}>
-				<p className="fc-kicker">{strings.favoriteSidebarEyebrow}</p>
 				<h2>{strings.favoriteSidebarTitle}</h2>
 			</header>
 

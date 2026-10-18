@@ -12,6 +12,8 @@ class MockElement {
 	text = "";
 	inputEl = this;
 	scrollTop = 0;
+	scrollLeft = 0;
+	scrollIntoView = vi.fn();
 	scrollHeight = 1000;
 	clientHeight = 500;
 	style: Record<string, string> = {};
@@ -603,5 +605,44 @@ describe("FlashcardSettingTab", () => {
 
 		// Should restore the previously recorded 400px scroll for flashcards
 		expect(container.scrollTop).toBe(400);
+	});
+
+	it("keeps the section strip's horizontal scroll offset across re-renders", () => {
+		const plugin = createMockPlugin();
+		const tab = new FlashcardSettingTab({} as never, plugin as never);
+		tab.display();
+
+		const container = tab.containerEl as unknown as MockElement;
+		const navEl = container.children.find((c) => c.classList.has("fc-settings-tab-nav"));
+		navEl!.scrollLeft = 96;
+
+		// Rendering replaces the strip; without remembering its offset the active
+		// tab would jump back to the left edge on every refresh.
+		tab.refresh();
+
+		const nextNavEl = (tab.containerEl as unknown as MockElement).children.find((c) =>
+			c.classList.has("fc-settings-tab-nav"),
+		);
+		expect(nextNavEl?.scrollLeft).toBe(96);
+	});
+
+	it("reveals the active tab when a section is opened programmatically", () => {
+		const plugin = createMockPlugin();
+		const tab = new FlashcardSettingTab(
+			{ setting: { open: vi.fn(), openTabById: vi.fn() } } as never,
+			plugin as never,
+		);
+
+		tab.open("dictionary");
+		tab.display();
+
+		const container = tab.containerEl as unknown as MockElement;
+		const navEl = container.children.find((c) => c.classList.has("fc-settings-tab-nav"));
+		const tabButtons = navEl?.children ?? [];
+		expect(tabButtons[3]?.scrollIntoView).toHaveBeenCalledWith({
+			block: "nearest",
+			inline: "nearest",
+		});
+		expect(tabButtons[0]?.scrollIntoView).not.toHaveBeenCalled();
 	});
 });

@@ -44,15 +44,29 @@
 
 	.fc-settings-tab-nav {
 		display: flex;
+		flex-wrap: nowrap;
 		align-items: center;
 		gap: var(--fc-space-4);
 		padding: var(--fc-space-1) 0 var(--fc-space-4);
 		margin-bottom: var(--fc-space-3);
 		border-bottom: 1px solid var(--fc-line-soft);
+		// The section strip is its own horizontal scroller: overflowing tabs must
+		// not widen the settings page (which would scroll the whole panel sideways).
+		overflow-x: auto;
+		overflow-y: hidden;
+		overscroll-behavior-x: contain;
+		-webkit-overflow-scrolling: touch;
+		scrollbar-width: none;
+		-ms-overflow-style: none;
+		max-width: 100%;
 	}
 
 	.fc-settings-tab-btn {
 		display: inline-flex;
+		// Keep every tab at its natural width so the strip overflows and scrolls
+		// instead of squeezing labels.
+		flex: 0 0 auto;
+		white-space: nowrap;
 		align-items: center;
 		justify-content: center;
 		padding: var(--fc-space-2) var(--fc-space-5);

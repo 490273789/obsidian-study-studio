@@ -184,6 +184,8 @@
 	gap: var(--fc-space-2);
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);
+	/* Auto tracks shrink to the row's 60px minimum in a constrained scroller. */
+	grid-auto-rows: max-content;
 	align-content: start;
 	-webkit-overflow-scrolling: touch;
 

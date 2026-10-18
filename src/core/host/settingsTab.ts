@@ -16,6 +16,8 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 	private sectionScrollPositions = new Map<string, number>();
 	private activePresentation: SettingsPresentation | null = null;
 	private disposeControls: (() => void) | null = null;
+	private navEl: HTMLElement | null = null;
+	private navScrollLeft = 0;
 	private pendingSortFocus: string | null = null;
 	private renderedSectionId = "";
 	private renderedLanguage: Language | null = null;
@@ -150,6 +152,20 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 		this.renderSettings({ preserveScroll: true });
 	}
 
+	/** The section strip is its own horizontal scroller, so remember its offset across re-renders. */
+	private rememberNavScroll(): void {
+		const scrollLeft = this.navEl?.scrollLeft;
+		if (typeof scrollLeft === "number") this.navScrollLeft = scrollLeft;
+	}
+
+	/** Keep the active section's tab visible when the strip overflows. */
+	private revealActiveTab(activeTabEl: HTMLElement | null): void {
+		if (!activeTabEl) return;
+		const scrollIntoView = activeTabEl.scrollIntoView;
+		if (typeof scrollIntoView !== "function") return;
+		scrollIntoView.call(activeTabEl, { block: "nearest", inline: "nearest" });
+	}
+
 	private renderSettings(options: { preserveScroll?: boolean } = { preserveScroll: true }): void {
 		const { containerEl } = this;
 		const activeSection = this.activeSection();
@@ -192,6 +208,8 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 		} else if (focused && focused !== containerEl.ownerDocument.body) {
 			this.pendingSortFocus = null;
 		}
+		const sectionChanged = activeSectionId !== this.renderedSectionId;
+		this.rememberNavScroll();
 		this.activePresentation?.dispose();
 		this.disposeControls?.();
 		this.disposeControls = null;
@@ -204,6 +222,7 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 		this.renderedLanguage = language;
 		this.renderedNavigationKey = this.navigationKey(sections, language);
 		const navEl = containerEl.createDiv({ cls: "fc-settings-tab-nav" });
+		let activeTabEl: HTMLButtonElement | null = null;
 
 		for (const section of sections) {
 			const tabBtn = navEl.createEl("button", {
@@ -211,6 +230,7 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 				text: section.label(language),
 				cls: `fc-settings-tab-btn ${activeSection?.id === section.id ? "is-active" : ""}`,
 			});
+			if (section.id === activeSection?.id) activeTabEl = tabBtn;
 			tabBtn.addEventListener("click", () => {
 				if (this.activeSectionId !== section.id) {
 					if (activeSectionId) {
@@ -225,6 +245,9 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 				}
 			});
 		}
+
+		this.navEl = navEl;
+		navEl.scrollLeft = this.navScrollLeft;
 
 		const contentEl = containerEl.createDiv({ cls: "fc-settings-tab-content" });
 
@@ -245,6 +268,7 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 			}
 		}
 
+		if (sectionChanged) this.revealActiveTab(activeTabEl);
 		this.restoreScroll(targetScrollTop);
 
 		if (shouldPreserve && containerEl.style) {
