@@ -54,6 +54,8 @@ const zh = {
 	captions: "字幕",
 	review: "校对字幕草稿",
 	reviewHint: "逐段试听并检查文字和时间。未确定的时间必须修正，或删除该片段。",
+	noWordTimestamps:
+		"当前服务未返回词级时间戳，已使用识别分句结果；请人工校对时间，或改用支持词级时间戳的模型。",
 	start: "开始（秒）",
 	end: "结束（秒）",
 	cueText: "片段文字",
@@ -130,6 +132,8 @@ const en: typeof zh = {
 	review: "Review subtitle draft",
 	reviewHint:
 		"Listen to each segment and check its text and timing. Fix missing times or remove the segment.",
+	noWordTimestamps:
+		"The configured service returned no word timestamps. Sentence-level results are used; review the timing manually or switch to a model that returns word timestamps.",
 	start: "Start (seconds)",
 	end: "End (seconds)",
 	cueText: "Segment text",

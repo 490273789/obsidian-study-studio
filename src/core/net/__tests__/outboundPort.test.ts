@@ -38,6 +38,22 @@ describe("outbound port", () => {
 		);
 	});
 
+	it("passes a binary body through to requestUrl unchanged", async () => {
+		reply(200);
+		const { port } = createPort();
+		const body = new Uint8Array([0x80, 0xff, 0x00]).buffer;
+
+		await port.request({
+			label: "multipart",
+			url: "https://example.test",
+			method: "POST",
+			body,
+		});
+		expect(requestUrlMock).toHaveBeenCalledWith(
+			expect.objectContaining({ body, method: "POST" }),
+		);
+	});
+
 	it.each([
 		[401, "unauthorized"],
 		[403, "unauthorized"],

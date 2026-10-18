@@ -1,5 +1,6 @@
 import { defineSettings } from "../../../core/settings/presentation";
 import type { Language } from "../../../core/shared/types";
+import type { TranscriptionProviderId } from "../generation/types";
 import type { AudioPracticeSettings } from "./slice";
 import { audioSettingsCopy } from "./copy";
 
@@ -21,23 +22,81 @@ export function audioPracticeSettingsPresentation(
 			);
 		});
 		page.group("service", t.service, (group) => {
-			group.text(
-				"workspace",
-				{ name: t.workspace, description: t.workspaceHint },
+			group.select<TranscriptionProviderId>(
+				"provider",
+				{ name: t.provider, description: t.providerHint },
 				{
-					value: settings.workspaceId,
-					onChange: (workspaceId) => update({ workspaceId: workspaceId.trim() }),
+					value: settings.provider,
+					options: [
+						{ value: "bailian", label: t.providerBailian },
+						{ value: "openai-compatible", label: t.providerOpenAi },
+					],
+					onChange: (provider) => update({ provider }),
+				},
+			);
+			if (settings.provider === "bailian") {
+				group.text(
+					"workspace",
+					{ name: t.workspace, description: t.workspaceHint },
+					{
+						value: settings.bailianWorkspaceId,
+						onChange: (bailianWorkspaceId) =>
+							update({ bailianWorkspaceId: bailianWorkspaceId.trim() }),
+					},
+				);
+				group.text(
+					"model",
+					{ name: t.bailianModel, description: t.bailianModelHint },
+					{
+						value: settings.bailianModel,
+						onChange: (bailianModel) => update({ bailianModel: bailianModel.trim() }),
+					},
+				);
+				group.secret(
+					"secret",
+					{ name: t.bailianSecret, description: t.bailianSecretHint },
+					{
+						value: settings.bailianSecretId,
+						onChange: (bailianSecretId) => update({ bailianSecretId }),
+					},
+				);
+				group.row(
+					"explanation",
+					{ name: t.service, description: t.bailianServiceHint },
+					() => {},
+				);
+				return;
+			}
+			group.text(
+				"base-url",
+				{ name: t.baseUrl, description: t.baseUrlHint },
+				{
+					value: settings.openaiBaseUrl,
+					placeholder: "https://api.openai.com/v1",
+					onChange: (openaiBaseUrl) => update({ openaiBaseUrl: openaiBaseUrl.trim() }),
+				},
+			);
+			group.text(
+				"model",
+				{ name: t.openaiModel, description: t.openaiModelHint },
+				{
+					value: settings.openaiModel,
+					onChange: (openaiModel) => update({ openaiModel: openaiModel.trim() }),
 				},
 			);
 			group.secret(
 				"secret",
-				{ name: t.secret, description: t.secretHint },
+				{ name: t.openaiSecret, description: t.openaiSecretHint },
 				{
-					value: settings.secretId,
-					onChange: (secretId) => update({ secretId }),
+					value: settings.openaiSecretId,
+					onChange: (openaiSecretId) => update({ openaiSecretId }),
 				},
 			);
-			group.row("explanation", { name: t.service, description: t.serviceHint }, () => {});
+			group.row(
+				"explanation",
+				{ name: t.service, description: t.openaiServiceHint },
+				() => {},
+			);
 		});
 	});
 }

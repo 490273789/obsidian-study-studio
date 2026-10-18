@@ -154,6 +154,7 @@ describe("subtitle draft review", () => {
 			totalChunks: 1,
 			duration: 120,
 			error: null,
+			notice: null,
 			taskKey: material.id,
 		};
 		const edits: { id: string; patch: Record<string, unknown> }[] = [];

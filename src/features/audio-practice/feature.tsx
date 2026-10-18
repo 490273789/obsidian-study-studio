@@ -15,7 +15,9 @@ import { createAudioPracticeRepository } from "./obsidian/repositoryAdapter";
 import { createAudioPracticeFiles, listAudioPracticeFiles } from "./obsidian/vaultFiles";
 import { SubtitleGeneration, normalizeGenerationDraft } from "./generation/subtitleGeneration";
 import { createBrowserAudioPreparation } from "./generation/browserAudio";
-import { createFunAsrProvider } from "./generation/funAsrProvider";
+import { createTranscriptionProvider } from "./generation/providers";
+import { validateTranscriptionConfig } from "./generation/transcriptionConfig";
+import type { TranscriptionConfig } from "./generation/types";
 import { AudioPracticeView } from "./ui/AudioPracticeView";
 import { audioSettingsCopy } from "./settings/copy";
 import { audioPracticeSettingsPresentation } from "./settings/viewModel";
@@ -24,6 +26,23 @@ import type { AudioPracticeSettings } from "./settings/slice";
 export const AUDIO_PRACTICE_VIEW = "study-studio-audio-practice";
 const SECTION = "audio-practice";
 const DRAFT_PREFIX = "study-studio.audio-practice.draft.";
+
+/** Maps persisted settings onto the provider-specific transcription config. */
+function transcriptionConfig(settings: AudioPracticeSettings): TranscriptionConfig {
+	return settings.provider === "bailian"
+		? {
+				provider: "bailian",
+				workspaceId: settings.bailianWorkspaceId.trim(),
+				secretId: settings.bailianSecretId,
+				model: settings.bailianModel.trim(),
+			}
+		: {
+				provider: "openai-compatible",
+				baseUrl: settings.openaiBaseUrl.trim(),
+				secretId: settings.openaiSecretId,
+				model: settings.openaiModel.trim(),
+			};
+}
 
 export function createAudioPracticeFeature(deps: {
 	store: WorkbenchStore;
@@ -40,7 +59,7 @@ export function createAudioPracticeFeature(deps: {
 			const generation = lifetime.own(
 				new SubtitleGeneration({
 					prepare: createBrowserAudioPreparation(() => mediaWindow),
-					transcribe: createFunAsrProvider(deps.net),
+					transcribe: createTranscriptionProvider(deps.net),
 					drafts: {
 						load: async (key) =>
 							normalizeGenerationDraft(host.app.loadLocalStorage(DRAFT_PREFIX + key)),
@@ -56,17 +75,28 @@ export function createAudioPracticeFeature(deps: {
 				new AudioGenerationActions({
 					generation,
 					readInput: async (material: AudioMaterial) => {
+						const settings = readSettings();
+						const config = transcriptionConfig(settings.audioPractice);
+						// Fail before decoding or any paid request when the configured
+						// service is incomplete.
+						validateTranscriptionConfig(config);
+						let secret: string | null = null;
+						try {
+							secret = deps.net.readSecret(config.secretId);
+						} catch {
+							secret = null;
+						}
+						if (!secret) throw new Error("请在设置中为字幕生成服务配置 API Key 密钥。");
 						const current = runtime
 							.getSnapshot()
 							.materials.find((entry) => entry.id === material.id);
-						if (!current)
-							throw new Error(audioSettingsCopy(readSettings().language).missing);
+						if (!current) throw new Error(audioSettingsCopy(settings.language).missing);
 						const file = host.app.vault.getAbstractFileByPath(current.audioPath);
 						if (!(file instanceof TFile))
-							throw new Error(audioSettingsCopy(readSettings().language).missing);
+							throw new Error(audioSettingsCopy(settings.language).missing);
 						if (file.stat.size > 50 * 1024 * 1024)
 							throw new Error(
-								readSettings().language === "en"
+								settings.language === "en"
 									? "Audio must be at most 50 MiB."
 									: "生成字幕仅支持 50 MiB 以内的音频。",
 							);
@@ -76,7 +106,7 @@ export function createAudioPracticeFeature(deps: {
 							name: file.name,
 							taskKey: material.id,
 							referenceText: current.originalText,
-							config: { ...readSettings().audioPractice },
+							config,
 						};
 					},
 				}),

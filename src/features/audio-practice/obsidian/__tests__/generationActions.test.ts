@@ -7,7 +7,12 @@ const input: GenerationInput = {
 	taskKey: "a",
 	name: "a.wav",
 	audio: new ArrayBuffer(2),
-	config: { workspaceId: "workspace", secretId: "secret-id" },
+	config: {
+		provider: "bailian",
+		workspaceId: "workspace",
+		secretId: "secret-id",
+		model: "fun-asr-flash-2026-06-15",
+	},
 };
 
 describe("vault read and generation lifetime", () => {

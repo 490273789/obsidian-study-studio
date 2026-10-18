@@ -1,16 +1,18 @@
 import type { SubtitleCue } from "../domain/types";
 import { alignReference, mergeTranscripts } from "./alignment";
+import { transcriptionConfigFingerprint } from "./transcriptionConfig";
 import type {
 	DraftCue,
 	GenerationDraft,
 	GenerationDraftStore,
 	GenerationInput,
+	GenerationNotice,
 	PrepareAudio,
 	TranscribeAudio,
 	Transcript,
 } from "./types";
 
-export type { DraftCue, GenerationDraftStore, GenerationInput, SpeechConfig } from "./types";
+export type { DraftCue, GenerationDraftStore, GenerationInput, TranscriptionConfig } from "./types";
 
 async function sourceFingerprint(audio: ArrayBuffer, referenceText: string): Promise<string> {
 	const hash = await crypto.subtle.digest("SHA-256", audio);
@@ -24,6 +26,7 @@ export interface GenerationSnapshot {
 	totalChunks: number;
 	duration: number;
 	error: string | null;
+	notice: GenerationNotice | null;
 	taskKey: string | null;
 }
 
@@ -35,6 +38,7 @@ export class SubtitleGeneration {
 		totalChunks: 0,
 		duration: 0,
 		error: null,
+		notice: null,
 		taskKey: null,
 	};
 	private listeners = new Set<() => void>();
@@ -101,6 +105,7 @@ export class SubtitleGeneration {
 			completedChunks: 0,
 			totalChunks: 0,
 			error: null,
+			notice: null,
 		});
 		await this.writes.catch(() => {});
 		const draft = normalizeGenerationDraft(await this.ports.drafts?.load(taskKey));
@@ -114,6 +119,7 @@ export class SubtitleGeneration {
 			completedChunks: draft.results.length,
 			totalChunks: 0,
 			error: null,
+			notice: draft.complete ? draft.notice : null,
 			status: draft.complete ? "review" : "cancelled",
 		});
 		return true;
@@ -131,6 +137,7 @@ export class SubtitleGeneration {
 			status: "preparing",
 			error: null,
 			cues: [],
+			notice: null,
 			taskKey: input.taskKey,
 			completedChunks: 0,
 			totalChunks: 0,
@@ -139,6 +146,7 @@ export class SubtitleGeneration {
 			if (input.audio.byteLength > 50 * 1024 * 1024)
 				throw new Error("生成字幕仅支持 50 MiB 以内的音频。");
 			const fingerprint = await sourceFingerprint(input.audio, input.referenceText ?? "");
+			const configFingerprint = transcriptionConfigFingerprint(input.config);
 			await this.writes.catch(() => {});
 			const saved = options.force
 				? null
@@ -150,17 +158,20 @@ export class SubtitleGeneration {
 			signal.throwIfAborted();
 			if (prepared.duration <= 0 || prepared.duration > 600)
 				throw new Error("生成字幕仅支持 10 分钟以内的音频。");
-			const results: Transcript[] =
-				saved?.fingerprint === fingerprint ? [...saved.results] : [];
+			const reuse =
+				saved?.fingerprint === fingerprint && saved.configFingerprint === configFingerprint;
+			const results: Transcript[] = reuse && saved ? [...saved.results] : [];
 			this.draft = {
 				taskKey: input.taskKey,
 				fingerprint,
+				configFingerprint,
 				duration: prepared.duration,
 				results,
 				cues: [],
 				complete: false,
+				notice: null,
 			};
-			if (saved?.fingerprint === fingerprint && saved.complete) {
+			if (reuse && saved?.complete) {
 				this.draft = saved;
 				this.publish({
 					status: "review",
@@ -168,6 +179,7 @@ export class SubtitleGeneration {
 					completedChunks: results.length,
 					totalChunks: prepared.chunks.length,
 					cues: saved.cues,
+					notice: saved.notice,
 				});
 				return;
 			}
@@ -190,16 +202,24 @@ export class SubtitleGeneration {
 			}
 			this.publish({ status: "aligning" });
 			const transcript = mergeTranscripts(results, prepared.chunks);
-			const cues = input.referenceText?.trim()
-				? alignReference(input.referenceText, transcript)
-				: transcript.cues;
+			const wantsReference = Boolean(input.referenceText?.trim());
+			const cues =
+				wantsReference && transcript.words.length > 0
+					? alignReference(input.referenceText!, transcript)
+					: transcript.cues;
+			const notice: GenerationNotice | null =
+				wantsReference && transcript.words.length === 0 && cues.length > 0
+					? "no-word-timestamps"
+					: null;
 			this.draft.cues = cues;
 			this.draft.complete = true;
+			this.draft.notice = notice;
 			await this.persist();
 			signal.throwIfAborted();
 			this.publish({
 				status: "review",
 				cues,
+				notice,
 				error: cues.length === 0 ? "音频中没有识别到可用语音，可手动补建片段。" : null,
 			});
 		} catch (error) {
@@ -323,5 +343,12 @@ export function normalizeGenerationDraft(value: unknown): GenerationDraft | null
 		)
 			return null;
 	}
-	return draft;
+	return {
+		...draft,
+		// Drafts written before provider configurability have no service identity; they
+		// can still be reviewed and saved but never resume transcription.
+		configFingerprint:
+			typeof draft.configFingerprint === "string" ? draft.configFingerprint : "",
+		notice: draft.notice === "no-word-timestamps" ? "no-word-timestamps" : null,
+	};
 }

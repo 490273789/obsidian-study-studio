@@ -328,6 +328,11 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 										)}
 								</output>
 							)}
+							{draftForMaterial &&
+								draft.status === "review" &&
+								draft.notice === "no-word-timestamps" && (
+									<p className={styles.notice}>{t.noWordTimestamps}</p>
+								)}
 							{(error || snapshot.error) && (
 								<p role="alert" className={styles.alert}>
 									{error ?? snapshot.error}

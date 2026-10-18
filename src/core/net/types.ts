@@ -47,7 +47,8 @@ export interface OutboundRequest {
 	url: string;
 	method?: string;
 	headers?: Record<string, string>;
-	body?: string;
+	/** JSON/text payloads are strings; multipart or other binary bodies are `ArrayBuffer`. */
+	body?: string | ArrayBuffer;
 	/** Maximum accepted response body size in bytes. */
 	maxBytes?: number;
 	/**

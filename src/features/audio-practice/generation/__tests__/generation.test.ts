@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { alignReference, mergeTranscripts } from "../alignment";
 import { encodeMonoWav } from "../browserAudio";
-import { createFunAsrProvider, parseFunAsrResponse } from "../funAsrProvider";
-import { SubtitleGeneration } from "../subtitleGeneration";
-import type { GenerationDraft, Transcript } from "../types";
+import { createBailianProvider, parseBailianResponse } from "../bailianProvider";
+import { SubtitleGeneration, normalizeGenerationDraft } from "../subtitleGeneration";
+import type {
+	BailianTranscriptionConfig,
+	GenerationDraft,
+	GenerationInput,
+	Transcript,
+} from "../types";
 import type { OutboundPort } from "../../../../core/net/types";
 
 const transcript: Transcript = {
@@ -14,11 +19,17 @@ const transcript: Transcript = {
 	],
 };
 const chunk = { index: 0, start: 0, end: 2, wav: new ArrayBuffer(2) };
-const input = {
+const config: BailianTranscriptionConfig = {
+	provider: "bailian",
+	workspaceId: "workspace",
+	secretId: "secret",
+	model: "fun-asr-flash-2026-06-15",
+};
+const input: GenerationInput = {
 	audio: new ArrayBuffer(4),
 	name: "test.wav",
 	taskKey: "test",
-	config: { workspaceId: "workspace", secretId: "secret" },
+	config,
 };
 
 describe("subtitle generation", () => {
@@ -130,11 +141,11 @@ describe("subtitle generation", () => {
 		const event = (text: string, final: boolean) =>
 			`data:${JSON.stringify({ output: { sentence: { sentence_id: 1, sentence_end: final, begin_time: 0, end_time: 1000, text, words: [] } } })}\n\n`;
 		expect(
-			parseFunAsrResponse(
+			parseBailianResponse(
 				event("partial", false) + event("final", true) + event("corrected", true),
 			).cues.map((c) => c.text),
 		).toEqual(["corrected"]);
-		expect(() => parseFunAsrResponse('{"code":"InvalidApiKey"}')).toThrow();
+		expect(() => parseBailianResponse('{"code":"InvalidApiKey"}')).toThrow();
 	});
 	it("sends only audio through outbound and pins workspace host and language", async () => {
 		const request = vi.fn().mockResolvedValue({
@@ -152,7 +163,7 @@ describe("subtitle generation", () => {
 			}),
 		});
 		const port = { request, readSecret: () => "private-key" } as unknown as OutboundPort;
-		await createFunAsrProvider(port)(chunk, input.config, new AbortController().signal);
+		await createBailianProvider(port)(chunk, config, new AbortController().signal);
 		const spec = request.mock.calls[0]?.[0];
 		expect(spec.url).toContain("workspace.cn-beijing.maas.aliyuncs.com");
 		expect(JSON.parse(spec.body).parameters.language_hints).toEqual(["en"]);
@@ -161,13 +172,13 @@ describe("subtitle generation", () => {
 	it("rejects a truncated SSE tail even when an earlier sentence completed", () => {
 		const event = (id: number, final: boolean) =>
 			`data:${JSON.stringify({ output: { sentence: { sentence_id: id, sentence_end: final, begin_time: 0, end_time: 1000, text: "hello", words: [] } } })}\n\n`;
-		expect(() => parseFunAsrResponse(event(1, true) + event(2, false))).toThrow("不完整");
+		expect(() => parseBailianResponse(event(1, true) + event(2, false))).toThrow("不完整");
 		expect(
-			parseFunAsrResponse(event(1, true) + event(2, false) + event(2, true)).cues,
+			parseBailianResponse(event(1, true) + event(2, false) + event(2, true)).cues,
 		).toHaveLength(2);
 	});
 	it("never exposes raw malformed provider response content", () => {
-		expect(() => parseFunAsrResponse('{"private-key":"sensitive-response" broken')).toThrow(
+		expect(() => parseBailianResponse('{"private-key":"sensitive-response" broken')).toThrow(
 			"语音服务返回了无效或不完整的识别结果。",
 		);
 	});
@@ -259,6 +270,8 @@ describe("subtitle generation", () => {
 			results: [],
 			cues: transcript.cues,
 			complete: true,
+			configFingerprint: "",
+			notice: null,
 		});
 		await old;
 		expect(controller.getSnapshot()).toMatchObject({
@@ -329,6 +342,8 @@ describe("subtitle generation", () => {
 			results: [],
 			cues: transcript.cues,
 			complete: true,
+			configFingerprint: "",
+			notice: null,
 		});
 		expect(await restoring).toBe(false);
 		expect(controller.getSnapshot()).toBe(snapshot);
@@ -338,5 +353,47 @@ describe("subtitle generation", () => {
 		expect(controller.getSnapshot()).toBe(snapshot);
 		expect(await controller.matchesSource(input.audio, "")).toBe(false);
 		expect(prepare).not.toHaveBeenCalled();
+	});
+	it("does not reuse completed results after the transcription service changes", async () => {
+		const transcribe = vi.fn().mockResolvedValue(transcript);
+		const controller = new SubtitleGeneration({
+			prepare: async () => ({ duration: 2, chunks: [chunk] }),
+			transcribe,
+		});
+		await controller.generate(input);
+		expect(transcribe).toHaveBeenCalledTimes(1);
+		await controller.generate({
+			...input,
+			config: { ...config, model: "qwen-audio-3.1-asr-flash" },
+		});
+		expect(transcribe).toHaveBeenCalledTimes(2);
+	});
+	it("falls back to recognized segments and reports missing word timestamps", async () => {
+		const controller = new SubtitleGeneration({
+			prepare: async () => ({ duration: 2, chunks: [chunk] }),
+			transcribe: async () => ({
+				cues: [{ id: "0", text: "Hello world.", start: 0, end: 1, needsReview: true }],
+				words: [],
+			}),
+		});
+		await controller.generate({ ...input, referenceText: "Hello world." });
+		const snapshot = controller.getSnapshot();
+		expect(snapshot.notice).toBe("no-word-timestamps");
+		expect(snapshot.cues.map((cue) => cue.text)).toEqual(["Hello world."]);
+	});
+	it("normalizes legacy drafts without provider identity and rejects unknown notices", () => {
+		const legacy = {
+			taskKey: "test",
+			fingerprint: "fingerprint",
+			duration: 2,
+			results: [],
+			cues: transcript.cues,
+			complete: false,
+		};
+		expect(normalizeGenerationDraft(legacy)).toMatchObject({
+			configFingerprint: "",
+			notice: null,
+		});
+		expect(normalizeGenerationDraft({ ...legacy, notice: "unknown" })?.notice).toBeNull();
 	});
 });
