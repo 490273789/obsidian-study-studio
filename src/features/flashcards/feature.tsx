@@ -658,6 +658,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 							onOpenTranslation={() => host.openFeature("translation")}
 							onOpenDictionary={() => host.openFeature("dictionary")}
 							onOpenVideoPlayer={() => host.openFeature("video-player")}
+							onOpenAudioPractice={() => host.openFeature("audio-practice")}
 						/>
 					),
 				}),

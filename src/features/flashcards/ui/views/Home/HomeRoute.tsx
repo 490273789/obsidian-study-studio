@@ -19,6 +19,7 @@ interface HomeRouteProps {
 	onOpenTranslation?: () => void;
 	onOpenDictionary?: () => void;
 	onOpenVideoPlayer?: () => void;
+	onOpenAudioPractice?: () => void;
 }
 
 /**
@@ -45,6 +46,7 @@ export const HomeRoute = React.memo(function HomeRoute({ home, ...props }: HomeR
 			onOpenTranslation={props.onOpenTranslation}
 			onOpenDictionary={props.onOpenDictionary}
 			onOpenVideoPlayer={props.onOpenVideoPlayer}
+			onOpenAudioPractice={props.onOpenAudioPractice}
 		/>
 	);
 });

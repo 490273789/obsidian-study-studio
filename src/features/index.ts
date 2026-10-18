@@ -9,6 +9,7 @@ import { createFlashcardFeature } from "./flashcards/feature";
 import { createTranslationFeature } from "./translation/feature";
 import { createSelectionHelperModule } from "../core/selectionHelper/module";
 import { createVideoPlayerFeature } from "./video-player/feature";
+import { createAudioPracticeFeature } from "./audio-practice/feature";
 
 export interface WorkbenchModuleDeps {
 	ai: AiService;
@@ -36,6 +37,7 @@ export function createWorkbenchModules(deps: WorkbenchModuleDeps): AnyWorkbenchM
 		sourceEdits: flashcards.sourceEditAdapter,
 	});
 	const videoPlayer = createVideoPlayerFeature();
+	const audioPractice = createAudioPracticeFeature({ store: deps.store, net: deps.net });
 
 	const selectionHelper = createSelectionHelperModule({
 		dictionary: dictionary.selectionAdapter,
@@ -43,5 +45,5 @@ export function createWorkbenchModules(deps: WorkbenchModuleDeps): AnyWorkbenchM
 		translation: translation.selectionAdapter,
 	});
 
-	return [flashcards, translation, dictionary, videoPlayer, selectionHelper];
+	return [flashcards, translation, dictionary, videoPlayer, audioPractice, selectionHelper];
 }

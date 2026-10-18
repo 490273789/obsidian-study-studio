@@ -1,0 +1,30 @@
+import { describe, expect, it } from "vite-plus/test";
+import { parseSubtitles, serializeSrt, validateCues } from "../subtitles";
+
+describe("audio subtitles", () => {
+	it("refuses blank lines that cannot survive SRT roundtrip without losing text", () => {
+		const cue = { id: "draft", start: 1, end: 2, text: "Hello\n\nworld" };
+		expect(() => serializeSrt([cue])).toThrow("空白行");
+		const corrected = { ...cue, text: "Hello\nworld" };
+		expect(parseSubtitles(serializeSrt([corrected]))[0]!.text).toBe(corrected.text);
+	});
+	it("reads multiline VTT settings and roundtrips SRT with stable identity", () => {
+		const cues = parseSubtitles(
+			"WEBVTT\n\nintro\n00:01.200 --> 00:02.300 align:start\nHello\nworld\n\n00:03.000 --> 00:04.000\nAgain",
+		);
+		expect(cues[0]).toMatchObject({ start: 1.2, end: 2.3, text: "Hello\nworld" });
+		expect(parseSubtitles(serializeSrt(cues))).toEqual(cues);
+	});
+	it("rejects invalid times and refuses unreviewed draft publication", () => {
+		expect(() => parseSubtitles("1\n00:60:00,000 --> 00:61:00,000\nBad")).toThrow();
+		expect(
+			validateCues([{ id: "x", text: "Hi", start: 1, end: 5, needsReview: true }], 4),
+		).toHaveLength(2);
+	});
+	it("keeps identity when a preceding cue is added", () => {
+		const original = "00:03.000 --> 00:04.000\nAgain";
+		expect(parseSubtitles(`00:01.000 --> 00:02.000\nNew\n\n${original}`)[1]!.id).toEqual(
+			parseSubtitles(original)[0]!.id,
+		);
+	});
+});

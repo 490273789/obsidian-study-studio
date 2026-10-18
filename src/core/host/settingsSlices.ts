@@ -9,6 +9,7 @@ import { selectionPopupSettingsSlice } from "../selectionHelper/settings/slice";
 import type { SettingsSlice } from "../settings/slice";
 import type { HostSettings } from "../settings/hostSlice";
 import { videoPlayerSettingsSlice } from "../../features/video-player/settings/slice";
+import { audioPracticeSettingsSlice } from "../../features/audio-practice/settings/slice";
 
 /**
  * Every slice of the persisted settings document, in normalization order.
@@ -32,6 +33,7 @@ export const SETTINGS_SLICES_BY_OWNER = {
 	dictionary: [dictionarySettingsSlice],
 	selectionHelper: [selectionPopupSettingsSlice],
 	videoPlayer: [videoPlayerSettingsSlice],
+	audioPractice: [audioPracticeSettingsSlice],
 } as const;
 
 export const SETTINGS_SLICES = [
@@ -42,6 +44,7 @@ export const SETTINGS_SLICES = [
 	...SETTINGS_SLICES_BY_OWNER.dictionary,
 	...SETTINGS_SLICES_BY_OWNER.selectionHelper,
 	...SETTINGS_SLICES_BY_OWNER.videoPlayer,
+	...SETTINGS_SLICES_BY_OWNER.audioPractice,
 ] as const;
 
 export type SettingsOwner = keyof typeof SETTINGS_SLICES_BY_OWNER;
@@ -168,6 +171,7 @@ export const DEFAULT_SETTINGS: FlashcardSettings = {
 	...dictionarySettingsSlice.defaults(),
 	...selectionPopupSettingsSlice.defaults(),
 	...videoPlayerSettingsSlice.defaults(),
+	...audioPracticeSettingsSlice.defaults(),
 };
 
 /**
@@ -185,6 +189,7 @@ export function normalizeSettingsDocument(raw: unknown): FlashcardSettings {
 		...dictionarySettingsSlice.normalize(raw),
 		...selectionPopupSettingsSlice.normalize(raw),
 		...videoPlayerSettingsSlice.normalize(raw),
+		...audioPracticeSettingsSlice.normalize(raw),
 	};
 }
 
@@ -202,5 +207,6 @@ export function cloneSettingsDocument(settings: FlashcardSettings): FlashcardSet
 		...dictionarySettingsSlice.clone(settings),
 		...selectionPopupSettingsSlice.clone(settings),
 		...videoPlayerSettingsSlice.clone(settings),
+		...audioPracticeSettingsSlice.clone(settings),
 	};
 }

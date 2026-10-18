@@ -40,6 +40,7 @@ interface FlashcardAppProps {
 	onOpenTranslation?: () => void;
 	onOpenDictionary?: () => void;
 	onOpenVideoPlayer?: () => void;
+	onOpenAudioPractice?: () => void;
 }
 
 export const FlashcardApp: React.FC<FlashcardAppProps> = ({
@@ -54,6 +55,7 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 	onOpenTranslation,
 	onOpenDictionary,
 	onOpenVideoPlayer,
+	onOpenAudioPractice,
 }) => {
 	const deckHomeOwnerId = useId();
 	const t = useMemo(() => createTranslator(settings.language), [settings.language]);
@@ -224,6 +226,7 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 			onOpenTranslation={onOpenTranslation}
 			onOpenDictionary={onOpenDictionary}
 			onOpenVideoPlayer={onOpenVideoPlayer}
+			onOpenAudioPractice={onOpenAudioPractice}
 		/>
 	);
 

@@ -12,6 +12,7 @@ import {
 	ChevronDown,
 	ChevronRight,
 	CirclePlay,
+	Headphones,
 	Flame,
 	Inbox,
 	Languages,
@@ -54,6 +55,7 @@ interface DeckListProps {
 	onOpenTranslation?: () => void;
 	onOpenDictionary?: () => void;
 	onOpenVideoPlayer?: () => void;
+	onOpenAudioPractice?: () => void;
 }
 
 export const DeckList = React.memo(function DeckList({
@@ -70,6 +72,7 @@ export const DeckList = React.memo(function DeckList({
 	onOpenTranslation,
 	onOpenDictionary,
 	onOpenVideoPlayer,
+	onOpenAudioPractice,
 }: DeckListProps) {
 	const { t, language } = useFlashcardI18n();
 	const isLoading = snapshot.mutation.kind === "refreshing";
@@ -216,7 +219,10 @@ export const DeckList = React.memo(function DeckList({
 							className="flashcard-header-actions"
 							onClick={(event) => event.stopPropagation()}
 						>
-							{(onOpenTranslation || onOpenDictionary || onOpenVideoPlayer) && (
+							{(onOpenTranslation ||
+								onOpenDictionary ||
+								onOpenVideoPlayer ||
+								onOpenAudioPractice) && (
 								<>
 									<div className={styles.headerGroup}>
 										{onOpenTranslation && (
@@ -235,6 +241,15 @@ export const DeckList = React.memo(function DeckList({
 												onClick={onOpenDictionary}
 												title={t("home.dictionaryTitle")}
 												aria-label={t("home.dictionaryTitle")}
+											/>
+										)}
+										{onOpenAudioPractice && (
+											<FlashcardButton
+												preset="icon"
+												icon={Headphones}
+												onClick={onOpenAudioPractice}
+												title={t("home.audioPracticeTitle")}
+												aria-label={t("home.audioPracticeTitle")}
 											/>
 										)}
 										{onOpenVideoPlayer && (

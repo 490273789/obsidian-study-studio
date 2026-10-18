@@ -5,6 +5,7 @@ import type { AiSettings } from "../ai/types";
 import type { FlashcardStudySettings } from "../../features/flashcards/settings/slice";
 import type { HostSettings } from "../settings/hostSlice";
 import type { VideoPlayerSettings } from "../../features/video-player/settings/slice";
+import type { AudioPracticeSettings } from "../../features/audio-practice/settings/slice";
 import { Card } from "ts-fsrs";
 
 export type Language = "zh" | "en";
@@ -75,6 +76,7 @@ export interface FlashcardSettings extends HostSettings, FlashcardStudySettings 
 	selectionPopup: SelectionHelperSettings;
 	/** Availability of the desktop local-video feature; paths remain device-local. */
 	videoPlayer: VideoPlayerSettings;
+	audioPractice: AudioPracticeSettings;
 }
 
 /**

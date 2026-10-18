@@ -1,0 +1,185 @@
+.page {
+	min-width: 0;
+}
+.layout {
+	display: grid;
+	grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+	gap: var(--fc-space-4, 16px);
+	min-height: 0;
+	padding: var(--fc-space-4, 16px);
+	overflow: auto;
+}
+.library {
+	align-self: start;
+	display: flex;
+	flex-direction: column;
+	gap: var(--fc-space-3, 12px);
+	padding: var(--fc-space-4, 16px);
+	small {
+		color: var(--text-muted);
+	}
+}
+.material {
+	display: flex;
+	align-items: center;
+	gap: var(--fc-space-1, 4px);
+	> button:first-child {
+		flex: 1;
+		text-align: start;
+		overflow-wrap: anywhere;
+	}
+}
+.main {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fc-space-4, 16px);
+	min-width: 0;
+}
+.panel,
+.form,
+.practice,
+.empty {
+	padding: var(--fc-space-4, 16px);
+	min-width: 0;
+}
+.panel h2,
+.panel h3 {
+	margin: 0;
+}
+.panel > small {
+	color: var(--text-muted);
+	overflow-wrap: anywhere;
+}
+.row {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--fc-space-3, 12px);
+}
+.form,
+.draftCue {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fc-space-3, 12px);
+}
+.form label,
+.practice label:not(.checkbox),
+.draftCue label:not(.checkbox) {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fc-space-1, 4px);
+	font-size: var(--fc-font-sm);
+}
+.form textarea,
+.draftCue textarea {
+	width: 100%;
+	resize: vertical;
+}
+.form select,
+.form input {
+	max-width: 100%;
+}
+.checkbox {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--fc-space-2, 8px);
+}
+.hint {
+	color: var(--text-muted);
+	font-size: var(--fc-font-sm);
+}
+.error {
+	color: var(--text-error);
+	overflow-wrap: anywhere;
+}
+.empty {
+	color: var(--text-muted);
+	text-align: center;
+}
+.cues {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fc-space-2, 8px);
+	margin-block: var(--fc-space-4, 16px);
+}
+.cue {
+	display: flex;
+	align-items: center;
+	gap: var(--fc-space-2, 8px);
+	border-radius: var(--radius-m);
+	> button:first-child {
+		flex: 1;
+		height: auto;
+		justify-content: flex-start;
+		align-items: flex-start;
+		text-align: start;
+		white-space: normal;
+		small {
+			flex-shrink: 0;
+			color: var(--text-muted);
+		}
+		span {
+			overflow-wrap: anywhere;
+		}
+	}
+}
+.active {
+	background: var(--background-modifier-hover);
+}
+.controls {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fc-space-3, 12px);
+	border-top: 1px solid var(--background-modifier-border);
+	padding-block-start: var(--fc-space-3, 12px);
+	background: var(--background-primary);
+	input[type="number"] {
+		width: 100px;
+	}
+}
+.seek input {
+	width: 100%;
+}
+.draftList {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fc-space-4, 16px);
+	margin-block: var(--fc-space-4, 16px);
+}
+.draftCue {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	padding: var(--fc-space-3, 12px);
+	input[type="number"] {
+		width: 120px;
+	}
+}
+@media (max-width: 700px) {
+	.layout {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.library {
+		max-height: 200px;
+		overflow: auto;
+	}
+	.controls {
+		position: sticky;
+		bottom: 0;
+		z-index: 2;
+		padding-block-end: max(var(--fc-space-3, 12px), env(safe-area-inset-bottom));
+	}
+	.cue > button:first-child {
+		flex-direction: column;
+	}
+}
+@media (pointer: coarse) {
+	.page button,
+	.page select,
+	.page input:not([type="checkbox"]),
+	.page textarea {
+		min-height: 40px;
+	}
+	.page button {
+		min-width: 40px;
+	}
+}

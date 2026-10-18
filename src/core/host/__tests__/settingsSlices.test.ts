@@ -28,6 +28,7 @@ describe("settings slices registry", () => {
 		// `data.json` compatibility: this list may only change deliberately.
 		expect(Object.keys(DEFAULT_SETTINGS).sort()).toEqual([
 			"ai",
+			"audioPractice",
 			"dailyNewCards",
 			"dailyReviewCards",
 			"deckOrder",
@@ -68,7 +69,9 @@ describe("settings slices registry", () => {
 			"dictionary",
 			"selectionHelper",
 			"videoPlayer",
+			"audioPractice",
 		]);
+		expect(settingsOwnerKeys("audioPractice")).toEqual(["audioPractice"]);
 		expect(settingsOwnerKeys("flashcards")).toContain("pronunciation");
 		expect(settingsOwnerKeys("translation")).toEqual(["translation"]);
 		expect(settingsOwnerKeys("videoPlayer")).toEqual(["videoPlayer"]);
