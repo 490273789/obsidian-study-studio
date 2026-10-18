@@ -36,6 +36,7 @@ import type { AudioMaterial, AudioPracticeSnapshot } from "../domain/types";
 import { AUDIO_PLAYBACK_RATES } from "../domain/types";
 import type { AudioPracticeRuntime } from "../domain/audioPracticeRuntime";
 import type { GenerationSnapshot, SubtitleGeneration } from "../generation/subtitleGeneration";
+import type { SubtitleWorkflow } from "../generation/subtitleWorkflow";
 import { audioPracticeStrings } from "../strings/audioPractice";
 import type { AudioPracticeStrings } from "../strings/audioPractice";
 import styles from "./AudioPractice.module.scss";
@@ -47,16 +48,15 @@ export interface AudioPracticeViewProps {
 	audioPaths: readonly string[];
 	subtitlePaths: readonly string[];
 	textPaths: readonly string[];
+	workflow: SubtitleWorkflow;
 	onReadText: (path: string) => Promise<string>;
-	onGenerate: (material: AudioMaterial, force?: boolean) => Promise<void>;
-	onSaveDraft: (materialId: string) => Promise<void>;
 	onOpenSettings: () => void;
 }
 
 type MaterialDialogMode = "add" | "edit";
 
 export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNode {
-	const { runtime, generation, language, onOpenSettings } = props;
+	const { runtime, generation, workflow, language, onOpenSettings } = props;
 	const snapshot = useSyncExternalStore(
 		(listener) => runtime.subscribe(listener),
 		() => runtime.getSnapshot(),
@@ -65,31 +65,38 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 		(listener) => generation.subscribe(listener),
 		() => generation.getSnapshot(),
 	);
+	const workflowSnapshot = useSyncExternalStore(
+		(listener) => workflow.subscribe(listener),
+		() => workflow.getSnapshot(),
+	);
 	const t = audioPracticeStrings(language);
 	const media = useRef<HTMLAudioElement>(null);
 	const practiceRef = useRef<HTMLElement>(null);
 	const [materialDialog, setMaterialDialog] = useState<MaterialDialogMode | null>(null);
 	const [reviewOpen, setReviewOpen] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-	const [busy, setBusy] = useState(false);
+	const [localError, setLocalError] = useState<string | null>(null);
+	const [localBusy, setLocalBusy] = useState(false);
+	const busy = localBusy || workflowSnapshot.activity !== "idle";
+	const error = localError ?? workflowSnapshot.failure?.message ?? null;
 	const material = snapshot.currentMaterial;
 	const generating = ["preparing", "transcribing", "aligning"].includes(draft.status);
 	const draftForMaterial = material !== null && draft.taskKey === material.id;
 	const reviewReady = draftForMaterial && draft.status === "review";
 	const pendingCues = reviewReady ? draft.cues.filter((cue) => cue.needsReview).length : 0;
 	const openMaterialDialog = (mode: MaterialDialogMode) => {
-		setError(null);
+		setLocalError(null);
+		workflow.dismissFailure();
 		setMaterialDialog(mode);
 	};
 	const run = async (action: () => void | Promise<unknown>) => {
-		setError(null);
-		setBusy(true);
+		setLocalError(null);
+		setLocalBusy(true);
 		try {
 			await action();
 		} catch (cause) {
-			setError(cause instanceof Error ? cause.message : t.failed);
+			setLocalError(cause instanceof Error ? cause.message : t.failed);
 		} finally {
-			setBusy(false);
+			setLocalBusy(false);
 		}
 	};
 	useEffect(() => {
@@ -246,7 +253,8 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 											icon={ListChecks}
 											title={t.reviewHint}
 											onClick={() => {
-												setError(null);
+												setLocalError(null);
+												workflow.dismissFailure();
 												setReviewOpen(true);
 											}}
 										>
@@ -269,9 +277,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 									<Button
 										icon={Sparkles}
 										disabled={busy || generating}
-										onClick={() =>
-											void run(() => props.onGenerate(material, true))
-										}
+										onClick={() => void workflow.generate(material.id, true)}
 									>
 										{snapshot.cues.length ? t.regenerate : t.generate}
 									</Button>
@@ -306,7 +312,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 												: t.cancelled}
 									</span>
 									{generating && (
-										<Button size="sm" onClick={() => generation.cancel()}>
+										<Button size="sm" onClick={() => workflow.cancel()}>
 											{t.cancel}
 										</Button>
 									)}
@@ -319,9 +325,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 												icon={RotateCcw}
 												disabled={busy}
 												onClick={() =>
-													void run(() =>
-														props.onGenerate(material, false),
-													)
+													void workflow.generate(material.id, false)
 												}
 											>
 												{t.retry}
@@ -370,7 +374,8 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 					busy={busy}
 					error={error}
 					onCancel={() => {
-						setError(null);
+						setLocalError(null);
+						workflow.dismissFailure();
 						setMaterialDialog(null);
 					}}
 					onSubmit={(value) =>
@@ -404,13 +409,13 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 					busy={busy}
 					error={error}
 					onRequestClose={() => {
-						setError(null);
+						setLocalError(null);
+						workflow.dismissFailure();
 						setReviewOpen(false);
 					}}
 					onSave={() =>
-						void run(async () => {
-							await props.onSaveDraft(material.id);
-							setReviewOpen(false);
+						void workflow.saveDraft(material.id).then((outcome) => {
+							if (outcome.kind === "applied") setReviewOpen(false);
 						})
 					}
 				/>

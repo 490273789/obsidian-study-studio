@@ -34,6 +34,8 @@ const zh = {
 	openSettings: "打开设置",
 	saving: "保存字幕失败，校对草稿已保留。",
 	sourceChanged: "音频或原文已改变，请重新生成字幕后保存。",
+	tooLarge: "生成字幕仅支持 50 MiB 以内的音频。",
+	configMissing: "请在设置中为字幕生成服务配置 API Key 密钥。",
 };
 const en: typeof zh = {
 	title: "Listening & speaking",
@@ -72,5 +74,7 @@ const en: typeof zh = {
 	openSettings: "Open settings",
 	saving: "Unable to save subtitles. Your review draft is preserved.",
 	sourceChanged: "Audio or reference text has changed. Generate subtitles again before saving.",
+	tooLarge: "Audio must be at most 50 MiB.",
+	configMissing: "Configure an API key for the subtitle generation service in settings.",
 };
 export const audioSettingsCopy = (language: Language) => (language === "en" ? en : zh);

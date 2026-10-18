@@ -91,3 +91,18 @@ export interface GenerationDraftStore {
 	load(key: string): Promise<GenerationDraft | null>;
 	save(draft: GenerationDraft): Promise<void>;
 }
+
+/** Size and modification time of an audio source, read through a vault adapter. */
+export interface AudioSourceStat {
+	readonly size: number;
+	readonly mtime: number;
+}
+
+/**
+ * Vault-backed identity of an audio source. Injected so the subtitle workflow
+ * never reaches for Obsidian itself.
+ */
+export interface AudioSourceFiles {
+	stat(path: string): AudioSourceStat | null;
+	readBinary(path: string): Promise<ArrayBuffer>;
+}

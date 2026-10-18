@@ -1,5 +1,6 @@
 import type { SubtitleCue } from "../domain/types";
 import { alignReference, mergeTranscripts } from "./alignment";
+import { MAX_AUDIO_BYTES, MAX_AUDIO_DURATION_SECONDS } from "./limits";
 import { transcriptionConfigFingerprint } from "./transcriptionConfig";
 import type {
 	DraftCue,
@@ -143,7 +144,7 @@ export class SubtitleGeneration {
 			totalChunks: 0,
 		});
 		try {
-			if (input.audio.byteLength > 50 * 1024 * 1024)
+			if (input.audio.byteLength > MAX_AUDIO_BYTES)
 				throw new Error("生成字幕仅支持 50 MiB 以内的音频。");
 			const fingerprint = await sourceFingerprint(input.audio, input.referenceText ?? "");
 			const configFingerprint = transcriptionConfigFingerprint(input.config);
@@ -156,7 +157,7 @@ export class SubtitleGeneration {
 			signal.throwIfAborted();
 			const prepared = await this.ports.prepare(input.audio, signal);
 			signal.throwIfAborted();
-			if (prepared.duration <= 0 || prepared.duration > 600)
+			if (prepared.duration <= 0 || prepared.duration > MAX_AUDIO_DURATION_SECONDS)
 				throw new Error("生成字幕仅支持 10 分钟以内的音频。");
 			const reuse =
 				saved?.fingerprint === fingerprint && saved.configFingerprint === configFingerprint;
@@ -326,7 +327,7 @@ export function normalizeGenerationDraft(value: unknown): GenerationDraft | null
 		typeof draft.fingerprint !== "string" ||
 		!Number.isFinite(draft.duration) ||
 		draft.duration <= 0 ||
-		draft.duration > 600 ||
+		draft.duration > MAX_AUDIO_DURATION_SECONDS ||
 		typeof draft.complete !== "boolean" ||
 		!Array.isArray(draft.cues) ||
 		!draft.cues.every(cueValid) ||

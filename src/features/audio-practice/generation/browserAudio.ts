@@ -1,3 +1,4 @@
+import { MAX_AUDIO_BYTES, MAX_AUDIO_DURATION_SECONDS } from "./limits";
 import type { PrepareAudio } from "./types";
 
 export function encodeMonoWav(samples: Float32Array, sampleRate = 16000): ArrayBuffer {
@@ -32,7 +33,7 @@ export function createBrowserAudioPreparation(
 ): PrepareAudio {
 	return async (audio, signal) => {
 		signal.throwIfAborted();
-		if (audio.byteLength > 50 * 1024 * 1024)
+		if (audio.byteLength > MAX_AUDIO_BYTES)
 			throw new Error("生成字幕仅支持 50 MiB 以内的音频。");
 		const browser = getWindow() as Window & typeof globalThis;
 		const context = new browser.AudioContext();
@@ -42,7 +43,7 @@ export function createBrowserAudioPreparation(
 			if (
 				!Number.isFinite(decoded.duration) ||
 				decoded.duration <= 0 ||
-				decoded.duration > 600
+				decoded.duration > MAX_AUDIO_DURATION_SECONDS
 			)
 				throw new Error("生成字幕仅支持 10 分钟以内的有效音频。");
 			const renderer = new browser.OfflineAudioContext(
