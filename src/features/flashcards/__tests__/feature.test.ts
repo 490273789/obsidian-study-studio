@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { Layers } from "lucide-react";
 import { DEFAULT_SETTINGS } from "../../../core/host/settingsSlices";
 import { createFlashcardFeature } from "../feature";
 import { createFakeWorkbenchHost } from "../../../core/host/__tests__/fakeWorkbenchHost";
@@ -154,7 +155,7 @@ describe("flashcard feature", () => {
 
 		expect([...fake.views.keys()]).toEqual(["flashcard-view"]);
 		const entry = fake.catalog.get("flashcards")!;
-		expect(entry.icon).toBe("layers");
+		expect(entry.icon).toBe(Layers);
 		expect(entry.title("zh")).toBe("闪卡学习");
 		expect(entry.openCommandId).toBe("open-flashcard-view");
 		expect(entry.openHotkeys).toEqual([{ modifiers: ["Alt"], key: "4" }]);

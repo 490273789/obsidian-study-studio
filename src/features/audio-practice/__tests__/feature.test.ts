@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { Headphones } from "lucide-react";
 import { DEFAULT_SETTINGS } from "../../../core/host/settingsSlices";
 import { createFakeWorkbenchHost } from "../../../core/host/__tests__/fakeWorkbenchHost";
 import { WorkbenchStore } from "../../../core/storage/workbenchStore";
@@ -66,7 +67,7 @@ describe("audio practice feature", () => {
 		expect([...fake.views.keys()]).toEqual([AUDIO_PRACTICE_VIEW]);
 		const entry = fake.catalog.get("audio-practice")!;
 		expect(entry.title("zh")).toBe(audioSettingsCopy("zh").title);
-		expect(entry.icon).toBe("headphones");
+		expect(entry.icon).toBe(Headphones);
 		expect(entry.openCommandId).toBe("open-audio-practice");
 		expect(entry.settingsSectionId).toBe("audio-practice");
 		expect(entry.available()).toBe(true);

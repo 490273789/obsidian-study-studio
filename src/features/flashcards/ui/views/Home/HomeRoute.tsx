@@ -4,6 +4,7 @@ import type {
 	DeckHomeDestination,
 	DeckHomeSnapshot,
 } from "../../../domain/decks/deckHome";
+import type { WorkbenchFeatureShortcut } from "../../../../../core/host/workbench";
 import { DeckList } from "./DeckList";
 
 interface HomeRouteProps {
@@ -16,10 +17,7 @@ interface HomeRouteProps {
 	onOpenSettings: () => void;
 	onOpenAddCard: () => void;
 	onOpenChallenge?: () => void;
-	onOpenTranslation?: () => void;
-	onOpenDictionary?: () => void;
-	onOpenVideoPlayer?: () => void;
-	onOpenAudioPractice?: () => void;
+	shortcuts: readonly WorkbenchFeatureShortcut[];
 }
 
 /**
@@ -43,10 +41,7 @@ export const HomeRoute = React.memo(function HomeRoute({ home, ...props }: HomeR
 			onOpenSettings={props.onOpenSettings}
 			onOpenAddCard={props.onOpenAddCard}
 			onOpenChallenge={props.onOpenChallenge}
-			onOpenTranslation={props.onOpenTranslation}
-			onOpenDictionary={props.onOpenDictionary}
-			onOpenVideoPlayer={props.onOpenVideoPlayer}
-			onOpenAudioPractice={props.onOpenAudioPractice}
+			shortcuts={props.shortcuts}
 		/>
 	);
 });

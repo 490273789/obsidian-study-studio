@@ -1,5 +1,6 @@
 import React from "react";
 import { Notice } from "obsidian";
+import { CirclePlay } from "lucide-react";
 import { FlashcardButton } from "../../core/ui/primitives/Button";
 import { createReactItemView } from "../../core/host/reactItemView";
 import { defineFeatureLifetime } from "../../core/host/featureLifetime";
@@ -131,7 +132,8 @@ export function createVideoPlayerFeature(): WorkbenchModule<"videoPlayer"> {
 
 			host.catalog({
 				id: "video-player",
-				icon: "circle-play",
+				icon: CirclePlay,
+				order: 40,
 				title: (language) => videoPlayerStrings(language).title,
 				openCommandId: OPEN_COMMAND_ID,
 				openHotkeys: [{ modifiers: ["Alt"], key: "1" }],

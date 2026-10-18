@@ -1,6 +1,7 @@
 import React, { useCallback, useLayoutEffect, useMemo, useId, useSyncExternalStore } from "react";
 import { App, Component, MarkdownRenderer, Notice, TFile } from "obsidian";
 import type { ScopedWorkbenchSettings } from "../../../core/host/settingsSlices";
+import type { WorkbenchFeatureShortcut } from "../../../core/host/workbench";
 import type { DeckHome, DeckHomeDestination } from "../domain/decks/deckHome";
 import { type SessionLifecycle } from "../domain/sessions/sessionLifecycle";
 import {
@@ -36,11 +37,8 @@ interface FlashcardAppProps {
 	pronunciationRuntime: PronunciationRuntime;
 	deckHome: DeckHome;
 	settings: ScopedWorkbenchSettings<"flashcards">;
+	shortcuts: readonly WorkbenchFeatureShortcut[];
 	onOpenSettings: () => void;
-	onOpenTranslation?: () => void;
-	onOpenDictionary?: () => void;
-	onOpenVideoPlayer?: () => void;
-	onOpenAudioPractice?: () => void;
 }
 
 export const FlashcardApp: React.FC<FlashcardAppProps> = ({
@@ -51,11 +49,8 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 	pronunciationRuntime,
 	deckHome,
 	settings,
+	shortcuts,
 	onOpenSettings,
-	onOpenTranslation,
-	onOpenDictionary,
-	onOpenVideoPlayer,
-	onOpenAudioPractice,
 }) => {
 	const deckHomeOwnerId = useId();
 	const t = useMemo(() => createTranslator(settings.language), [settings.language]);
@@ -223,10 +218,7 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 			onOpenSettings={onOpenSettings}
 			onOpenAddCard={handleOpenAddCard}
 			onOpenChallenge={navigation.challenge}
-			onOpenTranslation={onOpenTranslation}
-			onOpenDictionary={onOpenDictionary}
-			onOpenVideoPlayer={onOpenVideoPlayer}
-			onOpenAudioPractice={onOpenAudioPractice}
+			shortcuts={shortcuts}
 		/>
 	);
 

@@ -5,17 +5,13 @@ import {
 	useSortableInteraction,
 } from "../../../../../core/ui/primitives/Sortable/Sortable";
 import {
-	BookA,
 	BookOpen,
 	Brain,
 	ChartNoAxesColumn,
 	ChevronDown,
 	ChevronRight,
-	CirclePlay,
-	Headphones,
 	Flame,
 	Inbox,
-	Languages,
 	Plus,
 	RefreshCcw,
 	Settings,
@@ -28,6 +24,7 @@ import type {
 	DeckHomeDestination,
 	DeckHomeSnapshot,
 } from "../../../domain/decks/deckHome";
+import type { WorkbenchFeatureShortcut } from "../../../../../core/host/workbench";
 import { cls } from "../../../../../core/shared/classNames";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
@@ -52,10 +49,7 @@ interface DeckListProps {
 	onOpenSettings: () => void;
 	onOpenAddCard: () => void;
 	onOpenChallenge?: () => void;
-	onOpenTranslation?: () => void;
-	onOpenDictionary?: () => void;
-	onOpenVideoPlayer?: () => void;
-	onOpenAudioPractice?: () => void;
+	shortcuts: readonly WorkbenchFeatureShortcut[];
 }
 
 export const DeckList = React.memo(function DeckList({
@@ -69,10 +63,7 @@ export const DeckList = React.memo(function DeckList({
 	onOpenSettings,
 	onOpenAddCard,
 	onOpenChallenge,
-	onOpenTranslation,
-	onOpenDictionary,
-	onOpenVideoPlayer,
-	onOpenAudioPractice,
+	shortcuts,
 }: DeckListProps) {
 	const { t, language } = useFlashcardI18n();
 	const isLoading = snapshot.mutation.kind === "refreshing";
@@ -219,50 +210,19 @@ export const DeckList = React.memo(function DeckList({
 							className="flashcard-header-actions"
 							onClick={(event) => event.stopPropagation()}
 						>
-							{(onOpenTranslation ||
-								onOpenDictionary ||
-								onOpenVideoPlayer ||
-								onOpenAudioPractice) && (
-								<>
-									<div className={styles.headerGroup}>
-										{onOpenTranslation && (
-											<FlashcardButton
-												preset="icon"
-												icon={Languages}
-												onClick={onOpenTranslation}
-												title={t("home.aiTranslationTitle")}
-												aria-label={t("home.aiTranslationTitle")}
-											/>
-										)}
-										{onOpenDictionary && (
-											<FlashcardButton
-												preset="icon"
-												icon={BookA}
-												onClick={onOpenDictionary}
-												title={t("home.dictionaryTitle")}
-												aria-label={t("home.dictionaryTitle")}
-											/>
-										)}
-										{onOpenAudioPractice && (
-											<FlashcardButton
-												preset="icon"
-												icon={Headphones}
-												onClick={onOpenAudioPractice}
-												title={t("home.audioPracticeTitle")}
-												aria-label={t("home.audioPracticeTitle")}
-											/>
-										)}
-										{onOpenVideoPlayer && (
-											<FlashcardButton
-												preset="icon"
-												icon={CirclePlay}
-												onClick={onOpenVideoPlayer}
-												title={t("home.videoPlayerTitle")}
-												aria-label={t("home.videoPlayerTitle")}
-											/>
-										)}
-									</div>
-								</>
+							{shortcuts.length > 0 && (
+								<div className={styles.headerGroup}>
+									{shortcuts.map((shortcut) => (
+										<FlashcardButton
+											key={shortcut.id}
+											preset="icon"
+											icon={shortcut.icon}
+											onClick={shortcut.open}
+											title={shortcut.title}
+											aria-label={shortcut.title}
+										/>
+									))}
+								</div>
 							)}
 							<div className={styles.headerGroup}>
 								<FlashcardButton

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import type { App } from "obsidian";
+import { Headphones } from "lucide-react";
 import { defineFeatureLifetime } from "../../core/host/featureLifetime";
 import { createReactItemView } from "../../core/host/reactItemView";
 import type { WorkbenchModule } from "../../core/host/workbench";
@@ -124,7 +125,8 @@ export function createAudioPracticeFeature(deps: {
 			host.catalog({
 				id: SECTION,
 				title: (language) => audioSettingsCopy(language).title,
-				icon: "headphones",
+				icon: Headphones,
+				order: 30,
 				openCommandId: "open-audio-practice",
 				settingsSectionId: SECTION,
 				available: () => readSettings().audioPractice.enabled,

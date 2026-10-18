@@ -1,4 +1,5 @@
 import { Notice, Platform, type Plugin } from "obsidian";
+import { Layers } from "lucide-react";
 import { createTranslator, flashcardTranslator } from "./strings/index";
 import type { Language, PronunciationSettings, StudySettings } from "../../core/shared/types";
 import type { OwnedSettings } from "../../core/host/settingsSlices";
@@ -655,10 +656,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 							deckHome={deckHome}
 							settings={settings}
 							onOpenSettings={() => host.settingsTab.open(FLASHCARD_SECTION_ID)}
-							onOpenTranslation={() => host.openFeature("translation")}
-							onOpenDictionary={() => host.openFeature("dictionary")}
-							onOpenVideoPlayer={() => host.openFeature("video-player")}
-							onOpenAudioPractice={() => host.openFeature("audio-practice")}
+							shortcuts={host.featureShortcuts()}
 						/>
 					),
 				}),
@@ -668,7 +666,8 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 			// displayed on the flashcard landing page.
 			host.catalog({
 				id: "flashcards",
-				icon: "layers",
+				icon: Layers,
+				order: 0,
 				title: (language) => createTranslator(language)("main.viewTitle"),
 				openCommandId: OPEN_COMMAND_ID,
 				openHotkeys: [{ modifiers: ["Alt"], key: "4" }],

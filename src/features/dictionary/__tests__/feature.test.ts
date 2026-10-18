@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { BookOpen } from "lucide-react";
 import { DEFAULT_SETTINGS } from "../../../core/host/settingsSlices";
 import { dictionaryStrings } from "../strings/dictionary";
 import { createDictionaryFeature, VIEW_TYPE_DICTIONARY_FAVORITE } from "../feature";
@@ -225,7 +226,7 @@ describe("dictionary feature", () => {
 			"flashcard-dictionary-favorite-view",
 		]);
 		const entry = fake.catalog.get("dictionary")!;
-		expect(entry.icon).toBe("book-open");
+		expect(entry.icon).toBe(BookOpen);
 		expect(entry.title("zh")).toBe(dictionaryStrings("zh").displayName);
 		expect(entry.openCommandId).toBe("open-dictionary");
 		expect(entry.openHotkeys).toEqual([{ modifiers: ["Alt"], key: "2" }]);

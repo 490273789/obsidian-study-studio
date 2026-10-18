@@ -1,4 +1,5 @@
 import type { App, Command, Editor, Hotkey, ItemView, Plugin, WorkspaceLeaf } from "obsidian";
+import type { LucideIcon } from "lucide-react";
 import type { SettingsPresentation } from "../settings/presentation";
 import type { FlashcardSettings, Language } from "../shared/types";
 import {
@@ -55,7 +56,10 @@ export interface WorkbenchCatalogEntry {
 	/** Feature id; the same id replaces the previous entry. */
 	id: string;
 	title(language: Language): string;
-	icon: string;
+	/** Lucide icon displayed by the landing-page shortcut; Obsidian commands carry no icon. */
+	icon: LucideIcon;
+	/** Landing-page shortcut order; lower comes first, ties keep registration order. */
+	order?: number;
 	/**
 	 * Command id for the host-generated "open" command. Features keep the id they
 	 * have always used so user-assigned hotkeys survive.
@@ -69,6 +73,19 @@ export interface WorkbenchCatalogEntry {
 	available(): boolean;
 	/** Opens or focuses the feature's primary view. */
 	open(): void;
+}
+
+/**
+ * The host's read projection of the catalog: one sibling feature as the landing
+ * page needs it. Titles are resolved, availability is already filtered, and
+ * ordering is applied, so callers never enumerate features themselves.
+ */
+export interface WorkbenchFeatureShortcut {
+	readonly id: string;
+	readonly title: string;
+	readonly icon: LucideIcon;
+	/** Opens the feature, or its settings when it became unavailable after projection. */
+	readonly open: () => void;
 }
 
 /** One section of the plugin settings tab, contributed by a feature or the host. */
@@ -141,8 +158,8 @@ export interface WorkbenchHost<TOwner extends FeatureSettingsOwner> {
 	settingsSection(section: WorkbenchSettingsSection): void;
 	/** Contributes this feature's catalog entry. Same id replaces the previous one. */
 	catalog(entry: WorkbenchCatalogEntry): void;
-	/** Opens a feature by its catalog id, or opens its settings if unavailable. */
-	openFeature(featureId: string): void;
+	/** Read projection of the other features, ordered and filtered for a landing page. */
+	featureShortcuts(): readonly WorkbenchFeatureShortcut[];
 }
 
 export interface Workbench {
@@ -199,6 +216,13 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 	const catalogOwnerById = new Map<string, FeatureSettingsOwner>();
 	/** Command ids the host generated for the previous catalog, so it can clean up. */
 	let catalogCommandIds: string[] = [];
+	/** Availability/order signature, so a catalog change repaints open landing pages. */
+	let catalogAvailabilitySignature = "";
+	/** Last projection, keyed by language + resolved entries, for stable React props. */
+	let shortcutCache: {
+		signature: string;
+		shortcuts: readonly WorkbenchFeatureShortcut[];
+	} | null = null;
 	const modules = options.createModules();
 	let settingsTab: WorkbenchSettingsTab | null = null;
 	let disposed = false;
@@ -208,6 +232,54 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 		select: (sectionId) => settingsTab?.select(sectionId),
 		open: (sectionId) => settingsTab?.open(sectionId),
 	};
+
+	const openCatalogFeature = (featureId: string): void => {
+		const entry = catalogById.get(featureId);
+		if (!entry) return;
+		if (entry.available()) {
+			entry.open();
+		} else {
+			settingsTabCapability.open(entry.settingsSectionId);
+		}
+	};
+
+	const featureShortcutsFor = (
+		moduleId: FeatureSettingsOwner,
+	): readonly WorkbenchFeatureShortcut[] => {
+		const language = options.readSettings().language;
+		const signature = [
+			moduleId,
+			language,
+			...[...catalogById.values()]
+				.map(
+					(entry) =>
+						`${entry.id}|${entry.available() ? 1 : 0}|${entry.order ?? ""}|${entry.title(language)}`,
+				)
+				.sort(),
+		].join("\n");
+		if (shortcutCache?.signature === signature) return shortcutCache.shortcuts;
+		const shortcuts = Object.freeze(
+			[...catalogById.values()]
+				.filter((entry) => catalogOwnerById.get(entry.id) !== moduleId && entry.available())
+				.sort((left, right) => (left.order ?? Infinity) - (right.order ?? Infinity))
+				.map((entry) =>
+					Object.freeze({
+						id: entry.id,
+						title: entry.title(language),
+						icon: entry.icon,
+						open: () => openCatalogFeature(entry.id),
+					}),
+				),
+		);
+		shortcutCache = { signature, shortcuts };
+		return shortcuts;
+	};
+
+	const catalogSignature = (): string =>
+		[...catalogById.values()]
+			.map((entry) => `${entry.id}|${entry.available() ? 1 : 0}|${entry.order ?? ""}`)
+			.sort()
+			.join("\n");
 
 	const removeChrome = (moduleId: string): void => {
 		const chrome = chromeByModule.get(moduleId);
@@ -292,15 +364,7 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 				catalogOwnerById.set(entry.id, moduleId);
 			},
 
-			openFeature: (targetFeatureId) => {
-				const entry = catalogById.get(targetFeatureId);
-				if (!entry) return;
-				if (entry.available()) {
-					entry.open();
-				} else {
-					settingsTabCapability.open(entry.settingsSectionId);
-				}
-			},
+			featureShortcuts: () => featureShortcutsFor(moduleId),
 		} satisfies WorkbenchHost<TOwner>;
 
 		hostsByModule.set(moduleId, host);
@@ -347,7 +411,7 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 		}
 	};
 
-	const renderModules = (targets?: ReadonlySet<FeatureSettingsOwner>): void => {
+	const renderModules = (targets?: ReadonlySet<FeatureSettingsOwner>): boolean => {
 		for (const module of modules) {
 			if (targets && !targets.has(module.id)) continue;
 			try {
@@ -370,6 +434,10 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 			}
 		}
 		rebuildCatalogCommands();
+		const nextSignature = catalogSignature();
+		const catalogChanged = nextSignature !== catalogAvailabilitySignature;
+		catalogAvailabilitySignature = nextSignature;
+		return catalogChanged;
 	};
 
 	return {
@@ -388,8 +456,11 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 				if (languageChanged || changedOwners.has(module.id)) affected.add(module.id);
 			}
 			if (affected.size > 0) {
-				renderModules(affected);
-				pushSettingsToOpenViews(affected);
+				const catalogChanged = renderModules(affected);
+				// A changed sibling availability set must reach every open landing page;
+				// otherwise only the affected owner's views would repaint.
+				if (catalogChanged) pushSettingsToOpenViews();
+				else pushSettingsToOpenViews(affected);
 			}
 		},
 
@@ -424,6 +495,8 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 			catalogById.clear();
 			sectionOwnerById.clear();
 			catalogOwnerById.clear();
+			catalogAvailabilitySignature = "";
+			shortcutCache = null;
 		},
 	};
 }

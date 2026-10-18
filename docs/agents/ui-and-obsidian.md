@@ -13,7 +13,7 @@ Read this guide before changing React UI, deck home behavior, the Obsidian view/
 - Render card Markdown with Obsidian `MarkdownRenderer`, never raw HTML injection.
 - Use the shared modal primitives under `src/core/ui/primitives/Modal/` and the existing confirmation/card-editor components before creating a new overlay system. Imperative contexts that have no React host (the settings tab, command callbacks) use an Obsidian `Modal` subclass instead, as in `src/features/flashcards/obsidian/continuityModals.ts` and `src/core/host/dictionaryModals.ts`.
 - Use `lucide-react` for new React icon buttons. Keep controls keyboard-friendly and preserve existing shortcuts.
-- Push a catalog entry with `host.catalog(...)` so the host generates the feature's open command. Flashcards is the plugin landing page and owns the single plugin ribbon; its header exposes sibling feature shortcuts through `host.openFeature(...)`. Other features do not add ribbon icons.
+- Push a catalog entry with `host.catalog(...)` so the host generates the feature's open command. Flashcards is the plugin landing page and owns the single plugin ribbon; its header renders the host catalog projection (`host.featureShortcuts()`) instead of naming sibling features. Other features do not add ribbon icons.
 - Keep copy Chinese-first and route user-visible strings through `src/core/i18n/`.
 
 For card shortcut mapping, focus ownership, event filtering, or dialog interaction,

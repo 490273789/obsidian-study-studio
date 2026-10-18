@@ -1,4 +1,5 @@
 import { Notice } from "obsidian";
+import { Languages } from "lucide-react";
 import type { AiService } from "../../core/ai";
 import type { OutboundPort } from "../../core/net";
 import { translationStrings } from "./strings/translation";
@@ -159,7 +160,8 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 
 			host.catalog({
 				id: "translation",
-				icon: "languages",
+				icon: Languages,
+				order: 10,
 				title: (language) => translationStrings(language).title,
 				openCommandId: OPEN_COMMAND_ID,
 				openHotkeys: [{ modifiers: ["Alt"], key: "3" }],

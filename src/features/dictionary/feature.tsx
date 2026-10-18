@@ -1,5 +1,6 @@
 import React from "react";
 import { Notice, type Plugin } from "obsidian";
+import { BookOpen } from "lucide-react";
 import type { AiService } from "../../core/ai";
 import type { OutboundPort } from "../../core/net";
 import { normalizeDictionarySettings } from "./domain/configuration";
@@ -276,7 +277,8 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 
 			host.catalog({
 				id: "dictionary",
-				icon: "book-open",
+				icon: BookOpen,
+				order: 20,
 				title: (language) => dictionaryStrings(language).displayName,
 				openCommandId: OPEN_COMMAND_ID,
 				openHotkeys: [{ modifiers: ["Alt"], key: "2" }],

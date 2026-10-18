@@ -29,7 +29,7 @@ export interface FakeWorkbenchHost<TOwner extends FeatureSettingsOwner> {
 		select: ReturnType<typeof vi.fn>;
 		open: ReturnType<typeof vi.fn>;
 	};
-	openFeature: ReturnType<typeof vi.fn>;
+	featureShortcuts: ReturnType<typeof vi.fn>;
 }
 
 /**
@@ -53,13 +53,19 @@ export function createFakeWorkbenchHost<TOwner extends FeatureSettingsOwner>(
 		document = { ...document, language } as FlashcardSettings;
 	});
 	const settingsTab = { refresh: vi.fn(), select: vi.fn(), open: vi.fn() };
-	const openFeature = vi.fn((featureId: string) => {
-		const entry = catalog.get(featureId);
-		if (entry?.available()) {
-			entry.open();
-		} else if (entry) {
-			settingsTab.open(entry.settingsSectionId);
-		}
+	// The fake owns every registered entry, so it cannot model sibling exclusion;
+	// feature tests only assert that their own registration reaches the host.
+	const featureShortcuts = vi.fn(() => {
+		const language = document.language;
+		return [...catalog.values()]
+			.filter((entry) => entry.available())
+			.sort((left, right) => (left.order ?? Infinity) - (right.order ?? Infinity))
+			.map((entry) => ({
+				id: entry.id,
+				title: entry.title(language),
+				icon: entry.icon,
+				open: () => entry.open(),
+			}));
 	});
 
 	const scopedSettings = {
@@ -92,7 +98,7 @@ export function createFakeWorkbenchHost<TOwner extends FeatureSettingsOwner>(
 		activateView,
 		settingsSection: (section: WorkbenchSettingsSection) => sections.set(section.id, section),
 		catalog: (entry: WorkbenchCatalogEntry) => catalog.set(entry.id, entry),
-		openFeature,
+		featureShortcuts,
 	} as unknown as WorkbenchHost<TOwner>;
 
 	return {
@@ -105,6 +111,6 @@ export function createFakeWorkbenchHost<TOwner extends FeatureSettingsOwner>(
 		activateView,
 		updateSettings,
 		settingsTab,
-		openFeature,
+		featureShortcuts,
 	};
 }

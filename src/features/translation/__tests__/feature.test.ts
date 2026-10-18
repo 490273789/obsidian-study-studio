@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { Languages } from "lucide-react";
 import { DEFAULT_SETTINGS } from "../../../core/host/settingsSlices";
 import { translationStrings } from "../strings/translation";
 import { translationSettingsStrings } from "../strings/settings";
@@ -70,7 +71,7 @@ describe("translation feature", () => {
 
 		expect([...fake.views.keys()]).toEqual(["flashcard-translator-view"]);
 		const entry = fake.catalog.get("translation")!;
-		expect(entry.icon).toBe("languages");
+		expect(entry.icon).toBe(Languages);
 		expect(entry.title("zh")).toBe(translationStrings("zh").title);
 		expect(entry.openCommandId).toBe("open-ai-translator");
 		expect(entry.openHotkeys).toEqual([{ modifiers: ["Alt"], key: "3" }]);

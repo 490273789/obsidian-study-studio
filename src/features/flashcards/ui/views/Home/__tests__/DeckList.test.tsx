@@ -1,6 +1,7 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { KeyboardSensor, MouseSensor, TouchSensor } from "@dnd-kit/core";
+import { Languages } from "lucide-react";
 import type { DragEndEvent, DragStartEvent, DndContextProps } from "@dnd-kit/core";
 import { rectSortingStrategy } from "@dnd-kit/sortable";
 import type {
@@ -105,6 +106,8 @@ interface ElementProps {
 	"data-state"?: string;
 	"aria-expanded"?: boolean;
 	ariaExpanded?: boolean;
+	"aria-label"?: string;
+	title?: string;
 	onKeyDown?: (event: { key: string; preventDefault(): void }) => void;
 	right?: React.ReactNode;
 	badge?: React.ReactNode;
@@ -219,6 +222,7 @@ function harness(decks?: DeckOverrides[]) {
 		onOpenStats: vi.fn(),
 		onOpenSettings: vi.fn(),
 		onOpenAddCard: vi.fn(),
+		shortcuts: [],
 	};
 	let tree: React.ReactNode;
 	const component = (
@@ -716,5 +720,31 @@ describe("mobile header collapse", () => {
 		const stopPropagation = vi.fn();
 		actions.props.onClick!({ stopPropagation });
 		expect(stopPropagation).toHaveBeenCalled();
+	});
+});
+
+describe("landing page feature shortcuts", () => {
+	it("renders the host's catalog projection and opens the selected feature", () => {
+		const h = harness();
+		const openTranslation = vi.fn();
+		const openDictionary = vi.fn();
+		h.props.shortcuts = [
+			{ id: "translation", title: "AI 翻译", icon: Languages, open: openTranslation },
+			{ id: "dictionary", title: "英语字典", icon: Languages, open: openDictionary },
+		];
+		h.render();
+
+		const header = h.findElement(
+			h.tree(),
+			(element) => element.props.className?.includes("homeHeader") === true,
+		);
+		const buttons = h.findAll(
+			header.props.right,
+			(element) => element.props["aria-label"] === "AI 翻译",
+		);
+		expect(buttons).toHaveLength(1);
+		buttons[0]!.props.onClick!({ stopPropagation: vi.fn() });
+		expect(openTranslation).toHaveBeenCalledTimes(1);
+		expect(openDictionary).not.toHaveBeenCalled();
 	});
 });

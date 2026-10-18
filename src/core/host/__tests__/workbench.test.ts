@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
+import { BookOpen, Languages, Layers } from "lucide-react";
 import { DEFAULT_SETTINGS, type FeatureSettingsOwner } from "../settingsSlices";
 import {
 	createWorkbench,
@@ -477,7 +478,7 @@ describe("workbench", () => {
 			feature("flashcards", (host) =>
 				host.catalog({
 					id: "first",
-					icon: "layers",
+					icon: Layers,
 					title: () => "First",
 					openCommandId: "open-first",
 					openHotkeys: [{ modifiers: ["Alt"], key: "W" }],
@@ -489,7 +490,7 @@ describe("workbench", () => {
 			feature("translation", (host) =>
 				host.catalog({
 					id: "second",
-					icon: "book-open",
+					icon: BookOpen,
 					title: () => "Second",
 					openCommandId: "open-second",
 					settingsSectionId: "second",
@@ -516,7 +517,7 @@ describe("workbench", () => {
 			feature("translation", (host) =>
 				host.catalog({
 					id: "only",
-					icon: "languages",
+					icon: Languages,
 					title: () => "Only",
 					openCommandId: "open-only",
 					settingsSectionId: "only",
@@ -546,51 +547,175 @@ describe("workbench", () => {
 		expect(tab.refresh).toHaveBeenNthCalledWith(2, undefined);
 	});
 
-	it("opens available feature directly or opens settings when unavailable via host.openFeature", () => {
-		const openAvailable = vi.fn();
-		const openUnavailable = vi.fn();
-		const mockSettingsTab = {
-			refresh: vi.fn(),
-			select: vi.fn(),
-			open: vi.fn(),
-		};
-
+	it("projects available sibling entries in declared order and excludes the caller", () => {
+		const openTranslation = vi.fn();
 		const { workbench, host } = setup([
 			feature("translation", (h) =>
 				h.catalog({
-					id: "avail",
-					icon: "a",
-					title: () => "Available",
-					openCommandId: "open-avail",
-					settingsSectionId: "sec-avail",
+					id: "translation",
+					icon: Languages,
+					order: 10,
+					title: (language) => (language === "zh" ? "翻译" : "Translation"),
+					openCommandId: "open-translation",
+					settingsSectionId: "sec-translation",
 					available: () => true,
-					open: openAvailable,
+					open: openTranslation,
 				}),
 			),
 			feature("dictionary", (h) =>
 				h.catalog({
-					id: "unavail",
-					icon: "u",
-					title: () => "Unavailable",
-					openCommandId: "open-unavail",
-					settingsSectionId: "sec-unavail",
-					available: () => false,
-					open: openUnavailable,
+					id: "dictionary",
+					icon: BookOpen,
+					order: 20,
+					title: () => "Dictionary",
+					openCommandId: "open-dictionary",
+					settingsSectionId: "sec-dictionary",
+					available: () => true,
+					open: vi.fn(),
+				}),
+			),
+			feature("flashcards", (h) =>
+				h.catalog({
+					id: "flashcards",
+					icon: Layers,
+					order: 0,
+					title: () => "Flashcards",
+					openCommandId: "open-flashcards",
+					settingsSectionId: "sec-flashcards",
+					available: () => true,
+					open: vi.fn(),
 				}),
 			),
 		]);
+		workbench.refresh();
 
+		const shortcuts = host("flashcards").featureShortcuts();
+		expect(shortcuts.map((shortcut) => shortcut.id)).toEqual(["translation", "dictionary"]);
+		expect(shortcuts[0]!.title).toBe("翻译");
+		expect(shortcuts[0]!.icon).toBe(Languages);
+		shortcuts[0]!.open();
+		expect(openTranslation).toHaveBeenCalledTimes(1);
+	});
+
+	it("filters unavailable entries and re-checks availability when opening", () => {
+		let available = true;
+		const openEntry = vi.fn();
+		const mockSettingsTab = { refresh: vi.fn(), select: vi.fn(), open: vi.fn() };
+		const { workbench, host } = setup([
+			feature("translation", (h) =>
+				h.catalog({
+					id: "translation",
+					icon: Languages,
+					order: 10,
+					title: () => "Translation",
+					openCommandId: "open-translation",
+					settingsSectionId: "sec-translation",
+					available: () => available,
+					open: openEntry,
+				}),
+			),
+			feature("flashcards", () => {}),
+		]);
 		workbench.setSettingsTab(mockSettingsTab);
 		workbench.refresh();
 
-		const h = host("translation");
-		h.openFeature("avail");
-		expect(openAvailable).toHaveBeenCalledTimes(1);
-		expect(mockSettingsTab.open).not.toHaveBeenCalled();
+		const shortcuts = host("flashcards").featureShortcuts();
+		expect(shortcuts).toHaveLength(1);
+		available = false;
+		shortcuts[0]!.open();
+		expect(openEntry).not.toHaveBeenCalled();
+		expect(mockSettingsTab.open).toHaveBeenCalledWith("sec-translation");
+		expect(host("flashcards").featureShortcuts()).toHaveLength(0);
+	});
 
-		h.openFeature("unavail");
-		expect(openUnavailable).not.toHaveBeenCalled();
-		expect(mockSettingsTab.open).toHaveBeenCalledWith("sec-unavail");
+	it("keeps the projection reference stable until the catalog signature changes", () => {
+		let available = true;
+		const { workbench, host } = setup([
+			feature("translation", (h) =>
+				h.catalog({
+					id: "translation",
+					icon: Languages,
+					order: 10,
+					title: () => "Translation",
+					openCommandId: "open-translation",
+					settingsSectionId: "sec-translation",
+					available: () => available,
+					open: vi.fn(),
+				}),
+			),
+			feature("flashcards", () => {}),
+		]);
+		workbench.refresh();
+
+		const h = host("flashcards");
+		const first = h.featureShortcuts();
+		expect(h.featureShortcuts()).toBe(first);
+		available = false;
+		const second = h.featureShortcuts();
+		expect(second).not.toBe(first);
+		expect(second).toHaveLength(0);
+	});
+
+	it("repaints open landing views when a sibling becomes unavailable", () => {
+		let available = true;
+		const landingUpdate = vi.fn();
+		const { workbench, app } = setup([
+			feature("translation", (h) =>
+				h.catalog({
+					id: "translation",
+					icon: Languages,
+					order: 10,
+					title: () => "Translation",
+					openCommandId: "open-translation",
+					settingsSectionId: "sec-translation",
+					available: () => available,
+					open: vi.fn(),
+				}),
+			),
+			feature("flashcards", (h) => {
+				h.registerView("landing-view", () => ({ updateSettings() {} }) as never);
+			}),
+		]);
+		app.workspace.leaves["landing-view"] = [{ view: { updateSettings: landingUpdate } }];
+		workbench.refresh();
+		landingUpdate.mockClear();
+
+		available = false;
+		workbench.settingsChanged(DEFAULT_SETTINGS, {
+			...DEFAULT_SETTINGS,
+			translation: { ...DEFAULT_SETTINGS.translation, promptTemplate: "changed" },
+		});
+		expect(landingUpdate).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not repaint landing views when only non-catalog settings change", () => {
+		const landingUpdate = vi.fn();
+		const { workbench, app } = setup([
+			feature("translation", (h) =>
+				h.catalog({
+					id: "translation",
+					icon: Languages,
+					order: 10,
+					title: () => "Translation",
+					openCommandId: "open-translation",
+					settingsSectionId: "sec-translation",
+					available: () => true,
+					open: vi.fn(),
+				}),
+			),
+			feature("flashcards", (h) => {
+				h.registerView("landing-view", () => ({ updateSettings() {} }) as never);
+			}),
+		]);
+		app.workspace.leaves["landing-view"] = [{ view: { updateSettings: landingUpdate } }];
+		workbench.refresh();
+		landingUpdate.mockClear();
+
+		workbench.settingsChanged(DEFAULT_SETTINGS, {
+			...DEFAULT_SETTINGS,
+			translation: { ...DEFAULT_SETTINGS.translation, promptTemplate: "changed" },
+		});
+		expect(landingUpdate).not.toHaveBeenCalled();
 	});
 
 	it("rolls back chrome, settings sections, and catalog entries when module render fails", () => {
@@ -603,7 +728,7 @@ describe("workbench", () => {
 				});
 				host.catalog({
 					id: "translation",
-					icon: "icon-t",
+					icon: BookOpen,
 					title: () => "Translation",
 					openCommandId: "open-translation",
 					settingsSectionId: "sec-translation",
