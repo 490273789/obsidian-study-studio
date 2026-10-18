@@ -116,20 +116,20 @@ export function DictionaryFavoriteView({
 					className={cls("flashcard-dictionary-favorite-actions", styles.favoriteActions)}
 				>
 					<FlashcardButton
-						type="submit"
-						variant="primary"
-						icon={Save}
-						disabled={!canSave}
-					>
-						{saving ? strings.favoriteSaving : strings.favoriteSave}
-					</FlashcardButton>
-					<FlashcardButton
 						type="button"
 						icon={Sparkles}
 						disabled={!canGenerate}
 						onClick={() => void controller.generateAi()}
 					>
 						{generating ? strings.favoriteAiGenerating : strings.favoriteAiGenerate}
+					</FlashcardButton>
+					<FlashcardButton
+						type="submit"
+						variant="primary"
+						icon={Save}
+						disabled={!canSave}
+					>
+						{saving ? strings.favoriteSaving : strings.favoriteSave}
 					</FlashcardButton>
 					<FlashcardButton
 						type="button"
