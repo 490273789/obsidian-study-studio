@@ -34,9 +34,16 @@
 	}
 }
 
+/*
+ * The docked column is content-sized. Letting it shrink squeezed the player
+ * panel below the video's own aspect ratio whenever the leaf was even slightly
+ * short, and `object-fit: contain` then left black gutters inside the frame.
+ * The page body scrolls instead.
+ */
 .layout {
 	display: flex;
 	min-height: 0;
+	flex: 0 0 auto;
 	flex-direction: column;
 	gap: 16px;
 }
@@ -51,6 +58,8 @@
 
 .playerPanel {
 	overflow: hidden;
+	/* The media area keeps its video aspect ratio; never shrink it into letterboxing. */
+	flex: 0 0 auto;
 	transition:
 		border-color 150ms ease,
 		box-shadow 150ms ease;
