@@ -467,6 +467,7 @@
 	padding: var(--fc-space-2) var(--fc-space-3);
 	border-radius: inherit;
 	text-align: start;
+	white-space: normal;
 
 	&:focus-visible {
 		outline: 2px solid var(--fc-primary);
@@ -484,11 +485,13 @@
 }
 
 .cueText {
+	min-width: 0;
 	color: color-mix(in srgb, var(--fc-text) 80%, var(--fc-muted));
 	font-size: var(--fc-font-md);
 	font-weight: var(--fc-weight-regular);
 	line-height: var(--fc-line-reading);
 	overflow-wrap: anywhere;
+	white-space: normal;
 }
 
 .cueHidden {
