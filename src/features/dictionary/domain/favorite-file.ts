@@ -17,7 +17,8 @@ export interface StoredDictionaryFavorite {
 }
 
 export interface DictionaryFavoriteStore {
-	suggestions(currentPath: string): string[];
+	/** Suggestions relative to `currentPath`; `query` is the draft path being typed. */
+	suggestions(currentPath: string, query?: string): string[];
 	save(entry: DictionaryFavoriteEntry): Promise<string>;
 	find(path: string, word: string): Promise<StoredDictionaryFavorite | null>;
 	open(path: string): Promise<boolean>;
@@ -165,17 +166,38 @@ export function findDictionaryFavorite(
 	return found;
 }
 
-/** Pins the committed path and `word.md`, then appends existing markdown paths. */
+/** Normalizes typed input for matching without appending a `.md` extension. */
+function normalizeSuggestionQuery(value: string): string {
+	return value.trim().replaceAll("\\", "/").replace(/^\/+/, "").toLocaleLowerCase("en-US");
+}
+
+/**
+ * Pins the committed path and `word.md`, then offers existing markdown paths
+ * relevant to the typed text. Matching happens before the result limit so a
+ * large vault cannot crowd out the paths under the typed folder; prefix matches
+ * rank above paths that merely contain the typed text.
+ */
 export function dictionaryFavoriteSuggestions(
 	currentPath: string,
 	markdownPaths: readonly string[],
+	query = "",
 ): string[] {
 	const pinned = [...new Set([normalizeDictionaryFavoritePath(currentPath), "word.md"])];
 	const paths = new Set<string>(markdownPaths);
 	for (const path of pinned) paths.delete(path);
 	// oxlint-disable-next-line unicorn/no-array-sort -- sorts a fresh array copied from the set.
 	const existing = [...paths].sort((left, right) => left.localeCompare(right));
-	return [...pinned, ...existing].slice(0, DICTIONARY_FAVORITE_SUGGESTION_LIMIT);
+	const candidates = [...pinned, ...existing];
+	const normalizedQuery = normalizeSuggestionQuery(query);
+	if (!normalizedQuery) return candidates.slice(0, DICTIONARY_FAVORITE_SUGGESTION_LIMIT);
+	const prefixMatches: string[] = [];
+	const otherMatches: string[] = [];
+	for (const path of candidates) {
+		const normalizedPath = path.toLocaleLowerCase("en-US");
+		if (normalizedPath.startsWith(normalizedQuery)) prefixMatches.push(path);
+		else if (normalizedPath.includes(normalizedQuery)) otherMatches.push(path);
+	}
+	return [...prefixMatches, ...otherMatches].slice(0, DICTIONARY_FAVORITE_SUGGESTION_LIMIT);
 }
 
 /** Pure in-memory dictionary favorite store for tests and fallback execution. */
@@ -184,8 +206,8 @@ export function createMemoryDictionaryFavoriteStore(
 ): DictionaryFavoriteStore {
 	const files = new Map<string, string>(Object.entries(initialFiles));
 	return {
-		suggestions(currentPath: string): string[] {
-			return dictionaryFavoriteSuggestions(currentPath, [...files.keys()]);
+		suggestions(currentPath: string, query = ""): string[] {
+			return dictionaryFavoriteSuggestions(currentPath, [...files.keys()], query);
 		},
 		async save(entry: DictionaryFavoriteEntry): Promise<string> {
 			const path = normalizeDictionaryFavoritePath(entry.path, "");

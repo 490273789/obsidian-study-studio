@@ -26,7 +26,7 @@ function setup() {
 		favoritePath: "word.md",
 	});
 	const file = {
-		suggestions: vi.fn(() => ["word.md"]),
+		suggestions: vi.fn<(currentPath: string, query?: string) => string[]>(() => ["word.md"]),
 		find: vi.fn(async (): Promise<StoredDictionaryFavorite | null> => null),
 		save: vi.fn(async () => "word.md"),
 		open: vi.fn(async () => true),
@@ -281,5 +281,28 @@ describe("favorite generation interaction", () => {
 		await controller.generateAi();
 		expect(generate).not.toHaveBeenCalled();
 		expect(controller.getSnapshot().status).toBe("error");
+	});
+});
+
+describe("favorite path suggestions", () => {
+	it("matches suggestions against the path being typed", () => {
+		const { controller, file } = setup();
+		file.suggestions.mockImplementation((_currentPath, query = "") =>
+			query ? [`1-English/${query}.md`] : ["word.md"],
+		);
+		controller.setPath("Grammar");
+		expect(file.suggestions).toHaveBeenLastCalledWith("word.md", "Grammar");
+		expect(controller.getSnapshot().pathSuggestions).toEqual(["1-English/Grammar.md"]);
+	});
+
+	it("restores committed suggestions after clearing the draft", () => {
+		const { controller, file } = setup();
+		file.suggestions.mockImplementation((currentPath, query = "") =>
+			query && query !== currentPath ? ["1-English/typed.md"] : [currentPath],
+		);
+		controller.setPath("1-English");
+		expect(controller.getSnapshot().pathSuggestions).toEqual(["1-English/typed.md"]);
+		controller.clear();
+		expect(controller.getSnapshot().pathSuggestions).toEqual(["word.md"]);
 	});
 });

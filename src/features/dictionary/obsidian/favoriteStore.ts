@@ -23,10 +23,11 @@ export class ObsidianDictionaryFavoriteStore implements DictionaryFavoriteStore 
 		private readonly sourceEdits?: CardSourceMutation,
 	) {}
 
-	suggestions(currentPath: string): string[] {
+	suggestions(currentPath: string, query = ""): string[] {
 		return dictionaryFavoriteSuggestions(
 			currentPath,
 			this.app.vault.getMarkdownFiles().map((file) => file.path),
+			query,
 		);
 	}
 

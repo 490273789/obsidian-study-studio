@@ -2,11 +2,13 @@ import { describe, expect, it } from "vite-plus/test";
 import {
 	appendDictionaryFavorite,
 	createMemoryDictionaryFavoriteStore,
+	dictionaryFavoriteSuggestions,
 	findDictionaryFavorite,
 	formatDictionaryFavorite,
 	parseDictionaryFavorites,
 	upsertDictionaryFavorite,
 } from "../favorite-file";
+import { DICTIONARY_FAVORITE_SUGGESTION_LIMIT } from "../favorite-limits";
 import { parseFavoriteAiDraft } from "../favorite-ai";
 
 describe("generated favorite Markdown", () => {
@@ -161,7 +163,78 @@ describe("favorite overwrite and targeted deduplication", () => {
 	});
 });
 
+describe("favorite path suggestions", () => {
+	const savedPath = "1-English/Grammar/从句/word.md";
+	/** Hidden notes that sort before `1-English` in a real vault. */
+	const hiddenNotes = Array.from(
+		{ length: 320 },
+		(_, index) => `.agents/note-${String(index).padStart(3, "0")}.md`,
+	);
+	const vaultPaths = [
+		...hiddenNotes,
+		"1-English/Article/3.An Interesting Festival.md",
+		"1-English/Grammar/从句/word.md",
+		"1-English/Grammar/时态.md",
+		"2-Programming/TypeScript.md",
+	];
+
+	it("keeps every path under the typed folder instead of truncating the sorted vault list", () => {
+		expect(dictionaryFavoriteSuggestions(savedPath, vaultPaths, "1-English")).toEqual([
+			savedPath,
+			"1-English/Article/3.An Interesting Festival.md",
+			"1-English/Grammar/时态.md",
+		]);
+	});
+
+	it("normalizes separators and matches case-insensitively", () => {
+		expect(dictionaryFavoriteSuggestions("word.md", vaultPaths, "1-ENGLISH\\")).toEqual([
+			"1-English/Article/3.An Interesting Festival.md",
+			"1-English/Grammar/从句/word.md",
+			"1-English/Grammar/时态.md",
+		]);
+	});
+
+	it("does not append a markdown extension to the typed query", () => {
+		expect(
+			dictionaryFavoriteSuggestions("word.md", vaultPaths, "1-English/Grammar/时"),
+		).toEqual(["1-English/Grammar/时态.md"]);
+	});
+
+	it("ranks prefix matches above paths that only contain the typed text", () => {
+		expect(
+			dictionaryFavoriteSuggestions(
+				"word.md",
+				["archive/1-English/old.md", "1-English/note.md"],
+				"1-English",
+			),
+		).toEqual(["1-English/note.md", "archive/1-English/old.md"]);
+	});
+
+	it("applies the limit after matching so typed folders stay complete", () => {
+		const paths = Array.from(
+			{ length: DICTIONARY_FAVORITE_SUGGESTION_LIMIT + 20 },
+			(_, index) => `1-English/${String(index).padStart(3, "0")}.md`,
+		);
+		const suggestions = dictionaryFavoriteSuggestions("word.md", paths, "1-English");
+		expect(suggestions).toHaveLength(DICTIONARY_FAVORITE_SUGGESTION_LIMIT);
+		expect(suggestions[0]).toBe("1-English/000.md");
+	});
+
+	it("pins the committed path and word.md when nothing is typed", () => {
+		const suggestions = dictionaryFavoriteSuggestions(savedPath, vaultPaths);
+		expect(suggestions.slice(0, 2)).toEqual([savedPath, "word.md"]);
+		expect(suggestions).toHaveLength(DICTIONARY_FAVORITE_SUGGESTION_LIMIT);
+	});
+});
+
 describe("memory favorite store", () => {
+	it("matches suggestions against the typed query", () => {
+		const store = createMemoryDictionaryFavoriteStore({
+			"1-English/Grammar/word.md": "",
+			"2-Programming/TypeScript.md": "",
+		});
+		expect(store.suggestions("word.md", "1-English")).toEqual(["1-English/Grammar/word.md"]);
+	});
 	it("saves, finds, and opens favorite entries purely in memory", async () => {
 		const store = createMemoryDictionaryFavoriteStore();
 		expect(store.suggestions("word.md")).toEqual(["word.md"]);

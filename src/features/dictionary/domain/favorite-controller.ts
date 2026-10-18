@@ -51,7 +51,7 @@ export class DictionaryFavoriteController {
 			message: "",
 			note: "",
 			path,
-			pathSuggestions: store.suggestions(path),
+			pathSuggestions: store.suggestions(path, path),
 			savedPath: path,
 			status: "idle",
 			word: "",
@@ -112,6 +112,7 @@ export class DictionaryFavoriteController {
 		this.cancelGeneration();
 		this.pathDirty = true;
 		this.state.path = value.slice(0, DICTIONARY_FAVORITE_PATH_MAX_LENGTH);
+		this.state.pathSuggestions = this.store.suggestions(this.state.savedPath, this.state.path);
 		this.resetMessage();
 		this.publish();
 		void this.loadExisting(false);
@@ -273,6 +274,7 @@ export class DictionaryFavoriteController {
 		this.state.message = "";
 		this.state.note = "";
 		this.state.path = this.state.savedPath;
+		this.state.pathSuggestions = this.store.suggestions(this.state.savedPath, this.state.path);
 		this.state.status = "idle";
 		this.state.word = "";
 		this.publish();
@@ -356,7 +358,7 @@ export class DictionaryFavoriteController {
 		const path = this.settings.getDictionarySettings().favoritePath;
 		this.state.savedPath = path;
 		if (!this.pathDirty) this.state.path = path;
-		this.state.pathSuggestions = this.store.suggestions(path);
+		this.state.pathSuggestions = this.store.suggestions(path, this.state.path);
 	}
 
 	private async loadExisting(clearOnMissing: boolean): Promise<void> {
