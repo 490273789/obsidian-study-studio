@@ -104,11 +104,12 @@
 }
 
 .materialSelect {
-	@include fc-button-reset;
 	display: flex;
 	flex: 1 1 auto;
 	min-width: 0;
 	flex-direction: column;
+	align-items: stretch;
+	justify-content: flex-start;
 	gap: 2px;
 	padding: var(--fc-space-2) var(--fc-space-3);
 	border-radius: inherit;
@@ -136,6 +137,7 @@
 	overflow: hidden;
 	color: var(--fc-muted);
 	font-size: var(--fc-font-xs);
+	font-weight: var(--fc-weight-regular);
 	line-height: var(--fc-line-tight);
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -457,11 +459,11 @@
 }
 
 .cueSelect {
-	@include fc-button-reset;
 	display: grid;
 	grid-template-columns: 58px minmax(0, 1fr);
 	gap: var(--fc-space-2);
 	align-items: baseline;
+	justify-content: stretch;
 	padding: var(--fc-space-2) var(--fc-space-3);
 	border-radius: inherit;
 	text-align: start;
@@ -484,6 +486,7 @@
 .cueText {
 	color: color-mix(in srgb, var(--fc-text) 80%, var(--fc-muted));
 	font-size: var(--fc-font-md);
+	font-weight: var(--fc-weight-regular);
 	line-height: var(--fc-line-reading);
 	overflow-wrap: anywhere;
 }
@@ -497,7 +500,6 @@
 }
 
 .cueStar {
-	@include fc-button-reset;
 	display: inline-flex;
 	flex: none;
 	align-items: center;
@@ -535,6 +537,36 @@
 	background: color-mix(in srgb, var(--fc-amber) 16%, transparent);
 	color: var(--fc-amber);
 	opacity: 1;
+}
+
+/*
+ * Host themes commonly paint every bare `button` with the accent color. These
+ * composite rows own their surfaces, so strip that paint with enough strength
+ * and specificity to survive rules written for plain buttons.
+ */
+.page .materialRow .materialSelect,
+.page .cue .cueSelect {
+	background: transparent !important;
+	border: 0 !important;
+	box-shadow: none !important;
+}
+
+.page .cue .cueStar {
+	background: transparent !important;
+	border: 0 !important;
+	box-shadow: none !important;
+	color: var(--fc-muted) !important;
+}
+
+.page .cue .cueStar:hover {
+	background: var(--fc-surface-hover) !important;
+	color: var(--fc-text) !important;
+}
+
+.page .cue .cueStarActive,
+.page .cue .cueStarActive:hover {
+	background: color-mix(in srgb, var(--fc-amber) 16%, transparent) !important;
+	color: var(--fc-amber) !important;
 }
 
 .cueEmpty {

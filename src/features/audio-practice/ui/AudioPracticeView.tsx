@@ -105,12 +105,6 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 		};
 	}, [runtime]);
 	useEffect(() => {
-		// A finished draft opens its review dialog once; dismissing it stays dismissed
-		// until the next completed generation changes the review state again.
-		// oxlint-disable-next-line react/set-state-in-effect
-		if (reviewReady) setReviewOpen(true);
-	}, [reviewReady, draft.taskKey]);
-	useEffect(() => {
 		const container = practiceRef.current;
 		const cueId = snapshot.currentCueId;
 		if (!container || !cueId) return;
@@ -172,8 +166,8 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 										active && styles.materialRowActive,
 									)}
 								>
-									<button
-										type="button"
+									<Button
+										variant="ghost"
 										className={styles.materialSelect}
 										aria-current={active ? "true" : undefined}
 										onClick={() =>
@@ -184,7 +178,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 										<span className={styles.materialPath}>
 											{fileName(item.audioPath)}
 										</span>
-									</button>
+									</Button>
 									<Button
 										preset="icon"
 										size="sm"
@@ -947,8 +941,8 @@ export function PracticeSurface({
 									data-current-cue={active ? "true" : undefined}
 									className={cls(styles.cue, active && styles.cueActive)}
 								>
-									<button
-										type="button"
+									<Button
+										variant="ghost"
 										className={styles.cueSelect}
 										aria-current={active ? "true" : undefined}
 										onClick={() => runtime.selectCue(cue.id, true)}
@@ -966,20 +960,22 @@ export function PracticeSurface({
 												cue.text
 											)}
 										</span>
-									</button>
-									<button
-										type="button"
+									</Button>
+									<Button
+										preset="icon"
+										variant="ghost"
+										icon={Star}
+										iconSize={15}
 										className={cls(
 											styles.cueStar,
 											marked && styles.cueStarActive,
 										)}
+										active={marked}
 										aria-pressed={marked}
 										aria-label={`${t.difficult}: ${timeLabel(cue.start)}`}
 										title={t.difficult}
 										onClick={() => runtime.toggleDifficult(cue.id)}
-									>
-										<Star size={15} aria-hidden="true" />
-									</button>
+									/>
 								</li>
 							);
 						})}
