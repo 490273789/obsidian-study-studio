@@ -29,6 +29,7 @@ import { FlashcardCheckbox } from "../../../core/ui/primitives/Checkbox";
 import { FlashcardHeader } from "../../../core/ui/primitives/Header";
 import { FlashcardInput, FlashcardTextarea } from "../../../core/ui/primitives/Input";
 import { ModalSurface } from "../../../core/ui/primitives/Modal";
+import { PlaybackRateControl } from "../../../core/ui/primitives/PlaybackRate";
 import { FlashcardSelect } from "../../../core/ui/primitives/Select";
 import { FlashcardSlider } from "../../../core/ui/primitives/Slider";
 import type { AudioMaterial, AudioPracticeSnapshot } from "../domain/types";
@@ -1081,27 +1082,16 @@ function renderPlayerDock(
 					/>
 				</fieldset>
 				<div className={styles.playerOptions}>
-					<label className={styles.option}>
-						<span>{t.rate}</span>
-						<FlashcardSelect
-							wrapperClassName={styles.rateSelect}
-							aria-label={t.rate}
-							value={snapshot.playbackRate}
-							onChange={(event) =>
-								runtime.setPlaybackRate(
-									Number(
-										event.target.value,
-									) as (typeof AUDIO_PLAYBACK_RATES)[number],
-								)
-							}
-						>
-							{AUDIO_PLAYBACK_RATES.map((rate) => (
-								<option key={rate} value={rate}>
-									{rate}×
-								</option>
-							))}
-						</FlashcardSelect>
-					</label>
+					<PlaybackRateControl
+						className={styles.rateControl}
+						label={t.rate}
+						value={snapshot.playbackRate}
+						rates={AUDIO_PLAYBACK_RATES}
+						align="end"
+						onChange={(rate) =>
+							runtime.setPlaybackRate(rate as (typeof AUDIO_PLAYBACK_RATES)[number])
+						}
+					/>
 					<label className={styles.option}>
 						<span>{t.offset}</span>
 						<FlashcardInput

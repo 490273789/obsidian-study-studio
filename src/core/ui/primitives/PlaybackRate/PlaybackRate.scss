@@ -1,0 +1,238 @@
+// Playback rate picker: a compact pill trigger plus a portaled rate grid.
+//
+// The trigger is a bare `<button>`, and host themes commonly paint every bare
+// button with the accent color. The host-scoped blocks below therefore own the
+// surface with explicit `!important` declarations, the same way existing views
+// defend their composite buttons. The popover lives in `.fc-overlay`, outside
+// `.flashcard-root`, so it carries the same overrides for its own options.
+
+.flashcard-speed {
+	display: inline-flex;
+	align-items: center;
+	min-width: 0;
+	color: var(--fc-text);
+}
+
+/* Base recipe: dimensions, typography and motion only. */
+.flashcard-speed-trigger {
+	appearance: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--fc-space-1);
+	height: var(--fc-control-sm);
+	padding: 0 var(--fc-space-2) 0 var(--fc-space-3);
+	border: 1px solid transparent;
+	border-radius: var(--fc-radius-pill);
+	background: transparent;
+	box-shadow: none;
+	font: var(--fc-weight-semibold) var(--fc-font-xs) / 1 var(--fc-font-data);
+	font-variant-numeric: tabular-nums;
+	cursor: pointer;
+	transition:
+		background var(--fc-motion-quick) ease,
+		border-color var(--fc-motion-quick) ease,
+		color var(--fc-motion-quick) ease;
+
+	@media (pointer: coarse) {
+		min-height: 40px;
+	}
+}
+
+/* Host appearance: neutral surface that survives theme-wide button paint. */
+:is(.flashcard-root, .flashcard-settings-tab, .fc-overlay)
+	.flashcard-speed
+	button.flashcard-speed-trigger {
+	border-color: var(--fc-line) !important;
+	background: var(--fc-surface-control) !important;
+	box-shadow: none !important;
+	color: var(--fc-text) !important;
+
+	&:hover {
+		border-color: var(--fc-line-strong) !important;
+		background: var(--fc-surface-hover) !important;
+		color: var(--fc-text) !important;
+	}
+
+	&:active {
+		transform: none !important;
+		box-shadow: none !important;
+	}
+
+	&:focus-visible {
+		outline: none !important;
+		border-color: var(--interactive-accent) !important;
+		box-shadow: 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 28%, transparent) !important;
+	}
+}
+
+:is(.flashcard-root, .flashcard-settings-tab, .fc-overlay)
+	.flashcard-speed.is-open
+	button.flashcard-speed-trigger {
+	border-color: color-mix(in srgb, var(--interactive-accent) 70%, var(--fc-line)) !important;
+	background: var(--fc-surface-control) !important;
+}
+
+.flashcard-speed-value {
+	min-width: 26px;
+	text-align: center;
+	letter-spacing: 0.01em;
+}
+
+.flashcard-speed-chevron {
+	display: inline-flex;
+	color: var(--fc-faint);
+	transition: transform var(--fc-motion-quick) var(--fc-ease-out);
+}
+
+.flashcard-speed.is-open .flashcard-speed-chevron {
+	transform: rotate(180deg);
+}
+
+.flashcard-speed-popover {
+	position: fixed;
+	z-index: 950;
+	width: max-content;
+	min-width: 204px;
+	max-width: calc(100vw - 16px);
+	padding: var(--fc-space-2);
+	border: 1px solid var(--fc-line-strong);
+	border-radius: var(--fc-radius-lg);
+	background: var(--fc-surface-raised);
+	box-shadow: var(--fc-shadow-popover);
+	color: var(--fc-text);
+	opacity: 0;
+	pointer-events: none;
+	outline: none;
+
+	&[data-positioned] {
+		opacity: 1;
+		pointer-events: auto;
+		animation: var(--fc-motion-fade-in);
+	}
+}
+
+.flashcard-speed-grid {
+	display: grid;
+	grid-template-columns: repeat(var(--speed-columns, 4), minmax(0, 1fr));
+	gap: var(--fc-space-1);
+}
+
+/* Base recipe for the option chips. */
+.flashcard-speed-option {
+	appearance: none;
+	min-width: 44px;
+	height: 32px;
+	padding: 0 var(--fc-space-1);
+	border: 1px solid transparent;
+	border-radius: var(--fc-radius-sm);
+	background: transparent;
+	box-shadow: none;
+	font: var(--fc-weight-medium) var(--fc-font-xs) / 1 var(--fc-font-data);
+	font-variant-numeric: tabular-nums;
+	cursor: pointer;
+	transition:
+		background var(--fc-motion-quick) ease,
+		border-color var(--fc-motion-quick) ease,
+		color var(--fc-motion-quick) ease;
+
+	@media (pointer: coarse) {
+		min-width: 48px;
+		height: 40px;
+	}
+}
+
+:is(.fc-overlay, .flashcard-root) .flashcard-speed-popover button.flashcard-speed-option {
+	border-color: var(--fc-line-soft) !important;
+	background: var(--fc-surface-card) !important;
+	box-shadow: none !important;
+	color: var(--fc-text) !important;
+
+	&:hover {
+		border-color: var(--fc-line-strong) !important;
+		background: var(--fc-surface-hover) !important;
+		color: var(--fc-text) !important;
+	}
+
+	&:active {
+		transform: none !important;
+	}
+
+	&:focus-visible {
+		outline: none !important;
+		border-color: var(--interactive-accent) !important;
+		box-shadow: 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 30%, transparent) !important;
+	}
+
+	&.is-active {
+		border-color: color-mix(in srgb, var(--interactive-accent) 60%, var(--fc-line)) !important;
+		background: color-mix(
+			in srgb,
+			var(--interactive-accent) 16%,
+			var(--fc-surface-card)
+		) !important;
+		color: color-mix(in srgb, var(--interactive-accent) 55%, var(--fc-text)) !important;
+	}
+}
+
+/* Immersive video console: a high-contrast dark tone independent of the theme. */
+:is(.flashcard-root, .flashcard-settings-tab, .fc-overlay)
+	.flashcard-speed.is-dark
+	button.flashcard-speed-trigger {
+	border-color: rgba(255, 255, 255, 0.18) !important;
+	background: rgba(255, 255, 255, 0.08) !important;
+	color: #f5f6f8 !important;
+
+	&:hover {
+		border-color: rgba(255, 255, 255, 0.34) !important;
+		background: rgba(255, 255, 255, 0.14) !important;
+		color: #ffffff !important;
+	}
+
+	&:focus-visible {
+		border-color: var(--interactive-accent) !important;
+	}
+}
+
+:is(.flashcard-root, .flashcard-settings-tab, .fc-overlay)
+	.flashcard-speed.is-dark.is-open
+	button.flashcard-speed-trigger {
+	border-color: color-mix(in srgb, var(--interactive-accent) 82%, transparent) !important;
+	background: rgba(255, 255, 255, 0.12) !important;
+}
+
+.flashcard-speed.is-dark .flashcard-speed-chevron {
+	color: #9aa1ab;
+}
+
+.flashcard-speed-popover.is-dark {
+	border-color: rgba(255, 255, 255, 0.14);
+	background: #1a1c20;
+	box-shadow:
+		0 18px 48px rgba(0, 0, 0, 0.55),
+		0 0 0 1px rgba(255, 255, 255, 0.03);
+	color: #f5f6f8;
+}
+
+:is(.fc-overlay) .flashcard-speed-popover.is-dark button.flashcard-speed-option {
+	border-color: transparent !important;
+	background: rgba(255, 255, 255, 0.06) !important;
+	color: #d7dae0 !important;
+
+	&:hover {
+		border-color: rgba(255, 255, 255, 0.22) !important;
+		background: rgba(255, 255, 255, 0.12) !important;
+		color: #ffffff !important;
+	}
+
+	&:focus-visible {
+		border-color: var(--interactive-accent) !important;
+		box-shadow: 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 38%, transparent) !important;
+	}
+
+	&.is-active {
+		border-color: var(--interactive-accent) !important;
+		background: color-mix(in srgb, var(--interactive-accent) 24%, transparent) !important;
+		color: #ffffff !important;
+	}
+}

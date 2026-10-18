@@ -21,6 +21,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { FlashcardButton } from "../../../core/ui/primitives/Button";
 import { FlashcardHeader } from "../../../core/ui/primitives/Header";
+import { PlaybackRateControl } from "../../../core/ui/primitives/PlaybackRate";
 import {
 	ReorderableList,
 	SortableRow,
@@ -533,23 +534,14 @@ function PlayerSurface({
 					disabled={!canNext}
 					onClick={onNext}
 				/>
-				<label className={styles.rateControl}>
-					<span>{t.rate}</span>
-					<select
-						value={String(rate)}
-						onChange={(event) =>
-							onRate(
-								Number(event.target.value) as (typeof VIDEO_PLAYBACK_RATES)[number],
-							)
-						}
-					>
-						{VIDEO_PLAYBACK_RATES.map((value) => (
-							<option key={value} value={value}>
-								{value}×
-							</option>
-						))}
-					</select>
-				</label>
+				<PlaybackRateControl
+					className={styles.rateControl}
+					label={t.rate}
+					value={rate}
+					rates={VIDEO_PLAYBACK_RATES}
+					tone="dark"
+					onChange={(value) => onRate(value as (typeof VIDEO_PLAYBACK_RATES)[number])}
+				/>
 				{!floating && <IconButton icon={Minimize2} label={t.floating} onClick={onFloat} />}
 			</div>
 		</div>
