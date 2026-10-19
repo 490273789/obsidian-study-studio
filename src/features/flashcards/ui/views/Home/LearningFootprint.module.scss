@@ -359,12 +359,6 @@ button.cell:not(:disabled) {
 	}
 }
 
-@container flashcard-page (max-width: #{breakpoints.$phone}) {
-	.panel {
-		@include footprint-compact;
-	}
-}
-
 @media (max-width: #{breakpoints.$phone}) {
 	.panel {
 		@include footprint-compact;

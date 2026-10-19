@@ -15,10 +15,6 @@
 	padding: var(--fc-space-3) var(--fc-space-4) var(--fc-space-4);
 }
 
-.library {
-	min-height: 0;
-}
-
 .libraryHeader {
 	gap: var(--fc-space-2);
 	padding-block: var(--fc-space-1);
@@ -317,7 +313,6 @@
 /* Practice surface: toolbar, its own scrolling caption list, and the docked player. */
 .practice {
 	flex: 1 1 auto;
-	min-height: 0;
 
 	&:focus-visible {
 		outline: 2px solid color-mix(in srgb, var(--fc-primary) 60%, transparent);
@@ -326,11 +321,7 @@
 }
 
 .practiceHeader {
-	justify-content: flex-start;
 	flex-wrap: wrap;
-	gap: var(--fc-space-2);
-	row-gap: var(--fc-space-2);
-	padding-block: var(--fc-space-1);
 }
 
 .modeSwitch {
@@ -511,18 +502,11 @@
 	height: var(--fc-control-sm);
 	margin: var(--fc-space-1) var(--fc-space-2) 0 0;
 	border-radius: var(--fc-radius-sm);
-	color: var(--fc-muted);
 	opacity: 0.55;
 	transition:
 		opacity var(--fc-motion-quick) ease,
 		background var(--fc-motion-quick) ease,
 		color var(--fc-motion-quick) ease;
-
-	&:hover {
-		background: var(--fc-surface-hover);
-		color: var(--fc-text);
-		opacity: 1;
-	}
 
 	&:focus-visible {
 		outline: 2px solid var(--fc-primary);
@@ -535,10 +519,7 @@
 	opacity: 1;
 }
 
-.cueStarActive,
-.cueStarActive:hover {
-	background: color-mix(in srgb, var(--fc-amber) 16%, transparent);
-	color: var(--fc-amber);
+.cueStarActive {
 	opacity: 1;
 }
 
@@ -868,7 +849,6 @@
 		flex-direction: row;
 		align-items: baseline;
 		gap: var(--fc-space-1);
-		padding: var(--fc-space-2) var(--fc-space-3);
 	}
 
 	.materialRowActive .materialPath,
@@ -905,10 +885,6 @@
 		font-size: var(--fc-font-lg);
 	}
 
-	.practiceHeader {
-		padding-block: var(--fc-space-1);
-	}
-
 	.toolbarDivider {
 		display: none;
 	}
@@ -920,10 +896,6 @@
 
 	.cueText {
 		line-height: var(--fc-line-body);
-	}
-
-	.player {
-		padding: var(--fc-space-2);
 	}
 
 	.playerRow {
@@ -947,7 +919,6 @@
 		flex-direction: row;
 		flex-wrap: wrap;
 		align-items: center;
-		justify-content: center;
 		gap: var(--fc-space-3);
 		width: 100%;
 	}
@@ -966,16 +937,8 @@
 	}
 }
 
-@media (max-width: 820px) {
-	@include narrow-workspace;
-}
-
 @container flashcard-pane (max-width: 820px) {
 	@include narrow-workspace;
-}
-
-@media (max-width: #{bp.$phone}) {
-	@include phone-controls;
 }
 
 @container flashcard-pane (max-width: #{bp.$phone}) {

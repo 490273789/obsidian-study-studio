@@ -77,10 +77,6 @@
 		background: var(--fc-primary);
 		transition: var(--fc-transition-progress);
 	}
-	&::-moz-progress-bar {
-		border-radius: inherit;
-		background: var(--fc-primary);
-	}
 }
 .flashcard-session-timer {
 	color: var(--fc-muted);

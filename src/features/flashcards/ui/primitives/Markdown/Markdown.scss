@@ -39,6 +39,5 @@
 @media (max-width: #{breakpoints.$phone}) {
 	.flashcard-markdown {
 		font-size: var(--fc-font-md);
-		line-height: var(--fc-line-reading);
 	}
 }

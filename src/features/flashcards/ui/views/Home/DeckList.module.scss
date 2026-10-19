@@ -648,11 +648,6 @@
 	}
 }
 
-@container flashcard-page (max-width: #{breakpoints.$phone}) {
-	@include compact-deck-layout;
-	@include home-header-compact;
-}
-
 @media (max-width: #{breakpoints.$phone}) {
 	:global(.flashcard-home.fc-page) {
 		gap: var(--fc-space-3);
@@ -686,7 +681,6 @@
 @mixin home-actions-grid {
 	.deckActions {
 		display: grid;
-		gap: var(--fc-space-2);
 		width: 100%;
 		grid-template-columns: repeat(2, minmax(0, 1fr)) var(--fc-deck-tool-size);
 		justify-content: end;
@@ -721,35 +715,20 @@
 	}
 }
 
-@media (max-width: #{breakpoints.$tablet}) {
-	@include home-actions-grid;
-	@include compact-overlay-actions;
-}
-
 @container flashcard-pane (max-width: #{breakpoints.$tablet}) {
 	@include home-actions-grid;
 	@include compact-overlay-actions;
 
 	.workspace {
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-		-webkit-overflow-scrolling: touch;
 		gap: var(--fc-space-3);
 	}
 
 	.deckIndex {
 		order: 2;
-		flex: 1 1 0;
-		overflow: hidden;
 	}
 
 	.deckIndexHeading {
 		padding: var(--fc-space-3);
-	}
-
-	.deckList {
-		overflow-y: auto;
 	}
 
 	.homeActions {

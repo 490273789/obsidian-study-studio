@@ -155,9 +155,6 @@
 	--fc-shadow-card:
 		0 1px 3px rgba(var(--fc-black-rgb), 0.12), 0 3px 10px rgba(var(--fc-black-rgb), 0.05),
 		inset 0 1px 0 0 rgba(var(--fc-white-rgb), 0.05);
-	--fc-shadow-card-hover:
-		0 4px 16px rgba(var(--fc-black-rgb), 0.16), 0 2px 4px rgba(var(--fc-black-rgb), 0.08),
-		inset 0 1px 0 0 rgba(var(--fc-white-rgb), 0.08);
 	--fc-shadow-popover:
 		0 8px 24px rgba(var(--fc-black-rgb), 0.12), 0 2px 6px rgba(var(--fc-black-rgb), 0.08);
 	--fc-shadow-overlay:
@@ -169,8 +166,6 @@
 		--fc-shadow-sm: 0 1px 2px rgba(var(--fc-black-rgb), 0.03);
 		--fc-shadow-card:
 			0 1px 3px rgba(var(--fc-black-rgb), 0.04), 0 1px 2px rgba(var(--fc-black-rgb), 0.02);
-		--fc-shadow-card-hover:
-			0 4px 12px rgba(var(--fc-black-rgb), 0.05), 0 1px 3px rgba(var(--fc-black-rgb), 0.03);
 		--fc-shadow-popover:
 			0 4px 14px rgba(var(--fc-black-rgb), 0.05), 0 1px 3px rgba(var(--fc-black-rgb), 0.03);
 		--fc-shadow-overlay:

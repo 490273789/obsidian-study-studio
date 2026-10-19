@@ -123,7 +123,6 @@
 	}
 
 	.dayProgress {
-		grid-area: progress;
 		flex-direction: column;
 		align-items: flex-end;
 		gap: var(--fc-space-1);
@@ -131,10 +130,6 @@
 }
 
 @container flashcard-page (max-width: #{breakpoints.$phone}) {
-	@include compact-plan;
-}
-
-@media (max-width: #{breakpoints.$phone}) {
 	@include compact-plan;
 }
 

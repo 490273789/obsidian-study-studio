@@ -16,24 +16,7 @@
 	}
 }
 
-.flashcard-slider-wrapper,
 .flashcard-root input[type="range"].flashcard-slider,
-.flashcard-deck-settings-modal input[type="range"].flashcard-slider,
-.modal input[type="range"].flashcard-slider,
-input[type="range"].flashcard-slider {
-	--slider-width: 100%;
-	--slider-track-height: 6px;
-	--slider-thumb-width: 18px;
-	--slider-thumb-height: 18px;
-	--slider-thumb-radius: 50%;
-	--slider-thumb-y: -3px;
-	--slider-thumb-background: #ffffff;
-	--slider-thumb-border-width: 2px;
-	--slider-thumb-border-color: var(--fc-cyan);
-}
-
-.flashcard-root input[type="range"].flashcard-slider,
-.flashcard-deck-settings-modal input[type="range"].flashcard-slider,
 .modal input[type="range"].flashcard-slider,
 input[type="range"].flashcard-slider {
 	-webkit-appearance: none !important;
@@ -105,54 +88,6 @@ input[type="range"].flashcard-slider {
 	}
 
 	&:focus-visible::-webkit-slider-thumb {
-		box-shadow:
-			0 0 0 3px color-mix(in srgb, var(--interactive-accent) 40%, transparent),
-			var(--fc-shadow-card) !important;
-	}
-
-	// Firefox Track
-	&::-moz-range-track {
-		width: 100% !important;
-		height: 6px !important;
-		border-radius: var(--fc-radius-pill) !important;
-		background: var(--fc-line-strong) !important;
-		border: none !important;
-		box-shadow: none !important;
-	}
-
-	&::-moz-range-progress {
-		height: 6px !important;
-		border-radius: var(--fc-radius-pill) !important;
-		background: var(--fc-cyan) !important;
-	}
-
-	// Firefox Thumb
-	&::-moz-range-thumb {
-		box-sizing: border-box !important;
-		width: 18px !important;
-		height: 18px !important;
-		border-radius: 50% !important;
-		background: #ffffff !important;
-		border: 2px solid var(--fc-cyan) !important;
-		box-shadow: var(--fc-shadow-sm) !important;
-		cursor: pointer;
-		transition:
-			transform var(--fc-motion-quick) ease,
-			box-shadow var(--fc-motion-quick) ease;
-	}
-
-	&:hover:not(:disabled)::-moz-range-thumb {
-		transform: scale(1.15);
-		box-shadow: var(--fc-shadow-card) !important;
-	}
-
-	&:active:not(:disabled)::-moz-range-thumb {
-		transform: scale(1.25);
-		background: var(--fc-cyan) !important;
-		border-color: #ffffff !important;
-	}
-
-	&:focus-visible::-moz-range-thumb {
 		box-shadow:
 			0 0 0 3px color-mix(in srgb, var(--interactive-accent) 40%, transparent),
 			var(--fc-shadow-card) !important;

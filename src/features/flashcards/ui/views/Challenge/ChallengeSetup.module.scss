@@ -1,12 +1,6 @@
 .setupModal {
 	container-type: inline-size;
 	max-width: 560px;
-	border-radius: var(--fc-radius-md);
-
-	:global(.flashcard-modal-header),
-	:global(.flashcard-modal-footer) {
-		background: var(--fc-surface-section);
-	}
 
 	:global(.flashcard-modal-footer) {
 		flex-wrap: wrap;

@@ -52,7 +52,6 @@
 }
 .figure {
 	white-space: nowrap;
-	flex-shrink: 0;
 	border-inline-start: 1px solid color-mix(in srgb, var(--fc-primary) 35%, var(--fc-line-soft));
 	padding-inline-start: var(--fc-space-5);
 	:global(.fc-hero__num) {
@@ -124,7 +123,6 @@
 .footer {
 	flex: none;
 	padding: var(--fc-space-3) var(--fc-space-4);
-	padding-bottom: var(--fc-space-3);
 	border-top: 1px solid var(--fc-line-soft);
 	background: var(--fc-surface-canvas);
 }

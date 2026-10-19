@@ -2,13 +2,10 @@
 
 .page {
 	gap: 0;
-	color: var(--fc-text);
 }
 
 .pageBody {
 	padding: 16px;
-	min-height: 0;
-	overflow-y: auto;
 }
 
 .empty {
@@ -126,7 +123,6 @@
 }
 
 .progress {
-	--slider-width: 100% !important;
 	width: 100% !important;
 	min-width: 0 !important;
 	max-width: 100% !important;
@@ -266,7 +262,6 @@
 	gap: var(--fc-space-2);
 	padding: var(--fc-space-2);
 	border-radius: var(--fc-radius-md);
-	color: var(--fc-text);
 	font-size: var(--fc-font-sm);
 	font-weight: var(--fc-weight-semibold);
 	text-align: left;
@@ -275,15 +270,6 @@
 	height: auto !important;
 	box-shadow: none !important;
 	transition: background-color var(--fc-motion-quick) ease;
-
-	&:hover {
-		background: var(--fc-surface-hover);
-	}
-
-	&:focus-visible {
-		outline: 2px solid var(--fc-primary);
-		outline-offset: 1px;
-	}
 }
 
 .queueChevron {
@@ -311,7 +297,6 @@
 	gap: var(--fc-space-1);
 	padding: var(--fc-space-1) var(--fc-space-2);
 	border-radius: var(--fc-radius-md);
-	color: var(--fc-primary);
 	font-size: var(--fc-font-xs);
 	font-weight: var(--fc-weight-medium);
 	cursor: pointer;
@@ -321,16 +306,6 @@
 	transition:
 		background-color var(--fc-motion-quick) ease,
 		color var(--fc-motion-quick) ease;
-
-	&:hover {
-		background: color-mix(in srgb, var(--fc-primary) 12%, transparent);
-		color: var(--fc-primary);
-	}
-
-	&:focus-visible {
-		outline: 2px solid var(--fc-primary);
-		outline-offset: 1px;
-	}
 }
 
 .queueList {
@@ -480,7 +455,6 @@
 	gap: 2px;
 	padding: var(--fc-space-1) var(--fc-space-2);
 	border-radius: var(--fc-radius-sm);
-	color: inherit;
 	font: inherit;
 	text-align: left;
 	user-select: none;
@@ -490,15 +464,6 @@
 	min-height: unset !important;
 	height: auto !important;
 	transition: background-color var(--fc-motion-quick) ease;
-
-	&:hover {
-		background: color-mix(in srgb, var(--fc-text) 4%, transparent);
-	}
-
-	&:focus-visible {
-		outline: 2px solid var(--fc-primary);
-		outline-offset: 1px;
-	}
 }
 
 .sourceName {
@@ -692,10 +657,6 @@
 .floatingBody {
 	min-height: 0;
 	flex: 1;
-
-	> .surface {
-		height: 100%;
-	}
 
 	.mediaHost {
 		min-height: 0;

@@ -38,7 +38,7 @@
 
 1. **作用域与类名命名**：
     - 内部选择器直接使用清晰简练的语义名（如 `.workspace`、`.notice`、`.results`、`.footer`），不再需要堆叠冗长的人工命名空间前缀（如 `flashcard-translator-*`）。
-    - Vite 会自动生成带 `fc-` 命名空间前缀的类名：`fc-[name]__[local]_[hash:base64:5]`，确保在 Obsidian 全局 DOM 中绝对安全隔离。
+    - Vite 会自动生成带 `fc-` 命名空间前缀的类名：开发构建为 `fc-[name]__[local]_[hash:base64:5]`（便于调试），生产构建为更短的 `fc_[hash:base64:5]`（哈希由文件路径与局部类名共同派生，跨模块仍唯一），确保在 Obsidian 全局 DOM 中绝对安全隔离并减小发布体积。不要依赖生成类名的具体形态。
 2. **TSX 引用与驼峰映射**：
     - Vite 开启了 `localsConvention: "camelCase"`，在 SCSS 中书写 `.resultTitle` 或 `.result-title` 均可在 TSX 中通过 `styles.resultTitle` 访问。
 3. **类名组合工具 (`cls`)**：

@@ -129,10 +129,21 @@ export default defineConfig(({ mode }) => {
 		css: {
 			modules: {
 				localsConvention: "camelCase",
-				generateScopedName: "fc-[name]__[local]_[hash:base64:5]",
+				// Production uses the shortest safe scoped name (hash is derived
+				// from file path + local name, so it stays collision-free) to cut
+				// ~40 kB of generated class-name text from the shipped styles.
+				// Development keeps the readable name for debugging.
+				generateScopedName: isProduction
+					? "fc_[hash:base64:5]"
+					: "fc-[name]__[local]_[hash:base64:5]",
 			},
 		},
 		build: {
+			// Obsidian bundles Chromium (desktop) and modern WebKit (iOS); the
+			// default cssTarget derived from es2018 forced esbuild to expand every
+			// :is()/:not() into :*-any() fallbacks and add dead vendor prefixes.
+			// Targeting the supported runtimes removes that legacy output.
+			cssTarget: ["chrome120", "safari16"],
 			// The dictionary engine WASM (654 KiB) must stay inside main.js: the
 			// copy step below deletes dist/, so any emitted asset would be lost.
 			assetsInlineLimit: 1_048_576,

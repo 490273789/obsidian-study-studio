@@ -76,11 +76,6 @@
 	padding-top: var(--fc-space-4);
 	border-top: 1px solid var(--fc-line-soft);
 
-	dt {
-		font-size: var(--fc-font-xs);
-		color: var(--fc-muted);
-	}
-
 	dd {
 		margin: var(--fc-space-1) 0 0;
 		font-family: var(--fc-font-data);
@@ -131,6 +126,7 @@
 	}
 }
 
+.stats dt,
 .incorrectIndex,
 .incorrectLabel,
 .source {

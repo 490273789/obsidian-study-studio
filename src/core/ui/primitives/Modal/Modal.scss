@@ -362,16 +362,12 @@
 
 @media (max-width: #{breakpoints.$phone}) {
 	.flashcard-modal-backdrop {
-		align-items: center;
-		justify-content: center;
 		padding: max(env(safe-area-inset-top, 0px), var(--fc-space-2)) var(--fc-space-2)
 			max(env(safe-area-inset-bottom, 0px), var(--fc-space-2));
 		overflow: hidden;
-		overscroll-behavior: contain;
 	}
 
 	.flashcard-modal {
 		max-height: min(92vh, calc(100% - 16px));
-		border-radius: var(--fc-radius-md);
 	}
 }
