@@ -37,16 +37,8 @@ function createMemoryCache(): DeckIndexCacheStore<SerializedDeck> {
 	let stored: DeckIndexCache<SerializedDeck> | null = null;
 	return {
 		load: async () => stored,
-		loadOrRebuild: async (build) => {
-			stored ??= await build();
-			return stored;
-		},
 		save: async (next) => {
 			stored = structuredClone(next);
-		},
-		invalidateSource: async () => {},
-		clear: async () => {
-			stored = null;
 		},
 	};
 }

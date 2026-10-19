@@ -55,9 +55,6 @@ async function fixture(options: FixtureOptions = {}) {
 			save: async (next) => {
 				cached = structuredClone(next);
 			},
-			loadOrRebuild: vi.fn(),
-			invalidateSource: vi.fn(),
-			clear: vi.fn(),
 		},
 		...(options.sessionJournal
 			? { sessionJournal: options.sessionJournal, journalTimer: timer }

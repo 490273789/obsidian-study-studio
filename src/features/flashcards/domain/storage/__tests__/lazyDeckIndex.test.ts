@@ -65,9 +65,6 @@ function fixture() {
 			structuredClone(cacheDocument),
 		),
 		save: vi.fn(),
-		loadOrRebuild: vi.fn(),
-		invalidateSource: vi.fn(),
-		clear: vi.fn(),
 	};
 	const repo = new FlashcardRepository({ authority, deckIndexCache: cache });
 	return { repo, authority, cache, learning, cacheDocument };

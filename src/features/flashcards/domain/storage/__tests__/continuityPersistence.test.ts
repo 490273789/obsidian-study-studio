@@ -38,9 +38,6 @@ async function fixture(cardCount = 2) {
 		save: vi.fn(async (next: DeckIndexCache<SerializedDeck>) => {
 			cached = structuredClone(next);
 		}),
-		loadOrRebuild: vi.fn(),
-		invalidateSource: vi.fn(),
-		clear: vi.fn(),
 	};
 	const document = {
 		path: PATH,

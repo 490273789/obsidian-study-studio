@@ -15,16 +15,16 @@ export interface DeckIndexCache<TDeck> {
 }
 
 /**
- * Storage seam for the local deck-index cache. `loadOrRebuild` gives callers
- * one recovery path instead of making every caller reason about missing or
- * malformed cache files.
+ * Snapshot store for the local deck-index cache.
+ *
+ * The cache is derived, disposable data. This seam only reads and writes whole
+ * snapshots; `FlashcardRepository`/continuity own rebuilding a missing or
+ * corrupt cache by scanning Markdown, and refresh it through the same
+ * whole-snapshot write.
  */
 export interface DeckIndexCacheStore<TDeck> {
 	load(): Promise<DeckIndexCache<TDeck> | null>;
-	loadOrRebuild(build: () => Promise<DeckIndexCache<TDeck>>): Promise<DeckIndexCache<TDeck>>;
 	save(cache: DeckIndexCache<TDeck>): Promise<void>;
-	invalidateSource(path: string): Promise<void>;
-	clear(): Promise<void>;
 }
 
 export function createDeckIndexCacheStore<TDeck>(
@@ -47,32 +47,11 @@ class ObsidianDeckIndexCacheStore<TDeck> implements DeckIndexCacheStore<TDeck> {
 		this.path = normalizePath(`${this.directory}/deck-index.json`);
 	}
 
-	async loadOrRebuild(
-		build: () => Promise<DeckIndexCache<TDeck>>,
-	): Promise<DeckIndexCache<TDeck>> {
-		const cached = await this.load();
-		if (cached) return cached;
-		const rebuilt = await build();
-		await this.save(rebuilt);
-		return rebuilt;
-	}
-
 	async save(cache: DeckIndexCache<TDeck>): Promise<void> {
 		if (!(await this.adapter.exists(this.directory))) {
 			await this.adapter.mkdir(this.directory);
 		}
 		await this.adapter.write(this.path, JSON.stringify(cache));
-	}
-
-	async invalidateSource(path: string): Promise<void> {
-		const cache = await this.load();
-		if (!cache || !Object.prototype.hasOwnProperty.call(cache.decks, path)) return;
-		delete cache.decks[path];
-		await this.save(cache);
-	}
-
-	async clear(): Promise<void> {
-		if (await this.adapter.exists(this.path)) await this.adapter.remove(this.path);
 	}
 
 	async load(): Promise<DeckIndexCache<TDeck> | null> {

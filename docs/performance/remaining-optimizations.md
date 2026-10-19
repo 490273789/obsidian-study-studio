@@ -434,7 +434,6 @@ ADR 范围——外部 `data.json` 的 `journalSeq` 高于本地日志序号时�
 
 - `src/features/flashcards/domain/cards/parser.ts:170`（`scanFilesWithTag`）
 - `src/features/flashcards/domain/cards/parser.ts:202`（`findAllFlashcardTags`）
-- `src/core/storage/deckIndexCache.ts:67`（`invalidateSource`）
 
 ## 最小基准：已补齐
 

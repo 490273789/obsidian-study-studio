@@ -186,9 +186,6 @@ describe("incremental learning persistence", () => {
 				decks: { "deck.md": serialized },
 			})),
 			save: vi.fn(),
-			loadOrRebuild: vi.fn(),
-			invalidateSource: vi.fn(),
-			clear: vi.fn(),
 		};
 		const repo = new FlashcardRepository({ authority, deckIndexCache: cache });
 		await repo.loadDeckIndex();

@@ -20,9 +20,6 @@ function createAdapter(initial: Record<string, string> = {}) {
 			if (value === undefined) throw new Error("not found");
 			return value;
 		}),
-		remove: vi.fn(async (path: string) => {
-			files.delete(path);
-		}),
 		write: vi.fn(async (path: string, value: string) => {
 			files.set(path, value);
 		}),
@@ -40,39 +37,50 @@ function cache(decks: Record<string, { id: string }>): DeckIndexCache<{ id: stri
 }
 
 describe("DeckIndexCacheStore", () => {
-	it("stores derived deck content outside data.json and invalidates one source", async () => {
+	it("stores and reads one derived deck snapshot outside data.json", async () => {
 		const adapter = createAdapter();
 		const store = createDeckIndexCacheStore<{ id: string }>(
 			adapter as never,
 			".obsidian/plugins/study",
 		);
 		if (!store) throw new Error("Expected cache store");
+		const snapshot = cache({ "notes/a.md": { id: "a" } });
 
-		await store.save(cache({ "notes/a.md": { id: "a" }, "notes/b.md": { id: "b" } }));
+		await store.save(snapshot);
+
 		expect(adapter.files.get(".obsidian/plugins/study/cache/deck-index.json")).toContain(
 			"notes/a.md",
 		);
-
-		await store.invalidateSource("notes/a.md");
-		await expect(store.load()).resolves.toMatchObject({ decks: { "notes/b.md": { id: "b" } } });
-		await store.clear();
-		await expect(store.load()).resolves.toBeNull();
+		await expect(store.load()).resolves.toEqual(snapshot);
 	});
 
-	it("rebuilds after a malformed cache without making cache data authoritative", async () => {
-		const adapter = createAdapter({
-			".obsidian/plugins/study/cache/deck-index.json": "not-json",
-		});
-		const store = createDeckIndexCacheStore<{ id: string }>(
-			adapter as never,
+	it("returns null for a missing or malformed snapshot instead of rebuilding", async () => {
+		const missing = createDeckIndexCacheStore<{ id: string }>(
+			createAdapter() as never,
 			".obsidian/plugins/study",
 		);
-		if (!store) throw new Error("Expected cache store");
-		const build = vi.fn(async () => cache({ "notes/rebuilt.md": { id: "rebuilt" } }));
+		if (!missing) throw new Error("Expected cache store");
+		await expect(missing.load()).resolves.toBeNull();
 
-		await expect(store.loadOrRebuild(build)).resolves.toMatchObject({
-			decks: { "notes/rebuilt.md": { id: "rebuilt" } },
-		});
-		expect(build).toHaveBeenCalledOnce();
+		const malformed = createDeckIndexCacheStore<{ id: string }>(
+			createAdapter({
+				".obsidian/plugins/study/cache/deck-index.json": "not-json",
+			}) as never,
+			".obsidian/plugins/study",
+		);
+		if (!malformed) throw new Error("Expected cache store");
+		await expect(malformed.load()).resolves.toBeNull();
+
+		const wrongVersion = createDeckIndexCacheStore<{ id: string }>(
+			createAdapter({
+				".obsidian/plugins/study/cache/deck-index.json": JSON.stringify({
+					...cache({ "notes/a.md": { id: "a" } }),
+					version: 99,
+				}),
+			}) as never,
+			".obsidian/plugins/study",
+		);
+		if (!wrongVersion) throw new Error("Expected cache store");
+		await expect(wrongVersion.load()).resolves.toBeNull();
 	});
 });

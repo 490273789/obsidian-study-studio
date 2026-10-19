@@ -246,10 +246,7 @@ describe("FlashcardRepository", () => {
 				availableTags: ["#flashcard"],
 				decks: { "deck-1": serializeDeck(deck) },
 			}),
-			loadOrRebuild: vi.fn(),
 			save: vi.fn(),
-			invalidateSource: vi.fn(),
-			clear: vi.fn(),
 		};
 
 		const store = new WorkbenchStore(backend);
@@ -338,10 +335,7 @@ describe("FlashcardRepository", () => {
 				availableTags: ["#flashcard"],
 				decks: { "deck-1": serializeDeck(initialDeck) },
 			}),
-			loadOrRebuild: vi.fn(),
 			save: vi.fn(),
-			invalidateSource: vi.fn(),
-			clear: vi.fn(),
 		};
 
 		const store = new WorkbenchStore(backend);
@@ -726,10 +720,7 @@ describe("FlashcardRepository", () => {
 	it("does not roll back a durable continuity commit when the rebuildable cache fails", async () => {
 		const cache = {
 			load: vi.fn().mockResolvedValue(null),
-			loadOrRebuild: vi.fn(),
 			save: vi.fn().mockRejectedValue(new Error("cache unavailable")),
-			invalidateSource: vi.fn(),
-			clear: vi.fn(),
 		};
 		const authority = new MemoryFlashcardAuthority(DEFAULT_SETTINGS);
 		const repo = new FlashcardRepository({ authority, deckIndexCache: cache });
@@ -828,9 +819,6 @@ describe("FlashcardRepository", () => {
 			deckIndexCache: {
 				load: async () => cached as never,
 				save,
-				loadOrRebuild: vi.fn(),
-				invalidateSource: vi.fn(),
-				clear: vi.fn(),
 			},
 		});
 		await repo.loadDeckIndex();
