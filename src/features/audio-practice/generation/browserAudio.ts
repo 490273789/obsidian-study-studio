@@ -1,3 +1,4 @@
+import { audioFailure } from "../domain/failures";
 import { MAX_AUDIO_BYTES, MAX_AUDIO_DURATION_SECONDS } from "./limits";
 import type { PrepareAudio } from "./types";
 
@@ -34,7 +35,7 @@ export function createBrowserAudioPreparation(
 	return async (audio, signal) => {
 		signal.throwIfAborted();
 		if (audio.byteLength > MAX_AUDIO_BYTES)
-			throw new Error("生成字幕仅支持 50 MiB 以内的音频。");
+			throw audioFailure({ kind: "audio-too-large", maxBytes: MAX_AUDIO_BYTES });
 		const browser = getWindow() as Window & typeof globalThis;
 		const context = new browser.AudioContext();
 		try {
@@ -45,7 +46,10 @@ export function createBrowserAudioPreparation(
 				decoded.duration <= 0 ||
 				decoded.duration > MAX_AUDIO_DURATION_SECONDS
 			)
-				throw new Error("生成字幕仅支持 10 分钟以内的有效音频。");
+				throw audioFailure({
+					kind: "audio-too-long",
+					maxSeconds: MAX_AUDIO_DURATION_SECONDS,
+				});
 			const renderer = new browser.OfflineAudioContext(
 				1,
 				Math.ceil(decoded.duration * 16000),

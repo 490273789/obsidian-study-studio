@@ -1,3 +1,4 @@
+import type { AudioFailure } from "./failures";
 export interface SubtitleCue {
 	readonly id: string;
 	readonly text: string;
@@ -68,6 +69,6 @@ export interface AudioPracticeSnapshot extends AudioPracticeData {
 	readonly playing: boolean;
 	readonly revealed: boolean;
 	readonly loading: boolean;
-	readonly error: string | null;
+	readonly failure: AudioFailure | null;
 	readonly invalidatedMarks: number;
 }

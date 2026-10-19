@@ -127,7 +127,7 @@ describe("audio practice runtime", () => {
 		fileChange({ kind: "delete", path: "new" });
 		await Promise.resolve();
 		expect(media.paused).toBe(true);
-		expect(runtime.getSnapshot().error).toContain("丢失");
+		expect(runtime.getSnapshot().failure).toEqual({ kind: "missing-file" });
 		expect(runtime.getSnapshot().materials).toHaveLength(2);
 		runtime.dispose();
 	});
@@ -157,7 +157,9 @@ describe("audio practice runtime", () => {
 					})
 				: originalRead(path);
 		const slow = runtime.setSubtitle(id, "slow.srt");
-		const rejected = expect(slow).rejects.toThrow("已更新");
+		const rejected = expect(slow).rejects.toMatchObject({
+			failure: { kind: "stale-material" },
+		});
 		await runtime.setSubtitle(id, "new.srt");
 		finish(await originalRead("test.srt"));
 		await rejected;
@@ -175,7 +177,9 @@ describe("audio practice runtime", () => {
 					})
 				: originalRead(path);
 		const pending = runtime.setSubtitle(runtime.getSnapshot().currentMaterialId!, "slow.srt");
-		const rejected = expect(pending).rejects.toThrow("已更新");
+		const rejected = expect(pending).rejects.toMatchObject({
+			failure: { kind: "stale-material" },
+		});
 		sync(runtime.getSnapshot());
 		finish(await originalRead("test.srt"));
 		await rejected;
@@ -194,7 +198,7 @@ describe("audio practice runtime", () => {
 				runtime.getSnapshot().cues,
 			),
 		).rejects.toThrow("disk full");
-		expect(runtime.getSnapshot().error).toContain("保存失败");
+		expect(runtime.getSnapshot().failure).toEqual({ kind: "persist-failed" });
 		runtime.dispose();
 	});
 	it("stops at the boundary even when timeupdate is absent", async () => {

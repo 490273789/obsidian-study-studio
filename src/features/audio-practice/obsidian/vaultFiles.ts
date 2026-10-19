@@ -1,11 +1,12 @@
 import { TFile, normalizePath, type App } from "obsidian";
+import { audioFailure } from "../domain/failures";
 import type { AudioPracticeFiles, AudioFileChange } from "../domain/types";
 
 /** Vault APIs work on mobile as well as desktop; absolute OS paths never escape here. */
 export function createAudioPracticeFiles(app: App): AudioPracticeFiles {
 	const fileAt = (path: string): TFile => {
 		const file = app.vault.getAbstractFileByPath(normalizePath(path));
-		if (!(file instanceof TFile)) throw new Error("file-missing");
+		if (!(file instanceof TFile)) throw audioFailure({ kind: "missing-file" });
 		return file;
 	};
 	return {

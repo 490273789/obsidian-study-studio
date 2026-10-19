@@ -1,4 +1,5 @@
 import { EndpointValidationError, validateHttpEndpoint } from "../../../core/net/endpoint";
+import { audioFailure } from "../domain/failures";
 import type { TranscriptionConfig } from "./types";
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
@@ -9,24 +10,24 @@ function parseBaseUrl(value: string): URL {
 		return new URL(validateHttpEndpoint(trimmed));
 	} catch (error) {
 		if (error instanceof EndpointValidationError)
-			throw new Error("请填写有效的语音服务 Base URL。");
+			throw audioFailure({ kind: "config-invalid", field: "base-url" });
 		throw error;
 	}
 }
 
 /** Validates a config before any audio is decoded or any paid request starts. */
 export function validateTranscriptionConfig(config: TranscriptionConfig): void {
-	if (!config.secretId.trim()) throw new Error("请在设置中为字幕生成服务选择 API Key 密钥。");
+	if (!config.secretId.trim()) throw audioFailure({ kind: "config-invalid", field: "secret" });
 	if (config.provider === "bailian") {
 		if (!/^[a-zA-Z0-9-]+$/.test(config.workspaceId.trim()))
-			throw new Error("请填写有效的百炼 Workspace ID。");
-		if (!config.model.trim()) throw new Error("请填写百炼语音模型。");
+			throw audioFailure({ kind: "config-invalid", field: "workspace" });
+		if (!config.model.trim()) throw audioFailure({ kind: "config-invalid", field: "model" });
 		return;
 	}
 	const url = parseBaseUrl(config.baseUrl);
-	if (!config.model.trim()) throw new Error("请填写语音服务模型。");
+	if (!config.model.trim()) throw audioFailure({ kind: "config-invalid", field: "model" });
 	if (url.protocol === "http:" && !LOOPBACK_HOSTS.has(url.hostname))
-		throw new Error("自定义服务只允许 https，或本机回环地址的 http。");
+		throw audioFailure({ kind: "config-invalid", field: "security" });
 }
 
 /** Builds the standard transcription endpoint from the user's API base URL. */

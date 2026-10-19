@@ -1,5 +1,6 @@
 import type { OutboundPort } from "../../../core/net/types";
-import { speechServiceFailure } from "./serviceErrors";
+import { audioFailure, AudioFailureError } from "../domain/failures";
+import { toProviderFailure } from "./serviceErrors";
 import type {
 	AudioChunk,
 	BailianTranscriptionConfig,
@@ -19,9 +20,14 @@ function base64(buffer: ArrayBuffer): string {
 export function parseBailianResponse(text: string): Transcript {
 	try {
 		return parseResponse(text);
-	} catch {
+	} catch (error) {
+		if (error instanceof AudioFailureError) throw error;
 		// JSON parsing errors can embed raw response fragments; never expose them to UI.
-		throw new Error("语音服务返回了无效或不完整的识别结果。");
+		throw audioFailure({
+			kind: "provider-failure",
+			code: "invalid-response",
+			reason: "invalid-payload",
+		});
 	}
 }
 
@@ -114,9 +120,14 @@ function parseResponse(text: string): Transcript {
 	let hasOutput = false;
 	const pending = new Set<string>();
 	for (const payload of payloads) {
-		if (!payload || typeof payload !== "object") throw new Error("语音服务返回了无效结果。");
+		if (!payload || typeof payload !== "object")
+			throw audioFailure({
+				kind: "provider-failure",
+				code: "invalid-response",
+				reason: "invalid-payload",
+			});
 		const record = payload as Record<string, unknown>;
-		if (record.code) throw new Error("语音服务未能完成识别，请检查配置后重试。");
+		if (record.code) throw audioFailure({ kind: "provider-failure", code: "server" });
 		if (!record.output || typeof record.output !== "object") continue;
 		hasOutput = true;
 		const output = record.output as Record<string, unknown>;
@@ -124,7 +135,11 @@ function parseResponse(text: string): Transcript {
 		if (!raw || typeof raw !== "object") continue;
 		const sentence = raw as Record<string, unknown>;
 		if (typeof sentence.sentence_id !== "number" && typeof sentence.sentence_id !== "string")
-			throw new Error("语音服务返回的片段标识无效。");
+			throw audioFailure({
+				kind: "provider-failure",
+				code: "invalid-response",
+				reason: "invalid-payload",
+			});
 		const id = String(sentence.sentence_id);
 		if (sentence.sentence_end !== true) {
 			pending.add(id);
@@ -132,7 +147,11 @@ function parseResponse(text: string): Transcript {
 		}
 		pending.delete(id);
 		if (typeof sentence.begin_time !== "number" || typeof sentence.end_time !== "number")
-			throw new Error("语音服务返回的时间戳无效。");
+			throw audioFailure({
+				kind: "provider-failure",
+				code: "invalid-response",
+				reason: "invalid-timing",
+			});
 		const start = Number(sentence.begin_time) / 1000;
 		const end = Number(sentence.end_time) / 1000;
 		if (
@@ -142,7 +161,11 @@ function parseResponse(text: string): Transcript {
 			end <= start ||
 			typeof sentence.text !== "string"
 		)
-			throw new Error("语音服务返回的时间戳无效。");
+			throw audioFailure({
+				kind: "provider-failure",
+				code: "invalid-response",
+				reason: "invalid-timing",
+			});
 		const words = (Array.isArray(sentence.words) ? sentence.words : []).flatMap(
 			(rawWord): TimedWord[] => {
 				if (!rawWord || typeof rawWord !== "object") return [];
@@ -164,7 +187,12 @@ function parseResponse(text: string): Transcript {
 			words,
 		});
 	}
-	if (!hasOutput || pending.size > 0) throw new Error("语音服务没有返回完整识别结果。");
+	if (!hasOutput || pending.size > 0)
+		throw audioFailure({
+			kind: "provider-failure",
+			code: "invalid-response",
+			reason: "incomplete-stream",
+		});
 	const entries = [...sentences.values()];
 	if (isCumulativeSnapshot(entries)) return foldCumulativeSnapshots(entries);
 	const ordered = entries.sort((a, b) => (a.cue.start ?? 0) - (b.cue.start ?? 0));
@@ -178,10 +206,10 @@ export function createBailianProvider(outbound: OutboundPort) {
 		signal: AbortSignal,
 	): Promise<Transcript> => {
 		if (!/^[a-zA-Z0-9-]+$/.test(config.workspaceId.trim()))
-			throw new Error("请填写有效的百炼 Workspace ID。");
-		if (!config.model.trim()) throw new Error("请填写百炼语音模型。");
+			throw audioFailure({ kind: "config-invalid", field: "workspace" });
+		if (!config.model.trim()) throw audioFailure({ kind: "config-invalid", field: "model" });
 		const secret = outbound.readSecret(config.secretId);
-		if (!secret) throw new Error("请在设置中配置语音服务 API Key。");
+		if (!secret) throw audioFailure({ kind: "config-invalid", field: "secret" });
 		let response;
 		try {
 			response = await outbound.request({
@@ -217,7 +245,7 @@ export function createBailianProvider(outbound: OutboundPort) {
 				maxBytes: 8 * 1024 * 1024,
 			});
 		} catch (error) {
-			throw speechServiceFailure(error);
+			throw audioFailure(toProviderFailure(error));
 		}
 		return parseBailianResponse(response.text);
 	};

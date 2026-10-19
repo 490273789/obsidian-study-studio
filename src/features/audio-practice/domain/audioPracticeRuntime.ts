@@ -1,3 +1,4 @@
+import { audioFailure, type AudioFailure, toAudioFailure } from "./failures";
 import { emptyProgress, normalizeAudioPracticeData } from "./repository";
 import { parseSubtitles, serializeSrt, validateCues } from "./subtitles";
 import {
@@ -23,7 +24,7 @@ export class AudioPracticeRuntime {
 	private snapshot!: AudioPracticeSnapshot;
 	private listeners = new Set<() => void>();
 	private releases: (() => void)[] = [];
-	private error: string | null = null;
+	private error: AudioFailure | null = null;
 	private revealed = false;
 	private loading = false;
 	private loadingMedia = false;
@@ -147,7 +148,7 @@ export class AudioPracticeRuntime {
 		audioPath: string;
 	} {
 		const material = this.data.materials.find((item) => item.id === id);
-		if (!material || this.disposed) throw new Error("材料已不存在");
+		if (!material || this.disposed) throw audioFailure({ kind: "stale-material" });
 		const token = (this.subtitleOperation.get(id) ?? 0) + 1;
 		this.subtitleOperation.set(id, token);
 		return { token, epoch: this.epoch, audioPath: material.audioPath };
@@ -162,7 +163,7 @@ export class AudioPracticeRuntime {
 			this.subtitleOperation.get(id) !== operation.token ||
 			this.data.materials.find((item) => item.id === id)?.audioPath !== operation.audioPath
 		)
-			throw new Error("材料或字幕已更新，请重新保存");
+			throw audioFailure({ kind: "stale-material" });
 	}
 	private async bindSubtitle(
 		id: string,
@@ -189,7 +190,7 @@ export class AudioPracticeRuntime {
 			cues,
 			id === this.data.currentMaterialId ? (this.snapshot.duration ?? undefined) : undefined,
 		);
-		if (errors.length) throw new Error(errors.join("；"));
+		if (errors.length) throw audioFailure({ kind: "subtitle-invalid", problems: errors });
 		const path = await this.files.writeSubtitle(operation.audioPath, serializeSrt(cues));
 		this.assertSubtitleOperation(id, operation);
 		await this.bindSubtitle(id, path, operation);
@@ -237,7 +238,7 @@ export class AudioPracticeRuntime {
 			this.media.currentTime >= cue.end + this.progress().offset
 		)
 			this.media.currentTime = Math.max(0, cue.start + this.progress().offset);
-		void this.media.play().catch(() => this.fail("无法播放音频，请检查格式或重新关联文件"));
+		void this.media.play().catch(() => this.fail({ kind: "unreadable-media" }));
 	}
 	pause(): void {
 		this.cancelBoundary();
@@ -296,7 +297,7 @@ export class AudioPracticeRuntime {
 		this.pause();
 		this.media.currentTime = start;
 		this.previewEnd = end;
-		void this.media.play().catch(() => this.fail("无法试听音频"));
+		void this.media.play().catch(() => this.fail({ kind: "unreadable-media" }));
 	}
 	setPlaybackRate(rate: AudioPlaybackRate): void {
 		if (!AUDIO_PLAYBACK_RATES.includes(rate)) return;
@@ -412,7 +413,7 @@ export class AudioPracticeRuntime {
 		this.publish();
 		try {
 			if (material && !this.files.exists(material.audioPath))
-				throw new Error("音频文件尚未同步或已丢失，请重新关联");
+				throw audioFailure({ kind: "missing-file" });
 			const cues = material?.subtitlePath
 				? parseSubtitles(await this.files.readText(material.subtitlePath))
 				: [];
@@ -438,8 +439,7 @@ export class AudioPracticeRuntime {
 						)?.id ?? cues[0]!.id,
 				});
 		} catch (error) {
-			if (token === this.generation)
-				this.error = error instanceof Error ? error.message : "无法读取音频或字幕";
+			if (token === this.generation) this.error = toAudioFailure(error);
 		}
 		if (token !== this.generation || this.disposed) return;
 		this.loading = false;
@@ -485,7 +485,7 @@ export class AudioPracticeRuntime {
 			this.media.load();
 			this.media.currentTime = this.progress().time;
 		} catch {
-			this.error = "无法加载音频";
+			this.error = { kind: "unreadable-media" };
 		} finally {
 			this.loadingMedia = false;
 		}
@@ -556,7 +556,7 @@ export class AudioPracticeRuntime {
 		ended: this.paused,
 		loadedmetadata: this.metadata,
 		error: () => {
-			if (this.media?.src) this.fail("音频无法解码，请检查文件格式");
+			if (this.media?.src) this.fail({ kind: "unreadable-media" });
 		},
 	};
 	private cancelBoundary(): void {
@@ -609,22 +609,24 @@ export class AudioPracticeRuntime {
 	}
 	private persist(required = false): Promise<void> {
 		if (this.disposed)
-			return required ? Promise.reject(new Error("练习已关闭")) : Promise.resolve();
+			return required
+				? Promise.reject(audioFailure({ kind: "cancelled" }))
+				: Promise.resolve();
 		const value = this.data;
 		const epoch = this.epoch;
 		const pending = this.persistenceTail.then(async () => {
 			if (epoch !== this.epoch) {
-				if (required) throw new Error("同步数据已更新，请重新保存");
+				if (required) throw audioFailure({ kind: "stale-material" });
 				return;
 			}
 			await this.repository.save(value);
 		});
-		this.persistenceTail = pending.catch(() => this.fail("练习进度保存失败，请稍后重试"));
+		this.persistenceTail = pending.catch(() => this.fail({ kind: "persist-failed" }));
 		return pending;
 	}
-	private fail(message: string): void {
+	private fail(failure: AudioFailure): void {
 		if (this.disposed) return;
-		this.error = message;
+		this.error = failure;
 		this.publish();
 	}
 	private publish(): void {
@@ -639,7 +641,7 @@ export class AudioPracticeRuntime {
 			playing: !!this.media && !this.media.paused,
 			revealed: this.revealed,
 			loading: this.loading,
-			error: this.error,
+			failure: this.error,
 			invalidatedMarks: this.invalidatedMarks,
 		};
 		for (const listener of this.listeners) listener();

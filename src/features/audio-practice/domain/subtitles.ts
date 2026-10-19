@@ -1,3 +1,4 @@
+import { audioFailure, type SubtitleProblem } from "./failures";
 import type { SubtitleCue } from "./types";
 
 function timeValue(value: string): number {
@@ -22,7 +23,7 @@ export function parseSubtitles(contents: string): SubtitleCue[] {
 		const timing = lines.findIndex((line) => line.includes("-->"));
 		if (timing < 0) continue;
 		const match = lines[timing]!.match(/^\s*(\S+)\s*-->\s*(\S+)/);
-		if (!match) throw new Error("字幕时间格式无效");
+		if (!match) throw audioFailure({ kind: "subtitle-parse", reason: "timing" });
 		const start = timeValue(match[1]!);
 		const end = timeValue(match[2]!);
 		const text = lines
@@ -30,7 +31,7 @@ export function parseSubtitles(contents: string): SubtitleCue[] {
 			.join("\n")
 			.trim();
 		if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || !text)
-			throw new Error("字幕包含无效时间或空白文字");
+			throw audioFailure({ kind: "subtitle-parse", reason: "content" });
 		const identity = JSON.stringify([text, start, end]);
 		let hash = 2166136261;
 		for (let i = 0; i < identity.length; i++)
@@ -43,32 +44,31 @@ export function parseSubtitles(contents: string): SubtitleCue[] {
 			text,
 		});
 	}
-	if (!cues.length) throw new Error("未找到可用字幕，请选择 SRT 或 VTT 文件");
+	if (!cues.length) throw audioFailure({ kind: "subtitle-parse", reason: "empty" });
 	return cues.sort((a, b) => a.start - b.start);
 }
 
-export function validateCues(cues: readonly SubtitleCue[], duration?: number): string[] {
-	const errors: string[] = [];
+export function validateCues(cues: readonly SubtitleCue[], duration?: number): SubtitleProblem[] {
+	const problems: SubtitleProblem[] = [];
 	const ids = new Set<string>();
-	if (!cues.length) errors.push("至少需要一个字幕片段");
+	if (!cues.length) problems.push({ kind: "no-cues" });
 	for (const [index, cue] of cues.entries()) {
-		if (!cue.id || ids.has(cue.id)) errors.push(`第 ${index + 1} 段标识重复或缺失`);
+		if (!cue.id || ids.has(cue.id)) problems.push({ kind: "duplicate-id", cueIndex: index });
 		ids.add(cue.id);
-		if (!cue.text.trim()) errors.push(`第 ${index + 1} 段文字为空`);
-		if (/\n[ \t\r]*\n/.test(cue.text))
-			errors.push(`第 ${index + 1} 段包含空白行，请删除空白行后保存`);
+		if (!cue.text.trim()) problems.push({ kind: "empty-text", cueIndex: index });
+		if (/\n[ \t\r]*\n/.test(cue.text)) problems.push({ kind: "blank-line", cueIndex: index });
 		if (
 			!Number.isFinite(cue.start) ||
 			!Number.isFinite(cue.end) ||
 			cue.start < 0 ||
 			cue.end <= cue.start
 		)
-			errors.push(`第 ${index + 1} 段时间无效`);
+			problems.push({ kind: "bad-timing", cueIndex: index });
 		if (duration !== undefined && Number.isFinite(duration) && cue.end > duration)
-			errors.push(`第 ${index + 1} 段超出音频范围`);
-		if (cue.needsReview) errors.push(`第 ${index + 1} 段仍需校对`);
+			problems.push({ kind: "out-of-range", cueIndex: index });
+		if (cue.needsReview) problems.push({ kind: "needs-review", cueIndex: index });
 	}
-	return errors;
+	return problems;
 }
 
 function formatTime(seconds: number): string {
@@ -82,8 +82,8 @@ function formatTime(seconds: number): string {
 		.padStart(2, "0")},${(ms % 1000).toString().padStart(3, "0")}`;
 }
 export function serializeSrt(cues: readonly SubtitleCue[]): string {
-	const errors = validateCues(cues);
-	if (errors.length) throw new Error(errors.join("；"));
+	const problems = validateCues(cues);
+	if (problems.length) throw audioFailure({ kind: "subtitle-invalid", problems });
 	return [...cues]
 		.sort((a, b) => a.start - b.start)
 		.map(

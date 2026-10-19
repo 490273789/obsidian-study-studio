@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { AudioMaterial, AudioPracticeSnapshot, SubtitleCue } from "../../domain/types";
 import type { AudioPracticeSettings } from "../../settings/slice";
+import { audioFailure } from "../../domain/failures";
 import { MAX_AUDIO_BYTES } from "../limits";
 import type { GenerationInput, GenerationSnapshot } from "../subtitleGeneration";
 import type { AudioSourceStat } from "../types";
@@ -37,7 +38,7 @@ function generationSnapshot(patch: Partial<GenerationSnapshot> = {}): Generation
 		completedChunks: 0,
 		totalChunks: 0,
 		duration: 0,
-		error: null,
+		failure: null,
 		notice: null,
 		taskKey: null,
 		...patch,
@@ -69,7 +70,7 @@ function harness(
 		playing: false,
 		revealed: false,
 		loading: false,
-		error: null,
+		failure: null,
 		invalidatedMarks: 0,
 	} as unknown as AudioPracticeSnapshot;
 	const runtimeListeners = new Set<() => void>();
@@ -101,7 +102,7 @@ function harness(
 		},
 		generate: vi.fn(async () => {}),
 		cancel: vi.fn(() => {
-			publishGeneration({ status: "cancelled", error: null });
+			publishGeneration({ status: "cancelled", failure: null });
 		}),
 		restore: vi.fn(async () => true),
 		matchesSource: vi.fn(options.matchesSource ?? (async () => true)),
@@ -115,20 +116,11 @@ function harness(
 		read: () => ({ ...settings, ...options.settingsPatch }),
 		readSecret: vi.fn(() => (options.secret === undefined ? "secret" : options.secret)),
 	};
-	const messages = {
-		missing: () => "missing",
-		saving: () => "saving",
-		sourceChanged: () => "changed",
-		tooLarge: () => "too-large",
-		configMissing: () => "config-missing",
-		failed: () => "failed",
-	};
 	const workflow = new SubtitleWorkflow({
 		runtime,
 		generation,
 		settings: settingsPort,
 		source,
-		messages,
 	});
 	return {
 		workflow,
@@ -148,17 +140,17 @@ describe("subtitle workflow admission", () => {
 		const outcome = await h.workflow.generate("a");
 		expect(outcome).toEqual({
 			kind: "failed",
-			failure: { kind: "missing", message: "missing" },
+			failure: { kind: "missing-file" },
 		});
 		expect(h.generation.generate).not.toHaveBeenCalled();
-		expect(h.workflow.getSnapshot().failure?.kind).toBe("missing");
+		expect(h.workflow.getSnapshot().failure?.kind).toBe("missing-file");
 	});
 
 	it("fails with missing when the audio file is absent", async () => {
 		const h = harness({ sourceStat: null, generation: { taskKey: "a" } });
 		const outcome = await h.workflow.generate("a");
 		expect(outcome.kind).toBe("failed");
-		if (outcome.kind === "failed") expect(outcome.failure.kind).toBe("missing");
+		if (outcome.kind === "failed") expect(outcome.failure.kind).toBe("missing-file");
 		expect(h.source.readBinary).not.toHaveBeenCalled();
 	});
 
@@ -170,8 +162,10 @@ describe("subtitle workflow admission", () => {
 		const outcome = await h.workflow.generate("a");
 		expect(outcome.kind).toBe("failed");
 		if (outcome.kind === "failed") {
-			expect(outcome.failure.kind).toBe("too-large");
-			expect(outcome.failure.message).toBe("too-large");
+			expect(outcome.failure).toMatchObject({
+				kind: "audio-too-large",
+				maxBytes: MAX_AUDIO_BYTES,
+			});
 		}
 		expect(h.source.readBinary).not.toHaveBeenCalled();
 	});
@@ -181,8 +175,10 @@ describe("subtitle workflow admission", () => {
 		const outcome = await h.workflow.generate("a");
 		expect(outcome.kind).toBe("failed");
 		if (outcome.kind === "failed") {
-			expect(outcome.failure.kind).toBe("config-missing");
-			expect(outcome.failure.message).toContain("Workspace");
+			expect(outcome.failure).toMatchObject({
+				kind: "config-invalid",
+				field: "workspace",
+			});
 		}
 		expect(h.source.stat).not.toHaveBeenCalled();
 	});
@@ -192,8 +188,10 @@ describe("subtitle workflow admission", () => {
 		const outcome = await h.workflow.generate("a");
 		expect(outcome.kind).toBe("failed");
 		if (outcome.kind === "failed") {
-			expect(outcome.failure.kind).toBe("config-missing");
-			expect(outcome.failure.message).toBe("config-missing");
+			expect(outcome.failure).toMatchObject({
+				kind: "config-invalid",
+				field: "secret",
+			});
 		}
 	});
 
@@ -207,8 +205,7 @@ describe("subtitle workflow admission", () => {
 		const outcome = await h.workflow.generate("a");
 		expect(outcome.kind).toBe("failed");
 		if (outcome.kind === "failed") {
-			expect(outcome.failure.kind).toBe("unexpected");
-			expect(outcome.failure.message).toBe("read boom");
+			expect(outcome.failure.kind).toBe("unknown");
 		}
 		expect(h.generation.generate).not.toHaveBeenCalled();
 	});
@@ -307,8 +304,7 @@ describe("subtitle workflow save adoption", () => {
 		const outcome = await h.workflow.saveDraft("a");
 		expect(outcome.kind).toBe("failed");
 		if (outcome.kind === "failed") {
-			expect(outcome.failure.kind).toBe("invalid-draft");
-			expect(outcome.failure.message).toBe("saving");
+			expect(outcome.failure.kind).toBe("stale-material");
 		}
 		expect(h.runtime.saveSubtitles).not.toHaveBeenCalled();
 	});
@@ -340,13 +336,18 @@ describe("subtitle workflow save adoption", () => {
 	it("turns validated-cue rejections into invalid-draft failures", async () => {
 		const h = harness({ generation: { taskKey: "a" } });
 		h.generation.validatedCues.mockImplementationOnce(() => {
-			throw new Error("请确认待校对的字幕片段后保存。");
+			throw audioFailure({
+				kind: "subtitle-invalid",
+				problems: [{ kind: "needs-review", cueIndex: 0 }],
+			});
 		});
 		const outcome = await h.workflow.saveDraft("a");
 		expect(outcome.kind).toBe("failed");
 		if (outcome.kind === "failed") {
-			expect(outcome.failure.kind).toBe("invalid-draft");
-			expect(outcome.failure.message).toBe("请确认待校对的字幕片段后保存。");
+			expect(outcome.failure).toMatchObject({
+				kind: "subtitle-invalid",
+				problems: [{ kind: "needs-review", cueIndex: 0 }],
+			});
 		}
 	});
 
@@ -356,8 +357,7 @@ describe("subtitle workflow save adoption", () => {
 		const outcome = await h.workflow.saveDraft("a");
 		expect(outcome.kind).toBe("failed");
 		if (outcome.kind === "failed") {
-			expect(outcome.failure.kind).toBe("save-failed");
-			expect(outcome.failure.message).toBe("write boom");
+			expect(outcome.failure.kind).toBe("subtitle-write-failed");
 		}
 	});
 
@@ -398,7 +398,7 @@ describe("subtitle workflow draft restoration", () => {
 	it("keeps the failure until the next action acknowledges it", async () => {
 		const h = harness({ sourceStat: null, generation: { taskKey: "a" } });
 		await h.workflow.generate("a");
-		expect(h.workflow.getSnapshot().failure?.kind).toBe("missing");
+		expect(h.workflow.getSnapshot().failure?.kind).toBe("missing-file");
 		h.workflow.dismissFailure();
 		expect(h.workflow.getSnapshot().failure).toBeNull();
 	});

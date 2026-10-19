@@ -1,7 +1,8 @@
 import { isRecord } from "../../../core/shared/isRecord";
 import type { OutboundPort } from "../../../core/net/types";
 import { buildMultipartBody, createMultipartBoundary } from "./multipart";
-import { speechServiceFailure } from "./serviceErrors";
+import { audioFailure } from "../domain/failures";
+import { toProviderFailure } from "./serviceErrors";
 import { openAiCompatibleAudioUrl, validateTranscriptionConfig } from "./transcriptionConfig";
 import type {
 	AudioChunk,
@@ -77,10 +78,19 @@ export function parseOpenAiCompatibleResponse(text: string): Transcript {
 	try {
 		payload = JSON.parse(text);
 	} catch {
-		throw new Error("语音服务返回了无效或不完整的识别结果。");
+		throw audioFailure({
+			kind: "provider-failure",
+			code: "invalid-response",
+			reason: "invalid-payload",
+		});
 	}
-	if (!isRecord(payload)) throw new Error("语音服务返回了无效结果。");
-	if (payload.error) throw new Error("语音服务未能完成识别，请检查配置后重试。");
+	if (!isRecord(payload))
+		throw audioFailure({
+			kind: "provider-failure",
+			code: "invalid-response",
+			reason: "invalid-payload",
+		});
+	if (payload.error) throw audioFailure({ kind: "provider-failure", code: "server" });
 	const topLevelWords = readWords(payload.words);
 	const segments = readSegments(payload.segments);
 	const words = topLevelWords.length
@@ -96,9 +106,11 @@ export function parseOpenAiCompatibleResponse(text: string): Transcript {
 			}))
 		: cuesFromWords(words);
 	if (cues.length === 0)
-		throw new Error(
-			"语音服务未返回时间信息，无法生成字幕；请改用支持 verbose_json 时间戳的模型。",
-		);
+		throw audioFailure({
+			kind: "provider-failure",
+			code: "invalid-response",
+			reason: "missing-word-timestamps",
+		});
 	return { cues, words };
 }
 
@@ -110,7 +122,7 @@ export function createOpenAiCompatibleProvider(outbound: OutboundPort) {
 	): Promise<Transcript> => {
 		validateTranscriptionConfig(config);
 		const secret = outbound.readSecret(config.secretId);
-		if (!secret) throw new Error("请在设置中配置语音服务 API Key。");
+		if (!secret) throw audioFailure({ kind: "config-invalid", field: "secret" });
 		const boundary = createMultipartBoundary();
 		const body = buildMultipartBody(
 			[
@@ -139,7 +151,7 @@ export function createOpenAiCompatibleProvider(outbound: OutboundPort) {
 				maxBytes: 8 * 1024 * 1024,
 			});
 		} catch (error) {
-			throw speechServiceFailure(error);
+			throw audioFailure(toProviderFailure(error));
 		}
 		return parseOpenAiCompatibleResponse(response.text);
 	};

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
+import { AudioFailureError, type AudioFailure } from "../../domain/failures";
 import { alignReference, mergeTranscripts } from "../alignment";
 import { encodeMonoWav } from "../browserAudio";
 import { createBailianProvider, parseBailianResponse } from "../bailianProvider";
@@ -31,6 +32,16 @@ const input: GenerationInput = {
 	taskKey: "test",
 	config,
 };
+
+function failureOf(run: () => unknown): AudioFailure {
+	try {
+		run();
+	} catch (error) {
+		if (error instanceof AudioFailureError) return error.failure;
+		throw error;
+	}
+	throw new Error("Expected an audio failure");
+}
 
 describe("subtitle generation", () => {
 	it("aligns original spelling and refuses ambiguous or missing sentences", () => {
@@ -145,7 +156,10 @@ describe("subtitle generation", () => {
 				event("partial", false) + event("final", true) + event("corrected", true),
 			).cues.map((c) => c.text),
 		).toEqual(["corrected"]);
-		expect(() => parseBailianResponse('{"code":"InvalidApiKey"}')).toThrow();
+		expect(failureOf(() => parseBailianResponse('{"code":"InvalidApiKey"}'))).toMatchObject({
+			kind: "provider-failure",
+			code: "server",
+		});
 	});
 	it("folds cumulative SSE snapshots into one cue per sentence", () => {
 		const event = (
@@ -243,15 +257,25 @@ describe("subtitle generation", () => {
 	it("rejects a truncated SSE tail even when an earlier sentence completed", () => {
 		const event = (id: number, final: boolean) =>
 			`data:${JSON.stringify({ output: { sentence: { sentence_id: id, sentence_end: final, begin_time: 0, end_time: 1000, text: "hello", words: [] } } })}\n\n`;
-		expect(() => parseBailianResponse(event(1, true) + event(2, false))).toThrow("不完整");
+		expect(
+			failureOf(() => parseBailianResponse(event(1, true) + event(2, false))),
+		).toMatchObject({
+			kind: "provider-failure",
+			code: "invalid-response",
+			reason: "incomplete-stream",
+		});
 		expect(
 			parseBailianResponse(event(1, true) + event(2, false) + event(2, true)).cues,
 		).toHaveLength(2);
 	});
 	it("never exposes raw malformed provider response content", () => {
-		expect(() => parseBailianResponse('{"private-key":"sensitive-response" broken')).toThrow(
-			"语音服务返回了无效或不完整的识别结果。",
-		);
+		expect(
+			failureOf(() => parseBailianResponse('{"private-key":"sensitive-response" broken')),
+		).toMatchObject({
+			kind: "provider-failure",
+			code: "invalid-response",
+			reason: "invalid-payload",
+		});
 	});
 	it("persists successful chunks and only retries failed chunks", async () => {
 		let saved: GenerationDraft | null = null;
@@ -309,10 +333,14 @@ describe("subtitle generation", () => {
 			transcribe: async () => transcript,
 		});
 		await controller.generate({ ...input, referenceText: "Missing sentence." });
-		expect(() => controller.validatedCues()).toThrow();
+		expect(failureOf(() => controller.validatedCues())).toMatchObject({
+			kind: "subtitle-invalid",
+		});
 		const id = controller.getSnapshot().cues[0]!.id;
 		controller.editCue(id, { start: 0, end: 3 });
-		expect(() => controller.validatedCues()).toThrow();
+		expect(failureOf(() => controller.validatedCues())).toMatchObject({
+			kind: "subtitle-invalid",
+		});
 		controller.editCue(id, { end: 1, needsReview: false });
 		expect(controller.validatedCues()).toHaveLength(1);
 	});
@@ -437,7 +465,9 @@ describe("subtitle generation", () => {
 		expect(await restoring).toBe(false);
 		expect(controller.getSnapshot()).toBe(snapshot);
 		expect(await controller.restore("new")).toBe(false);
-		await expect(controller.generate(input)).rejects.toThrow("已关闭");
+		await expect(controller.generate(input)).rejects.toMatchObject({
+			failure: { kind: "cancelled" },
+		});
 		controller.editCue("1", { text: "edited" });
 		expect(controller.getSnapshot()).toBe(snapshot);
 		expect(await controller.matchesSource(input.audio, "")).toBe(false);

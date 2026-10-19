@@ -1,4 +1,5 @@
 import type { AudioPracticeRuntime } from "../domain/audioPracticeRuntime";
+import { type AudioPracticeFailure, type AudioFailure, toAudioFailure } from "../domain/failures";
 import type { AudioMaterial, AudioPracticeSnapshot, SubtitleCue } from "../domain/types";
 import type { AudioPracticeSettings } from "../settings/slice";
 import { MAX_AUDIO_BYTES } from "./limits";
@@ -17,22 +18,8 @@ import type { AudioSourceFiles, TranscriptionConfig } from "./types";
 
 export type SubtitleWorkflowActivity = "idle" | "generating" | "saving";
 
-export type SubtitleWorkflowFailureKind =
-	| "cancelled"
-	| "busy"
-	| "missing"
-	| "too-large"
-	| "config-missing"
-	| "source-changed"
-	| "invalid-draft"
-	| "save-failed"
-	| "unexpected";
-
-export interface SubtitleWorkflowFailure {
-	readonly kind: SubtitleWorkflowFailureKind;
-	/** Existing copy from the layer that rejected the action; candidate 7 replaces it. */
-	readonly message: string;
-}
+/** Typed failure vocabulary; copy lives in `strings/failures.ts`. */
+export type SubtitleWorkflowFailure = AudioPracticeFailure;
 
 export interface SubtitleWorkflowSnapshot {
 	readonly activity: SubtitleWorkflowActivity;
@@ -43,16 +30,6 @@ export type SubtitleWorkflowOutcome =
 	| { readonly kind: "applied" }
 	| { readonly kind: "rejected"; readonly failure: SubtitleWorkflowFailure }
 	| { readonly kind: "failed"; readonly failure: SubtitleWorkflowFailure };
-
-/** Localized copy injected by the feature; the module itself stays language-neutral. */
-export interface SubtitleWorkflowMessages {
-	missing(): string;
-	saving(): string;
-	sourceChanged(): string;
-	tooLarge(): string;
-	configMissing(): string;
-	failed(): string;
-}
 
 export interface SubtitleWorkflowPorts {
 	runtime: Pick<AudioPracticeRuntime, "getSnapshot" | "subscribe" | "saveSubtitles">;
@@ -71,24 +48,24 @@ export interface SubtitleWorkflowPorts {
 		readSecret(id: string): string | null;
 	};
 	source: AudioSourceFiles;
-	messages: SubtitleWorkflowMessages;
 }
 
 const ACTIVE_GENERATION_STATUSES = new Set(["preparing", "transcribing", "aligning"]);
 
 class SubtitleWorkflowFailureError extends Error {
 	constructor(readonly failure: SubtitleWorkflowFailure) {
-		super(failure.message);
+		super(failure.kind);
 		this.name = "SubtitleWorkflowFailureError";
 	}
 }
 
-function messageOf(error: unknown): string | null {
-	return error instanceof Error ? error.message : null;
-}
-
 function fileName(path: string): string {
 	return path.split("/").pop() ?? path;
+}
+
+function failureFrom(error: unknown): AudioPracticeFailure {
+	if (error instanceof SubtitleWorkflowFailureError) return error.failure;
+	return toAudioFailure(error);
 }
 
 export class SubtitleWorkflow {
@@ -154,13 +131,13 @@ export class SubtitleWorkflow {
 		if (this.disposed) {
 			return Promise.resolve({
 				kind: "rejected",
-				failure: { kind: "cancelled", message: this.ports.messages.failed() },
+				failure: { kind: "cancelled" },
 			});
 		}
 		if (this.snapshot.activity !== "idle") {
 			return Promise.resolve({
 				kind: "rejected",
-				failure: { kind: "busy", message: this.ports.messages.failed() },
+				failure: { kind: "busy" },
 			});
 		}
 		const epoch = this.epoch;
@@ -170,23 +147,11 @@ export class SubtitleWorkflow {
 				const cancelled = this.disposed || epoch !== this.epoch;
 				this.publish({ activity: "idle", failure: null });
 				return cancelled
-					? ({
-							kind: "rejected",
-							failure: {
-								kind: "cancelled",
-								message: this.ports.messages.failed(),
-							},
-						} as const)
+					? ({ kind: "rejected", failure: { kind: "cancelled" } } as const)
 					: ({ kind: "applied" } as const);
 			},
 			(error: unknown) => {
-				const failure =
-					error instanceof SubtitleWorkflowFailureError
-						? error.failure
-						: {
-								kind: "unexpected" as const,
-								message: messageOf(error) ?? this.ports.messages.failed(),
-							};
+				const failure = failureFrom(error);
 				this.publish({ activity: "idle", failure });
 				return failure.kind === "cancelled" || failure.kind === "busy"
 					? ({ kind: "rejected", failure } as const)
@@ -203,14 +168,7 @@ export class SubtitleWorkflow {
 
 	private ensureActive(epoch: number): void {
 		if (this.disposed || epoch !== this.epoch)
-			throw this.failure("cancelled", this.ports.messages.failed());
-	}
-
-	private failure(
-		kind: SubtitleWorkflowFailureKind,
-		message: string,
-	): SubtitleWorkflowFailureError {
-		return new SubtitleWorkflowFailureError({ kind, message });
+			throw new SubtitleWorkflowFailureError({ kind: "cancelled" });
 	}
 
 	private material(materialId: string): AudioMaterial | null {
@@ -218,9 +176,9 @@ export class SubtitleWorkflow {
 		return snapshot.materials.find((item) => item.id === materialId) ?? null;
 	}
 
-	private requireMaterial(materialId: string, message: string): AudioMaterial {
+	private requireMaterial(materialId: string): AudioMaterial {
 		const material = this.material(materialId);
-		if (!material) throw this.failure("missing", message);
+		if (!material) throw new SubtitleWorkflowFailureError({ kind: "missing-file" });
 		return material;
 	}
 
@@ -228,7 +186,7 @@ export class SubtitleWorkflow {
 		try {
 			return await this.ports.source.readBinary(path);
 		} catch (error) {
-			throw this.failure("unexpected", messageOf(error) ?? this.ports.messages.failed());
+			throw new SubtitleWorkflowFailureError(toAudioFailure(error));
 		}
 	}
 
@@ -243,21 +201,22 @@ export class SubtitleWorkflow {
 		try {
 			validateTranscriptionConfig(config);
 		} catch (error) {
-			throw this.failure(
-				"config-missing",
-				messageOf(error) ?? this.ports.messages.configMissing(),
-			);
+			throw new SubtitleWorkflowFailureError(toAudioFailure(error));
 		}
 		const secret = this.ports.settings.readSecret(config.secretId);
-		if (!secret) throw this.failure("config-missing", this.ports.messages.configMissing());
-		const material = this.requireMaterial(materialId, this.ports.messages.missing());
+		if (!secret)
+			throw new SubtitleWorkflowFailureError({ kind: "config-invalid", field: "secret" });
+		const material = this.requireMaterial(materialId);
 		const stat = this.ports.source.stat(material.audioPath);
-		if (!stat) throw this.failure("missing", this.ports.messages.missing());
+		if (!stat) throw new SubtitleWorkflowFailureError({ kind: "missing-file" });
 		if (stat.size > MAX_AUDIO_BYTES)
-			throw this.failure("too-large", this.ports.messages.tooLarge());
+			throw new SubtitleWorkflowFailureError({
+				kind: "audio-too-large",
+				maxBytes: MAX_AUDIO_BYTES,
+			});
 		const audio = await this.readSource(material.audioPath);
 		this.ensureActive(epoch);
-		const current = this.requireMaterial(materialId, this.ports.messages.missing());
+		const current = this.requireMaterial(materialId);
 		const input: GenerationInput = {
 			audio,
 			name: fileName(current.audioPath),
@@ -271,10 +230,10 @@ export class SubtitleWorkflow {
 	private async admitSave(materialId: string, epoch: number): Promise<void> {
 		this.ensureActive(epoch);
 		if (this.ports.generation.getSnapshot().taskKey !== materialId)
-			throw this.failure("invalid-draft", this.ports.messages.saving());
-		const material = this.requireMaterial(materialId, this.ports.messages.missing());
+			throw new SubtitleWorkflowFailureError({ kind: "stale-material" });
+		const material = this.requireMaterial(materialId);
 		const stat = this.ports.source.stat(material.audioPath);
-		if (!stat) throw this.failure("missing", this.ports.messages.missing());
+		if (!stat) throw new SubtitleWorkflowFailureError({ kind: "missing-file" });
 		const mtime = stat.mtime;
 		const audio = await this.readSource(material.audioPath);
 		this.ensureActive(epoch);
@@ -289,17 +248,21 @@ export class SubtitleWorkflow {
 			current?.originalText !== material.originalText ||
 			afterStat?.mtime !== mtime
 		)
-			throw this.failure("source-changed", this.ports.messages.sourceChanged());
+			throw new SubtitleWorkflowFailureError({ kind: "source-changed" });
 		let cues: SubtitleCue[];
 		try {
 			cues = this.ports.generation.validatedCues();
 		} catch (error) {
-			throw this.failure("invalid-draft", messageOf(error) ?? this.ports.messages.saving());
+			throw new SubtitleWorkflowFailureError(toAudioFailure(error));
 		}
 		try {
 			await this.ports.runtime.saveSubtitles(materialId, cues);
 		} catch (error) {
-			throw this.failure("save-failed", messageOf(error) ?? this.ports.messages.saving());
+			throw new SubtitleWorkflowFailureError(
+				error instanceof Error && "failure" in error
+					? (error as { failure: AudioFailure }).failure
+					: { kind: "subtitle-write-failed" },
+			);
 		}
 	}
 

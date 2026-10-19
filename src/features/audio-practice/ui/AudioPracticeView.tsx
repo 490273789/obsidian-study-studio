@@ -32,11 +32,13 @@ import { ModalSurface } from "../../../core/ui/primitives/Modal";
 import { PlaybackRateControl } from "../../../core/ui/primitives/PlaybackRate";
 import { FlashcardSelect } from "../../../core/ui/primitives/Select";
 import { FlashcardSlider } from "../../../core/ui/primitives/Slider";
+import { type AudioPracticeFailure, toAudioFailure } from "../domain/failures";
 import type { AudioMaterial, AudioPracticeSnapshot } from "../domain/types";
 import { AUDIO_PLAYBACK_RATES } from "../domain/types";
 import type { AudioPracticeRuntime } from "../domain/audioPracticeRuntime";
 import type { GenerationSnapshot, SubtitleGeneration } from "../generation/subtitleGeneration";
 import type { SubtitleWorkflow } from "../generation/subtitleWorkflow";
+import { audioFailureCopy } from "../strings/failures";
 import { audioPracticeStrings } from "../strings/audioPractice";
 import type { AudioPracticeStrings } from "../strings/audioPractice";
 import styles from "./AudioPractice.module.scss";
@@ -74,27 +76,28 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 	const practiceRef = useRef<HTMLElement>(null);
 	const [materialDialog, setMaterialDialog] = useState<MaterialDialogMode | null>(null);
 	const [reviewOpen, setReviewOpen] = useState(false);
-	const [localError, setLocalError] = useState<string | null>(null);
+	const [localFailure, setLocalFailure] = useState<AudioPracticeFailure | null>(null);
 	const [localBusy, setLocalBusy] = useState(false);
 	const busy = localBusy || workflowSnapshot.activity !== "idle";
-	const error = localError ?? workflowSnapshot.failure?.message ?? null;
+	const failure = localFailure ?? workflowSnapshot.failure ?? snapshot.failure ?? null;
+	const error = failure ? audioFailureCopy(language, failure).message : null;
 	const material = snapshot.currentMaterial;
 	const generating = ["preparing", "transcribing", "aligning"].includes(draft.status);
 	const draftForMaterial = material !== null && draft.taskKey === material.id;
 	const reviewReady = draftForMaterial && draft.status === "review";
 	const pendingCues = reviewReady ? draft.cues.filter((cue) => cue.needsReview).length : 0;
 	const openMaterialDialog = (mode: MaterialDialogMode) => {
-		setLocalError(null);
+		setLocalFailure(null);
 		workflow.dismissFailure();
 		setMaterialDialog(mode);
 	};
 	const run = async (action: () => void | Promise<unknown>) => {
-		setLocalError(null);
+		setLocalFailure(null);
 		setLocalBusy(true);
 		try {
 			await action();
 		} catch (cause) {
-			setLocalError(cause instanceof Error ? cause.message : t.failed);
+			setLocalFailure(toAudioFailure(cause));
 		} finally {
 			setLocalBusy(false);
 		}
@@ -253,7 +256,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 											icon={ListChecks}
 											title={t.reviewHint}
 											onClick={() => {
-												setLocalError(null);
+												setLocalFailure(null);
 												workflow.dismissFailure();
 												setReviewOpen(true);
 											}}
@@ -308,7 +311,10 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 										{generating
 											? `${draft.status === "preparing" ? t.preparing : draft.status === "aligning" ? t.aligning : t.transcribing}${draft.totalChunks > 0 ? ` · ${t.chunks(draft.completedChunks, draft.totalChunks)}` : ""}`
 											: draft.status === "error"
-												? (draft.error ?? t.failed)
+												? draft.failure
+													? audioFailureCopy(language, draft.failure)
+															.message
+													: t.failed
 												: t.cancelled}
 									</span>
 									{generating && (
@@ -338,9 +344,9 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 								draft.notice === "no-word-timestamps" && (
 									<p className={styles.notice}>{t.noWordTimestamps}</p>
 								)}
-							{(error || snapshot.error) && (
+							{error && (
 								<p role="alert" className={styles.alert}>
-									{error ?? snapshot.error}
+									{error}
 								</p>
 							)}
 							{snapshot.invalidatedMarks > 0 && (
@@ -356,9 +362,9 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 							/>
 						</>
 					)}
-					{!material && (error || snapshot.error) && (
+					{!material && error && (
 						<p role="alert" className={styles.alert}>
-							{error ?? snapshot.error}
+							{error}
 						</p>
 					)}
 				</main>
@@ -371,10 +377,11 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 					textPaths={props.textPaths}
 					onReadText={props.onReadText}
 					t={t}
+					language={language}
 					busy={busy}
 					error={error}
 					onCancel={() => {
-						setLocalError(null);
+						setLocalFailure(null);
 						workflow.dismissFailure();
 						setMaterialDialog(null);
 					}}
@@ -409,7 +416,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 					busy={busy}
 					error={error}
 					onRequestClose={() => {
-						setLocalError(null);
+						setLocalFailure(null);
 						workflow.dismissFailure();
 						setReviewOpen(false);
 					}}
@@ -439,6 +446,7 @@ interface MaterialFormProps {
 	textPaths: readonly string[];
 	onReadText: (path: string) => Promise<string>;
 	t: AudioPracticeStrings;
+	language: Language;
 	busy: boolean;
 	initialFocusProps?: { "data-modal-initial-focus": string };
 	onCancel(): void;
@@ -495,7 +503,7 @@ function MaterialForm(props: MaterialFormProps): React.ReactNode {
 	const [audioPath, setAudioPath] = useState(material?.audioPath ?? props.audioPaths[0] ?? "");
 	const [subtitlePath, setSubtitlePath] = useState(material?.subtitlePath ?? "");
 	const [text, setText] = useState(material?.originalText ?? "");
-	const [readError, setReadError] = useState<string | null>(null);
+	const [readError, setReadError] = useState<AudioPracticeFailure | null>(null);
 	const [reading, setReading] = useState(false);
 	const readVersion = useRef(0);
 	useEffect(
@@ -590,9 +598,7 @@ function MaterialForm(props: MaterialFormProps): React.ReactNode {
 									},
 									(cause) => {
 										if (readVersion.current === version) {
-											setReadError(
-												cause instanceof Error ? cause.message : t.failed,
-											);
+											setReadError(toAudioFailure(cause));
 											setReading(false);
 										}
 									},
@@ -620,7 +626,7 @@ function MaterialForm(props: MaterialFormProps): React.ReactNode {
 				</label>
 				{readError && (
 					<p role="alert" className={styles.alert}>
-						{readError}
+						{audioFailureCopy(props.language, readError).message}
 					</p>
 				)}
 			</div>

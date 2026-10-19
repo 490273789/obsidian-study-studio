@@ -1,4 +1,5 @@
 import { TFile, normalizePath, type App } from "obsidian";
+import { audioFailure } from "../domain/failures";
 import type { AudioSourceFiles } from "../generation/types";
 
 /** Vault-backed source identity for the subtitle workflow; no Obsidian types escape. */
@@ -14,7 +15,7 @@ export function createAudioSourceFiles(app: App): AudioSourceFiles {
 		},
 		async readBinary(path) {
 			const file = fileAt(path);
-			if (!file) throw new Error("file-missing");
+			if (!file) throw audioFailure({ kind: "missing-file" });
 			return app.vault.readBinary(file);
 		},
 	};

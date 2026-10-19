@@ -11,7 +11,6 @@ import { FlashcardButton } from "../../core/ui/primitives/Button";
 import { ModalProvider } from "../../core/ui/primitives/Modal";
 import { AudioPracticeRuntime } from "./domain/audioPracticeRuntime";
 import { SubtitleGeneration, normalizeGenerationDraft } from "./generation/subtitleGeneration";
-import type { SubtitleWorkflowMessages } from "./generation/subtitleWorkflow";
 import { SubtitleWorkflow } from "./generation/subtitleWorkflow";
 import { createBrowserAudioPreparation } from "./generation/browserAudio";
 import { createTranscriptionProvider } from "./generation/providers";
@@ -19,7 +18,7 @@ import { createAudioSourceFiles } from "./obsidian/audioSourceFiles";
 import { createAudioPracticeRepository } from "./obsidian/repositoryAdapter";
 import { createAudioPracticeFiles, listAudioPracticeFiles } from "./obsidian/vaultFiles";
 import { AudioPracticeView } from "./ui/AudioPracticeView";
-import { audioSettingsCopy } from "./settings/copy";
+import { audioPracticeStrings } from "./strings/audioPractice";
 import { audioPracticeSettingsPresentation } from "./settings/viewModel";
 import type { AudioPracticeSettings } from "./settings/slice";
 
@@ -55,14 +54,6 @@ export function createAudioPracticeFeature(deps: {
 			);
 			const readSettings = () => host.settings.read();
 			const openSettings = () => host.settingsTab.open(SECTION);
-			const messages: SubtitleWorkflowMessages = {
-				missing: () => audioSettingsCopy(readSettings().language).missing,
-				saving: () => audioSettingsCopy(readSettings().language).saving,
-				sourceChanged: () => audioSettingsCopy(readSettings().language).sourceChanged,
-				tooLarge: () => audioSettingsCopy(readSettings().language).tooLarge,
-				configMissing: () => audioSettingsCopy(readSettings().language).configMissing,
-				failed: () => audioSettingsCopy(readSettings().language).failed,
-			};
 			const workflow = lifetime.own(
 				new SubtitleWorkflow({
 					runtime,
@@ -78,7 +69,6 @@ export function createAudioPracticeFeature(deps: {
 						},
 					},
 					source,
-					messages,
 				}),
 			);
 			host.registerView(
@@ -86,9 +76,9 @@ export function createAudioPracticeFeature(deps: {
 				createReactItemView({
 					type: AUDIO_PRACTICE_VIEW,
 					icon: "headphones",
-					title: (language) => audioSettingsCopy(language).title,
+					title: (language) => audioPracticeStrings(language).title,
 					readSettings,
-					renderErrorMessage: (language) => audioSettingsCopy(language).error,
+					renderErrorMessage: (language) => audioPracticeStrings(language).error,
 					acquire: ({ rootEl }) => {
 						mediaWindow = rootEl.ownerDocument.defaultView ?? window;
 						return {
@@ -114,9 +104,9 @@ export function createAudioPracticeFeature(deps: {
 							</ModalProvider>
 						) : (
 							<div className="fc-page">
-								<p>{audioSettingsCopy(language).disabled}</p>
+								<p>{audioPracticeStrings(language).disabled}</p>
 								<FlashcardButton onClick={openSettings}>
-									{audioSettingsCopy(language).openSettings}
+									{audioPracticeStrings(language).openSettings}
 								</FlashcardButton>
 							</div>
 						),
@@ -124,7 +114,7 @@ export function createAudioPracticeFeature(deps: {
 			);
 			host.catalog({
 				id: SECTION,
-				title: (language) => audioSettingsCopy(language).title,
+				title: (language) => audioPracticeStrings(language).title,
 				icon: Headphones,
 				order: 30,
 				openCommandId: "open-audio-practice",
@@ -138,7 +128,7 @@ export function createAudioPracticeFeature(deps: {
 			host.settingsSection({
 				id: SECTION,
 				order: 5,
-				label: (language) => audioSettingsCopy(language).title,
+				label: (language) => audioPracticeStrings(language).title,
 				presentation: (language) =>
 					audioPracticeSettingsPresentation(
 						readSettings().audioPractice,

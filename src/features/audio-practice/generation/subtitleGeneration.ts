@@ -1,3 +1,9 @@
+import {
+	audioFailure,
+	toAudioFailure,
+	type AudioFailure,
+	type SubtitleProblem,
+} from "../domain/failures";
 import type { SubtitleCue } from "../domain/types";
 import { alignReference, mergeTranscripts } from "./alignment";
 import { MAX_AUDIO_BYTES, MAX_AUDIO_DURATION_SECONDS } from "./limits";
@@ -26,7 +32,7 @@ export interface GenerationSnapshot {
 	completedChunks: number;
 	totalChunks: number;
 	duration: number;
-	error: string | null;
+	failure: AudioFailure | null;
 	notice: GenerationNotice | null;
 	taskKey: string | null;
 }
@@ -38,7 +44,7 @@ export class SubtitleGeneration {
 		completedChunks: 0,
 		totalChunks: 0,
 		duration: 0,
-		error: null,
+		failure: null,
 		notice: null,
 		taskKey: null,
 	};
@@ -105,7 +111,7 @@ export class SubtitleGeneration {
 			duration: 0,
 			completedChunks: 0,
 			totalChunks: 0,
-			error: null,
+			failure: null,
 			notice: null,
 		});
 		await this.writes.catch(() => {});
@@ -119,7 +125,7 @@ export class SubtitleGeneration {
 			cues: draft.cues,
 			completedChunks: draft.results.length,
 			totalChunks: 0,
-			error: null,
+			failure: null,
 			notice: draft.complete ? draft.notice : null,
 			status: draft.complete ? "review" : "cancelled",
 		});
@@ -127,8 +133,8 @@ export class SubtitleGeneration {
 	}
 
 	async generate(input: GenerationInput, options: { force?: boolean } = {}): Promise<void> {
-		if (this.disposed) throw new Error("字幕生成服务已关闭。");
-		if (this.controller) throw new Error("已有字幕生成任务正在运行，请先取消。");
+		if (this.disposed) throw audioFailure({ kind: "cancelled" });
+		if (this.controller) throw audioFailure({ kind: "unknown" });
 		this.restoreRevision++;
 		this.input = input;
 		const controller = new AbortController();
@@ -136,7 +142,7 @@ export class SubtitleGeneration {
 		const { signal } = controller;
 		this.publish({
 			status: "preparing",
-			error: null,
+			failure: null,
 			cues: [],
 			notice: null,
 			taskKey: input.taskKey,
@@ -145,7 +151,7 @@ export class SubtitleGeneration {
 		});
 		try {
 			if (input.audio.byteLength > MAX_AUDIO_BYTES)
-				throw new Error("生成字幕仅支持 50 MiB 以内的音频。");
+				throw audioFailure({ kind: "audio-too-large", maxBytes: MAX_AUDIO_BYTES });
 			const fingerprint = await sourceFingerprint(input.audio, input.referenceText ?? "");
 			const configFingerprint = transcriptionConfigFingerprint(input.config);
 			await this.writes.catch(() => {});
@@ -158,7 +164,10 @@ export class SubtitleGeneration {
 			const prepared = await this.ports.prepare(input.audio, signal);
 			signal.throwIfAborted();
 			if (prepared.duration <= 0 || prepared.duration > MAX_AUDIO_DURATION_SECONDS)
-				throw new Error("生成字幕仅支持 10 分钟以内的音频。");
+				throw audioFailure({
+					kind: "audio-too-long",
+					maxSeconds: MAX_AUDIO_DURATION_SECONDS,
+				});
 			const reuse =
 				saved?.fingerprint === fingerprint && saved.configFingerprint === configFingerprint;
 			const results: Transcript[] = reuse && saved ? [...saved.results] : [];
@@ -221,16 +230,12 @@ export class SubtitleGeneration {
 				status: "review",
 				cues,
 				notice,
-				error: cues.length === 0 ? "音频中没有识别到可用语音，可手动补建片段。" : null,
+				failure: cues.length === 0 ? { kind: "no-speech" } : null,
 			});
 		} catch (error) {
 			this.publish({
 				status: signal.aborted ? "cancelled" : "error",
-				error: signal.aborted
-					? null
-					: error instanceof Error
-						? error.message
-						: "字幕生成失败，请手动重试。",
+				failure: signal.aborted ? null : toAudioFailure(error),
 				cues: this.draft?.taskKey === input.taskKey ? this.draft.cues : [],
 			});
 		} finally {
@@ -244,7 +249,7 @@ export class SubtitleGeneration {
 	}
 	cancel(): void {
 		this.controller?.abort();
-		if (this.controller) this.publish({ status: "cancelled", error: null });
+		if (this.controller) this.publish({ status: "cancelled", failure: null });
 	}
 	dispose(): void {
 		if (this.disposed) return;
@@ -258,9 +263,7 @@ export class SubtitleGeneration {
 		if (this.disposed || this.controller || !this.draft) return;
 		this.draft = { ...this.draft, cues };
 		this.publish({ cues });
-		void this.persist().catch(() =>
-			this.publish({ error: "本地草稿保存失败，请保留页面并重试。" }),
-		);
+		void this.persist().catch(() => this.publish({ failure: { kind: "draft-save-failed" } }));
 	}
 	editCue(
 		id: string,
@@ -289,24 +292,31 @@ export class SubtitleGeneration {
 		this.change(this.snapshot.cues.filter((cue) => cue.id !== id));
 	}
 	validatedCues(): SubtitleCue[] {
-		if (this.controller) throw new Error("请等待生成结束后保存。");
-		if (this.snapshot.cues.length === 0) throw new Error("请至少添加一个字幕片段。");
-		return this.snapshot.cues
-			.map((cue) => {
-				if (cue.needsReview) throw new Error("请确认待校对的字幕片段后保存。");
-				if (
-					!cue.text.trim() ||
-					cue.start === null ||
-					cue.end === null ||
-					!Number.isFinite(cue.start) ||
-					!Number.isFinite(cue.end) ||
-					cue.start < 0 ||
-					cue.end <= cue.start ||
-					cue.end > this.snapshot.duration
-				)
-					throw new Error("请补全字幕文字与有效时间，或删除未使用的片段。");
-				return { ...cue, start: cue.start, end: cue.end };
-			})
+		if (this.controller) throw audioFailure({ kind: "unknown" });
+		const drafts = this.snapshot.cues;
+		const problems: SubtitleProblem[] = [];
+		if (drafts.length === 0) problems.push({ kind: "no-cues" });
+		const ids = new Set<string>();
+		for (const [cueIndex, cue] of drafts.entries()) {
+			if (!cue.id || ids.has(cue.id)) problems.push({ kind: "duplicate-id", cueIndex });
+			ids.add(cue.id);
+			if (!cue.text.trim()) problems.push({ kind: "empty-text", cueIndex });
+			if (/\n[ \t\r]*\n/.test(cue.text)) problems.push({ kind: "blank-line", cueIndex });
+			if (
+				cue.start === null ||
+				cue.end === null ||
+				!Number.isFinite(cue.start) ||
+				!Number.isFinite(cue.end) ||
+				cue.start < 0 ||
+				cue.end <= cue.start ||
+				cue.end > this.snapshot.duration
+			)
+				problems.push({ kind: "bad-timing", cueIndex });
+			if (cue.needsReview) problems.push({ kind: "needs-review", cueIndex });
+		}
+		if (problems.length) throw audioFailure({ kind: "subtitle-invalid", problems });
+		return drafts
+			.map((cue) => ({ ...cue, start: cue.start!, end: cue.end! }))
 			.sort((a, b) => a.start - b.start);
 	}
 }

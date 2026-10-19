@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS } from "../../../core/host/settingsSlices";
 import { createFakeWorkbenchHost } from "../../../core/host/__tests__/fakeWorkbenchHost";
 import { WorkbenchStore } from "../../../core/storage/workbenchStore";
 import { AUDIO_PRACTICE_VIEW, createAudioPracticeFeature } from "../feature";
-import { audioSettingsCopy } from "../settings/copy";
+import { audioPracticeStrings } from "../strings/audioPractice";
 
 vi.mock("obsidian", () => ({
 	ItemView: class {},
@@ -66,7 +66,7 @@ describe("audio practice feature", () => {
 
 		expect([...fake.views.keys()]).toEqual([AUDIO_PRACTICE_VIEW]);
 		const entry = fake.catalog.get("audio-practice")!;
-		expect(entry.title("zh")).toBe(audioSettingsCopy("zh").title);
+		expect(entry.title("zh")).toBe(audioPracticeStrings("zh").title);
 		expect(entry.icon).toBe(Headphones);
 		expect(entry.openCommandId).toBe("open-audio-practice");
 		expect(entry.shortcutKey).toBe("audioPractice");

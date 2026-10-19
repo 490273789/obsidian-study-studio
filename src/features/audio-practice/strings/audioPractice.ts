@@ -2,6 +2,9 @@ import type { Language } from "../../../core/shared/types";
 
 const zh = {
 	title: "听说练习",
+	error: "听说练习无法打开。",
+	disabled: "听说练习已停用，请在设置中启用。",
+	openSettings: "打开设置",
 	settings: "语音服务设置",
 	add: "添加材料",
 	library: "材料库",
@@ -79,6 +82,9 @@ const zh = {
 };
 const en: typeof zh = {
 	title: "Listening & speaking",
+	error: "Unable to open listening practice.",
+	disabled: "Listening practice is disabled. Enable it in settings.",
+	openSettings: "Open settings",
 	settings: "Speech service settings",
 	add: "Add material",
 	library: "Materials",

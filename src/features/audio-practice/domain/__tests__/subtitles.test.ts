@@ -1,10 +1,24 @@
 import { describe, expect, it } from "vite-plus/test";
+import { AudioFailureError, type AudioFailure } from "../failures";
 import { parseSubtitles, serializeSrt, validateCues } from "../subtitles";
+
+function failureOf(run: () => unknown): AudioFailure {
+	try {
+		run();
+	} catch (error) {
+		if (error instanceof AudioFailureError) return error.failure;
+		throw error;
+	}
+	throw new Error("Expected an audio failure");
+}
 
 describe("audio subtitles", () => {
 	it("refuses blank lines that cannot survive SRT roundtrip without losing text", () => {
 		const cue = { id: "draft", start: 1, end: 2, text: "Hello\n\nworld" };
-		expect(() => serializeSrt([cue])).toThrow("空白行");
+		expect(failureOf(() => serializeSrt([cue]))).toMatchObject({
+			kind: "subtitle-invalid",
+			problems: [{ kind: "blank-line", cueIndex: 0 }],
+		});
 		const corrected = { ...cue, text: "Hello\nworld" };
 		expect(parseSubtitles(serializeSrt([corrected]))[0]!.text).toBe(corrected.text);
 	});
@@ -16,7 +30,9 @@ describe("audio subtitles", () => {
 		expect(parseSubtitles(serializeSrt(cues))).toEqual(cues);
 	});
 	it("rejects invalid times and refuses unreviewed draft publication", () => {
-		expect(() => parseSubtitles("1\n00:60:00,000 --> 00:61:00,000\nBad")).toThrow();
+		expect(
+			failureOf(() => parseSubtitles("1\n00:60:00,000 --> 00:61:00,000\nBad")),
+		).toMatchObject({ kind: "subtitle-parse", reason: "content" });
 		expect(
 			validateCues([{ id: "x", text: "Hi", start: 1, end: 5, needsReview: true }], 4),
 		).toHaveLength(2);

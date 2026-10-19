@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
+import { AudioFailureError, type AudioFailure } from "../../domain/failures";
 import { TransportError } from "../../../../core/net/types";
 import type { OutboundPort } from "../../../../core/net/types";
 import { buildMultipartBody } from "../multipart";
@@ -32,6 +33,16 @@ function contains(bytes: Uint8Array, needle: readonly number[]): boolean {
 		if (needle.every((value, offset) => bytes[start + offset] === value)) return true;
 	}
 	return false;
+}
+
+function failureOf(run: () => unknown): AudioFailure {
+	try {
+		run();
+	} catch (error) {
+		if (error instanceof AudioFailureError) return error.failure;
+		throw error;
+	}
+	throw new Error("Expected an audio failure");
 }
 
 describe("OpenAI-compatible transcription", () => {
@@ -85,14 +96,22 @@ describe("OpenAI-compatible transcription", () => {
 		expect(transcript.cues.map((cue) => cue.text)).toEqual(["Hello world.", "Next one"]);
 	});
 	it("rejects responses without any timing instead of inventing subtitles", () => {
-		expect(() => parseOpenAiCompatibleResponse(JSON.stringify({ text: "Hello" }))).toThrow(
-			"时间信息",
-		);
+		expect(
+			failureOf(() => parseOpenAiCompatibleResponse(JSON.stringify({ text: "Hello" }))),
+		).toMatchObject({
+			kind: "provider-failure",
+			code: "invalid-response",
+			reason: "missing-word-timestamps",
+		});
 	});
 	it("never exposes raw malformed response fragments", () => {
-		expect(() => parseOpenAiCompatibleResponse('{"private-key":"sensitive" broken')).toThrow(
-			"无效或不完整",
-		);
+		expect(
+			failureOf(() => parseOpenAiCompatibleResponse('{"private-key":"sensitive" broken')),
+		).toMatchObject({
+			kind: "provider-failure",
+			code: "invalid-response",
+			reason: "invalid-payload",
+		});
 	});
 	it("posts a binary multipart body to the standard endpoint", async () => {
 		const request = vi.fn().mockResolvedValue({
@@ -139,7 +158,9 @@ describe("OpenAI-compatible transcription", () => {
 		const port = { request, readSecret: () => null } as unknown as OutboundPort;
 		await expect(
 			createTranscriptionProvider(port)(chunk, config, new AbortController().signal),
-		).rejects.toThrow("API Key");
+		).rejects.toMatchObject({
+			failure: { kind: "config-invalid", field: "secret" },
+		});
 		expect(request).not.toHaveBeenCalled();
 	});
 	it("maps transport failures without leaking response bodies", async () => {
@@ -148,9 +169,9 @@ describe("OpenAI-compatible transcription", () => {
 			.mockRejectedValue(new TransportError("unauthorized", { responseText: "private-key" }));
 		const port = { request, readSecret: () => "private-key" } as unknown as OutboundPort;
 		const provider = createOpenAiCompatibleProvider(port);
-		await expect(provider(chunk, config, new AbortController().signal)).rejects.toThrow(
-			"鉴权失败",
-		);
+		await expect(provider(chunk, config, new AbortController().signal)).rejects.toMatchObject({
+			failure: { kind: "provider-failure", code: "unauthorized" },
+		});
 	});
 });
 
@@ -173,14 +194,18 @@ describe("transcription configuration", () => {
 		).not.toThrow();
 		expect(() =>
 			validateTranscriptionConfig({ ...config, baseUrl: "http://api.example.test/v1" }),
-		).toThrow("https");
+		).toThrow();
 	});
 	it("rejects incomplete or malformed configurations", () => {
-		expect(() => validateTranscriptionConfig({ ...config, model: " " })).toThrow("模型");
-		expect(() => validateTranscriptionConfig({ ...config, secretId: "" })).toThrow("API Key");
-		expect(() => validateTranscriptionConfig({ ...config, baseUrl: "not-a-url" })).toThrow(
-			"Base URL",
-		);
+		expect(
+			failureOf(() => validateTranscriptionConfig({ ...config, model: " " })),
+		).toMatchObject({ kind: "config-invalid", field: "model" });
+		expect(
+			failureOf(() => validateTranscriptionConfig({ ...config, secretId: "" })),
+		).toMatchObject({ kind: "config-invalid", field: "secret" });
+		expect(
+			failureOf(() => validateTranscriptionConfig({ ...config, baseUrl: "not-a-url" })),
+		).toMatchObject({ kind: "config-invalid", field: "base-url" });
 	});
 	it("changes the fingerprint when the provider or model changes", () => {
 		expect(transcriptionConfigFingerprint(config)).not.toBe(

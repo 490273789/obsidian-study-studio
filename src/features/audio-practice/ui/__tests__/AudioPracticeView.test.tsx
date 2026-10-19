@@ -154,7 +154,7 @@ describe("subtitle draft review", () => {
 			completedChunks: 1,
 			totalChunks: 1,
 			duration: 120,
-			error: null,
+			failure: null,
 			notice: null,
 			taskKey: material.id,
 		};

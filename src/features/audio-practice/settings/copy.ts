@@ -27,15 +27,6 @@ const zh = {
 	openaiSecretHint: "选择 Obsidian 密钥库中该服务的 API Key；密钥本身不写入插件数据。",
 	openaiServiceHint:
 		"生成时通过 POST {Base URL}/audio/transcriptions 发送音频，服务需兼容 verbose_json 时间戳。自建 whisper.cpp 需以 --inference-path /v1/audio/transcriptions 启动。",
-	error: "听说练习无法打开。",
-	missing: "文件不存在或尚未同步，请等待同步或重新关联。",
-	failed: "操作失败，请重试。",
-	disabled: "听说练习已停用，请在设置中启用。",
-	openSettings: "打开设置",
-	saving: "保存字幕失败，校对草稿已保留。",
-	sourceChanged: "音频或原文已改变，请重新生成字幕后保存。",
-	tooLarge: "生成字幕仅支持 50 MiB 以内的音频。",
-	configMissing: "请在设置中为字幕生成服务配置 API Key 密钥。",
 };
 const en: typeof zh = {
 	title: "Listening & speaking",
@@ -67,14 +58,5 @@ const en: typeof zh = {
 		"Select this service's API key from Obsidian Secret Storage. The key itself is not stored in plugin data.",
 	openaiServiceHint:
 		"Generation POSTs audio to {Base URL}/audio/transcriptions and requires verbose_json timestamps. A self-hosted whisper.cpp server needs --inference-path /v1/audio/transcriptions.",
-	error: "Unable to open listening practice.",
-	missing: "File missing or not yet synced. Wait for sync or reconnect the file.",
-	failed: "Operation failed. Please retry.",
-	disabled: "Listening practice is disabled. Enable it in settings.",
-	openSettings: "Open settings",
-	saving: "Unable to save subtitles. Your review draft is preserved.",
-	sourceChanged: "Audio or reference text has changed. Generate subtitles again before saving.",
-	tooLarge: "Audio must be at most 50 MiB.",
-	configMissing: "Configure an API key for the subtitle generation service in settings.",
 };
 export const audioSettingsCopy = (language: Language) => (language === "en" ? en : zh);
