@@ -1,5 +1,5 @@
 import type { CardMotion } from "../../answerPresentationTransition";
-import React, { useCallback, useMemo } from "react";
+import React, { useMemo } from "react";
 import { PartyPopper, RotateCcw } from "lucide-react";
 import { cls } from "../../../../../core/shared/classNames";
 import type { StudyRating } from "../../../../../core/shared/types";
@@ -12,12 +12,14 @@ import type {
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { SessionLayout } from "../../primitives/SessionLayout/SessionLayout";
 import { SessionToolbar } from "../../primitives/SessionToolbar";
+import { sessionSurfaceFooter } from "../../primitives/SessionSurfaceFooter";
 import { SessionTimer } from "../../../../../core/ui/primitives/SessionTimer";
 import { useCardPresentationShortcuts } from "../../hooks/useCardPresentationShortcuts";
+import { useSessionSurface } from "../../hooks/useSessionSurface";
 import { useFlashcardI18n } from "../../../strings/context";
 import { deriveCardPresentation } from "../../presentation/cardPresentation";
 import { CardPresentationBody } from "../../presentation/CardPresentationBody";
-import { reportPresentationOutcome } from "../../presentation/presentationOutcome";
+import { autoPronunciationControl } from "../../presentation/sessionSurface";
 import styles from "./CardView.module.scss";
 
 const RATING_CLASSES: Record<StudyRating, string> = {
@@ -52,12 +54,14 @@ export const CardView = React.memo(function CardView({
 	cardPresentation,
 }: CardViewProps) {
 	const { t, language } = useFlashcardI18n();
-	const {
-		answerVisible: showAnswer,
-		autoPronunciationEnabled,
-		pronunciationEnabled,
-		pronunciationWord,
-	} = cardPresentation;
+	const { answerVisible: showAnswer, pronunciationWord } = cardPresentation;
+	const surface = useSessionSurface({
+		transition,
+		reference: session.reference,
+		onOutcome: (outcome) => {
+			if (outcome.kind === "applied" && outcome.studyCompleted) onComplete();
+		},
+	});
 
 	const currentCard = session.currentCard;
 	const ratingButtons = useMemo(() => getRatingButtons(language), [language]);
@@ -72,42 +76,6 @@ export const CardView = React.memo(function CardView({
 		[currentCard, session.direction, showAnswer, pronunciationWord],
 	);
 
-	const handleShowAnswer = useCallback(() => {
-		if (isTransitioning) return;
-		void transition.act({ kind: "card-reveal", reference: session.reference });
-	}, [isTransitioning, session.reference, transition]);
-
-	const handleToggleAutoPronunciation = useCallback(() => {
-		if (isTransitioning) return;
-		void transition.act({
-			kind: "card-toggle-auto-pronunciation",
-			reference: session.reference,
-		});
-	}, [isTransitioning, session.reference, transition]);
-
-	const handleRating = useCallback(
-		async (rating: StudyRating) => {
-			if (!currentCard || isTransitioning) return;
-			const outcome = await transition.act({
-				kind: "study-answer",
-				reference: session.reference,
-				rating,
-			});
-			reportPresentationOutcome(outcome);
-			if (outcome.kind === "applied" && outcome.studyCompleted) onComplete();
-		},
-		[currentCard, isTransitioning, onComplete, session.reference, transition],
-	);
-
-	const handlePrevious = useCallback(async () => {
-		if (!session.canPrevious || isTransitioning) return;
-		const outcome = await transition.act({
-			kind: "study-previous",
-			reference: session.reference,
-		});
-		reportPresentationOutcome(outcome);
-	}, [isTransitioning, session.canPrevious, session.reference, transition]);
-
 	const shortcutRootRef = useCardPresentationShortcuts(
 		{
 			mode: "study",
@@ -118,13 +86,13 @@ export const CardView = React.memo(function CardView({
 		(intent) => {
 			switch (intent.kind) {
 				case "reveal":
-					handleShowAnswer();
+					void surface.act({ kind: "reveal" });
 					break;
 				case "rate":
-					void handleRating(intent.rating);
+					void surface.act({ kind: "rate", rating: intent.rating });
 					break;
 				case "previous":
-					void handlePrevious();
+					void surface.act({ kind: "previous" });
 					break;
 			}
 		},
@@ -169,96 +137,78 @@ export const CardView = React.memo(function CardView({
 					editTitle={t("cardEditor.editCurrentTitle")}
 					deleteTitle={t("cardEditor.deleteCurrentTitle")}
 					closeTitle={t("common.close")}
-					autoPronunciation={
-						pronunciationEnabled
-							? {
-									enabled: autoPronunciationEnabled,
-									onToggle: handleToggleAutoPronunciation,
-									enableTitle: t("pronunciation.autoEnable"),
-									disableTitle: t("pronunciation.autoDisable"),
-								}
-							: undefined
-					}
+					autoPronunciation={autoPronunciationControl(
+						cardPresentation,
+						() => void surface.act({ kind: "toggle-auto-pronunciation" }),
+						t("pronunciation.autoEnable"),
+						t("pronunciation.autoDisable"),
+					)}
 				/>
 			}
-			footer={
-				<>
-					{!showAnswer ? (
+			footer={sessionSurfaceFooter({
+				busy: isTransitioning,
+				answerVisible: showAnswer,
+				onReveal: () => void surface.act({ kind: "reveal" }),
+				revealLabel: t("common.showAnswer"),
+				shortcutLabel: t("common.space"),
+				children: (
+					<div className={cls("flashcard-response-controls", styles.responseControls)}>
 						<FlashcardButton
-							preset="show"
-							variant="primary"
-							size="lg"
-							onClick={handleShowAnswer}
-							disabled={isTransitioning}
-						>
-							{t("common.showAnswer")}
-							<span className="flashcard-shortcut">({t("common.space")})</span>
-						</FlashcardButton>
-					) : (
-						<div
-							className={cls("flashcard-response-controls", styles.responseControls)}
-						>
-							<FlashcardButton
-								preset="prev"
-								icon={RotateCcw}
-								iconSize={24}
-								onClick={handlePrevious}
-								disabled={!session.canPrevious || isTransitioning}
-								title={`${t("common.undo")} (6)`}
-							/>
-							<div className={cls("flashcard-rating-grid", styles.ratingGrid)}>
-								{ratingButtons.map((btn) => (
-									<FlashcardButton
-										key={btn.rating}
-										size="lg"
-										preset="rating"
-										rating={btn.rating}
-										className={cls(
-											styles.ratingBtn,
-											RATING_CLASSES[btn.rating],
-										)}
-										disabled={isTransitioning}
-										onClick={() => void handleRating(btn.rating)}
-										aria-label={`${btn.label}，${btn.intervalDesc}，${btn.shortcut}`}
+							preset="prev"
+							icon={RotateCcw}
+							iconSize={24}
+							onClick={() => void surface.act({ kind: "previous" })}
+							disabled={!session.canPrevious || isTransitioning}
+							title={`${t("common.undo")} (6)`}
+						/>
+						<div className={cls("flashcard-rating-grid", styles.ratingGrid)}>
+							{ratingButtons.map((btn) => (
+								<FlashcardButton
+									key={btn.rating}
+									size="lg"
+									preset="rating"
+									rating={btn.rating}
+									className={cls(styles.ratingBtn, RATING_CLASSES[btn.rating])}
+									disabled={isTransitioning}
+									onClick={() =>
+										void surface.act({ kind: "rate", rating: btn.rating })
+									}
+									aria-label={`${btn.label}，${btn.intervalDesc}，${btn.shortcut}`}
+								>
+									<span
+										className={cls("flashcard-rating-meta", styles.ratingMeta)}
 									>
 										<span
 											className={cls(
-												"flashcard-rating-meta",
-												styles.ratingMeta,
+												"flashcard-rating-label",
+												styles.ratingLabel,
 											)}
 										>
-											<span
-												className={cls(
-													"flashcard-rating-label",
-													styles.ratingLabel,
-												)}
-											>
-												{btn.label}
-											</span>
-											<span
-												className={cls(
-													"flashcard-rating-interval",
-													styles.ratingInterval,
-												)}
-											>
-												{btn.shortcut}
-											</span>
+											{btn.label}
 										</span>
 										<span
 											className={cls(
-												"flashcard-rating-duration",
-												styles.ratingDuration,
+												"flashcard-rating-interval",
+												styles.ratingInterval,
 											)}
 										>
-											{btn.intervalDesc}
+											{btn.shortcut}
 										</span>
-									</FlashcardButton>
-								))}
-							</div>
+									</span>
+									<span
+										className={cls(
+											"flashcard-rating-duration",
+											styles.ratingDuration,
+										)}
+									>
+										{btn.intervalDesc}
+									</span>
+								</FlashcardButton>
+							))}
 						</div>
-					)}
-				</>
-			}
+					</div>
+				),
+			})}
 		>
 			<CardPresentationBody
 				model={model}

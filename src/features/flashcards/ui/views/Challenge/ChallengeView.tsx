@@ -4,16 +4,17 @@ import { Check, CornerDownLeft, Lightbulb, X } from "lucide-react";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardInput } from "../../../../../core/ui/primitives/Input";
 import { useCardPresentationShortcuts } from "../../hooks/useCardPresentationShortcuts";
+import { useSessionSurface } from "../../hooks/useSessionSurface";
 import type { ActiveChallengeSnapshot } from "../../../domain/sessions/sessionLifecycle";
 import { useFlashcardI18n } from "../../../strings/context";
 import type { AnswerPresentationTransition } from "../../answerPresentationTransition";
 import { useSessionInputVisibility } from "../../hooks/useSessionInputVisibility";
 import { SessionLayout } from "../../primitives/SessionLayout/SessionLayout";
 import { SessionToolbar } from "../../primitives/SessionToolbar";
+import { sessionSurfaceFooter } from "../../primitives/SessionSurfaceFooter";
 import { deriveCardPresentation } from "../../presentation/cardPresentation";
 import { CardAnswerSection, CardQuestionPanel } from "../../presentation/CardPanels";
 import { CardPresentationStack } from "../../presentation/CardPresentationStack";
-import { reportPresentationOutcome } from "../../presentation/presentationOutcome";
 import styles from "./Challenge.module.scss";
 
 interface ChallengeViewProps {
@@ -50,6 +51,7 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 	const inputRef = useRef<HTMLInputElement>(null);
 	const viewRef = useRef<HTMLDivElement>(null);
 	const currentCard = session.currentCard;
+	const surface = useSessionSurface({ transition, reference: session.reference });
 	const isSpelling = session.questionMode === "spelling";
 	const feedback = session.feedback;
 	const isFeedback = session.phase === "feedback";
@@ -71,38 +73,26 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 
 	const answer = useCallback(
 		async (correct: boolean) => {
-			if (isTransitioning || isFeedback) return;
-			reportPresentationOutcome(
-				await transition.act({
-					kind: "challenge-answer",
-					reference: session.reference,
-					correct,
-				}),
-			);
+			if (isFeedback) return;
+			await surface.act({ kind: "challenge-answer", correct });
 		},
-		[isFeedback, isTransitioning, session.reference, transition],
+		[isFeedback, surface],
 	);
 
 	const submitSpelling = useCallback(
 		async (value: string, reveal = false) => {
-			if (isTransitioning || isFeedback || (!reveal && !value.trim())) return;
-			reportPresentationOutcome(
-				await transition.act(
-					reveal
-						? { kind: "challenge-reveal", reference: session.reference }
-						: { kind: "challenge-answer", reference: session.reference, input: value },
-				),
-			);
+			if (isFeedback || (!reveal && !value.trim())) return;
+			await (reveal
+				? surface.act({ kind: "challenge-reveal" })
+				: surface.act({ kind: "challenge-answer", input: value }));
 		},
-		[isFeedback, isTransitioning, session.reference, transition],
+		[isFeedback, surface],
 	);
 
 	const continueAfterFeedback = useCallback(async () => {
-		if (isTransitioning || !isFeedback) return;
-		reportPresentationOutcome(
-			await transition.act({ kind: "challenge-continue", reference: session.reference }),
-		);
-	}, [isFeedback, isTransitioning, session.reference, transition]);
+		if (!isFeedback) return;
+		await surface.act({ kind: "challenge-continue" });
+	}, [isFeedback, surface]);
 
 	const shortcutRootRef = useCardPresentationShortcuts(
 		{
@@ -115,7 +105,7 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 		(intent) => {
 			switch (intent.kind) {
 				case "reveal":
-					if (!isTransitioning) setAnswerVisible(true);
+					setAnswerVisible(true);
 					break;
 				case "answer":
 					void answer(intent.correct);
@@ -217,56 +207,52 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 								{t("challenge.submit")}
 							</FlashcardButton>
 						</>
-					) : !showAnswer ? (
-						<FlashcardButton
-							preset="show"
-							variant="primary"
-							size="lg"
-							disabled={isTransitioning}
-							onClick={() => {
-								if (!isTransitioning) setAnswerVisible(true);
-							}}
-						>
-							{t("challenge.showAnswer")}{" "}
-							<span className="flashcard-shortcut">({t("common.space")})</span>
-						</FlashcardButton>
 					) : (
-						<div className={styles.answerButtons}>
-							<FlashcardButton
-								preset="practice-wrong"
-								className={styles.btnWrong}
-								size="lg"
-								disabled={isTransitioning}
-								onClick={() => void answer(false)}
-							>
-								<span className={styles.btnIcon}>
-									<X size={18} />
-								</span>
-								<span className="flashcard-practice-btn-label">
-									{t("challenge.wrong")}
-								</span>
-								<span className="flashcard-shortcut">
-									{t("challenge.wrongShortcut")}
-								</span>
-							</FlashcardButton>
-							<FlashcardButton
-								preset="practice-correct"
-								className={styles.btnCorrect}
-								size="lg"
-								disabled={isTransitioning}
-								onClick={() => void answer(true)}
-							>
-								<span className={styles.btnIcon}>
-									<Check size={18} />
-								</span>
-								<span className="flashcard-practice-btn-label">
-									{t("challenge.correct")}
-								</span>
-								<span className="flashcard-shortcut">
-									{t("challenge.correctShortcut")}
-								</span>
-							</FlashcardButton>
-						</div>
+						sessionSurfaceFooter({
+							busy: isTransitioning,
+							answerVisible: showAnswer,
+							onReveal: () => setAnswerVisible(true),
+							revealLabel: t("challenge.showAnswer"),
+							shortcutLabel: t("common.space"),
+							children: (
+								<div className={styles.answerButtons}>
+									<FlashcardButton
+										preset="practice-wrong"
+										className={styles.btnWrong}
+										size="lg"
+										disabled={isTransitioning}
+										onClick={() => void answer(false)}
+									>
+										<span className={styles.btnIcon}>
+											<X size={18} />
+										</span>
+										<span className="flashcard-practice-btn-label">
+											{t("challenge.wrong")}
+										</span>
+										<span className="flashcard-shortcut">
+											{t("challenge.wrongShortcut")}
+										</span>
+									</FlashcardButton>
+									<FlashcardButton
+										preset="practice-correct"
+										className={styles.btnCorrect}
+										size="lg"
+										disabled={isTransitioning}
+										onClick={() => void answer(true)}
+									>
+										<span className={styles.btnIcon}>
+											<Check size={18} />
+										</span>
+										<span className="flashcard-practice-btn-label">
+											{t("challenge.correct")}
+										</span>
+										<span className="flashcard-shortcut">
+											{t("challenge.correctShortcut")}
+										</span>
+									</FlashcardButton>
+								</div>
+							),
+						})
 					)}
 				</>
 			}

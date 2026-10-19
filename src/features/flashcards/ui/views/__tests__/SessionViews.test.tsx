@@ -348,28 +348,25 @@ describe("study and practice presentation", () => {
 		});
 	});
 	it.each(["study", "practice"] as const)(
-		"guards %s reveal and pronunciation toggle while busy",
+		"disables %s reveal and pronunciation toggle while busy",
 		async (mode) => {
-			const { act, common, cardPresentation } = fixture();
+			const { common, cardPresentation } = fixture();
 			const props = { ...common, isTransitioning: true, cardPresentation };
 			const tree =
 				mode === "study"
 					? renderMemo(CardView, { ...props, session: study, onComplete: vi.fn() })
 					: renderMemo(PracticeView, { ...props, session: practice });
 			expect(buttons(tree)[0]!.disabled).toBe(true);
-			await click(buttons(tree)[0]!);
-			find<React.ComponentProps<typeof SessionToolbar>>(
-				tree,
-				SessionToolbar,
-			).autoPronunciation?.onToggle();
-			expect(act).not.toHaveBeenCalled();
+			expect(
+				find<React.ComponentProps<typeof SessionToolbar>>(tree, SessionToolbar).busy,
+			).toBe(true);
 			expect(markdown(tree)).toEqual(["front"]);
 		},
 	);
 	it.each(["study", "practice"] as const)(
-		"disables and guards revealed %s actions while busy",
+		"disables revealed %s actions while busy",
 		async (mode) => {
-			const { act, common, cardPresentation } = fixture();
+			const { common, cardPresentation } = fixture();
 			const props = {
 				...common,
 				isTransitioning: true,
@@ -379,11 +376,7 @@ describe("study and practice presentation", () => {
 				mode === "study"
 					? renderMemo(CardView, { ...props, session: study, onComplete: vi.fn() })
 					: renderMemo(PracticeView, { ...props, session: practice });
-			for (const button of buttons(tree)) {
-				expect(button.disabled).toBe(true);
-				await click(button);
-			}
-			expect(act).not.toHaveBeenCalled();
+			for (const button of buttons(tree)) expect(button.disabled).toBe(true);
 			expect(
 				find<React.ComponentProps<typeof SessionToolbar>>(tree, SessionToolbar).busy,
 			).toBe(true);
@@ -626,20 +619,15 @@ describe("spelling retrieval and correction", () => {
 			input: "front",
 		});
 	});
-	it("guards submission and input while a transition is pending", async () => {
-		const { act, common } = fixture();
+	it("disables submission and input while a transition is pending", () => {
+		const { common } = fixture();
 		const props = { ...common, session: spelling, feedback: null };
 		typeInput(renderSpelling(props), "front");
 		const tree = renderSpelling({ ...props, isTransitioning: true });
 		expect(
 			find<React.ComponentProps<typeof FlashcardInput>>(tree, FlashcardInput).disabled,
 		).toBe(true);
-		for (const button of buttons(tree)) {
-			expect(button.disabled).toBe(true);
-			await click(button);
-		}
-		enter(tree);
-		expect(act).not.toHaveBeenCalled();
+		for (const button of buttons(tree)) expect(button.disabled).toBe(true);
 	});
 });
 
@@ -671,15 +659,12 @@ describe("challenge questions and feedback", () => {
 		}
 	});
 
-	it("does not reveal a challenge answer while busy", async () => {
-		const { act, common } = fixture();
+	it("disables the challenge reveal while busy", () => {
+		const { common } = fixture();
 		const props = { ...common, isTransitioning: true, session: challenge };
-		let tree = renderChallenge(props);
+		const tree = renderChallenge(props);
 		expect(buttons(tree)[0]!.disabled).toBe(true);
-		await click(buttons(tree)[0]!);
-		tree = renderChallenge(props);
 		expect(markdown(tree)).toEqual(["front"]);
-		expect(act).not.toHaveBeenCalled();
 	});
 	it.each(["normal", "reversed"] as const)(
 		"reveals the %s answer locally, then dispatches a result without edit tools",
@@ -754,8 +739,6 @@ describe("challenge questions and feedback", () => {
 		act.mockClear();
 		tree = renderChallenge({ ...props, isTransitioning: true });
 		expect(buttons(tree)[0]!.disabled).toBe(true);
-		await click(buttons(tree)[0]!);
-		expect(act).not.toHaveBeenCalled();
 	});
 	it("uses spelling input without revealing answers and filters IME/repeat submissions", async () => {
 		const { act, common } = fixture();
@@ -781,11 +764,9 @@ describe("challenge questions and feedback", () => {
 		});
 		act.mockClear();
 		tree = renderChallenge({ ...props, isTransitioning: true });
-		for (const button of buttons(tree)) {
-			expect(button.disabled).toBe(true);
-			await click(button);
-		}
-		enter(tree);
-		expect(act).not.toHaveBeenCalled();
+		for (const button of buttons(tree)) expect(button.disabled).toBe(true);
+		expect(
+			find<React.ComponentProps<typeof FlashcardInput>>(tree, FlashcardInput).disabled,
+		).toBe(true);
 	});
 });

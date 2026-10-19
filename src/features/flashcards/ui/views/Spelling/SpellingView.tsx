@@ -12,12 +12,12 @@ import type {
 import { useFlashcardI18n } from "../../../strings/context";
 import type { AnswerPresentationTransition } from "../../answerPresentationTransition";
 import { useSessionInputVisibility } from "../../hooks/useSessionInputVisibility";
+import { useSessionSurface } from "../../hooks/useSessionSurface";
 import { SessionLayout } from "../../primitives/SessionLayout/SessionLayout";
 import { SessionToolbar } from "../../primitives/SessionToolbar";
 import { CardExplanationPanel, CardQuestionPanel } from "../../presentation/CardPanels";
 import { CardPresentationStack } from "../../presentation/CardPresentationStack";
 import { useCardPresentationDependencies } from "../../presentation/context";
-import { reportPresentationOutcome } from "../../presentation/presentationOutcome";
 import styles from "./Spelling.module.scss";
 
 const DIFF_CLASSES = {
@@ -87,6 +87,7 @@ const SpellingQuestion = React.memo(function SpellingQuestion({
 	const feedbackId = useId();
 	const viewRef = useRef<HTMLDivElement>(null);
 	const currentCard = session.currentCard;
+	const surface = useSessionSurface({ transition, reference: session.reference });
 
 	const { keepInputVisible, handleInputBlur, captureReturn } = useSessionInputVisibility(
 		inputRef,
@@ -101,18 +102,14 @@ const SpellingQuestion = React.memo(function SpellingQuestion({
 
 	const submit = useCallback(
 		async (submittedInput: string, allowEmpty = false) => {
-			if (!currentCard || isTransitioning) return;
+			if (!currentCard) return;
 			if (!allowEmpty && submittedInput.trim().length === 0) return;
 			const inputReturn = captureReturn();
-			const outcome = await transition.act({
+			const outcome = await surface.act({
 				kind: "spelling-answer",
-				reference: session.reference,
 				input: submittedInput,
 			});
-			if (outcome.kind !== "applied" || !outcome.feedback) {
-				reportPresentationOutcome(outcome);
-				return;
-			}
+			if (outcome.kind !== "applied" || !outcome.feedback) return;
 
 			if (
 				outcome.feedback.kind === "retrieval-incorrect" ||
@@ -124,7 +121,7 @@ const SpellingQuestion = React.memo(function SpellingQuestion({
 				}
 			}
 		},
-		[captureReturn, currentCard, isTransitioning, session.reference, transition],
+		[captureReturn, currentCard, surface],
 	);
 
 	if (!currentCard) {
@@ -152,19 +149,9 @@ const SpellingQuestion = React.memo(function SpellingQuestion({
 					progress={`${completed}/${total}`}
 					progressPercent={progressPercent}
 					startTime={session.startTime}
-					onEdit={() => {
-						if (!isTransitioning) {
-							onEditCard(currentCard.currentDeckId, currentCard.identity);
-						}
-					}}
-					onDelete={() => {
-						if (!isTransitioning) {
-							onDeleteCard(currentCard.currentDeckId, currentCard.identity);
-						}
-					}}
-					onClose={() => {
-						if (!isTransitioning) onClose();
-					}}
+					onEdit={() => onEditCard(currentCard.currentDeckId, currentCard.identity)}
+					onDelete={() => onDeleteCard(currentCard.currentDeckId, currentCard.identity)}
+					onClose={onClose}
 					editTitle={t("cardEditor.editCurrentTitle")}
 					deleteTitle={t("cardEditor.deleteCurrentTitle")}
 					closeTitle={t("spelling.exitTitle")}

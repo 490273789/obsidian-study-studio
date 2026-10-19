@@ -1,5 +1,5 @@
 import type { CardMotion } from "../../answerPresentationTransition";
-import React, { useCallback, useMemo } from "react";
+import React, { useMemo } from "react";
 import { RotateCcw, X, Check } from "lucide-react";
 import { cls } from "../../../../../core/shared/classNames";
 import type { ActivePracticeSnapshot } from "../../../domain/sessions/sessionLifecycle";
@@ -10,11 +10,13 @@ import type {
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { deriveCardPresentation } from "../../presentation/cardPresentation";
 import { CardPresentationBody } from "../../presentation/CardPresentationBody";
-import { reportPresentationOutcome } from "../../presentation/presentationOutcome";
+import { autoPronunciationControl } from "../../presentation/sessionSurface";
 import styles from "./Practice.module.scss";
 import { SessionLayout } from "../../primitives/SessionLayout/SessionLayout";
 import { SessionToolbar } from "../../primitives/SessionToolbar";
+import { sessionSurfaceFooter } from "../../primitives/SessionSurfaceFooter";
 import { useCardPresentationShortcuts } from "../../hooks/useCardPresentationShortcuts";
+import { useSessionSurface } from "../../hooks/useSessionSurface";
 import { useFlashcardI18n } from "../../../strings/context";
 
 interface PracticeViewProps {
@@ -39,12 +41,8 @@ export const PracticeView = React.memo(function PracticeView({
 	cardPresentation,
 }: PracticeViewProps) {
 	const { t } = useFlashcardI18n();
-	const {
-		answerVisible: showAnswer,
-		autoPronunciationEnabled,
-		pronunciationEnabled,
-		pronunciationWord,
-	} = cardPresentation;
+	const { answerVisible: showAnswer, pronunciationWord } = cardPresentation;
+	const surface = useSessionSurface({ transition, reference: session.reference });
 
 	const currentCard = session.currentCard;
 	const model = useMemo(
@@ -58,41 +56,6 @@ export const PracticeView = React.memo(function PracticeView({
 		[currentCard, session.direction, showAnswer, pronunciationWord],
 	);
 
-	const handleShowAnswer = useCallback(() => {
-		if (isTransitioning) return;
-		void transition.act({ kind: "card-reveal", reference: session.reference });
-	}, [isTransitioning, session.reference, transition]);
-
-	const handleToggleAutoPronunciation = useCallback(() => {
-		if (isTransitioning) return;
-		void transition.act({
-			kind: "card-toggle-auto-pronunciation",
-			reference: session.reference,
-		});
-	}, [isTransitioning, session.reference, transition]);
-
-	const handleAnswer = useCallback(
-		async (isCorrect: boolean) => {
-			if (!currentCard || isTransitioning) return;
-			const outcome = await transition.act({
-				kind: "practice-answer",
-				reference: session.reference,
-				correct: isCorrect,
-			});
-			reportPresentationOutcome(outcome);
-		},
-		[currentCard, isTransitioning, session.reference, transition],
-	);
-
-	const handlePrevious = useCallback(async () => {
-		if (!session.canPrevious || isTransitioning) return;
-		const outcome = await transition.act({
-			kind: "practice-previous",
-			reference: session.reference,
-		});
-		reportPresentationOutcome(outcome);
-	}, [isTransitioning, session.canPrevious, session.reference, transition]);
-
 	const shortcutRootRef = useCardPresentationShortcuts(
 		{
 			mode: "practice",
@@ -103,13 +66,13 @@ export const PracticeView = React.memo(function PracticeView({
 		(intent) => {
 			switch (intent.kind) {
 				case "reveal":
-					handleShowAnswer();
+					void surface.act({ kind: "reveal" });
 					break;
 				case "answer":
-					void handleAnswer(intent.correct);
+					void surface.act({ kind: "practice-answer", correct: intent.correct });
 					break;
 				case "previous":
-					void handlePrevious();
+					void surface.act({ kind: "previous" });
 					break;
 			}
 		},
@@ -145,91 +108,83 @@ export const PracticeView = React.memo(function PracticeView({
 					editTitle={t("cardEditor.editCurrentTitle")}
 					deleteTitle={t("cardEditor.deleteCurrentTitle")}
 					closeTitle={t("practice.exitTitle")}
-					autoPronunciation={
-						pronunciationEnabled
-							? {
-									enabled: autoPronunciationEnabled,
-									onToggle: handleToggleAutoPronunciation,
-									enableTitle: t("pronunciation.autoEnable"),
-									disableTitle: t("pronunciation.autoDisable"),
-								}
-							: undefined
-					}
+					autoPronunciation={autoPronunciationControl(
+						cardPresentation,
+						() => void surface.act({ kind: "toggle-auto-pronunciation" }),
+						t("pronunciation.autoEnable"),
+						t("pronunciation.autoDisable"),
+					)}
 				/>
 			}
-			footer={
-				<>
-					{!showAnswer ? (
+			footer={sessionSurfaceFooter({
+				busy: isTransitioning,
+				answerVisible: showAnswer,
+				onReveal: () => void surface.act({ kind: "reveal" }),
+				revealLabel: t("common.showAnswer"),
+				shortcutLabel: t("common.space"),
+				children: (
+					<div
+						className={cls(
+							"flashcard-practice-response-controls",
+							styles.responseControls,
+						)}
+					>
 						<FlashcardButton
-							preset="show"
-							variant="primary"
-							size="lg"
-							onClick={handleShowAnswer}
-							disabled={isTransitioning}
-						>
-							{t("common.showAnswer")}
-							<span className="flashcard-shortcut">({t("common.space")})</span>
-						</FlashcardButton>
-					) : (
+							preset="prev"
+							icon={RotateCcw}
+							iconSize={24}
+							onClick={() => void surface.act({ kind: "previous" })}
+							disabled={!session.canPrevious || isTransitioning}
+							title={`${t("common.undo")} (6)`}
+						/>
 						<div
 							className={cls(
-								"flashcard-practice-response-controls",
-								styles.responseControls,
+								"flashcard-practice-answer-buttons",
+								styles.answerButtons,
 							)}
 						>
 							<FlashcardButton
-								preset="prev"
-								icon={RotateCcw}
-								iconSize={24}
-								onClick={handlePrevious}
-								disabled={!session.canPrevious || isTransitioning}
-								title={`${t("common.undo")} (6)`}
-							/>
-							<div
-								className={cls(
-									"flashcard-practice-answer-buttons",
-									styles.answerButtons,
-								)}
+								preset="practice-wrong"
+								className={styles.btnWrong}
+								size="lg"
+								disabled={isTransitioning}
+								onClick={() =>
+									void surface.act({ kind: "practice-answer", correct: false })
+								}
 							>
-								<FlashcardButton
-									preset="practice-wrong"
-									className={styles.btnWrong}
-									size="lg"
-									disabled={isTransitioning}
-									onClick={() => void handleAnswer(false)}
-								>
-									<span className={styles.btnIcon}>
-										<X size={18} />
-									</span>
-									<span className="flashcard-practice-btn-label">
-										{t("practice.bad")}
-									</span>
-									<span className="flashcard-shortcut">
-										{t("practice.badShortcut")}
-									</span>
-								</FlashcardButton>
-								<FlashcardButton
-									preset="practice-correct"
-									className={styles.btnCorrect}
-									size="lg"
-									disabled={isTransitioning}
-									onClick={() => void handleAnswer(true)}
-								>
-									<span className={styles.btnIcon}>
-										<Check size={18} />
-									</span>
-									<span className="flashcard-practice-btn-label">
-										{t("practice.good")}
-									</span>
-									<span className="flashcard-shortcut">
-										{t("practice.goodShortcut")}
-									</span>
-								</FlashcardButton>
-							</div>
+								<span className={styles.btnIcon}>
+									<X size={18} />
+								</span>
+								<span className="flashcard-practice-btn-label">
+									{t("practice.bad")}
+								</span>
+								<span className="flashcard-shortcut">
+									{t("practice.badShortcut")}
+								</span>
+							</FlashcardButton>
+							<FlashcardButton
+								preset="practice-correct"
+								className={styles.btnCorrect}
+								size="lg"
+								disabled={isTransitioning}
+								onClick={() =>
+									void surface.act({ kind: "practice-answer", correct: true })
+								}
+							>
+								<span className={styles.btnIcon}>
+									<Check size={18} />
+								</span>
+								<span className="flashcard-practice-btn-label">
+									{t("practice.good")}
+								</span>
+								<span className="flashcard-shortcut">
+									{t("practice.goodShortcut")}
+								</span>
+							</FlashcardButton>
 						</div>
-					)}
-				</>
-			}
+					</div>
+				),
+			})}
 		>
 			<CardPresentationBody
 				model={model}
