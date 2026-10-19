@@ -54,6 +54,14 @@ vi.mock("react", async (original) => {
 		useMemo: memoized,
 		useCallback: (callback: unknown, deps?: readonly unknown[]) =>
 			memoized(() => callback, deps),
+		useRef: (initial: unknown) => {
+			const slot = (hooks.slots[hooks.cursor++] ??= { hasValue: false, value: undefined });
+			if (!slot.hasValue) {
+				slot.value = { current: initial };
+				slot.hasValue = true;
+			}
+			return slot.value;
+		},
 		useLayoutEffect: () => {
 			hooks.cursor++;
 		},

@@ -6,24 +6,36 @@
 	height: 100%;
 	min-width: 0;
 	min-height: 0;
-	--page-enter-offset: 8px;
+	/* Direction-specific entrance offset: forward pages arrive from the right,
+	   backward pages from the left; sibling pages only rise and fade. */
+	--page-enter-x: 0;
+	--page-enter-y: 8px;
+	/* Controls use the snappy --fc-ease-out; a page is larger than a button, so it
+	   decelerates more evenly and stays visible instead of finishing in a flash. */
+	--page-enter-ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
 	// The shell owns page entry, avoiding a second animation on fill pages.
 	--fc-motion-page-enter: none;
-	animation: page-enter var(--fc-motion-page) var(--fc-ease-out) backwards;
+	animation: page-enter var(--fc-motion-page, 220ms) var(--page-enter-ease) backwards;
 
-	&[data-page="home"] {
-		--page-enter-offset: -6px;
+	&[data-direction="forward"] {
+		--page-enter-x: 16px;
+		--page-enter-y: 0;
+	}
+
+	&[data-direction="backward"] {
+		--page-enter-x: -16px;
+		--page-enter-y: 0;
 	}
 }
 
 @keyframes page-enter {
 	from {
 		opacity: 0;
-		transform: translateY(var(--page-enter-offset));
+		transform: translate3d(var(--page-enter-x), var(--page-enter-y), 0);
 	}
 	to {
 		opacity: 1;
-		transform: none;
+		transform: translate3d(0, 0, 0);
 	}
 }
 

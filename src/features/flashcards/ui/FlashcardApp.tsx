@@ -1,4 +1,11 @@
-import React, { useCallback, useLayoutEffect, useMemo, useId, useSyncExternalStore } from "react";
+import React, {
+	useCallback,
+	useLayoutEffect,
+	useMemo,
+	useId,
+	useRef,
+	useSyncExternalStore,
+} from "react";
 import { App, Component, MarkdownRenderer, Notice, TFile } from "obsidian";
 import type { ScopedWorkbenchSettings } from "../../../core/host/settingsSlices";
 import type { WorkbenchFeatureShortcut } from "../../../core/host/workbench";
@@ -25,6 +32,7 @@ import { ModalProvider } from "../../../core/ui/primitives/Modal";
 import { createAnswerPresentationTransition } from "./answerPresentationTransition";
 import { ChallengeSetupModal, ChallengeView, ChallengeSummary } from "./views/Challenge";
 import { FlashcardNavigation } from "./flashcardNavigation";
+import { PageTransitionTracker } from "./pageTransition";
 import { InputVisibilityProvider } from "./hooks/useSessionInputVisibility";
 import { CardPresentationProvider } from "./presentation/context";
 import styles from "./FlashcardApp.module.scss";
@@ -426,14 +434,20 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 
 	// Only page changes restart the animation. Card progress, settings updates,
 	// and the challenge setup overlay keep the current page (and its local state).
-	const pageKey =
-		presentedLifecycleSnapshot.kind === "idle"
-			? viewState.type === "challenge-setup"
-				? "home"
-				: "deckId" in viewState
-					? `${viewState.type}:${viewState.deckId}`
-					: viewState.type
-			: `${presentedLifecycleSnapshot.kind}:${presentedLifecycleSnapshot.mode}`;
+	const pageTransitionTracker = useMemo(() => new PageTransitionTracker(), []);
+	const pageTransition = pageTransitionTracker.resolve(viewState, presentedLifecycleSnapshot);
+	const pageTransitionRef = useRef<HTMLDivElement | null>(null);
+
+	// The CSS entrance starts when the keyed page is inserted. If the commit runs
+	// heavy layout work afterwards, the first painted frame can already be near
+	// the end of the animation, which reads as "no animation" at all. Rewinding
+	// the animation in the last layout effect keeps the whole entrance visible.
+	useLayoutEffect(() => {
+		for (const animation of pageTransitionRef.current?.getAnimations?.() ?? []) {
+			animation.currentTime = 0;
+			animation.play();
+		}
+	}, [pageTransition.key]);
 
 	return (
 		<InputVisibilityProvider host={modalHost}>
@@ -442,7 +456,13 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 					markdownRenderer={renderMarkdown}
 					pronunciationRuntime={pronunciationRuntime}
 				>
-					<div key={pageKey} className={styles.pageTransition} data-page={pageKey}>
+					<div
+						key={pageTransition.key}
+						ref={pageTransitionRef}
+						className={styles.pageTransition}
+						data-page={pageTransition.key}
+						data-direction={pageTransition.direction}
+					>
 						{renderContent()}
 					</div>
 					{viewState.type === "challenge-setup" &&
