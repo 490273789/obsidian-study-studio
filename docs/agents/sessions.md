@@ -24,6 +24,13 @@ Pure engines and planners under `src/features/flashcards/domain/sessions/` are i
 - Completed answer events survive deletion for history/statistics.
 - If every remaining eligible identity disappears, end with the source-change outcome rather than normal completion.
 - `CardIdentityContinuity` talks to sessions only through the narrow continuity adapter created with `SessionLifecycle`.
+- Persistence announces committed deck-structure and challenge-progress revisions through
+  `SessionPersistencePort.subscribeSourceChanges`; the lifecycle subscribes itself and
+  reconciles the active challenge, so the composition root never pumps revalidation.
+  Challenge reconciliation keys off the revisions cached in its active state, which also
+  absorbs the revision echo of its own answer commits.
+- Interactive intents (`start`/`act`) wait out background reconciliation instead of being
+  rejected for it; only two concurrent interactive intents produce `busy`.
 
 ## Study scheduling
 

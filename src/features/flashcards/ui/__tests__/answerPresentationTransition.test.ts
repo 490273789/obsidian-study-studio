@@ -21,7 +21,7 @@ import {
 import type { PronunciationRuntime } from "../../domain/pronunciation";
 
 class ScriptedLifecycle implements SessionLifecycle {
-	async revalidateChallenge(): Promise<void> {}
+	dispose(): void {}
 	readonly listeners = new Set<() => void>();
 	readonly actions: Array<{ reference: LifecycleReference; action: unknown }> = [];
 	onAct: (reference: LifecycleReference, action: unknown) => Promise<LifecycleOutcome> =

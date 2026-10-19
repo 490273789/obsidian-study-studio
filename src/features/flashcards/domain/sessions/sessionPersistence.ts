@@ -56,6 +56,18 @@ export interface SessionCommit {
 	readonly challenge?: SessionChallengeCommit;
 }
 
+/**
+ * A committed persistence change that can affect an active session's source.
+ * Revisions are monotonic; the lifecycle compares them with the ones cached in
+ * its active state, so a session's own commits are absorbed without a global reset.
+ */
+export interface SessionSourceChange {
+	/** Deck structure revision: card set, text, deck metadata, and eligibility settings. */
+	readonly deckStructureRevision: number;
+	/** Bumped whenever a commit replaces the persisted challenge progress. */
+	readonly challengeProgressRevision: number;
+}
+
 export interface SessionPersistenceReceipt {
 	/** Captured by the repository before announcing the committed revision. */
 	readonly challengeProgressRevision: number;
@@ -88,5 +100,7 @@ export interface SessionPersistencePort extends StudyCardScheduler {
 	getSpellingProgress(): SpellingProgressSnapshot;
 	getChallengeProgress(): ChallengeProgress | null;
 	getChallengeProgressRevision(): number;
+	/** Notifies after a commit whose deck structure or challenge progress changed. */
+	subscribeSourceChanges(listener: (change: SessionSourceChange) => void): () => void;
 	commitSession(commit: SessionCommit): Promise<SessionCommitResult>;
 }

@@ -12,7 +12,11 @@ import {
 	getRestartViewState,
 	type SessionLifecycleRepository,
 } from "../sessionLifecycle";
-import type { SessionCommit, SessionCommitResult } from "../sessionPersistence";
+import type {
+	SessionCommit,
+	SessionCommitResult,
+	SessionSourceChange,
+} from "../sessionPersistence";
 import { formatSessionCommit, type SessionWriteSet } from "../../storage/sessionCommitFormat";
 import type { LearningActivityRecord } from "../../history/dailyLearningActivity";
 
@@ -68,9 +72,23 @@ class MemoryLifecycleRepository implements SessionLifecycleRepository {
 	settings: Pick<FlashcardSettings, "wordLearningDecks"> = {
 		wordLearningDecks: { [DECK_ID]: true },
 	};
+	private readonly sourceChangeListeners = new Set<(change: SessionSourceChange) => void>();
 
 	constructor(cards: FlashCard[]) {
 		this.decks.set(DECK_ID, makeDeck(cards));
+	}
+
+	subscribeSourceChanges(listener: (change: SessionSourceChange) => void): () => void {
+		this.sourceChangeListeners.add(listener);
+		return () => this.sourceChangeListeners.delete(listener);
+	}
+
+	emitSourceChange(): void {
+		const change: SessionSourceChange = {
+			deckStructureRevision: this.structureRevision,
+			challengeProgressRevision: 0,
+		};
+		for (const listener of this.sourceChangeListeners) listener(change);
 	}
 
 	getDeck(id: string): Deck | undefined {

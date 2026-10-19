@@ -3,7 +3,11 @@ import { createEmptyCard, State } from "ts-fsrs";
 vi.mock("obsidian", () => ({ normalizePath: (path: string) => path }));
 import { DEFAULT_SETTINGS } from "../../../../../core/host/settingsSlices";
 import type { Deck, FlashCard } from "../../../../../core/shared/types";
-import { FlashcardRepository } from "../../storage/flashcardRepository";
+import { FlashcardRepository, type SerializedDeck } from "../../storage/flashcardRepository";
+import type {
+	DeckIndexCache,
+	DeckIndexCacheStore,
+} from "../../../../../core/storage/deckIndexCache";
 import { MemoryFlashcardAuthority } from "../../storage/__tests__/memoryFlashcardAuthority";
 import {
 	createSessionLifecycle,
@@ -29,10 +33,31 @@ function card(index: number, deckId = "a"): FlashCard {
 function deck(id: string, cards: FlashCard[]): Deck {
 	return { id, name: id, filePath: id, cards, tag: "#word", studyCount: 0, lastStudied: null };
 }
-async function harness(count: number) {
+function createMemoryCache(): DeckIndexCacheStore<SerializedDeck> {
+	let stored: DeckIndexCache<SerializedDeck> | null = null;
+	return {
+		load: async () => stored,
+		loadOrRebuild: async (build) => {
+			stored ??= await build();
+			return stored;
+		},
+		save: async (next) => {
+			stored = structuredClone(next);
+		},
+		invalidateSource: async () => {},
+		clear: async () => {
+			stored = null;
+		},
+	};
+}
+
+async function harness(count: number, config: { cache?: boolean } = {}) {
 	const settings = { ...DEFAULT_SETTINGS, wordLearningDecks: { a: true, b: true } };
 	const authority = new MemoryFlashcardAuthority(settings);
-	const repo = new FlashcardRepository({ authority, deckIndexCache: null });
+	const repo = new FlashcardRepository({
+		authority,
+		deckIndexCache: config.cache ? createMemoryCache() : null,
+	});
 	await repo.load();
 	const store = repo.createContinuityStateStore();
 	const state = await store.load();
@@ -50,6 +75,9 @@ async function harness(count: number) {
 		settings,
 		tick: () => {
 			time += 1000;
+		},
+		settle: async () => {
+			await new Promise((resolve) => setTimeout(resolve, 0));
 		},
 		start: (challengeMode: ChallengeMode = "normal", intent: "new" | "continue" = "new") =>
 			wiring.lifecycle.start({ mode: "challenge", challengeMode, intent }),
@@ -281,7 +309,7 @@ describe("challenge lifecycle", () => {
 				["b", deck("b", [{ ...card(0, "b"), front: "pear" }, card(2, "b"), card(99, "b")])],
 			]),
 		});
-		await h.lifecycle.revalidateChallenge();
+		await h.settle();
 		expect(active(h.lifecycle).currentCard).toMatchObject({
 			front: "pear",
 			currentDeckId: "b",
@@ -299,7 +327,7 @@ describe("challenge lifecycle", () => {
 		await act(h.lifecycle, { kind: "answer", correct: true });
 		const state = await h.store.load();
 		await h.store.commit({ ...state, decks: new Map() });
-		await h.lifecycle.revalidateChallenge();
+		await h.settle();
 		expect(h.lifecycle.getSnapshot()).toMatchObject({
 			kind: "idle",
 			lastEnd: { mode: "challenge", reason: "source-change" },
@@ -321,7 +349,7 @@ describe("challenge lifecycle", () => {
 			...state,
 			decks: new Map([["a", deck("a", [card(15)])]]),
 		});
-		await h.lifecycle.revalidateChallenge();
+		await h.settle();
 		expect(h.lifecycle.getSnapshot()).toMatchObject({
 			kind: "idle",
 			lastEnd: { mode: "challenge", reason: "source-change", answerEventCount: 1 },
@@ -343,7 +371,7 @@ describe("challenge lifecycle", () => {
 				["a", deck("a", [...Array.from({ length: 15 }, (_, i) => card(i)), card(45)])],
 			]),
 		});
-		await h.lifecycle.revalidateChallenge();
+		await h.settle();
 		for (let index = 0; index < 15; index++) {
 			h.tick();
 			await act(h.lifecycle, { kind: "answer", correct: true });
@@ -409,38 +437,65 @@ describe("challenge lifecycle", () => {
 });
 
 describe("challenge reconciliation and concurrency", () => {
-	it("reuses the card index and checks progress revisions without cloning the round", async () => {
+	it("reuses the card index across answers and source-change flushes", async () => {
 		const h = await harness(2413);
 		await h.start();
 		const decks = vi.spyOn(h.repo, "getAllDecks");
 		const progress = vi.spyOn(h.repo, "getChallengeProgress");
-		for (let index = 0; index < 3; index++) await h.lifecycle.revalidateChallenge();
-		expect(decks).not.toHaveBeenCalled();
-		expect(progress).not.toHaveBeenCalled();
 		await act(h.lifecycle, { kind: "answer", correct: true });
 		// A scheduling commit changes FSRS state, not eligibility, so the eligible
-		// card index must stay warm across answers and revalidations.
-		expect(decks).not.toHaveBeenCalled();
-		await h.lifecycle.revalidateChallenge();
+		// card index must stay warm across answers and the flush it schedules.
+		await h.settle();
 		expect(decks).not.toHaveBeenCalled();
 		expect(progress).not.toHaveBeenCalled();
 		h.repo.dispose();
 	});
 
-	it("preserves an active challenge when external progress is structurally unchanged", async () => {
+	it("keeps an answer queued behind a source-change flush instead of dropping it", async () => {
 		const h = await harness(2);
 		await h.start();
-		const original = await h.store.load();
+		const reference = active(h.lifecycle).reference;
+		const queued: { current?: Promise<{ kind: string }> } = {};
+		// Subscribe after the lifecycle: its flush starts synchronously first, so the
+		// answer below races a background-held lock.
+		h.repo.subscribeSourceChanges(() => {
+			queued.current ??= h.lifecycle.act(reference, { kind: "answer", correct: true });
+		});
+		const state = await h.store.load();
+		await h.store.commit({
+			...state,
+			decks: new Map([
+				["a", deck("a", [card(0), card(1)])],
+				["b", deck("b", [card(50, "b")])],
+			]),
+		});
+		const outcome = await queued.current!;
+		expect(outcome.kind).toBe("applied");
+		await h.settle();
+		expect(active(h.lifecycle).progress.completed).toBe(1);
+		h.repo.dispose();
+	});
+
+	it("does not end the challenge for its own answer commits", async () => {
+		const h = await harness(2);
+		await h.start();
+		await act(h.lifecycle, { kind: "answer", correct: true });
+		await h.settle();
+		expect(active(h.lifecycle).progress.completed).toBe(1);
+		h.repo.dispose();
+	});
+
+	it("preserves an active challenge when external progress is structurally unchanged", async () => {
+		const h = await harness(2, { cache: true });
+		await h.start();
 		const snapshot = await h.authority.read();
 		if (snapshot.content.kind !== "current") throw new Error("Expected current learning");
 		const progressRevision = h.repo.getChallengeProgressRevision();
 		const revision = h.repo.getRevision();
 		h.authority.replaceExternal(h.settings, snapshot.content.learning);
 		await vi.waitFor(() => expect(h.repo.getRevision()).toBeGreaterThan(revision));
-		// Restore source-derived decks after the cache-less external reload.
-		await h.store.commit(original);
+		await h.settle();
 		expect(h.repo.getChallengeProgressRevision()).toBe(progressRevision);
-		await h.lifecycle.revalidateChallenge();
 		expect(active(h.lifecycle).currentCard.identity).toBe(card(0).id);
 		await act(h.lifecycle, { kind: "answer", correct: true });
 		h.repo.dispose();
@@ -460,7 +515,7 @@ describe("challenge reconciliation and concurrency", () => {
 		h.authority.replaceExternal(h.settings, learning);
 		await vi.waitFor(() => expect(h.repo.getRevision()).toBeGreaterThan(revision));
 		const decks = vi.spyOn(h.repo, "getAllDecks");
-		await h.lifecycle.revalidateChallenge();
+		await h.settle();
 		expect(h.lifecycle.getSnapshot()).toMatchObject({
 			kind: "idle",
 			lastEnd: { reason: "source-change" },
@@ -487,7 +542,7 @@ describe("challenge reconciliation and concurrency", () => {
 			return result;
 		});
 		await h.start();
-		await h.lifecycle.revalidateChallenge();
+		await h.settle();
 		expect(h.lifecycle.getSnapshot()).toMatchObject({
 			kind: "idle",
 			lastEnd: { reason: "source-change" },
@@ -501,7 +556,7 @@ describe("challenge reconciliation and concurrency", () => {
 		await h.start("reversed");
 		const state = await h.store.load();
 		await h.store.commit({ ...state, decks: new Map() });
-		await h.lifecycle.revalidateChallenge();
+		await h.settle();
 		expect(h.repo.getChallengeProgress()).toEqual({
 			version: 1,
 			lastMode: "reversed",
@@ -559,6 +614,7 @@ describe("challenge reconciliation and concurrency", () => {
 	it("revalidates disabled spelling decks before accepting an answer", async () => {
 		const h = await harness(2);
 		await h.start();
+		const before = active(h.lifecycle);
 		const saved = await h.authority.read();
 		if (saved.content.kind !== "current") throw new Error("Expected current document");
 		const revision = h.repo.getRevision();
@@ -567,14 +623,14 @@ describe("challenge reconciliation and concurrency", () => {
 			saved.content.learning,
 		);
 		await vi.waitFor(() => expect(h.repo.getRevision()).toBeGreaterThan(revision));
-		const before = active(h.lifecycle);
-		expect(
-			(await h.lifecycle.act(before.reference, { kind: "answer", correct: true })).kind,
-		).toBe("rejected");
+		await h.settle();
 		expect(h.lifecycle.getSnapshot()).toMatchObject({
 			kind: "idle",
 			lastEnd: { reason: "source-change" },
 		});
+		expect(
+			(await h.lifecycle.act(before.reference, { kind: "answer", correct: true })).kind,
+		).toBe("rejected");
 		expect(h.repo.getLearningFootprint(new Date(h.options.now())).today.answers.challenge).toBe(
 			0,
 		);

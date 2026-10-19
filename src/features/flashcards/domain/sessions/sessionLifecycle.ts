@@ -486,6 +486,7 @@ export type {
 	SessionPersistencePort,
 	SessionPersistenceReceipt,
 	SessionRecord,
+	SessionSourceChange,
 	SessionSpellingAttempt,
 } from "./sessionPersistence";
 export type SessionLifecycleRepository = SessionPersistencePort;
@@ -496,6 +497,7 @@ import type {
 	SessionPersistencePort,
 	SessionPersistenceReceipt,
 	SessionRecord,
+	SessionSourceChange,
 	SessionSpellingAttempt,
 } from "./sessionPersistence";
 
@@ -503,7 +505,8 @@ export interface SessionLifecycle {
 	getSnapshot(): SessionLifecycleSnapshot;
 	subscribe(listener: () => void): () => void;
 	start(request: SessionStartRequest): Promise<LifecycleOutcome>;
-	revalidateChallenge(): Promise<void>;
+	/** Releases the repository source-change subscription; the lifecycle is inert after it. */
+	dispose(): void;
 	act<R extends LifecycleReference>(
 		reference: R,
 		action: ActionFor<R>,
@@ -641,6 +644,10 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 	private readonly listeners = new Set<() => void>();
 	private busyDone: Promise<void> | null = null;
 	private releaseBusy: (() => void) | null = null;
+	private busyKind: "interactive" | "background" | null = null;
+	private sourceReconcilePending = false;
+	private unsubscribeSourceChanges: (() => void) | null = null;
+	private disposed = false;
 	private readonly now: () => number;
 	private readonly shuffle: (identities: string[]) => string[];
 	private readonly random: () => number;
@@ -656,6 +663,18 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		this.now = options.now ?? Date.now;
 		this.shuffle = options.shuffle ?? shuffleArray;
 		this.random = options.random ?? Math.random;
+		this.unsubscribeSourceChanges = repository.subscribeSourceChanges((change) =>
+			this.sourceChanged(change),
+		);
+	}
+
+	dispose(): void {
+		if (this.disposed) return;
+		this.disposed = true;
+		this.sourceReconcilePending = false;
+		this.unsubscribeSourceChanges?.();
+		this.unsubscribeSourceChanges = null;
+		this.listeners.clear();
 	}
 
 	getSnapshot(): SessionLifecycleSnapshot {
@@ -668,7 +687,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 	}
 
 	async start(request: SessionStartRequest): Promise<LifecycleOutcome> {
-		if (!this.tryAcquire()) return this.rejected("busy");
+		if (!(await this.acquireInteractive())) return this.rejected("busy");
 		try {
 			if (this.state.kind !== "idle") return this.rejected("invalid-state");
 			if (request.mode === "challenge") return await this.startChallenge(request);
@@ -685,21 +704,11 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		}
 	}
 
-	async revalidateChallenge(): Promise<void> {
-		await this.acquireWhenAvailable();
-		try {
-			if (this.state.kind !== "active" || this.state.mode !== "challenge") return;
-			await this.revalidateActiveChallenge(this.state);
-		} finally {
-			this.unlock();
-		}
-	}
-
 	async act<R extends LifecycleReference>(
 		reference: R,
 		action: ActionFor<R>,
 	): Promise<LifecycleOutcome> {
-		if (!this.tryAcquire()) return this.rejected("busy");
+		if (!(await this.acquireInteractive())) return this.rejected("busy");
 		try {
 			if (!this.matchesReference(reference)) return this.rejected("stale-reference");
 			return await this.applyAction(action as AnyLifecycleAction);
@@ -717,14 +726,13 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 	}
 
 	async reconcile(change: ContinuitySessionChange): Promise<void> {
-		await this.acquireWhenAvailable();
+		await this.acquireBackground();
 		try {
 			if (this.state.kind !== "active") return;
 			const current = this.state;
-			if (current.mode === "challenge") {
-				await this.revalidateActiveChallenge(current);
-				return;
-			}
+			// Challenge state is reconciled from the repository source-change channel,
+			// which already observed the continuity commit that produced this change.
+			if (current.mode === "challenge") return;
 			const reconciled = reconcileActiveState(current, change);
 			if (reconciled) {
 				this.publish(reconciled);
@@ -1524,6 +1532,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 	}
 
 	private publish(state: InternalState): void {
+		if (this.disposed) return;
 		this.state = state;
 		this.revision++;
 		this.snapshot = this.buildSnapshot();
@@ -1721,25 +1730,75 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		return `${prefix}-${this.nextKey++}`;
 	}
 
-	private tryAcquire(): boolean {
+	private tryAcquire(kind: "interactive" | "background"): boolean {
 		if (this.busyDone) return false;
+		this.busyKind = kind;
 		this.busyDone = new Promise<void>((resolve) => {
 			this.releaseBusy = resolve;
 		});
 		return true;
 	}
 
-	private async acquireWhenAvailable(): Promise<void> {
-		while (!this.tryAcquire()) {
+	/**
+	 * Interactive intents never lose to background reconciliation: they wait out a
+	 * background flush, but two interactive intents still produce `busy` for the
+	 * second one so double submits stay rejected.
+	 */
+	private async acquireInteractive(): Promise<boolean> {
+		while (true) {
+			if (this.busyDone === null) return this.tryAcquire("interactive");
+			if (this.busyKind === "interactive") return false;
 			await this.busyDone;
 		}
+	}
+
+	private async acquireBackground(): Promise<void> {
+		while (this.busyDone !== null) await this.busyDone;
+		this.tryAcquire("background");
 	}
 
 	private unlock(): void {
 		const release = this.releaseBusy;
 		this.releaseBusy = null;
 		this.busyDone = null;
+		this.busyKind = null;
 		release?.();
+		this.pumpSourceReconcile();
+	}
+
+	/** Folds repeated repository notifications into one background reconciliation. */
+	private sourceChanged(change: SessionSourceChange): void {
+		if (this.disposed) return;
+		// A session's own answer commit bumps the progress revision; once its new
+		// state is published the cached revisions match again and this is a no-op.
+		if (
+			this.state.kind === "active" &&
+			this.state.mode === "challenge" &&
+			change.deckStructureRevision === this.state.structureRevision &&
+			change.challengeProgressRevision === this.state.progressRevision
+		)
+			return;
+		// Changes that land while a start is in flight stay pending until the new
+		// active state exists, then the unlock flush reconciles against it.
+		this.sourceReconcilePending = true;
+		this.pumpSourceReconcile();
+	}
+
+	private pumpSourceReconcile(): void {
+		if (this.disposed || !this.sourceReconcilePending || this.busyDone !== null) return;
+		if (this.state.kind !== "active" || this.state.mode !== "challenge") return;
+		this.sourceReconcilePending = false;
+		this.tryAcquire("background");
+		void this.reconcileChallengeSources()
+			.catch((error: unknown) => {
+				console.error("Failed to reconcile challenge source changes", error);
+			})
+			.finally(() => this.unlock());
+	}
+
+	private async reconcileChallengeSources(): Promise<void> {
+		if (this.state.kind !== "active" || this.state.mode !== "challenge") return;
+		await this.revalidateActiveChallenge(this.state);
 	}
 }
 

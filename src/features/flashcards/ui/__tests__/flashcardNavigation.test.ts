@@ -13,7 +13,7 @@ import type {
 import { FlashcardNavigation } from "../flashcardNavigation";
 
 class ScriptedLifecycle implements SessionLifecycle {
-	async revalidateChallenge(): Promise<void> {}
+	dispose(): void {}
 	readonly listeners = new Set<() => void>();
 	readonly actions: Array<{ reference: LifecycleReference; action: unknown }> = [];
 	startImpl: (request: SessionStartRequest) => Promise<LifecycleOutcome> = async () =>

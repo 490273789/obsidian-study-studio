@@ -85,7 +85,7 @@ vi.mock("../domain/sessions/sessionLifecycle", () => ({
 			act: vi.fn(),
 			subscribe: vi.fn(),
 			getSnapshot: vi.fn(),
-			revalidateChallenge: vi.fn().mockResolvedValue(undefined),
+			dispose: vi.fn(),
 		},
 		continuitySessions: {},
 	})),

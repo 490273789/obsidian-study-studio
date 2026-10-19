@@ -32,6 +32,7 @@ import type {
 	SessionCommitResult,
 	SessionPersistencePort,
 	SessionPersistenceReceipt,
+	SessionSourceChange,
 } from "../sessions/sessionPersistence";
 import { formatSessionCommit, type SessionWriteSet } from "./sessionCommitFormat";
 import type { SessionJournalEntry, SessionJournalStore } from "./sessionJournal";
@@ -140,6 +141,10 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	/** Bumped only when the derived deck index changes, never by scheduling commits. */
 	private deckStructureRevision = 0;
 	private readonly revisionListeners = new Set<() => void>();
+	private readonly sourceChangeListeners = new Set<(change: SessionSourceChange) => void>();
+	/** Last revisions announced to source-change listeners, to skip no-op notifications. */
+	private announcedStructureRevision = 0;
+	private announcedChallengeProgressRevision = 0;
 	private cardIndex = new Map<string, CardIndexLocation>();
 	private serializedDeckCache = new WeakMap<Deck, SerializedDeck>();
 	private serializedCardCache = new WeakMap<FlashCard, SerializedCard>();
@@ -257,6 +262,11 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	subscribe(listener: () => void): () => void {
 		this.revisionListeners.add(listener);
 		return () => this.revisionListeners.delete(listener);
+	}
+
+	subscribeSourceChanges(listener: (change: SessionSourceChange) => void): () => void {
+		this.sourceChangeListeners.add(listener);
+		return () => this.sourceChangeListeners.delete(listener);
 	}
 
 	getAllDecks(): Deck[] {
@@ -807,6 +817,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 		this.authorityUnsubscribe();
 		this.authority.dispose?.();
 		this.revisionListeners.clear();
+		this.sourceChangeListeners.clear();
 	}
 
 	private handleAuthorityChange(change: FlashcardAuthorityChange): Promise<void> {
@@ -1554,6 +1565,24 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 					"Failed to publish a committed flashcard repository revision:",
 					error,
 				);
+			}
+		}
+		if (
+			this.deckStructureRevision === this.announcedStructureRevision &&
+			this.challengeProgressRevision === this.announcedChallengeProgressRevision
+		)
+			return;
+		this.announcedStructureRevision = this.deckStructureRevision;
+		this.announcedChallengeProgressRevision = this.challengeProgressRevision;
+		const change: SessionSourceChange = {
+			deckStructureRevision: this.deckStructureRevision,
+			challengeProgressRevision: this.challengeProgressRevision,
+		};
+		for (const listener of this.sourceChangeListeners) {
+			try {
+				listener(change);
+			} catch (error) {
+				console.error("Failed to publish a committed flashcard source change:", error);
 			}
 		}
 	}
