@@ -171,6 +171,51 @@ describe("SelectionDictCard", () => {
 		expect(findElement(tree, (element) => element.props.role === "tablist")).toBeDefined();
 	});
 
+	it("renders a focused blank input and submits through the helper before a session exists", () => {
+		const onLookup = vi.fn();
+		const inputRef = { value: "", focus: vi.fn(), select: vi.fn() };
+		reactHooks.refs = [{ current: null }, { current: inputRef }];
+		reactHooks.effects = [];
+		const tree = (
+			SelectionDictCard as unknown as {
+				type: (props: React.ComponentProps<typeof SelectionDictCard>) => React.ReactNode;
+			}
+		).type({
+			query: "",
+			lookup: {
+				query: "",
+				status: "idle",
+				sources: [],
+				activeSourceId: null,
+				aiEngineName: "",
+			},
+			session: null,
+			onLookup,
+			strings: selectionHelperStrings("zh"),
+			language: "zh",
+			theme: "dark",
+			onClose: vi.fn(),
+			onOpenInMainTab: vi.fn(),
+			openMainShortcut: "Ctrl+Enter",
+		});
+		reactHooks.effects[0]?.();
+		expect(inputRef.focus).toHaveBeenCalledOnce();
+		const input = findElement(tree, (element) => element.type === "input")!;
+		expect(input.props.defaultValue).toBe("");
+		(input.props.onKeyDown as (event: unknown) => void)({
+			key: "Enter",
+			currentTarget: { value: "  hello  " },
+			nativeEvent: { isComposing: false },
+			preventDefault: vi.fn(),
+			stopPropagation: vi.fn(),
+		});
+		expect(onLookup).toHaveBeenCalledExactlyOnceWith("hello");
+		const status = findElement(tree, (element) => element.type === "output");
+		expect(status?.props.children).toBe(selectionHelperStrings("zh").noDictionariesAvailable);
+		reactHooks.refs = [];
+		reactHooks.effects = [];
+	});
+
 	it("queries a trimmed draft on plain Enter and keeps handoffs on the displayed word", () => {
 		const session = { ...mockSession, lookup: vi.fn().mockResolvedValue(undefined) };
 		const onFavorite = vi.fn();

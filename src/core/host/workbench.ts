@@ -2,6 +2,7 @@ import type { App, Command, Editor, Hotkey, ItemView, Plugin, WorkspaceLeaf } fr
 import type { LucideIcon } from "lucide-react";
 import type { SettingsPresentation } from "../settings/presentation";
 import type { FlashcardSettings, Language } from "../shared/types";
+import { featureOpenHotkeys, type FeatureOpenShortcutKey } from "../settings/featureOpenShortcuts";
 import {
 	authorizeSettingsPatch,
 	changedSettingsOwners,
@@ -32,6 +33,8 @@ export interface WorkbenchCommand {
 	id: string;
 	name: string;
 	hotkeys?: Hotkey[];
+	/** Host-owned configurable default hotkey, resolved when registering the command. */
+	shortcutKey?: FeatureOpenShortcutKey;
 	/** Set for commands that only run with a non-empty editor selection. */
 	selection?: { run(selection: string): void };
 	/** Set for commands that take no selection. */
@@ -67,6 +70,8 @@ export interface WorkbenchCatalogEntry {
 	openCommandId: string;
 	/** Default hotkeys for the generated open command. */
 	openHotkeys?: Hotkey[];
+	/** Host-owned configurable default hotkey for this feature's open command. */
+	shortcutKey?: FeatureOpenShortcutKey;
 	/** Settings section used when an unavailable feature is opened. */
 	settingsSectionId: string;
 	/** Whether the feature currently offers an entry point. */
@@ -202,6 +207,7 @@ export class WorkbenchDisposedError extends Error {
 interface ModuleChrome {
 	ribbonEl: HTMLElement | null;
 	commandIds: string[];
+	usesConfigurableShortcut: boolean;
 }
 
 export function createWorkbench(options: WorkbenchOptions): Workbench {
@@ -232,6 +238,8 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 		select: (sectionId) => settingsTab?.select(sectionId),
 		open: (sectionId) => settingsTab?.open(sectionId),
 	};
+	const configuredHotkeys = (key: FeatureOpenShortcutKey): Hotkey[] =>
+		featureOpenHotkeys(options.readSettings().featureOpenShortcuts[key]);
 
 	const openCatalogFeature = (featureId: string): void => {
 		const entry = catalogById.get(featureId);
@@ -286,7 +294,11 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 		if (!chrome) return;
 		chrome.ribbonEl?.remove();
 		for (const id of chrome.commandIds) options.plugin.removeCommand(id);
-		chromeByModule.set(moduleId, { ribbonEl: null, commandIds: [] });
+		chromeByModule.set(moduleId, {
+			ribbonEl: null,
+			commandIds: [],
+			usesConfigurableShortcut: false,
+		});
 	};
 
 	const hostFor = <TOwner extends FeatureSettingsOwner>(
@@ -337,7 +349,11 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 
 			chrome: (build) => {
 				removeChrome(moduleId);
-				const chrome: ModuleChrome = { ribbonEl: null, commandIds: [] };
+				const chrome: ModuleChrome = {
+					ribbonEl: null,
+					commandIds: [],
+					usesConfigurableShortcut: false,
+				};
 				chromeByModule.set(moduleId, chrome);
 				build({
 					ribbon: (icon, title, onClick) => {
@@ -346,7 +362,14 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 					},
 					command: (spec) => {
 						chrome.commandIds.push(spec.id);
-						options.plugin.addCommand(toObsidianCommand(spec));
+						if (spec.shortcutKey) chrome.usesConfigurableShortcut = true;
+						options.plugin.addCommand(
+							toObsidianCommand(
+								spec.shortcutKey
+									? { ...spec, hotkeys: configuredHotkeys(spec.shortcutKey) }
+									: spec,
+							),
+						);
 					},
 				});
 			},
@@ -386,7 +409,9 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 			options.plugin.addCommand({
 				id: entry.openCommandId,
 				name: entry.title(language),
-				hotkeys: entry.openHotkeys,
+				hotkeys: entry.shortcutKey
+					? configuredHotkeys(entry.shortcutKey)
+					: entry.openHotkeys,
 				callback: () => entry.open(),
 			});
 		}
@@ -450,10 +475,18 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 		settingsChanged: (previous, next) => {
 			if (disposed) return;
 			const languageChanged = previous.language !== next.language;
+			const shortcutsChanged =
+				JSON.stringify(previous.featureOpenShortcuts) !==
+				JSON.stringify(next.featureOpenShortcuts);
 			const changedOwners = changedSettingsOwners(previous, next);
 			const affected = new Set<FeatureSettingsOwner>();
 			for (const module of modules) {
-				if (languageChanged || changedOwners.has(module.id)) affected.add(module.id);
+				if (
+					languageChanged ||
+					changedOwners.has(module.id) ||
+					(shortcutsChanged && chromeByModule.get(module.id)?.usesConfigurableShortcut)
+				)
+					affected.add(module.id);
 			}
 			if (affected.size > 0) {
 				const catalogChanged = renderModules(affected);
@@ -461,6 +494,8 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 				// otherwise only the affected owner's views would repaint.
 				if (catalogChanged) pushSettingsToOpenViews();
 				else pushSettingsToOpenViews(affected);
+			} else if (shortcutsChanged) {
+				rebuildCatalogCommands();
 			}
 		},
 

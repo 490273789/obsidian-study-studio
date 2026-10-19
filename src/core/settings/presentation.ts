@@ -72,6 +72,8 @@ export interface SettingsKeybindingSnapshot extends SettingsControlState {
 	recordingLabel: string;
 	conflictMessage: string;
 	unavailableValues: readonly string[];
+	/** Optional explanation for a specific unavailable shortcut. */
+	conflictMessages?: Readonly<Record<string, string>>;
 	action: SettingsActionRef<string>;
 }
 
@@ -241,6 +243,7 @@ export interface SettingsKeybindingSpec extends SettingsValueSpec<string> {
 	recordingLabel: string;
 	conflictMessage: string;
 	unavailableValues?: readonly string[];
+	conflictMessages?: Readonly<Record<string, string>>;
 }
 
 export interface SettingsSelectSpec<T extends string = string> extends SettingsValueSpec<T> {
@@ -691,6 +694,7 @@ class RowComposer implements SettingsRowBuilder {
 			recordingLabel: spec.recordingLabel,
 			conflictMessage: spec.conflictMessage,
 			unavailableValues,
+			conflictMessages: spec.conflictMessages,
 			action: registerAction(
 				this.actions,
 				`${this.path}/${key}:change`,

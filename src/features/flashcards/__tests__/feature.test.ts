@@ -158,7 +158,7 @@ describe("flashcard feature", () => {
 		expect(entry.icon).toBe(Layers);
 		expect(entry.title("zh")).toBe("闪卡学习");
 		expect(entry.openCommandId).toBe("open-flashcard-view");
-		expect(entry.openHotkeys).toEqual([{ modifiers: ["Alt"], key: "4" }]);
+		expect(entry.shortcutKey).toBe("flashcards");
 		expect(entry.settingsSectionId).toBe("flashcards");
 		expect(entry.available()).toBe(true);
 		expect(fake.ribbons.map(({ icon, title }) => ({ icon, title }))).toEqual([

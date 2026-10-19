@@ -16,6 +16,7 @@ import styles from "./Dictionary.module.scss";
 
 export interface DictionaryViewProps {
 	query: DictionaryQuerySession;
+	searchInputRef?: React.Ref<HTMLInputElement>;
 	language: Language;
 	onOpenFavorite: (word: string) => Promise<void>;
 	onOpenSettings: () => void;
@@ -78,6 +79,7 @@ function moveTabFocus(
 
 export function DictionaryView({
 	query,
+	searchInputRef,
 	language,
 	onOpenFavorite,
 	onOpenSettings,
@@ -147,6 +149,7 @@ export function DictionaryView({
 							</legend>
 							<FlashcardInput
 								id="dictionary-query"
+								ref={searchInputRef}
 								variant="unstyled"
 								className={cls(
 									"flashcard-dictionary-search-input",

@@ -6,6 +6,7 @@ import type { FlashcardStudySettings } from "../../features/flashcards/settings/
 import type { HostSettings } from "../settings/hostSlice";
 import type { VideoPlayerSettings } from "../../features/video-player/settings/slice";
 import type { AudioPracticeSettings } from "../../features/audio-practice/settings/slice";
+import type { FeatureOpenShortcuts } from "../settings/featureOpenShortcuts";
 import { Card } from "ts-fsrs";
 
 export type Language = "zh" | "en";
@@ -66,6 +67,8 @@ export interface StudySettings {
  * `src/settings/settingsSlices.ts`.
  */
 export interface FlashcardSettings extends HostSettings, FlashcardStudySettings {
+	/** Default hotkeys for opening the five primary study tools. */
+	featureOpenShortcuts: FeatureOpenShortcuts;
 	/** Offline-first word and phrase pronunciation preferences. */
 	pronunciation: PronunciationSettings;
 	ai: AiSettings;

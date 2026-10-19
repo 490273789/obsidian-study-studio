@@ -8,6 +8,8 @@ export interface SelectionHelperStrings {
 	openInMainTabHint: (shortcut: string) => string;
 	openInMainTab: string;
 	lookupInputLabel: string;
+	lookupPrompt: string;
+	openAssistant: string;
 	favorite: string;
 	close: string;
 	details: string;
@@ -55,6 +57,8 @@ const ZH_STRINGS: SelectionHelperStrings = {
 	openInMainTabHint: (shortcut) => `按 ${shortcut} 在主标签页打开`,
 	openInMainTab: "在词典主标签打开",
 	lookupInputLabel: "查询单词或短语",
+	lookupPrompt: "输入单词或短语，按 Enter 查询。",
+	openAssistant: "打开查词助手",
 	favorite: "收藏",
 	close: "关闭",
 	details: "词条章节",
@@ -106,6 +110,8 @@ const EN_OVERRIDES: Partial<SelectionHelperStrings> = {
 	openInMainTabHint: (shortcut) => `Press ${shortcut} to open in main tab`,
 	openInMainTab: "Open in dictionary tab",
 	lookupInputLabel: "Look up a word or phrase",
+	lookupPrompt: "Enter a word or phrase and press Enter to look it up.",
+	openAssistant: "Open lookup assistant",
 	favorite: "Favorite",
 	close: "Close",
 	details: "Entry sections",

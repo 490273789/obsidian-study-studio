@@ -320,7 +320,7 @@ class SettingsControlRenderer {
 			event.preventDefault();
 			event.stopPropagation();
 			if (control.unavailableValues.includes(shortcut)) {
-				error.textContent = control.conflictMessage;
+				error.textContent = control.conflictMessages?.[shortcut] ?? control.conflictMessage;
 				button.classList.add("has-error");
 				return;
 			}
@@ -656,8 +656,18 @@ class SettingsControlRenderer {
 
 function settingsShortcutFromEvent(event: KeyboardEvent): string | null {
 	if (["Control", "Alt", "Shift", "Meta"].includes(event.key)) return null;
+	// Option/Alt changes KeyboardEvent.key to symbols on macOS (Option+2 is ™).
+	// Use the physical letter/digit for command bindings, as Obsidian does.
+	const modified = event.ctrlKey || event.altKey || event.metaKey;
+	const physicalKey =
+		modified && /^Key[A-Z]$/.test(event.code)
+			? event.code.slice(3)
+			: modified && /^Digit[0-9]$/.test(event.code)
+				? event.code.slice(5)
+				: null;
 	const key =
-		event.key === " " || event.key === "Spacebar"
+		physicalKey ??
+		(event.key === " " || event.key === "Spacebar"
 			? "Space"
 			: event.key === "+"
 				? "Plus"
@@ -665,7 +675,7 @@ function settingsShortcutFromEvent(event: KeyboardEvent): string | null {
 					? "Minus"
 					: event.key.length === 1
 						? event.key.toUpperCase()
-						: event.key;
+						: event.key);
 	if (!key) return null;
 	return [
 		event.ctrlKey ? "Ctrl" : null,

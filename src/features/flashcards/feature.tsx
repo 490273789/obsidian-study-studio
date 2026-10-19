@@ -670,7 +670,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 				order: 0,
 				title: (language) => createTranslator(language)("main.viewTitle"),
 				openCommandId: OPEN_COMMAND_ID,
-				openHotkeys: [{ modifiers: ["Alt"], key: "4" }],
+				shortcutKey: "flashcards",
 				settingsSectionId: FLASHCARD_SECTION_ID,
 				available: () => true,
 				open: () => {

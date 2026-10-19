@@ -1,4 +1,5 @@
-import type { SelectionSourceLease } from "../domain/types";
+import { isEnglishWordOrPhrase } from "../domain/selectionHelper";
+import type { SelectionSource, SelectionSourceLease } from "../domain/types";
 
 export type WebviewSelectionStatus = "idle" | "available" | "unavailable";
 
@@ -32,6 +33,8 @@ interface Page {
 	ready: boolean;
 	failed: boolean;
 	busy: boolean;
+	manualRead: object | null;
+	manualOrigin: boolean;
 }
 
 interface Source {
@@ -47,11 +50,15 @@ interface WebviewSelectionOptions {
 	isDictionaryPopup(): boolean;
 	onStatus(status: WebviewSelectionStatus): void;
 	isEnabled(): boolean;
+	openDictionary?(
+		source: SelectionSource,
+		candidate?: { text: string; x: number; y: number },
+	): void;
 }
 
 let nextPage = 0;
 const collectorKey = "__studyStudioSelectionCollector";
-const removeCollector = `(() => { window.${collectorKey}?.dispose(); delete window.${collectorKey}; })()`;
+const removeCollector = `(() => { window.${collectorKey}?.dispose(); delete window.${collectorKey}; delete window.${collectorKey}_manualOrigin; })()`;
 
 // Fixed code only: no host objects, credentials, Node integration, or selected text
 // are interpolated into the guest's JavaScript context.
@@ -150,6 +157,7 @@ const installCollector = `(() => {
 	return true;
 })()`;
 const readCollector = `window.${collectorKey}?.read() ?? null`;
+const readManualOrigin = `window.${collectorKey}_manualOrigin?.isConnected === false ? false : (${readCollector})`;
 
 function guestEvent(value: unknown): GuestEvent | null {
 	if (!value || typeof value !== "object") return null;
@@ -248,6 +256,69 @@ export class WebviewSelectionAdapter {
 		this.publishStatus();
 	}
 
+	/** Read the focused guest on explicit demand, even when automatic capture is off. */
+	openDictionary(): boolean {
+		if (!this.running || !this.options.openDictionary) return false;
+		this.discover();
+		const source = this.sources.get(this.options.document.activeElement as Element);
+		if (!source || typeof source.element.executeJavaScript !== "function") return false;
+		const page = source.page;
+		if (!this.options.isDictionaryPopup()) page.manualOrigin = false;
+		const read = page.lease.capture();
+		const manualRead = {};
+		page.manualRead = manualRead;
+		void (async () => {
+			let candidate: { text: string; x: number; y: number } | undefined;
+			try {
+				const result = await source.element.executeJavaScript(
+					this.script(
+						`(() => {
+					const active = document.activeElement;
+					if (active?.matches('input[type="password"]')) return null;
+					const input = active?.matches('input,textarea') ? active : null;
+					const selection = window.getSelection();
+					const text = (input ? input.value.slice(input.selectionStart, input.selectionEnd) : selection?.toString() ?? '').trim();
+					if (text && text.length <= 80 && !/[.!?;:\\n]/u.test(text) && text.split(/\\s+/u).length <= 3 && text.split(/\\s+/u).every(word => /^[A-Za-z][A-Za-z'-]*$/u.test(word))) {
+						window.${collectorKey}_manualOrigin = input ?? selection?.anchorNode;
+					}
+					if (!text || text.length > 80) return null;
+					const bounds = input ? input.getBoundingClientRect() : selection?.rangeCount ? selection.getRangeAt(0).getBoundingClientRect() : null;
+					return { text, x: bounds?.left ?? 0, y: bounds?.bottom ?? 0 };
+				})()`,
+						page,
+					),
+				);
+				if (result && typeof result === "object") {
+					const value = result as Record<string, unknown>;
+					const rect = this.visibleRect(source);
+					if (
+						typeof value.text === "string" &&
+						value.text.length <= 80 &&
+						typeof value.x === "number" &&
+						Number.isFinite(value.x) &&
+						typeof value.y === "number" &&
+						Number.isFinite(value.y) &&
+						rect
+					) {
+						candidate = {
+							text: value.text,
+							x: rect.left + value.x,
+							y: rect.top + value.y,
+						};
+					}
+				}
+			} catch {
+				// Unsupported guests still allow manual input in the lookup card.
+			}
+			if (page.manualRead === manualRead) page.manualRead = null;
+			if (this.registered(source) && source.page === page && read.isCurrent()) {
+				if (candidate && isEnglishWordOrPhrase(candidate.text)) page.manualOrigin = true;
+				this.options.openDictionary?.(page.lease.reference, candidate);
+			}
+		})();
+		return true;
+	}
+
 	private discover(): void {
 		if (!this.running) return;
 		const elements = new Set(Array.from(this.options.document.querySelectorAll("webview")));
@@ -298,6 +369,8 @@ export class WebviewSelectionAdapter {
 			ready: false,
 			failed: false,
 			busy: false,
+			manualRead: null,
+			manualOrigin: false,
 		};
 	}
 
@@ -341,13 +414,19 @@ export class WebviewSelectionAdapter {
 		if (enabled !== this.enabled) {
 			this.enabled = enabled;
 			for (const source of this.sources.values()) {
-				this.invalidate(source);
-				if (enabled) void this.install(source);
+				if (!source.page.manualOrigin && !source.page.manualRead) this.invalidate(source);
+				if (enabled && !source.page.ready) void this.install(source);
 			}
 		}
-		if (!this.options.isEnabled() || document.visibilityState === "hidden") return;
+		if (document.visibilityState === "hidden") return;
 		for (const source of this.sources.values()) {
-			if (!source.page.ready || source.page.busy) continue;
+			if (
+				(!source.page.ready && !source.page.manualOrigin) ||
+				source.page.busy ||
+				source.page.manualRead
+			)
+				continue;
+			if (!this.options.isEnabled() && !source.page.manualOrigin) continue;
 			if (!this.visibleRect(source)) continue;
 			void this.read(source);
 		}
@@ -358,8 +437,17 @@ export class WebviewSelectionAdapter {
 		const read = page.lease.capture();
 		page.busy = true;
 		try {
-			const result = await source.element.executeJavaScript(this.script(readCollector, page));
-			if (!page.lease.active || !page.ready) return;
+			const result = await source.element.executeJavaScript(
+				this.script(page.manualOrigin ? readManualOrigin : readCollector, page),
+			);
+			if (!page.lease.active || (!page.ready && !page.manualOrigin)) return;
+			if (result === false && page.manualOrigin) {
+				if (read.isCurrent()) {
+					page.manualOrigin = false;
+					read.dismiss();
+				}
+				return;
+			}
 			const event = guestEvent(result);
 			if (!event || event.sequence <= page.sequence) return;
 			// Consume rejected events too, so returning focus cannot revive them.

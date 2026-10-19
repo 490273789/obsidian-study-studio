@@ -128,6 +128,7 @@ export function createAudioPracticeFeature(deps: {
 				icon: Headphones,
 				order: 30,
 				openCommandId: "open-audio-practice",
+				shortcutKey: "audioPractice",
 				settingsSectionId: SECTION,
 				available: () => readSettings().audioPractice.enabled,
 				open: () => {

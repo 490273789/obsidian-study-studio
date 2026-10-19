@@ -69,6 +69,7 @@ describe("audio practice feature", () => {
 		expect(entry.title("zh")).toBe(audioSettingsCopy("zh").title);
 		expect(entry.icon).toBe(Headphones);
 		expect(entry.openCommandId).toBe("open-audio-practice");
+		expect(entry.shortcutKey).toBe("audioPractice");
 		expect(entry.settingsSectionId).toBe("audio-practice");
 		expect(entry.available()).toBe(true);
 		expect(fake.sections.get("audio-practice")!.order).toBe(5);

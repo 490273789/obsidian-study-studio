@@ -134,6 +134,30 @@ function touch(target: unknown) {
 }
 
 describe("SelectionListener", () => {
+	it("opens the large card directly from current selection, then blank after dismissal", () => {
+		const env = environment();
+		const shared = helper("alt");
+		const listener = listen(env, shared);
+		listener.openDictionary();
+		expect(shared.getSnapshot()).toMatchObject({
+			visible: true,
+			mode: "dictionary",
+			target: { text: "hello", x: 32, y: 64 },
+		});
+		env.setText("");
+		const existing = shared.getSnapshot();
+		listener.openDictionary();
+		expect(shared.getSnapshot()).toBe(existing);
+		shared.dismiss();
+		listener.openDictionary();
+		expect(shared.getSnapshot()).toMatchObject({
+			mode: "dictionary",
+			target: { text: "", trigger: "manual" },
+		});
+		listener.stop();
+		expect(shared.getSnapshot().visible).toBe(false);
+	});
+
 	it("accepts selectable text on arbitrary pages and anchors to its range", () => {
 		const env = environment();
 		const shared = helper();

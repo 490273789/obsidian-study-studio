@@ -13,6 +13,13 @@ export interface SelectionBubbleProps {
 	onClose: () => void;
 }
 
+/** Bare keys belong to the bubble; modified keys remain available to Obsidian commands. */
+export function allowsBubbleKey(
+	event: Pick<KeyboardEvent, "ctrlKey" | "altKey" | "shiftKey" | "metaKey">,
+): boolean {
+	return !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey;
+}
+
 export const SelectionBubble = React.memo(function SelectionBubble({
 	canLookup,
 	canTranslate,
@@ -40,6 +47,7 @@ export const SelectionBubble = React.memo(function SelectionBubble({
 				onClose();
 				return;
 			}
+			if (!allowsBubbleKey(event)) return;
 
 			if (event.key === "1") {
 				event.preventDefault();

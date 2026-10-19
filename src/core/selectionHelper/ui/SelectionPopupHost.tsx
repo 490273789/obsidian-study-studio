@@ -68,7 +68,28 @@ export const SelectionPopupHost: React.FC<SelectionPopupHostProps> = ({
 							target,
 							{ width: element.offsetWidth, height: element.offsetHeight },
 							visibleArea,
-							manualPosition ?? placedCorner,
+							manualPosition ??
+								placedCorner ??
+								(target.trigger === "manual"
+									? {
+											left:
+												visibleArea.left +
+												(visibleArea.width -
+													Math.min(
+														element.offsetWidth,
+														visibleArea.width - 32,
+													)) /
+													2,
+											top:
+												visibleArea.top +
+												(visibleArea.height -
+													Math.min(
+														element.offsetHeight,
+														visibleArea.height * 0.7,
+													)) /
+													2,
+										}
+									: null),
 						);
 			currentPosition = next;
 			if (mode === "dictionary") placedCorner = { left: next.left, top: next.top };
@@ -181,11 +202,12 @@ export const SelectionPopupHost: React.FC<SelectionPopupHostProps> = ({
 					onTranslate={() => void helper.translate()}
 					onClose={() => helper.dismiss()}
 				/>
-			) : state.lookup && state.session ? (
+			) : state.lookup ? (
 				<SelectionDictCard
 					query={state.lookup.query}
 					lookup={state.lookup}
 					session={state.session}
+					onLookup={(query) => helper.lookup(query)}
 					theme={theme}
 					language={language}
 					renderResultContent={renderResultContent}

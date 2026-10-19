@@ -165,6 +165,18 @@ function fixture() {
 }
 
 describe("selection dictionary popup dragging", () => {
+	it("centers a manually opened blank card and keeps it draggable", () => {
+		const f = fixture();
+		f.state.target = { ...f.state.target!, text: "", trigger: "manual", x: 0, y: 0 };
+		f.state.session = null;
+		f.render();
+		expect(hooks.position).toMatchObject({ left: 350, top: 300 });
+		f.start();
+		f.pointer("pointermove", 210, 222);
+		expect(hooks.position).toMatchObject({ left: 450, top: 400 });
+		f.unmount();
+	});
+
 	it.each(["mouse", "touch"])(
 		"drags with %s, retaining the pointer offset and clamping at edges",
 		(pointerType) => {

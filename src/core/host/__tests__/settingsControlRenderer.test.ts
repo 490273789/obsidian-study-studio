@@ -15,12 +15,17 @@ class MockEvent {
 	constructor(
 		readonly key = "",
 		readonly options: {
+			code?: string;
 			ctrlKey?: boolean;
 			altKey?: boolean;
 			shiftKey?: boolean;
 			metaKey?: boolean;
 		} = {},
 	) {}
+
+	get code(): string {
+		return this.options.code ?? "";
+	}
 
 	get ctrlKey(): boolean {
 		return this.options.ctrlKey ?? false;
@@ -674,6 +679,7 @@ describe("renderSettingsControls", () => {
 						recordingLabel: "Recording",
 						conflictMessage: "Already used",
 						unavailableValues: ["Ctrl+K"],
+						conflictMessages: { "Ctrl+K": "Used by Flashcards" },
 						onChange,
 					},
 				);
@@ -692,7 +698,7 @@ describe("renderSettingsControls", () => {
 		capture.emit("focus");
 		const conflict = capture.emit("keydown", new MockEvent("k", { ctrlKey: true }));
 		expect(conflict.defaultPrevented).toBe(true);
-		expect(one(container, "fc-keybinding-error").textContent).toBe("Already used");
+		expect(one(container, "fc-keybinding-error").textContent).toBe("Used by Flashcards");
 		expect(capture.classList.contains("has-error")).toBe(true);
 
 		const valid = capture.emit("keydown", new MockEvent("p", { ctrlKey: true }));
@@ -701,6 +707,11 @@ describe("renderSettingsControls", () => {
 		expect(onChange).toHaveBeenCalledWith("Ctrl+P");
 		expect(capture.textContent).toBe("None");
 		expect(capture.classList.contains("has-error")).toBe(false);
+
+		capture.emit("focus");
+		capture.emit("keydown", new MockEvent("™", { altKey: true, code: "Digit2" }));
+		await settle();
+		expect(onChange).toHaveBeenLastCalledWith("Alt+2");
 	});
 
 	it("renders cards, reorderable actions, and rich content with the container document", async () => {

@@ -10,6 +10,75 @@ import type {
 } from "../types";
 
 describe("SelectionHelper", () => {
+	it("explicitly opens a blank card despite disabled automatic capture and only queries on submission", () => {
+		const settings: SelectionHelperSettings = {
+			enabled: false,
+			modifier: "alt",
+			openMainShortcut: "Ctrl+Enter",
+			dictionaryOrder: [],
+			selectedDictionaries: [],
+		};
+		const startLookup = vi.fn(() => fakeSession().session);
+		const { helper } = setup({ settings, startLookup });
+		const source = helper.openSource({});
+		const pending = source.capture();
+		helper.openDictionary(source.reference);
+		expect(helper.getSnapshot()).toMatchObject({
+			visible: true,
+			mode: "dictionary",
+			target: { text: "", trigger: "manual" },
+			session: null,
+		});
+		expect(startLookup).not.toHaveBeenCalled();
+		expect(pending.submit(candidate("late"))).toBe(false);
+		helper.refresh();
+		expect(helper.getSnapshot().visible).toBe(true);
+		helper.lookup("  hello   world  ");
+		expect(startLookup).toHaveBeenCalledWith("hello world", ["a", "b"]);
+		source.dispose();
+		expect(helper.getSnapshot().visible).toBe(false);
+	});
+
+	it("preserves the open card without a new valid selection and replaces its session for new words", () => {
+		const first = fakeSession();
+		const startLookup = vi.fn(() => first.session);
+		const { helper } = setup({ startLookup });
+		const source = helper.openSource({});
+		helper.openDictionary(source.reference, { text: "first", x: 4, y: 8 });
+		const snapshot = helper.getSnapshot();
+		helper.openDictionary(source.reference, { text: "不是英文", x: 0, y: 0 });
+		expect(helper.getSnapshot()).toBe(snapshot);
+		helper.openDictionary(source.reference);
+		expect(helper.getSnapshot()).toBe(snapshot);
+		helper.openDictionary(source.reference, { text: "second", x: 9, y: 8 });
+		expect(first.dispose).toHaveBeenCalledOnce();
+		expect(startLookup).toHaveBeenLastCalledWith("second", ["a", "b"]);
+		expect(helper.getSnapshot().target?.text).toBe("second");
+	});
+
+	it("keeps manual lookup visible when no dictionary source is available", () => {
+		const { helper, dictionary } = setup();
+		dictionary.sources = () => [];
+		const start = vi.spyOn(dictionary, "startLookup");
+		const source = helper.openSource({});
+		helper.openDictionary(source.reference, { text: "hello", x: 1, y: 2 });
+		expect(helper.getSnapshot()).toMatchObject({
+			visible: true,
+			mode: "dictionary",
+			lookup: { query: "hello", sources: [] },
+			session: null,
+		});
+		helper.lookup("world");
+		expect(start).not.toHaveBeenCalled();
+		expect(helper.getSnapshot().lookup?.query).toBe("world");
+		helper.dismiss();
+		helper.openDictionary(source.reference);
+		expect(helper.getSnapshot().target?.text).toBe("");
+		source.dispose();
+		helper.openDictionary(source.reference);
+		expect(helper.getSnapshot().visible).toBe(false);
+	});
+
 	it.each([
 		{ selectedDictionaries: [] },
 		{ selectedDictionaries: ["a"] },

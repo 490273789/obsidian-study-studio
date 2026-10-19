@@ -1,8 +1,8 @@
 import React from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { Language } from "../../shared/types";
-import type { SelectionHelper } from "../domain/selectionHelper";
-import type { SelectionRead, SelectionSource } from "../domain/types";
+import { isEnglishWordOrPhrase, type SelectionHelper } from "../domain/selectionHelper";
+import type { SelectionRead, SelectionSource, SelectionSourceLease } from "../domain/types";
 import { selectionHelperStrings } from "../strings/selectionPopup";
 import { SelectionPopupHost } from "../ui/SelectionPopupHost";
 import type { SelectionResultContentRenderer } from "../ui/types";
@@ -24,6 +24,7 @@ export interface SelectionListenerDeps {
 }
 
 interface DocumentBinding {
+	openDictionary(): boolean;
 	dispose(): void;
 }
 
@@ -36,6 +37,7 @@ export class SelectionListener {
 	private readonly owner: object;
 	private host: Document | null = null;
 	private started = false;
+	private manualSource: SelectionSourceLease | null = null;
 
 	constructor(private readonly deps: SelectionListenerDeps) {
 		this.owner = deps.owner ?? {};
@@ -47,6 +49,7 @@ export class SelectionListener {
 		if (!doc) return;
 		this.started = true;
 		this.host = doc;
+		this.manualSource = this.deps.helper.openSource(this.owner);
 		this.unsubscribe = this.deps.helper.subscribe(() => this.renderSnapshot());
 		this.bindDocument(doc);
 	}
@@ -59,12 +62,30 @@ export class SelectionListener {
 		this.deps.helper.dismiss(this.owner);
 	}
 
+	openDictionary(): void {
+		if (!this.started || !this.manualSource) return;
+		// Prefer the focused document/frame; never reuse a stale captured Range.
+		const focused = [...this.bindings.entries()].find(
+			([doc]) => !doc.activeElement?.matches?.("iframe") && doc.hasFocus?.(),
+		);
+		if (focused?.[1].openDictionary()) return;
+		if (!focused && this.host && this.bindings.get(this.host)?.openDictionary()) return;
+		this.openBlankDictionary();
+	}
+
+	openBlankDictionary(): void {
+		if (this.started && this.manualSource)
+			this.deps.helper.openDictionary(this.manualSource.reference);
+	}
+
 	refresh(): void {
 		this.renderSnapshot();
 	}
 
 	stop(): void {
 		this.started = false;
+		this.manualSource?.dispose();
+		this.manualSource = null;
 		for (const binding of this.bindings.values()) binding.dispose();
 		this.bindings.clear();
 		this.unsubscribe?.();
@@ -298,6 +319,13 @@ export class SelectionListener {
 		)?.MutationObserver;
 		const observer = Observer ? new Observer(scanFrames) : null;
 		this.bindings.set(doc, {
+			openDictionary: () => {
+				const selection = read(doc.activeElement);
+				if (!selection?.text || !isEnglishWordOrPhrase(selection.text)) return false;
+				selectedNode = selectionOrigin(doc, doc.activeElement);
+				this.deps.helper.openDictionary(lease.reference, selection);
+				return true;
+			},
 			dispose: () => {
 				lease.dispose();
 				cancelTimer();

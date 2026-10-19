@@ -5,6 +5,7 @@ import type { FlashcardSettings } from "../shared/types";
 import { translationSettingsSlice } from "../../features/translation/domain/configuration";
 import { flashcardSettingsSlice } from "../../features/flashcards/settings/slice";
 import { hostSettingsSlice } from "../settings/hostSlice";
+import { featureOpenShortcutsSlice } from "../settings/featureOpenShortcuts";
 import { selectionPopupSettingsSlice } from "../selectionHelper/settings/slice";
 import type { SettingsSlice } from "../settings/slice";
 import type { HostSettings } from "../settings/hostSlice";
@@ -27,7 +28,7 @@ export const SHARED_SETTINGS_SLICES = [hostSettingsSlice] as const;
 
 /** The canonical ownership map used for both static projections and runtime authorization. */
 export const SETTINGS_SLICES_BY_OWNER = {
-	workbench: [aiSettingsSlice],
+	workbench: [aiSettingsSlice, featureOpenShortcutsSlice],
 	flashcards: [flashcardSettingsSlice, pronunciationSettingsSlice],
 	translation: [translationSettingsSlice],
 	dictionary: [dictionarySettingsSlice],
@@ -167,6 +168,7 @@ export const DEFAULT_SETTINGS: FlashcardSettings = {
 	...flashcardSettingsSlice.defaults(),
 	...pronunciationSettingsSlice.defaults(),
 	...aiSettingsSlice.defaults(),
+	...featureOpenShortcutsSlice.defaults(),
 	...translationSettingsSlice.defaults(),
 	...dictionarySettingsSlice.defaults(),
 	...selectionPopupSettingsSlice.defaults(),
@@ -185,6 +187,7 @@ export function normalizeSettingsDocument(raw: unknown): FlashcardSettings {
 		...flashcardSettingsSlice.normalize(raw),
 		...pronunciationSettingsSlice.normalize(raw),
 		...aiSettingsSlice.normalize(raw),
+		...featureOpenShortcutsSlice.normalize(raw),
 		...translationSettingsSlice.normalize(raw),
 		...dictionarySettingsSlice.normalize(raw),
 		...selectionPopupSettingsSlice.normalize(raw),
@@ -203,6 +206,7 @@ export function cloneSettingsDocument(settings: FlashcardSettings): FlashcardSet
 		...flashcardSettingsSlice.clone(settings),
 		...pronunciationSettingsSlice.clone(settings),
 		...aiSettingsSlice.clone(settings),
+		...featureOpenShortcutsSlice.clone(settings),
 		...translationSettingsSlice.clone(settings),
 		...dictionarySettingsSlice.clone(settings),
 		...selectionPopupSettingsSlice.clone(settings),

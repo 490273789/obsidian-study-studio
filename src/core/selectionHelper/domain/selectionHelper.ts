@@ -34,6 +34,7 @@ export class SelectionHelper {
 	private disposed = false;
 	private readonly sources = new Map<SelectionSource, SourceState>();
 	private interactionRevision = 0;
+	private explicitlyOpened = false;
 
 	constructor(private readonly options: SelectionHelperOptions) {}
 
@@ -147,6 +148,7 @@ export class SelectionHelper {
 			return false;
 		}
 
+		this.explicitlyOpened = false;
 		this.releaseLookup();
 		const target: SelectionTarget = {
 			text,
@@ -168,21 +170,105 @@ export class SelectionHelper {
 		return true;
 	}
 
+	/** Explicit user action; independent of automatic selection preferences. */
+	openDictionary(
+		source: SelectionSource,
+		candidate?: { text: string; x: number; y: number },
+	): void {
+		if (this.disposed || !this.sources.has(source)) return;
+		this.interrupt();
+		const text = candidate?.text.trim() ?? "";
+		const valid = isEnglishWordOrPhrase(text);
+		const current = this.snapshot;
+		if (
+			current.visible &&
+			current.mode === "dictionary" &&
+			(!valid || (current.target?.source === source && current.target.text === text))
+		) {
+			this.explicitlyOpened = true;
+			return;
+		}
+		this.releaseLookup();
+		this.explicitlyOpened = true;
+		const target: SelectionTarget = {
+			source,
+			text: valid ? text : "",
+			isEnglishWord: valid,
+			x: valid ? candidate!.x : 0,
+			y: valid ? candidate!.y : 0,
+			trigger: valid ? undefined : "manual",
+		};
+		this.publish({
+			...EMPTY_SNAPSHOT,
+			visible: true,
+			mode: "dictionary",
+			target,
+			canLookup: true,
+			lookup: this.idleLookup(target.text),
+		});
+		if (valid) this.lookup(target.text);
+	}
+
+	/** Query the explicit card only after the learner submits its input. */
+	lookup(query: string): void {
+		if (this.disposed || !this.snapshot.target) return;
+		const normalized = query.trim().replace(/\s+/g, " ");
+		if (!normalized) return;
+		if (this.lookupSession) {
+			void this.lookupSession.lookup(normalized);
+			return;
+		}
+		this.startLookup(normalized);
+	}
+
+	private idleLookup(query: string) {
+		const settings = this.options.settings();
+		const sources = selectedSources(
+			orderSelectionDictionaries(this.options.dictionary.sources(), settings.dictionaryOrder),
+			settings.selectedDictionaries,
+		);
+		return {
+			query,
+			activeSourceId: sources[0]?.id ?? null,
+			aiEngineName: "",
+			status: "idle" as const,
+			sources: sources.map((source) => ({
+				...source,
+				status: "idle" as const,
+				error: "",
+				pronunciations: [],
+				result: null,
+			})),
+		};
+	}
+
 	beginLookup(): void {
 		if (this.disposed || !this.snapshot.target || !this.snapshot.canLookup) return;
+		this.startLookup(this.snapshot.target.text);
+	}
+
+	private startLookup(query: string): void {
 		const settings = this.options.settings();
 		const sourceIds = selectedSources(
 			orderSelectionDictionaries(this.options.dictionary.sources(), settings.dictionaryOrder),
 			settings.selectedDictionaries,
 		).map((source) => source.id);
 		if (sourceIds.length === 0) {
-			this.dismiss();
+			this.publish({ ...this.snapshot, mode: "dictionary", lookup: this.idleLookup(query) });
 			return;
 		}
 		this.releaseLookup();
-		const session = this.options.dictionary.startLookup(this.snapshot.target.text, sourceIds);
+		const session = this.options.dictionary.startLookup(query, sourceIds);
 		if (!session) {
-			this.dismiss();
+			this.publish({
+				...this.snapshot,
+				mode: "dictionary",
+				lookup: {
+					...this.idleLookup(query),
+					sources: [],
+					activeSourceId: null,
+				},
+			});
 			return;
 		}
 		this.lookupSession = session;
@@ -209,22 +295,21 @@ export class SelectionHelper {
 	}
 
 	async openDictionaryInMainTab(): Promise<void> {
-		const query = this.lookupSession?.getSnapshot().query ?? this.snapshot.target?.text;
+		const query = this.snapshot.lookup?.query ?? this.snapshot.target?.text;
 		if (!query) return;
 		this.dismiss();
 		await this.options.dictionary.openInMainTab(query);
 	}
 
 	async openFavorite(word?: string): Promise<void> {
-		const targetWord =
-			word ?? this.lookupSession?.getSnapshot().query ?? this.snapshot.target?.text;
+		const targetWord = word ?? this.snapshot.lookup?.query ?? this.snapshot.target?.text;
 		if (!targetWord || !this.options.dictionary.openFavorite) return;
 		this.dismiss();
 		await this.options.dictionary.openFavorite(targetWord);
 	}
 
 	refresh(): void {
-		if (!this.options.settings().enabled) this.dismiss();
+		if (!this.options.settings().enabled && !this.explicitlyOpened) this.dismiss();
 	}
 
 	dismiss(owner?: object): void {
@@ -236,6 +321,7 @@ export class SelectionHelper {
 	}
 
 	private clearSelection(): void {
+		this.explicitlyOpened = false;
 		this.releaseLookup();
 		this.publish(EMPTY_SNAPSHOT);
 	}
@@ -306,7 +392,7 @@ function selectedSources(
 	return sources.filter((source) => selected.has(source.id));
 }
 
-function isEnglishWordOrPhrase(text: string): boolean {
+export function isEnglishWordOrPhrase(text: string): boolean {
 	const normalized = text.trim();
 	if (!normalized || normalized.length > 80 || /[.!?;:\n]/u.test(normalized)) return false;
 	const words = normalized.split(/\s+/u);

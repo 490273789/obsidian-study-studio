@@ -10,6 +10,7 @@ vi.mock("../obsidian/selectionListener", () => ({
 		start = vi.fn();
 		stop = vi.fn();
 		refresh = vi.fn();
+		openDictionary = vi.fn();
 		constructor(public deps: any) {
 			instances.listeners.push(this);
 		}
@@ -19,6 +20,7 @@ vi.mock("../obsidian/webviewSelection", () => ({
 	WebviewSelectionAdapter: class {
 		start = vi.fn();
 		stop = vi.fn();
+		openDictionary = vi.fn(() => false);
 		constructor(public deps: any) {
 			instances.webs.push(this);
 		}
@@ -33,8 +35,8 @@ afterEach(() => {
 
 describe("selection windows", () => {
 	it("attaches each existing document once, follows new windows, and releases all resources", () => {
-		const main = {},
-			popout = {},
+		const main = { hasFocus: () => false },
+			popout = { hasFocus: () => true },
 			later = {};
 		vi.stubGlobal("document", main);
 		const events = new Map<string, (...args: any[]) => void>();
@@ -63,6 +65,15 @@ describe("selection windows", () => {
 		});
 		module.render(fake.host);
 		expect(instances.listeners.map((i) => i.deps.document)).toEqual([main, popout]);
+		expect(fake.commands[0]).toMatchObject({
+			id: "open-selection-dictionary-assistant",
+			shortcutKey: "selectionHelper",
+		});
+		fake.commands[0]!.run!();
+		expect(instances.listeners[1].openDictionary).toHaveBeenCalledOnce();
+		expect(instances.listeners[0].openDictionary).not.toHaveBeenCalled();
+		module.openDictionary(main as unknown as Document);
+		expect(instances.listeners[0].openDictionary).toHaveBeenCalledOnce();
 		events.get("window-open")?.({}, { document: later });
 		events.get("window-open")?.({}, { document: later });
 		expect(instances.listeners).toHaveLength(3);

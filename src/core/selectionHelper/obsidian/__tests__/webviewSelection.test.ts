@@ -89,6 +89,7 @@ function setup() {
 	const adapter = new WebviewSelectionAdapter({
 		document: document as unknown as Document,
 		openSource,
+		openDictionary: (source, candidate) => helper.openDictionary(source, candidate),
 		interrupt: () => helper.interrupt(),
 		isDictionaryPopup: () => {
 			const snapshot = helper.getSnapshot();
@@ -138,6 +139,64 @@ const flush = async () => {
 describe("WebviewSelectionAdapter", () => {
 	beforeEach(() => vi.useFakeTimers());
 	afterEach(() => vi.useRealTimers());
+
+	it("reads the focused guest explicitly while automatic capture is disabled", async () => {
+		const env = setup();
+		env.isEnabled.mockReturnValue(false);
+		env.adapter.start();
+		env.executeJavaScript.mockResolvedValue({ text: "hello", x: 5, y: 6 });
+		expect(env.adapter.openDictionary()).toBe(true);
+		await flush();
+		expect(env.helper.getSnapshot()).toMatchObject({
+			visible: true,
+			mode: "dictionary",
+			target: { text: "hello", x: 55, y: 106 },
+		});
+		env.adapter.stop();
+	});
+
+	it("expires an explicitly selected guest node while automatic capture stays disabled", async () => {
+		const env = setup();
+		env.isEnabled.mockReturnValue(false);
+		env.adapter.start();
+		const origin = { isConnected: true, nodeType: 1, closest: () => null };
+		const guest = { window: {} as Record<string, unknown>, document: { activeElement: null } };
+		Object.assign(guest.window, {
+			getSelection: () => ({
+				anchorNode: origin,
+				toString: () => "hello",
+				rangeCount: 1,
+				getRangeAt: () => ({ getBoundingClientRect: () => ({ left: 5, bottom: 6 }) }),
+			}),
+		});
+		env.executeJavaScript.mockImplementation(async (code) => runInNewContext(code, guest));
+		expect(env.adapter.openDictionary()).toBe(true);
+		await flush();
+		expect(env.helper.getSnapshot().visible).toBe(true);
+		origin.isConnected = false;
+		vi.advanceTimersByTime(150);
+		await flush();
+		expect(env.helper.getSnapshot().visible).toBe(false);
+		env.adapter.stop();
+	});
+
+	it("discards an explicit guest read after a user dismissal", async () => {
+		const env = setup();
+		env.isEnabled.mockReturnValue(false);
+		env.adapter.start();
+		let finish!: (value: unknown) => void;
+		env.executeJavaScript.mockReturnValueOnce(
+			new Promise((resolve) => {
+				finish = resolve;
+			}),
+		);
+		env.adapter.openDictionary();
+		env.helper.dismiss();
+		finish({ text: "late", x: 5, y: 6 });
+		await flush();
+		expect(env.helper.getSnapshot().visible).toBe(false);
+		env.adapter.stop();
+	});
 
 	it("captures guest-only mouse events when the embedder loses focus to Web viewer", async () => {
 		const env = setup();

@@ -136,7 +136,7 @@ export function createVideoPlayerFeature(): WorkbenchModule<"videoPlayer"> {
 				order: 40,
 				title: (language) => videoPlayerStrings(language).title,
 				openCommandId: OPEN_COMMAND_ID,
-				openHotkeys: [{ modifiers: ["Alt"], key: "1" }],
+				shortcutKey: "videoPlayer",
 				settingsSectionId: VIDEO_PLAYER_SECTION_ID,
 				available: () => host.settings.read().videoPlayer.enabled,
 				open: () => void open(),

@@ -35,7 +35,7 @@ export interface SelectionSourceLease {
 }
 
 export interface SelectionCandidate {
-	trigger?: "mouse" | "touch" | "webview";
+	trigger?: "mouse" | "touch" | "webview" | "manual";
 	text: string;
 	x: number;
 	y: number;
@@ -47,7 +47,7 @@ export interface SelectionCandidate {
 
 export interface SelectionTarget {
 	source: SelectionSource;
-	trigger?: "mouse" | "touch" | "webview";
+	trigger?: "mouse" | "touch" | "webview" | "manual";
 	text: string;
 	isEnglishWord: boolean;
 	x: number;

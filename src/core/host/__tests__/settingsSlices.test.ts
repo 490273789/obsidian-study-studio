@@ -34,6 +34,7 @@ describe("settings slices registry", () => {
 			"deckOrder",
 			"deckStudySettings",
 			"dictionary",
+			"featureOpenShortcuts",
 			"flashcardTags",
 			"fsrsParameters",
 			"language",

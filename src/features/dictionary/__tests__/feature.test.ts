@@ -112,6 +112,62 @@ describe("dictionary feature", () => {
 
 	afterEach(() => vi.restoreAllMocks());
 
+	it("opens the main page without changing the query and focuses an existing search input", async () => {
+		const root = {} as HTMLElement;
+		const rootSplit = {};
+		const focus = vi.fn();
+		const feature = createDictionaryFeature({
+			ai: {} as never,
+			net: {} as never,
+			plugin: {} as never,
+		});
+		const fake = createFakeWorkbenchHost("dictionary", enabledSettings, {
+			workspace: {
+				rootSplit,
+				getLeavesOfType: () => [
+					{
+						getRoot: () => rootSplit,
+						view: {
+							containerEl: { contains: (element: HTMLElement) => element === root },
+						},
+					},
+				],
+			},
+		});
+		feature.render(fake.host);
+		const definition = viewSpies.definitions.get("flashcard-dictionary-view")!;
+		const acquired = definition.acquire!({ rootEl: root } as never);
+		const attachInput = acquired.resource as unknown as (
+			input: HTMLInputElement | null,
+		) => void;
+		const view = definition.render({
+			language: "zh",
+			theme: "dark",
+			resource: attachInput,
+		} as never) as React.ReactElement<DictionaryViewProps>;
+		expect(view.props.searchInputRef).toBe(attachInput);
+		attachInput({ focus } as unknown as HTMLInputElement);
+		const runtime = runtimeSpies.instances[0] as { query: { send: ReturnType<typeof vi.fn> } };
+
+		await Promise.resolve(fake.catalog.get("dictionary")!.open());
+		expect(fake.activateView).toHaveBeenCalledWith("flashcard-dictionary-view", {
+			mainTab: true,
+		});
+		expect(runtime.query.send).not.toHaveBeenCalled();
+		expect(focus).toHaveBeenCalledOnce();
+
+		// React may commit a newly opened view after activation has completed.
+		attachInput(null);
+		await Promise.resolve(fake.catalog.get("dictionary")!.open());
+		expect(focus).toHaveBeenCalledOnce();
+		attachInput({ focus } as unknown as HTMLInputElement);
+		expect(focus).toHaveBeenCalledTimes(2);
+		acquired.dispose();
+		await Promise.resolve(fake.catalog.get("dictionary")!.open());
+		expect(focus).toHaveBeenCalledTimes(2);
+		feature.stop();
+	});
+
 	it("opens favorites in one modal without activating a sidebar and closes it on stop", async () => {
 		const feature = createDictionaryFeature({
 			ai: {} as never,
@@ -229,7 +285,7 @@ describe("dictionary feature", () => {
 		expect(entry.icon).toBe(BookOpen);
 		expect(entry.title("zh")).toBe(dictionaryStrings("zh").displayName);
 		expect(entry.openCommandId).toBe("open-dictionary");
-		expect(entry.openHotkeys).toEqual([{ modifiers: ["Alt"], key: "2" }]);
+		expect(entry.shortcutKey).toBe("dictionary");
 		expect(entry.settingsSectionId).toBe("dictionary");
 		expect(entry.available()).toBe(true);
 		expect(fake.commands.map((command) => command.id)).toEqual(["dictionary-lookup-selection"]);

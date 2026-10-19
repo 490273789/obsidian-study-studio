@@ -11,7 +11,8 @@ import styles from "./SelectionPopup.module.scss";
 export interface SelectionDictCardProps {
 	query: string;
 	lookup: SelectionLookupSnapshot;
-	session: SelectionLookupSession;
+	session: SelectionLookupSession | null;
+	onLookup?: (query: string) => void;
 	strings: SelectionHelperStrings;
 	language: Language;
 	theme: "dark" | "light";
@@ -65,7 +66,7 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 	const ResultContent = props.renderResultContent;
 	const retry = () =>
 		activeSource &&
-		void (activeSource.kind === "ai" ? session.generateAi() : session.retry(activeSource.id));
+		void (activeSource.kind === "ai" ? session?.generateAi() : session?.retry(activeSource.id));
 
 	useEffect(() => {
 		inputRef.current?.focus();
@@ -109,7 +110,8 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 		const normalized = event.currentTarget.value.trim().replace(/\s+/g, " ");
 		if (!normalized) return;
 		event.currentTarget.value = normalized;
-		void session.lookup(normalized);
+		if (props.onLookup) props.onLookup(normalized);
+		else void session?.lookup(normalized);
 	};
 
 	const failure = (
@@ -123,7 +125,13 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 	);
 
 	return (
-		<dialog ref={cardRef} open className={styles.card} aria-label={activeWord} tabIndex={-1}>
+		<dialog
+			ref={cardRef}
+			open
+			className={styles.card}
+			aria-label={activeWord || strings.lookupInputLabel}
+			tabIndex={-1}
+		>
 			<header className={styles.header}>
 				<div className={styles.dragHandle} onPointerDown={props.onHeaderPointerDown}>
 					<div className={styles.titleRow}>
@@ -145,6 +153,7 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 									onClick={() => onFavorite(activeWord)}
 									aria-label={strings.favorite}
 									title={strings.favorite}
+									disabled={!activeWord}
 								>
 									<Bookmark size={14} aria-hidden="true" />
 									<span>{strings.favorite}</span>
@@ -183,7 +192,7 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 									styles.tab,
 									source.id === activeSource?.id && styles.tabActive,
 								)}
-								onClick={() => session.selectSource(source.id)}
+								onClick={() => session?.selectSource(source.id)}
 							>
 								{source.label}
 							</button>
@@ -195,12 +204,18 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 				key={`${activeWord}-${activeSource?.id}`}
 				className={cls(styles.body, activeSource?.result && styles.resultBody)}
 			>
-				{activeSource?.kind === "ai" && activeSource.status === "idle" ? (
+				{!session ? (
+					<output className={styles.status}>
+						{lookup.sources.length
+							? strings.lookupPrompt
+							: strings.noDictionariesAvailable}
+					</output>
+				) : activeSource?.kind === "ai" && activeSource.status === "idle" ? (
 					<div className={styles.aiAction}>
 						<button
 							type="button"
 							className={styles.aiGenerateBtn}
-							onClick={() => void session.generateAi()}
+							onClick={() => void session?.generateAi()}
 						>
 							<Sparkles size={14} aria-hidden="true" />
 							<span>{strings.aiGenerate}</span>
@@ -231,10 +246,10 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 								handle={activeSource.result}
 								language={props.language}
 								theme={props.theme}
-								onLookup={(word) => void session.lookup(word)}
+								onLookup={(word) => void session?.lookup(word)}
 								onSelectSection={(sectionIndex) =>
 									activeSource &&
-									session.selectSection(activeSource.id, sectionIndex)
+									session?.selectSection(activeSource.id, sectionIndex)
 								}
 								onClose={onClose}
 								mainTabShortcut={props.openMainShortcut}
@@ -256,6 +271,7 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 					className={styles.openButton}
 					onClick={() => onOpenInMainTab(activeWord)}
 					title={strings.openInMainTabHint(props.openMainShortcut)}
+					disabled={!activeWord}
 				>
 					{strings.openInMainTab} <kbd>{props.openMainShortcut}</kbd>
 				</button>

@@ -11,7 +11,6 @@ import type { CardSourceMutation } from "../../core/shared/cardSourceMutation";
 import { FlashcardButton } from "../../core/ui/primitives/Button";
 import { DictionaryFavoriteView, DictionaryView } from "./ui";
 import { playDictionaryAudio, stopDictionaryAudio } from "./ui/audio";
-import { DictionaryLookupModal } from "./obsidian/modals";
 import { DictionaryFavoriteModal } from "./obsidian/favoriteModal";
 import { DictionaryFavoritePresentation } from "./obsidian/favoritePresentation";
 import { ObsidianDictionaryFavoriteStore } from "./obsidian/favoriteStore";
@@ -63,7 +62,7 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 		runtime: DictionaryRuntime;
 		favorites: DictionaryFavoritePresentation;
 	} | null = null;
-	let modal: DictionaryLookupModal | null = null;
+	const searchFocus = new Map<HTMLElement, () => void>();
 
 	const openSettings = (host: DictionaryWorkbenchHost): void => {
 		host.settingsTab.open(DICTIONARY_SECTION_ID);
@@ -80,18 +79,24 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 		});
 	};
 
-	/** The open command and ribbon prompt for a word first, matching the source tool. */
-	const openPrompt = (host: DictionaryWorkbenchHost, dictionary: DictionaryRuntime): void => {
-		modal?.close();
-		modal = new DictionaryLookupModal(
-			host.app,
-			(query) => {
-				modal = null;
-				void openQuery(host, dictionary, query);
-			},
-			dictionaryStrings(host.settings.read().language),
-		);
-		modal.open();
+	const openPage = async (host: DictionaryWorkbenchHost): Promise<void> => {
+		try {
+			await host.activateView(VIEW_TYPE_DICTIONARY, { mainTab: true });
+			const workspace = host.app.workspace;
+			const leaf = workspace
+				.getLeavesOfType(VIEW_TYPE_DICTIONARY)
+				.find((candidate) => candidate.getRoot() === workspace.rootSplit);
+			if (!leaf) return;
+			for (const [root, focus] of searchFocus) {
+				if (leaf.view.containerEl.contains(root)) {
+					focus();
+					break;
+				}
+			}
+		} catch (error) {
+			console.error("Failed to open the dictionary view:", error);
+			new Notice(dictionaryStrings(host.settings.read().language).openFailed);
+		}
 	};
 
 	const openQuery = async (
@@ -216,8 +221,7 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 			);
 			lifetime.defer(() => {
 				editor.hide();
-				modal?.close();
-				modal = null;
+				searchFocus.clear();
 				stopDictionaryAudio();
 				active = null;
 			});
@@ -230,6 +234,31 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 					title: (language) => dictionaryStrings(language).displayName,
 					// The sandbox document follows Obsidian's theme independently of CSS.
 					trackTheme: true,
+					acquire: ({ rootEl }) => {
+						let input: HTMLInputElement | null = null;
+						let pending = false;
+						searchFocus.set(rootEl, () => {
+							pending = true;
+							if (input) {
+								pending = false;
+								input.focus();
+							}
+						});
+						return {
+							resource: (element: HTMLInputElement | null): void => {
+								input = element;
+								if (input && pending) {
+									pending = false;
+									input.focus();
+								}
+							},
+							dispose: () => {
+								pending = false;
+								input = null;
+								searchFocus.delete(rootEl);
+							},
+						};
+					},
 					readSettings: () => host.settings.read(),
 					renderErrorMessage: (language) => dictionaryStrings(language).openFailed,
 					onClose: () =>
@@ -238,10 +267,11 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 							VIEW_TYPE_DICTIONARY,
 							() => void dictionary.query.send({ type: "clear" }),
 						),
-					render: ({ language, theme }) =>
+					render: ({ language, theme, resource }) =>
 						renderDictionaryBody(host, language, () => (
 							<DictionaryView
 								query={dictionary.query}
+								searchInputRef={resource}
 								language={language}
 								onOpenFavorite={(word) => favorites.open(word)}
 								onOpenSettings={() => openSettings(host)}
@@ -281,10 +311,10 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 				order: 20,
 				title: (language) => dictionaryStrings(language).displayName,
 				openCommandId: OPEN_COMMAND_ID,
-				openHotkeys: [{ modifiers: ["Alt"], key: "2" }],
+				shortcutKey: "dictionary",
 				settingsSectionId: DICTIONARY_SECTION_ID,
 				available: () => host.settings.read().dictionary.enabled,
-				open: () => openPrompt(host, dictionary),
+				open: () => openPage(host),
 			});
 			host.settingsSection(section(host, dictionary, editor));
 

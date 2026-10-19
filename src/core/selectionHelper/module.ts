@@ -1,7 +1,7 @@
 import { Notice, Platform } from "obsidian";
 import { defineFeatureLifetime } from "../host/featureLifetime";
 import type { WorkbenchHost, WorkbenchModule, WorkbenchSettingsSection } from "../host/workbench";
-import { SelectionHelper } from "./domain/selectionHelper";
+import { isEnglishWordOrPhrase, SelectionHelper } from "./domain/selectionHelper";
 import { orderSelectionDictionaries } from "./domain/dictionaryOrder";
 import type {
 	SelectionDictionaryAdapter,
@@ -28,7 +28,8 @@ type SelectionHelperWorkbenchHost = WorkbenchHost<"selectionHelper">;
 /** The 工作台-owned 选区助手 module and its settings section. */
 export function createSelectionHelperModule(
 	deps: SelectionHelperModuleDeps,
-): WorkbenchModule<"selectionHelper"> {
+): WorkbenchModule<"selectionHelper"> & { openDictionary(document?: Document): void } {
+	let openDictionary: (document?: Document) => void = () => {};
 	let saving = false;
 	const save = async (
 		host: SelectionHelperWorkbenchHost,
@@ -113,7 +114,7 @@ export function createSelectionHelperModule(
 		},
 	});
 
-	return defineFeatureLifetime({
+	const module = defineFeatureLifetime({
 		id: "selectionHelper",
 		start: (host, lifetime) => {
 			const helper = lifetime.own(
@@ -144,6 +145,11 @@ export function createSelectionHelperModule(
 							document: doc,
 							isEnabled: () => host.settings.read().selectionPopup.enabled,
 							openSource: () => helper.openSource(owner),
+							openDictionary: (source, candidate) => {
+								if (candidate && isEnglishWordOrPhrase(candidate.text))
+									helper.openDictionary(source, candidate);
+								else listener.openBlankDictionary();
+							},
 							interrupt: () => helper.interrupt(),
 							isDictionaryPopup: () => {
 								const snapshot = helper.getSnapshot();
@@ -168,7 +174,18 @@ export function createSelectionHelperModule(
 				windows.delete(doc);
 				webStatuses.delete(doc);
 			};
+			openDictionary = (doc) => {
+				const active =
+					doc ??
+					[...windows.keys()].find((candidate) => candidate.hasFocus?.()) ??
+					(typeof document === "undefined" ? undefined : document);
+				if (!active) return;
+				const entry = windows.get(active);
+				helper.interrupt();
+				if (!entry?.web?.openDictionary()) entry?.listener.openDictionary();
+			};
 			lifetime.defer(() => {
+				openDictionary = () => {};
 				for (const doc of windows.keys()) detach(doc);
 			});
 			if (typeof document !== "undefined") {
@@ -194,11 +211,20 @@ export function createSelectionHelperModule(
 			host.settingsSection(section(host));
 
 			return () => {
+				host.chrome((chrome) =>
+					chrome.command({
+						id: "open-selection-dictionary-assistant",
+						name: selectionHelperStrings(host.settings.read().language).openAssistant,
+						shortcutKey: "selectionHelper",
+						run: () => openDictionary(),
+					}),
+				);
 				helper.refresh();
 				for (const entry of windows.values()) entry.listener.refresh();
 			};
 		},
 	});
+	return Object.assign(module, { openDictionary: (doc?: Document) => openDictionary(doc) });
 }
 
 async function commitSelectionSettings(

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { BookOpen, Languages, Layers } from "lucide-react";
 import { DEFAULT_SETTINGS, type FeatureSettingsOwner } from "../settingsSlices";
+import type { FlashcardSettings } from "../../shared/types";
 import {
 	createWorkbench,
 	SettingsScopeViolation,
@@ -68,7 +69,10 @@ function createFakeApp() {
 	return { app, setViewState, revealLeaf };
 }
 
-function setup(modules: AnyWorkbenchModule[]) {
+function setup(
+	modules: AnyWorkbenchModule[],
+	readSettings: () => FlashcardSettings = () => DEFAULT_SETTINGS,
+) {
 	const fakePlugin = createFakePlugin();
 	const fakeApp = createFakeApp();
 	const commitSettings = vi.fn().mockResolvedValue(undefined);
@@ -76,7 +80,7 @@ function setup(modules: AnyWorkbenchModule[]) {
 	const workbench = createWorkbench({
 		app: fakeApp.app as never,
 		plugin: fakePlugin.plugin as never,
-		readSettings: () => DEFAULT_SETTINGS,
+		readSettings,
 		commitSettings,
 		// Capture the per-module host the workbench hands out.
 		createModules: () =>
@@ -509,6 +513,65 @@ describe("workbench", () => {
 		expect(openFirst).toHaveBeenCalledTimes(1);
 		expect(openSecond).not.toHaveBeenCalled();
 		expect(plugin.addCommand).toHaveBeenCalledTimes(1);
+	});
+
+	it("rebinds configured catalog and standalone commands after settings change", () => {
+		let settings: FlashcardSettings = {
+			...DEFAULT_SETTINGS,
+			featureOpenShortcuts: { ...DEFAULT_SETTINGS.featureOpenShortcuts },
+		};
+		const { commands, plugin, workbench } = setup(
+			[
+				feature("flashcards", (host) =>
+					host.catalog({
+						id: "flashcards",
+						icon: Layers,
+						title: () => "Flashcards",
+						openCommandId: "open-flashcards",
+						shortcutKey: "flashcards",
+						settingsSectionId: "flashcards",
+						available: () => true,
+						open: vi.fn(),
+					}),
+				),
+				feature("selectionHelper", (host) =>
+					host.chrome((chrome) =>
+						chrome.command({
+							id: "open-selection-dictionary-assistant",
+							name: "Lookup assistant",
+							shortcutKey: "selectionHelper",
+							run: vi.fn(),
+						}),
+					),
+				),
+			],
+			() => settings,
+		);
+
+		workbench.refresh();
+		expect(commands.get("open-flashcards")?.hotkeys).toEqual([
+			{ modifiers: ["Alt"], key: "4" },
+		]);
+		expect(commands.get("open-selection-dictionary-assistant")?.hotkeys).toEqual([
+			{ modifiers: ["Alt"], key: "1" },
+		]);
+
+		const previous = settings;
+		settings = {
+			...settings,
+			featureOpenShortcuts: {
+				...settings.featureOpenShortcuts,
+				flashcards: "",
+				selectionHelper: "Ctrl+K",
+			},
+		};
+		workbench.settingsChanged(previous, settings);
+		expect(commands.get("open-flashcards")?.hotkeys).toEqual([]);
+		expect(commands.get("open-selection-dictionary-assistant")?.hotkeys).toEqual([
+			{ modifiers: ["Ctrl"], key: "K" },
+		]);
+		expect(plugin.removeCommand).toHaveBeenCalledWith("open-flashcards");
+		expect(plugin.removeCommand).toHaveBeenCalledWith("open-selection-dictionary-assistant");
 	});
 
 	it("drops the generated command once a feature reports itself unavailable", () => {

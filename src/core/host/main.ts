@@ -3,6 +3,10 @@ import { Plugin } from "obsidian";
 import { createWorkbench, type Workbench } from "./workbench";
 import { createWorkbenchModules } from "../../features";
 import { AI_ENGINE_SECTION_ID, createAiEngineSection } from "./aiEngineSection";
+import {
+	FEATURE_OPEN_SHORTCUT_SECTION_ID,
+	createFeatureOpenShortcutSection,
+} from "./featureOpenShortcutSection";
 import { createObsidianAiService } from "./aiAdapter";
 import { normalizeAiSettings } from "../ai/configuration";
 import type { AiService, AiSettings } from "../ai";
@@ -57,6 +61,13 @@ export default class StudyStudioPlugin extends Plugin {
 			createAiEngineSection({
 				ai: this.aiService,
 				refresh: () => this.workbench.settingsTab.refresh(AI_ENGINE_SECTION_ID),
+			}),
+		);
+		this.workbench.addSettingsSection(
+			createFeatureOpenShortcutSection({
+				read: () => this.settings.featureOpenShortcuts,
+				update: (featureOpenShortcuts) => this.commitSettings({ featureOpenShortcuts }),
+				refresh: () => this.workbench.settingsTab.refresh(FEATURE_OPEN_SHORTCUT_SECTION_ID),
 			}),
 		);
 
