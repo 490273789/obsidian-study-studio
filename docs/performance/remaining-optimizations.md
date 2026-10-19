@@ -281,7 +281,7 @@ Practice 结算分批、发音探测共享与同词单飞为工作区改动（�
 - **作答**：移除 `workbenchFlashcardAuthority.ts` 对整份 learning 的防御性
   `structuredClone`；契约改为「提交后的 learning 文档不可变」，由仓库 copy-on-write 和
   新增回归测试守护。2,413 卡 5.26 → 2.6–2.8 ms；10k 24.4 → 10.6 ms。
-- **同步**：源内容未变时复用已有 `Deck`/`FlashCard` 对象并复用已持久化卡片基线；仅在
+- **同步**：源内容未变时复用已有 `Deck`/`FlashCard` 对象并复用已持久化卡片基线（复用决策改由 continuity 的 `DeckContentChange` 摘要驱动，repository 不再依赖对象身份契约）；仅在
   deck/tag 变化时重写 `deck-index.json`。无变化刷新 0 次缓存写、0 次 `data.json` 写。
   开视图 7.1 → 1.0–1.1 ms（10k 28.6 → 3.7 ms）。
 - **设置**：`FlashcardAuthority.readSettings()` + 变更类型分发，设置-only 变更不再整仓

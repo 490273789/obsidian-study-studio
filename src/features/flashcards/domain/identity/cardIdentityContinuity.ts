@@ -108,6 +108,8 @@ export interface CardIdentityContinuityState {
 	availableTags?: string[];
 	decks: Map<string, Deck>;
 	continuity: PersistedCardIdentityContinuityState;
+	/** Present when the caller can report what changed; the repository uses it for cache upkeep. */
+	change?: DeckContentChange;
 }
 
 export interface ContinuityStateStore {
@@ -140,11 +142,20 @@ export interface MigrationPreview {
 	sources: Array<{ deckId: string; deckName: string; cardCount: number }>;
 }
 
+/** What a synchronization changed; the repository's cache-invalidation contract. */
+export interface DeckContentChange {
+	/** New or content-changed decks: card set/text/order, deck name/tag, or derived metadata. */
+	readonly changedDeckIds: readonly string[];
+	/** Decks that disappeared from the index. */
+	readonly removedDeckIds: readonly string[];
+	readonly tagsChanged: boolean;
+}
+
 export type SynchronizeOutcome =
-	| { kind: "current"; changedDeckIds: string[] }
+	| { kind: "current"; change: DeckContentChange }
 	| {
 			kind: "attention-required";
-			changedDeckIds: string[];
+			change: DeckContentChange;
 			issueIds: string[];
 	  }
 	| { kind: "failed"; retryable: boolean; message: string };
@@ -392,6 +403,7 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 			const nextSources: Record<string, ContinuitySourceCondition> = {};
 			const preparedSources: PreparedSource[] = [];
 			const availableTags = new Set<string>();
+			const changedDeckIds: string[] = [];
 			let attentionRequired = false;
 
 			for (const document of documents) {
@@ -532,18 +544,17 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 					continue;
 				}
 
-				nextDecks.set(
-					source.document.path,
-					reuseUnchangedDeck(source) ?? {
-						id: source.document.path,
-						name: source.document.basename,
-						filePath: source.document.path,
-						tag: source.tag,
-						cards: source.cards,
-						studyCount: source.existingDeck?.studyCount ?? 0,
-						lastStudied: source.existingDeck?.lastStudied ?? null,
-					},
-				);
+				if (!source.existingDeck || !sameDeckContent(source.existingDeck, source))
+					changedDeckIds.push(source.document.path);
+				nextDecks.set(source.document.path, {
+					id: source.document.path,
+					name: source.document.basename,
+					filePath: source.document.path,
+					tag: source.tag,
+					cards: source.cards,
+					studyCount: source.existingDeck?.studyCount ?? 0,
+					lastStudied: source.existingDeck?.lastStudied ?? null,
+				});
 				nextSources[source.document.path] = { type: "current" };
 			}
 
@@ -552,11 +563,20 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 				issues: [...conflicts, ...ambiguities],
 				journal: currentState.continuity.journal,
 			};
+			const removedDeckIds = [...currentState.decks.keys()].filter(
+				(deckId) => !nextDecks.has(deckId),
+			);
+			const change: DeckContentChange = {
+				changedDeckIds,
+				removedDeckIds,
+				tagsChanged: !sameStringSet(currentState.availableTags ?? [], availableTags),
+			};
 			await this.options.state.commit({
 				...currentState,
 				availableTags: Array.from(availableTags),
 				decks: nextDecks,
 				continuity: nextContinuity,
+				change,
 			});
 			await this.reconcileSessions(currentState.decks, nextDecks);
 			this.snapshot = cloneSnapshot(
@@ -567,13 +587,10 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 			return attentionRequired
 				? {
 						kind: "attention-required",
-						changedDeckIds: Array.from(nextDecks.keys()),
+						change,
 						issueIds: [...conflicts, ...ambiguities].map((issue) => issue.id),
 					}
-				: {
-						kind: "current",
-						changedDeckIds: Array.from(nextDecks.keys()),
-					};
+				: { kind: "current", change };
 		} catch (error) {
 			return {
 				kind: "failed",
@@ -1361,19 +1378,14 @@ function hashText(value: string): string {
 }
 
 /**
- * Re-synchronizing an unchanged source parses every card into fresh objects. Reusing
- * the previous deck object keeps the repository's WeakMap serialization caches, the
- * deck-index cache, and DeckHome's per-deck caches warm across no-op syncs. The
- * comparison covers the derived index only: FSRS state is already carried over from
- * the current learning state by `parseSource`. Any difference falls back to the
- * fresh deck, so this is a pure object-identity optimization.
+ * Compares the derived deck index only: FSRS state is already carried over from the
+ * current learning state by `parseSource`. The result drives `DeckContentChange`;
+ * the repository decides whether to reuse the previous deck object for cache warmth.
  */
-function reuseUnchangedDeck(source: PreparedSource): Deck | null {
-	const existing = source.existingDeck;
-	if (!existing) return null;
-	if (existing.tag !== source.tag) return null;
-	if (existing.name !== source.document.basename) return null;
-	if (existing.cards.length !== source.cards.length) return null;
+function sameDeckContent(existing: Deck, source: PreparedSource): boolean {
+	if (existing.tag !== source.tag) return false;
+	if (existing.name !== source.document.basename) return false;
+	if (existing.cards.length !== source.cards.length) return false;
 	for (let index = 0; index < source.cards.length; index++) {
 		const previous = existing.cards[index]!;
 		const next = source.cards[index]!;
@@ -1386,10 +1398,15 @@ function reuseUnchangedDeck(source: PreparedSource): Deck | null {
 			previous.indexInFile !== next.indexInFile ||
 			previous.fsrsCard !== next.fsrsCard
 		) {
-			return null;
+			return false;
 		}
 	}
-	return existing;
+	return true;
+}
+
+function sameStringSet(left: readonly string[], right: ReadonlySet<string>): boolean {
+	if (left.length !== right.size) return false;
+	return left.every((value) => right.has(value));
 }
 
 function cloneSnapshot(

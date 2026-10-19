@@ -3,7 +3,10 @@ import { applySourceEditTransaction } from "../sourceEditTransaction";
 
 function fixture(replaceResult: "written" | "stale" = "written") {
 	const replaceIfUnchanged = vi.fn().mockResolvedValue(replaceResult);
-	const synchronize = vi.fn().mockResolvedValue({ kind: "current", changedDeckIds: [] });
+	const synchronize = vi.fn().mockResolvedValue({
+		kind: "current",
+		change: { changedDeckIds: [], removedDeckIds: [], tagsChanged: false },
+	});
 	const sourceStore = {
 		list: vi.fn(),
 		replaceIfUnchanged,

@@ -746,6 +746,20 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 					// first so this full-document build and later replays stay consistent.
 					await this.flushJournalBeforeWrite();
 					const nextDecks = new Map(state.decks);
+					const change = state.change;
+					if (change) {
+						// Continuity reports the truth; fresh-but-equal decks reuse the previous
+						// objects so WeakMap serialization and DeckHome caches stay warm.
+						const touched = new Set([
+							...change.changedDeckIds,
+							...change.removedDeckIds,
+						]);
+						for (const deckId of nextDecks.keys()) {
+							if (touched.has(deckId)) continue;
+							const previous = this.decks.get(deckId);
+							if (previous) nextDecks.set(deckId, previous);
+						}
+					}
 					let cacheDecks: ReadonlyMap<string, Deck> | null = null;
 					let cacheTags: readonly string[] = [];
 					await this.commitAuthority(() => {
@@ -756,11 +770,14 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 						const previousDecks = this.decks;
 						const previousTags = this.availableTags;
 						const hadTagsSnapshot = this.hasAvailableTagsSnapshotValue;
+						const decksChanged = change
+							? change.changedDeckIds.length > 0 || change.removedDeckIds.length > 0
+							: !sameDeckObjects(previousDecks, nextDecks);
 						// Unchanged decks mean the persisted card baseline still applies, so
 						// the learning document does not need a full card-record rebuild.
-						const committedCards = sameDeckObjects(previousDecks, nextDecks)
-							? this.getCommittedCardStates()
-							: undefined;
+						const committedCards = decksChanged
+							? undefined
+							: this.getCommittedCardStates();
 						return {
 							learning: this.buildLearningState(
 								nextDecks,
@@ -772,10 +789,10 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 								committedCards,
 							),
 							install: () => {
-								const decksChanged = !sameDeckObjects(previousDecks, nextDecks);
-								const tagsChanged =
-									!hadTagsSnapshot ||
-									!sameStringValues(previousTags, nextAvailableTags);
+								const tagsChanged = change
+									? change.tagsChanged
+									: !hadTagsSnapshot ||
+										!sameStringValues(previousTags, nextAvailableTags);
 								this.decks = nextDecks;
 								this.spellingProgress = nextSpellingProgress;
 								this.availableTags = nextAvailableTags;

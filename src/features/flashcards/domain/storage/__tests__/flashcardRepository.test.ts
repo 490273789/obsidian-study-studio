@@ -165,6 +165,38 @@ describe("FlashcardRepository", () => {
 		repo.dispose();
 	});
 
+	it("reuses previous decks when continuity reports no content change", async () => {
+		const authority = new MemoryFlashcardAuthority(DEFAULT_SETTINGS);
+		const repo = new FlashcardRepository({ authority, deckIndexCache: null });
+		await repo.load();
+		const store = repo.createContinuityStateStore();
+		const initial = await store.load();
+		initial.decks.set(
+			"deck-1",
+			makeDeck("deck-1", [makeCard("c1", State.Review, new Date("2026-03-05T00:00:00Z"), 0)]),
+		);
+		await store.commit({
+			...initial,
+			availableTags: ["#flashcard"],
+			change: { changedDeckIds: ["deck-1"], removedDeckIds: [], tagsChanged: true },
+		});
+		const previous = repo.getDeck("deck-1")!;
+		const commit = vi.spyOn(authority, "commit");
+
+		// Fresh-but-equal deck objects are a no-op once continuity reports no change:
+		// the repository reuses the old objects and skips the durable write.
+		const state = await store.load();
+		state.decks.set("deck-1", structuredClone(previous));
+		await store.commit({
+			...state,
+			change: { changedDeckIds: [], removedDeckIds: [], tagsChanged: false },
+		});
+
+		expect(repo.getDeck("deck-1")).toBe(previous);
+		expect(commit).not.toHaveBeenCalled();
+		repo.dispose();
+	});
+
 	it("replaces the spelling snapshot after external learning reloads", async () => {
 		const authority = new MemoryFlashcardAuthority(DEFAULT_SETTINGS);
 		const repo = new FlashcardRepository({ authority });

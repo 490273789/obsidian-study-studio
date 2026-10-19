@@ -11,7 +11,7 @@ describe("synchronization feedback", () => {
 	it("explains the first identity conflict with its source, card, and repair action", () => {
 		const outcome: SynchronizeOutcome = {
 			kind: "attention-required",
-			changedDeckIds: [],
+			change: { changedDeckIds: [], removedDeckIds: [], tagsChanged: false },
 			issueIds: [`identity-conflict:${CONFLICT_ID}`, "identity-conflict:another"],
 		};
 		const snapshot: CardIdentityContinuitySnapshot = {
@@ -60,7 +60,7 @@ describe("synchronization feedback", () => {
 	it("explains identity ambiguity in English", () => {
 		const outcome: SynchronizeOutcome = {
 			kind: "attention-required",
-			changedDeckIds: [],
+			change: { changedDeckIds: [], removedDeckIds: [], tagsChanged: false },
 			issueIds: ["identity-ambiguity:Word/test.md"],
 		};
 		const snapshot: CardIdentityContinuitySnapshot = {
@@ -98,7 +98,14 @@ describe("synchronization feedback", () => {
 			),
 		).toBe("题库同步失败：Source changed");
 		expect(
-			describeSynchronizationOutcome({ kind: "current", changedDeckIds: [] }, snapshot, "zh"),
+			describeSynchronizationOutcome(
+				{
+					kind: "current",
+					change: { changedDeckIds: [], removedDeckIds: [], tagsChanged: false },
+				},
+				snapshot,
+				"zh",
+			),
 		).toBeNull();
 	});
 

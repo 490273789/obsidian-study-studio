@@ -67,16 +67,41 @@ describe("continuity source reuse", () => {
 		expect(state().decks.get("b.md")?.cards[0]?.front).toBe("term");
 	});
 
-	it("keeps deck object identity stable across a no-op synchronization", async () => {
-		const { continuity, state } = setup();
-		await continuity.synchronize();
-		const firstDeck = state().decks.get("a.md")!;
-		const secondDeck = state().decks.get("b.md")!;
-		await continuity.synchronize();
-		// Re-synchronizing unchanged sources must reuse the committed deck objects so
-		// the repository's WeakMap caches and DeckHome's per-deck caches stay warm.
-		expect(state().decks.get("a.md")).toBe(firstDeck);
-		expect(state().decks.get("b.md")).toBe(secondDeck);
+	it("reports the truth about changed, removed, and unchanged decks", async () => {
+		const { continuity, documents } = setup();
+		const initial = await continuity.synchronize();
+		if (initial.kind !== "current") throw new Error("Expected a current outcome");
+		expect(initial.change).toEqual({
+			changedDeckIds: ["a.md", "b.md"],
+			removedDeckIds: [],
+			tagsChanged: true,
+		});
+
+		const noop = await continuity.synchronize();
+		if (noop.kind !== "current") throw new Error("Expected a current outcome");
+		expect(noop.change).toEqual({
+			changedDeckIds: [],
+			removedDeckIds: [],
+			tagsChanged: false,
+		});
+
+		documents[1]!.content = documents[1]!.content.replace("word", "term");
+		const changed = await continuity.synchronize();
+		if (changed.kind !== "current") throw new Error("Expected a current outcome");
+		expect(changed.change).toMatchObject({
+			changedDeckIds: ["b.md"],
+			removedDeckIds: [],
+			tagsChanged: false,
+		});
+
+		documents.shift();
+		const removed = await continuity.synchronize();
+		if (removed.kind !== "current") throw new Error("Expected a current outcome");
+		expect(removed.change).toMatchObject({
+			changedDeckIds: [],
+			removedDeckIds: ["a.md"],
+			tagsChanged: false,
+		});
 	});
 
 	it("still detects a global conflict between changed and reused sources", async () => {
