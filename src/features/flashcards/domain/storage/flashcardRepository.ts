@@ -109,11 +109,13 @@ export interface FlashcardRepositoryOptions {
 }
 
 /**
- * FlashcardRepository - the deep persistence authority for the 闪卡 feature slice.
+ * FlashcardRepository - the storage-internal persistence authority for the 闪卡
+ * feature slice.
  *
- * Implements DeckHomeRepository, ContinuityStateStore, and session persistence
- * through the feature-owned authority seam. It owns the semantic transition,
- * migration, revision, cache, and external-reload choreography.
+ * Production composes it through `createFlashcardPersistence`, which hands each
+ * consumer only its semantic seam. Implements those seams through the
+ * feature-owned authority adapter and owns the semantic transition, migration,
+ * revision, cache, and external-reload choreography.
  */
 export class FlashcardRepository implements DeckHomeRepository, SessionPersistencePort {
 	private readonly authority: FlashcardAuthority;
@@ -225,7 +227,11 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 		return this.loadPromise;
 	}
 
-	/** Hydrate rebuildable source content only when a deck operation first needs it. */
+	/**
+	 * Hydrate rebuildable source content only when a deck operation first needs it.
+	 * Storage-internal seam: production reaches this through the continuity store
+	 * or a session commit, never by calling it directly.
+	 */
 	async loadDeckIndex(): Promise<void> {
 		await this.load();
 		this.deckIndexRequested = true;
@@ -405,10 +411,6 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 		this.challengeProgress = progress;
 	}
 
-	getScheduler(): FSRSScheduler {
-		return this.scheduler;
-	}
-
 	rateStudyCard(card: Card, rating: StudyRating): StudyCardSchedule {
 		if (rating === 5) {
 			return {
@@ -461,11 +463,6 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 			});
 			this.publishRevision();
 		});
-	}
-
-	async recordWordListSession(deckId: string, deckName: string, duration: number): Promise<void> {
-		const now = Date.now();
-		return this.recordWordListVisit(deckId, deckName, now - duration * 1000, now);
 	}
 
 	async commitSession(commit: SessionCommit): Promise<SessionCommitResult> {

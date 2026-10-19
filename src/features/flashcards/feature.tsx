@@ -8,7 +8,11 @@ import { buildSettingsViewModel, type SettingsViewModelActions } from "./setting
 import type { OutboundPort } from "../../core/net";
 import type { WorkbenchStore } from "../../core/storage/workbenchStore";
 import { createDeckIndexCacheStore } from "../../core/storage/deckIndexCache";
-import { FlashcardRepository, type SerializedDeck } from "./domain/storage/flashcardRepository";
+import type { SerializedDeck } from "./domain/storage/persistenceTypes";
+import {
+	createFlashcardPersistence,
+	type FlashcardPersistence,
+} from "./domain/storage/flashcardPersistence";
 import {
 	createDeckHome,
 	type DeckHome,
@@ -49,7 +53,7 @@ export interface FlashcardFeatureDeps {
 	store: WorkbenchStore;
 	net: OutboundPort;
 	plugin?: Plugin;
-	repository?: FlashcardRepository;
+	repository?: FlashcardPersistence;
 }
 
 interface FlashcardServices {
@@ -68,7 +72,7 @@ type FlashcardWorkbenchHost = WorkbenchHost<"flashcards">;
  * instead of the shared store's generic document interface.
  */
 export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
-	let repository: FlashcardRepository | null = null;
+	let repository: FlashcardPersistence | null = null;
 	let services: FlashcardServices | null = null;
 	let exportNotice: Notice | null = null;
 	let pronunciationUnsubscribe: (() => void) | null = null;
@@ -80,7 +84,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 
 	const t = (host: FlashcardWorkbenchHost) => createTranslator(host.settings.read().language);
 
-	const activeRepository = (): FlashcardRepository => {
+	const activeRepository = (): FlashcardPersistence => {
 		if (!repository) throw new Error("Flashcard feature is not running");
 		return repository;
 	};
@@ -324,8 +328,8 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 		// Opening settings must stay cheap. A full vault scan is reserved for the
 		// explicit refresh action; otherwise large vaults make the first render wait.
 		const repo = activeRepository();
-		if (!repo.hasAvailableTagsSnapshot()) return;
-		availableTags = repo.getAvailableTags();
+		if (!repo.tags.hasSnapshot()) return;
+		availableTags = repo.tags.read();
 		hasLoadedTags = true;
 	};
 
@@ -353,7 +357,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 
 		try {
 			await activeServices().cardIdentityContinuity.synchronize();
-			availableTags = activeRepository().getAvailableTags();
+			availableTags = activeRepository().tags.read();
 			hasLoadedTags = true;
 
 			let removedCount = 0;
@@ -543,36 +547,34 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 	const module = defineFeatureLifetime({
 		id: "flashcards",
 		start: (host, lifetime) => {
-			const repo =
-				deps.repository ??
-				lifetime.own(
-					new FlashcardRepository({
-						authority: new WorkbenchFlashcardAuthority({
-							store: deps.store,
-							adapter: host.app?.vault?.adapter,
-							pluginDirectory: deps.plugin?.manifest?.dir,
-						}),
-						deckIndexCache: createDeckIndexCacheStore<SerializedDeck>(
-							host.app?.vault?.adapter,
-							deps.plugin?.manifest?.dir,
-						),
-						sessionJournal: createSessionJournalStore(
-							host.app?.vault?.adapter,
-							deps.plugin?.manifest?.dir,
-						),
-						initialSettings: host.settings.read(),
-					}),
+			const createOwnedPersistence = (): FlashcardPersistence => {
+				const journal = createSessionJournalStore(
+					host.app?.vault?.adapter,
+					deps.plugin?.manifest?.dir,
 				);
-			if ("load" in repo && typeof repo.load === "function") {
-				void repo.load();
-			}
-			const sessionLifecycleWiring = createSessionLifecycle(repo);
+				return createFlashcardPersistence({
+					authority: new WorkbenchFlashcardAuthority({
+						store: deps.store,
+						adapter: host.app?.vault?.adapter,
+						pluginDirectory: deps.plugin?.manifest?.dir,
+					}),
+					deckIndex: createDeckIndexCacheStore<SerializedDeck>(
+						host.app?.vault?.adapter,
+						deps.plugin?.manifest?.dir,
+					),
+					journal: journal ? { store: journal } : null,
+					initialSettings: host.settings.read(),
+				});
+			};
+			const repo = deps.repository ?? lifetime.own(createOwnedPersistence());
+			void repo.prepare();
+			const sessionLifecycleWiring = createSessionLifecycle(repo.sessions);
 			// The lifecycle subscribes to repository source changes itself; the feature
 			// only owns its lifetime.
 			lifetime.defer(() => sessionLifecycleWiring.lifecycle.dispose());
 			const cardIdentityContinuity = createCardIdentityContinuity({
 				sources: createObsidianContinuitySourceStore(host.app),
-				state: repo.createContinuityStateStore(),
+				state: repo.continuity,
 				sessions: sessionLifecycleWiring.continuitySessions,
 				createIdentity: createCardIdentity,
 			});
@@ -585,7 +587,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 			);
 			const deckHome = lifetime.own(
 				createDeckHome({
-					repository: repo,
+					repository: repo.deckHome,
 					identity: cardIdentityContinuity,
 					saveSettingsPatch: async (patch) => saveDeckSettingsPatch(host, patch),
 					saveDeckOrder: async (deckOrder) => {

@@ -16,18 +16,11 @@ const deep = vi.hoisted(() => ({
 	repository: null as unknown,
 }));
 
-vi.mock("../domain/storage/flashcardRepository", () => ({
-	FlashcardRepository: class {
-		dispose = vi.fn();
-		subscribe = vi.fn(() => () => {});
-		load = vi.fn().mockResolvedValue(undefined);
-		hasAvailableTagsSnapshot = () => true;
-		getAvailableTags = () => ["#wordTag"];
-		createContinuityStateStore = () => ({});
-
-		constructor() {
-			deep.repository = this;
-		}
+vi.mock("../domain/storage/flashcardPersistence", () => ({
+	createFlashcardPersistence: () => {
+		const persistence = createRepository();
+		deep.repository = persistence;
+		return persistence;
 	},
 }));
 
@@ -119,12 +112,12 @@ vi.mock("../obsidian/continuityModals", () => ({
 
 function createRepository() {
 	return {
+		prepare: vi.fn().mockResolvedValue(undefined),
 		dispose: vi.fn(),
-		subscribe: vi.fn(() => () => {}),
-		load: vi.fn().mockResolvedValue(undefined),
-		hasAvailableTagsSnapshot: () => true,
-		getAvailableTags: () => ["#wordTag"],
-		createContinuityStateStore: () => ({}),
+		deckHome: { subscribe: vi.fn(() => () => {}) },
+		sessions: {},
+		continuity: {},
+		tags: { hasSnapshot: () => true, read: () => ["#wordTag"] },
 	};
 }
 
@@ -263,7 +256,7 @@ describe("flashcard feature", () => {
 		const fake = createFakeWorkbenchHost("flashcards", DEFAULT_SETTINGS);
 		feature.render(fake.host);
 
-		expect(repository.load).toHaveBeenCalledTimes(1);
+		expect(repository.prepare).toHaveBeenCalledTimes(1);
 		feature.stop();
 	});
 });
