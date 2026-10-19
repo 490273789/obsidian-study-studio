@@ -301,7 +301,7 @@ export const DeckList = React.memo(function DeckList({
 									<b>{formatDeckCount(language, snapshot.totals.newCards)}</b>
 									<span>{t("home.heroUnit")}</span>
 								</div>
-								<div className={cls("fc-hero__summary", styles.heroSummary)}>
+								<div className="fc-hero__summary">
 									{nextDeck
 										? t("home.heroSummary", {
 												decks: snapshot.totals.deckCount,
@@ -314,7 +314,7 @@ export const DeckList = React.memo(function DeckList({
 											})}
 								</div>
 							</div>
-							<div className={cls("fc-hero__side", styles.heroSide)}>
+							<div className="fc-hero__side">
 								<span className={styles.heroStreak}>
 									<Flame size={14} aria-hidden="true" />
 									<b>
@@ -322,10 +322,7 @@ export const DeckList = React.memo(function DeckList({
 											count: streak.currentStreak,
 										})}
 									</b>
-									<span
-										className={cls("fc-meta__dot", styles.dot)}
-										aria-hidden="true"
-									/>
+									<span className="fc-meta__dot" aria-hidden="true" />
 									<Trophy size={12} aria-hidden="true" />
 									{t("footprint.bestStreak", {
 										count: streak.bestStreak,
@@ -422,7 +419,7 @@ export const DeckList = React.memo(function DeckList({
 										))}
 
 										{completedRows.length > 0 && (
-											<div className={cls("fc-group", styles.completedGroup)}>
+											<div className="fc-group">
 												<button
 													type="button"
 													className={cls(

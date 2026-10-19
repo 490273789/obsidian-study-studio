@@ -176,10 +176,7 @@ export const DeckCard = memo(function DeckCard({
 			tabIndex={isMenuOpen ? -1 : attributes.tabIndex}
 			aria-label={t("home.openDeck", { deckName: deck.name })}
 		>
-			<div
-				className={cls("flashcard-deck-main fc-rail-row__main", styles.deckMain)}
-				inert={isMenuOpen}
-			>
+			<div className="flashcard-deck-main fc-rail-row__main" inert={isMenuOpen}>
 				<div className={cls("flashcard-deck-headline", styles.deckHeadline)}>
 					<div className={cls("flashcard-deck-name-wrapper", styles.deckNameWrapper)}>
 						<span
@@ -218,7 +215,7 @@ export const DeckCard = memo(function DeckCard({
 						)}
 					</div>
 
-					<div className={cls("flashcard-deck-meta fc-meta", styles.deckMeta)}>
+					<div className="flashcard-deck-meta fc-meta">
 						{state === "active" && (
 							<>
 								<span
@@ -227,7 +224,7 @@ export const DeckCard = memo(function DeckCard({
 								>
 									<i style={{ width: `${progressPercent}%` }} />
 								</span>
-								<span className={cls("fc-meta__text", styles.deckMetaText)}>
+								<span className="fc-meta__text">
 									{t("home.deckLearnedProgress", {
 										learned: formatDeckCount(language, learnedCards),
 										total: formatDeckCount(language, totalCards),
@@ -235,11 +232,8 @@ export const DeckCard = memo(function DeckCard({
 								</span>
 								{deck.studyCount > 0 && (
 									<>
-										<span
-											className={cls("fc-meta__dot", styles.dot)}
-											aria-hidden="true"
-										/>
-										<span className={cls("fc-meta__text", styles.deckMetaText)}>
+										<span className="fc-meta__dot" aria-hidden="true" />
+										<span className="fc-meta__text">
 											{t("home.studyCountValue", {
 												count: deck.studyCount,
 											})}
@@ -250,14 +244,9 @@ export const DeckCard = memo(function DeckCard({
 						)}
 						{state === "fresh" && (
 							<>
-								<span className={cls("fc-meta__text", styles.deckMetaText)}>
-									{t("home.deckNotStarted")}
-								</span>
-								<span
-									className={cls("fc-meta__dot", styles.dot)}
-									aria-hidden="true"
-								/>
-								<span className={cls("fc-meta__text", styles.deckMetaText)}>
+								<span className="fc-meta__text">{t("home.deckNotStarted")}</span>
+								<span className="fc-meta__dot" aria-hidden="true" />
+								<span className="fc-meta__text">
 									{t("home.deckTotalCards", {
 										count: formatDeckCount(language, totalCards),
 									})}
@@ -273,7 +262,7 @@ export const DeckCard = memo(function DeckCard({
 								>
 									<i style={{ width: "100%" }} />
 								</span>
-								<span className={cls("fc-meta__text", styles.deckMetaText)}>
+								<span className="fc-meta__text">
 									{t("home.deckLearnedProgress", {
 										learned: formatDeckCount(language, totalCards),
 										total: formatDeckCount(language, totalCards),
@@ -281,11 +270,8 @@ export const DeckCard = memo(function DeckCard({
 								</span>
 								{deck.studyCount > 0 && (
 									<>
-										<span
-											className={cls("fc-meta__dot", styles.dot)}
-											aria-hidden="true"
-										/>
-										<span className={cls("fc-meta__text", styles.deckMetaText)}>
+										<span className="fc-meta__dot" aria-hidden="true" />
+										<span className="fc-meta__text">
 											{t("home.studyCountValue", {
 												count: deck.studyCount,
 											})}
@@ -298,29 +284,22 @@ export const DeckCard = memo(function DeckCard({
 				</div>
 			</div>
 
-			<div
-				className={cls("flashcard-deck-count fc-rail-row__count", styles.deckCount)}
-				inert={isMenuOpen}
-			>
+			<div className="flashcard-deck-count fc-rail-row__count" inert={isMenuOpen}>
 				{isDone ? (
-					<span
-						className={cls("flashcard-deck-done fc-rail-row__badge", styles.deckDone)}
-					>
+					<span className="flashcard-deck-done fc-rail-row__badge">
 						<Check size={13} aria-hidden="true" />
 						{t("home.deckCompleted")}
 					</span>
 				) : (
 					<>
-						<b className={styles.deckCountValue}>
-							{formatDeckCount(language, newCards)}
-						</b>
-						<span className={styles.deckCountLabel}>{t("home.deckPending")}</span>
+						<b>{formatDeckCount(language, newCards)}</b>
+						<span>{t("home.deckPending")}</span>
 					</>
 				)}
 			</div>
 
 			<div
-				className={cls("flashcard-deck-side fc-rail-row__actions", styles.deckSide)}
+				className="flashcard-deck-side fc-rail-row__actions"
 				inert={isMenuOpen}
 				role="presentation"
 				onMouseDown={(event) => event.stopPropagation()}

@@ -107,10 +107,10 @@ const IncorrectSpellingItem = memo(function IncorrectSpellingItem({
 }) {
 	const { t } = useFlashcardI18n();
 	return (
-		<div className={cls("flashcard-summary-incorrect-item", styles.incorrectItem)}>
+		<div className={cls(styles.incorrectItem)}>
 			<div className={styles.incorrectIndex}>{index}</div>
 			<div className={styles.incorrectContent}>
-				<div className={styles.incorrectQuestion}>
+				<div>
 					<span className={styles.incorrectLabel}>{t("spelling.meaningPrompt")}</span>
 					<MarkdownContent
 						content={card.back}

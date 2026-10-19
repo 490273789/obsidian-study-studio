@@ -88,11 +88,7 @@ export const StudySummary = memo(function StudySummary({
 						return (
 							<div
 								key={btn.rating}
-								className={cls(
-									"flashcard-study-rating-item",
-									styles.ratingItem,
-									RATING_CLASSES[btn.rating],
-								)}
+								className={cls(styles.ratingItem, RATING_CLASSES[btn.rating])}
 							>
 								<span className={styles.ratingItemCount}>{count}</span>
 								<span className={styles.ratingItemLabel}>{btn.label}</span>

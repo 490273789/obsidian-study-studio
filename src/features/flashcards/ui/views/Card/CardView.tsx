@@ -152,7 +152,7 @@ export const CardView = React.memo(function CardView({
 				revealLabel: t("common.showAnswer"),
 				shortcutLabel: t("common.space"),
 				children: (
-					<div className={cls("flashcard-response-controls", styles.responseControls)}>
+					<div className={cls(styles.responseControls)}>
 						<FlashcardButton
 							preset="prev"
 							icon={RotateCcw}
@@ -161,7 +161,7 @@ export const CardView = React.memo(function CardView({
 							disabled={!session.canPrevious || isTransitioning}
 							title={`${t("common.undo")} (6)`}
 						/>
-						<div className={cls("flashcard-rating-grid", styles.ratingGrid)}>
+						<div className={cls(styles.ratingGrid)}>
 							{ratingButtons.map((btn) => (
 								<FlashcardButton
 									key={btn.rating}

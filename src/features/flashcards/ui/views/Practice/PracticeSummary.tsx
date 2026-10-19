@@ -136,10 +136,10 @@ const IncorrectCardItem = memo(function IncorrectCardItem({
 	const displayContent = getDisplayCardContent(card, direction);
 
 	return (
-		<div className={cls("flashcard-summary-incorrect-item", styles.incorrectItem)}>
+		<div className={cls(styles.incorrectItem)}>
 			<div className={styles.incorrectIndex}>{index}</div>
 			<div className={styles.incorrectContent}>
-				<div className={styles.incorrectQuestion}>
+				<div>
 					<span className={styles.incorrectLabel}>{t("practice.questionLabel")}</span>
 					<MarkdownContent
 						content={displayContent.prompt}
@@ -147,7 +147,7 @@ const IncorrectCardItem = memo(function IncorrectCardItem({
 						markdownRenderer={markdownRenderer}
 					/>
 				</div>
-				<div className={styles.incorrectAnswer}>
+				<div>
 					<span className={styles.incorrectLabel}>{t("practice.answerLabel")}</span>
 					<MarkdownContent
 						content={displayContent.answer}
