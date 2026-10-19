@@ -43,6 +43,8 @@ import {
 	type SessionJournalTimer,
 } from "./sessionJournal";
 import { SessionJournalCoordinator } from "./sessionJournalCoordinator";
+import { LearningDocumentStore, type AuthorityCandidate } from "./learningDocumentStore";
+import { equalLearningValue } from "./learningDocumentEquality";
 import { appendStudyHistory, createWordListHistoryEntry } from "../history/studyHistory";
 import {
 	type DailyLearningActivity,
@@ -77,11 +79,6 @@ interface CardIndexLocation {
 	cardIndex: number;
 }
 
-interface AuthorityCandidate {
-	learning: LearningStateDocument;
-	install(): void;
-}
-
 const LEARNING_PLACEHOLDER_DECK_ID = "__markdown-rebuild__";
 
 export type { SessionJournalTimer } from "./sessionJournal";
@@ -112,9 +109,9 @@ export interface FlashcardRepositoryOptions {
  * revision, cache, and external-reload choreography.
  */
 export class FlashcardRepository implements DeckHomeRepository, SessionPersistencePort {
-	private readonly authority: FlashcardAuthority;
 	private readonly deckIndexCache: DeckIndexCacheStore<SerializedDeck> | null;
 	private readonly journals: SessionJournalCoordinator;
+	private readonly documents: LearningDocumentStore;
 
 	private decks: Map<string, Deck> = new Map();
 	private scheduler: FSRSScheduler;
@@ -130,14 +127,8 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	private hasAvailableTagsSnapshotValue = false;
 	private continuity: PersistedCardIdentityContinuityState = createEmptyContinuityState();
 
-	private revision = 0;
 	/** Bumped only when the derived deck index changes, never by scheduling commits. */
 	private deckStructureRevision = 0;
-	private readonly revisionListeners = new Set<() => void>();
-	private readonly sourceChangeListeners = new Set<(change: SessionSourceChange) => void>();
-	/** Last revisions announced to source-change listeners, to skip no-op notifications. */
-	private announcedStructureRevision = 0;
-	private announcedChallengeProgressRevision = 0;
 	private cardIndex = new Map<string, CardIndexLocation>();
 	private readonly codec = new CardCodec();
 	private persistedCardStateCache = new WeakMap<FlashCard, PersistedCardLearningState>();
@@ -147,18 +138,16 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	private loadPromise: Promise<void> | null = null;
 	private deckIndexRequested = false;
 	private deckIndexLoaded = false;
-	private authorityVersion = 0;
-	private persistedLearning: LearningStateDocument | undefined;
-	/** Deck snapshot whose full card set is represented by persistedLearning.cards. */
-	private persistedCardDecks: ReadonlyMap<string, Deck> | null = null;
-	private authorityUnsubscribe: () => void;
-	private operationTail: Promise<void> = Promise.resolve();
 	private cacheWriteTail: Promise<void> = Promise.resolve();
 	private disposed = false;
 
 	constructor(options: FlashcardRepositoryOptions) {
-		this.authority = options.authority;
 		this.deckIndexCache = options.deckIndexCache ?? null;
+		this.documents = new LearningDocumentStore({
+			authority: options.authority,
+			onAuthorityChange: (change) => this.handleAuthorityChange(change),
+			onConflict: () => this.restoreAuthority(false),
+		});
 		this.journals = new SessionJournalCoordinator({
 			merge: (watermark) => this.mergeJournalDocument(watermark),
 			apply: (entries, includeSpellingAttempts) =>
@@ -193,25 +182,23 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 					practiceErrorMessages: [],
 				};
 		this.scheduler = new FSRSScheduler(this.settings);
-
-		this.authorityUnsubscribe = this.authority.subscribe((change) =>
-			this.handleAuthorityChange(change),
-		);
 	}
 
 	async load(): Promise<void> {
 		if (this.dataLoaded) return;
 		if (this.loadPromise) return this.loadPromise;
-		this.loadPromise = this.enqueueOperation(async () => {
-			await this.restoreAuthority(true);
-			this.dataLoaded = true;
-			// Answers written before a crash are durable in the local journal but
-			// may be missing from data.json; merge them before anything publishes.
-			await this.journals.tryMerge();
-			this.publishRevision();
-		}).finally(() => {
-			this.loadPromise = null;
-		});
+		this.loadPromise = this.documents
+			.enqueueOperation(async () => {
+				await this.restoreAuthority(true);
+				this.dataLoaded = true;
+				// Answers written before a crash are durable in the local journal but
+				// may be missing from data.json; merge them before anything publishes.
+				await this.journals.tryMerge();
+				this.publishRevision();
+			})
+			.finally(() => {
+				this.loadPromise = null;
+			});
 		return this.loadPromise;
 	}
 
@@ -224,13 +211,16 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 		await this.load();
 		this.deckIndexRequested = true;
 		if (this.deckIndexLoaded) return;
-		await this.enqueueOperation(async () => {
+		await this.documents.enqueueOperation(async () => {
 			if (this.deckIndexLoaded) return;
 			const cache = await this.deckIndexCache?.load();
 			if (this.disposed) return;
 			if (cache) {
 				this.decks = new Map();
-				this.restoreDeckIndexCache(cache, this.persistedLearning ?? emptyLearningState());
+				this.restoreDeckIndexCache(
+					cache,
+					this.documents.getPersistedLearning() ?? emptyLearningState(),
+				);
 				this.refreshDerivedState();
 				// The cache was hydrated from the last merged learning document;
 				// reapply journal card states that have not been merged yet.
@@ -246,7 +236,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	}
 
 	getRevision(): number {
-		return this.revision;
+		return this.documents.getRevision();
 	}
 
 	getDeckStructureRevision(): number {
@@ -254,13 +244,11 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	}
 
 	subscribe(listener: () => void): () => void {
-		this.revisionListeners.add(listener);
-		return () => this.revisionListeners.delete(listener);
+		return this.documents.subscribeRevision(listener);
 	}
 
 	subscribeSourceChanges(listener: (change: SessionSourceChange) => void): () => void {
-		this.sourceChangeListeners.add(listener);
-		return () => this.sourceChangeListeners.delete(listener);
+		return this.documents.subscribeSourceChanges(listener);
 	}
 
 	getAllDecks(): Deck[] {
@@ -424,7 +412,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 		const entry = createWordListHistoryEntry(deckId, deckName, startTimeMs, endTimeMs);
 		if (!entry) return;
 
-		await this.enqueueOperation(async () => {
+		await this.documents.enqueueOperation(async () => {
 			await this.flushJournalBeforeWrite();
 			await this.commitAuthority(() => {
 				const nextHistory = appendStudyHistory(this.studyHistory, [entry]);
@@ -498,7 +486,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	): Promise<SessionPersistenceReceipt> {
 		await this.loadDeckIndex();
 		let receipt!: SessionPersistenceReceipt;
-		await this.enqueueOperation(async () => {
+		await this.documents.enqueueOperation(async () => {
 			if (this.journals.hasStore && isPureJournalWriteSet(transition)) {
 				receipt = await this.applyJournalWriteSet(transition);
 				return;
@@ -674,7 +662,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 			},
 			commit: async (state: CardIdentityContinuityState): Promise<void> => {
 				await this.loadDeckIndex();
-				await this.enqueueOperation(async () => {
+				await this.documents.enqueueOperation(async () => {
 					// A pending journal already changed card states in memory; merge it
 					// first so this full-document build and later replays stay consistent.
 					await this.flushJournalBeforeWrite();
@@ -755,11 +743,8 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 			// A confirmed answer must not stay only in memory: merge it best-effort.
 			void this.flushJournalOnDispose();
 		}
-		this.authorityUnsubscribe();
-		this.authority.dispose?.();
-		this.revisionListeners.clear();
-		this.sourceChangeListeners.clear();
 		this.journals.dispose();
+		this.documents.dispose();
 	}
 
 	private handleAuthorityChange(change: FlashcardAuthorityChange): Promise<void> {
@@ -767,9 +752,9 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 		if (change.kind === "settings") {
 			// A settings-only commit leaves the learning partition untouched. Apply the
 			// new slice and scheduler without re-deserializing every card and deck.
-			return this.enqueueOperation(async () => {
+			return this.documents.enqueueOperation(async () => {
 				await this.journals.tryMerge();
-				const settings = await this.authority.readSettings();
+				const settings = await this.documents.readSettings();
 				this.settings = structuredClone(settings);
 				this.scheduler = new FSRSScheduler(this.settings);
 				// Eligibility and effective study settings derive from the slice.
@@ -777,7 +762,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 				this.publishRevision();
 			});
 		}
-		return this.enqueueOperation(async () => {
+		return this.documents.enqueueOperation(async () => {
 			// Merge locally confirmed answers before adopting an externally changed
 			// document. A conflict here replays the journal on the restored state.
 			await this.journals.tryMerge();
@@ -790,7 +775,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	private async restoreAuthority(initial: boolean): Promise<void> {
 		let snapshot: FlashcardAuthoritySnapshot;
 		try {
-			snapshot = await this.authority.read();
+			snapshot = await this.documents.read();
 		} catch (error) {
 			throw new FlashcardPersistenceError(
 				"authority-read-failed",
@@ -802,7 +787,6 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 
 		this.settings = structuredClone(snapshot.settings);
 		this.scheduler = new FSRSScheduler(this.settings);
-		this.authorityVersion = snapshot.version;
 
 		if (snapshot.content.kind === "legacy") {
 			this.restoreLegacyDocument(snapshot.content.document);
@@ -813,13 +797,8 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 				this.continuity,
 			);
 			try {
-				const receipt = await this.authority.commit(snapshot.version, {
-					learning,
-					discardLegacy: true,
-				});
-				this.authorityVersion = receipt.version;
-				this.persistedLearning = learning;
-				this.persistedCardDecks = this.decks;
+				await this.documents.commitLegacy(learning);
+				this.documents.recordBaseline(learning, this.decks);
 			} catch (error) {
 				throw new FlashcardPersistenceError(
 					"migration-failed",
@@ -838,12 +817,12 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 		// Reapply answers that were durable in the journal but never merged into the
 		// restored document (crash, interrupted merge, or external Sync reload).
 		await this.journals.replay();
-		this.persistedLearning = snapshot.content.learning;
+		this.documents.adoptPersistedLearning(snapshot.content.learning);
 		if (!initial && !this.dataLoaded) return;
 	}
 
 	private async restoreLearningState(learning: LearningStateDocument): Promise<void> {
-		this.persistedCardDecks = null;
+		this.documents.clearBaseline();
 		this.journals.reset(normalizeJournalSeq(learning.journalSeq));
 		this.deckIndexLoaded = false;
 		this.decks = new Map();
@@ -883,45 +862,16 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 		build: () => AuthorityCandidate,
 		skipUnchanged = false,
 	): Promise<void> {
-		for (let attempt = 0; attempt < 3; attempt++) {
-			const candidate = build();
-			// Continuity also refreshes source-derived decks and tags. Install those
-			// even when the durable learning document needs no replacement.
-			if (skipUnchanged && equalLearningValue(candidate.learning, this.persistedLearning)) {
-				candidate.install();
-				this.persistedCardDecks = this.decks;
-				return;
-			}
-			try {
-				const receipt = await this.authority.commit(this.authorityVersion, {
-					learning: candidate.learning,
-				});
-				this.authorityVersion = receipt.version;
-				this.persistedLearning = candidate.learning;
-				candidate.install();
-				this.persistedCardDecks = this.decks;
-				return;
-			} catch (error) {
-				if (error instanceof FlashcardAuthorityConflictError && attempt < 2) {
-					await this.restoreAuthority(false);
-					continue;
-				}
-				throw new FlashcardPersistenceError(
-					error instanceof FlashcardAuthorityConflictError
-						? "conflict-exhausted"
-						: "authority-write-failed",
-					"Failed to persist flashcard learning state",
-					error instanceof FlashcardAuthorityConflictError,
-					{ cause: error },
-				);
-			}
-		}
+		await this.documents.commit(build, {
+			skipUnchanged,
+			baselineDecks: () => this.decks,
+		});
 	}
 
 	/** Merges every journal entry above the persisted sequence into data.json. */
 	private async flushJournal(): Promise<void> {
 		if (!this.journals.hasStore) return;
-		await this.enqueueOperation(() => this.journals.mergeNow());
+		await this.documents.enqueueOperation(() => this.journals.mergeNow());
 	}
 
 	private async flushJournalBeforeWrite(): Promise<void> {
@@ -1034,38 +984,17 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 
 	private async flushJournalOnDispose(): Promise<void> {
 		try {
-			await this.operationTail;
+			await this.documents.waitForOperations();
 			await this.journals.mergeNow();
 		} catch (error) {
 			console.warn("Failed to merge the local session journal during disposal:", error);
 		}
 	}
 
-	private enqueueOperation(operation: () => Promise<void>): Promise<void> {
-		const pending = this.operationTail.then(async () => {
-			if (this.disposed) {
-				throw new FlashcardPersistenceError(
-					"disposed",
-					"Flashcard persistence is disposed",
-					false,
-				);
-			}
-			await operation();
-		});
-		this.operationTail = pending.then(
-			() => undefined,
-			() => undefined,
-		);
-		return pending;
-	}
-
 	private getCommittedCardStates(): Record<string, PersistedCardLearningState> | undefined {
 		// A pending journal already advanced card states in memory, so the persisted
 		// baseline no longer describes this deck snapshot.
-		if (this.journals.pendingCount > 0) return undefined;
-		// Restored/cache-hydrated decks may contain identities absent from learning.
-		// Only reuse a baseline established by a complete successful build/install.
-		return this.persistedCardDecks === this.decks ? this.persistedLearning?.cards : undefined;
+		return this.documents.getCommittedCardStates(this.decks, this.journals.pendingCount > 0);
 	}
 
 	private buildLearningState(
@@ -1289,36 +1218,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	}
 
 	private publishRevision(): void {
-		if (this.disposed) return;
-		this.revision++;
-		for (const listener of this.revisionListeners) {
-			try {
-				listener();
-			} catch (error) {
-				console.error(
-					"Failed to publish a committed flashcard repository revision:",
-					error,
-				);
-			}
-		}
-		if (
-			this.deckStructureRevision === this.announcedStructureRevision &&
-			this.challengeProgressRevision === this.announcedChallengeProgressRevision
-		)
-			return;
-		this.announcedStructureRevision = this.deckStructureRevision;
-		this.announcedChallengeProgressRevision = this.challengeProgressRevision;
-		const change: SessionSourceChange = {
-			deckStructureRevision: this.deckStructureRevision,
-			challengeProgressRevision: this.challengeProgressRevision,
-		};
-		for (const listener of this.sourceChangeListeners) {
-			try {
-				listener(change);
-			} catch (error) {
-				console.error("Failed to publish a committed flashcard source change:", error);
-			}
-		}
+		this.documents.publishRevision(this.deckStructureRevision, this.challengeProgressRevision);
 	}
 }
 
@@ -1436,33 +1336,6 @@ function normalizeSpellingProgress(
 		};
 	}
 	return normalized;
-}
-
-/** Compare JSON learning values structurally; record insertion order is irrelevant. */
-function equalLearningValue(left: unknown, right: unknown): boolean {
-	if (left === right) return true;
-	if (left === null || right === null || typeof left !== "object" || typeof right !== "object") {
-		return false;
-	}
-	if (Array.isArray(left) || Array.isArray(right)) {
-		return (
-			Array.isArray(left) &&
-			Array.isArray(right) &&
-			left.length === right.length &&
-			left.every((value, index) => equalLearningValue(value, right[index]))
-		);
-	}
-	const leftRecord = left as Record<string, unknown>;
-	const rightRecord = right as Record<string, unknown>;
-	const keys = Object.keys(leftRecord);
-	return (
-		keys.length === Object.keys(rightRecord).length &&
-		keys.every(
-			(key) =>
-				Object.prototype.hasOwnProperty.call(rightRecord, key) &&
-				equalLearningValue(leftRecord[key], rightRecord[key]),
-		)
-	);
 }
 
 function cloneDecksForTransition(
