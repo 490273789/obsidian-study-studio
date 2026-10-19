@@ -5,6 +5,7 @@ import type { SelectionLookupSession, SelectionLookupSnapshot } from "../domain/
 import type { SelectionHelperStrings } from "../strings/selectionPopup";
 import type { Language } from "../../shared/types";
 import type { SelectionResultContentRenderer } from "./types";
+import { matchesOpenMainShortcut } from "../settings/openMainShortcut";
 import styles from "./SelectionPopup.module.scss";
 
 export interface SelectionDictCardProps {
@@ -18,6 +19,7 @@ export interface SelectionDictCardProps {
 	onOpenInMainTab: (word: string) => void;
 	onFavorite?: (word: string) => void;
 	onClose: () => void;
+	openMainShortcut: string;
 	onHeaderPointerDown?: React.PointerEventHandler<HTMLElement>;
 }
 
@@ -36,21 +38,18 @@ export class SelectionContentBoundary extends React.Component<
 	}
 }
 
-/** Enter belongs to focused controls and dictionary documents, not the popup shortcut. */
-export function allowsMainTabShortcut(event: KeyboardEvent): boolean {
-	if (
-		event.key !== "Enter" ||
-		event.defaultPrevented ||
-		event.isComposing ||
-		event.altKey ||
-		event.ctrlKey ||
-		event.metaKey ||
-		event.shiftKey
-	)
-		return false;
-	const target = event.target as HTMLElement | null;
-	return !target?.closest?.(
-		"a,button,input,textarea,select,iframe,[contenteditable]:not([contenteditable='false']),[role='button'],[role='tab']",
+/** The handoff shortcut belongs to this popup, including its editable query. */
+export function allowsMainTabShortcut(
+	event: KeyboardEvent,
+	card: HTMLDialogElement | null,
+	shortcut: string,
+): boolean {
+	return (
+		!!card &&
+		card.contains(event.target as Node) &&
+		!event.defaultPrevented &&
+		!event.isComposing &&
+		matchesOpenMainShortcut(event, shortcut)
 	);
 }
 
@@ -59,6 +58,7 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 ) {
 	const { query, lookup, session, strings, onOpenInMainTab, onFavorite, onClose } = props;
 	const cardRef = useRef<HTMLDialogElement | null>(null);
+	const inputRef = useRef<HTMLInputElement | null>(null);
 	const activeWord = lookup.query || query;
 	const activeSource =
 		lookup.sources.find((source) => source.id === lookup.activeSourceId) ?? lookup.sources[0];
@@ -68,6 +68,15 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 		void (activeSource.kind === "ai" ? session.generateAi() : session.retry(activeSource.id));
 
 	useEffect(() => {
+		inputRef.current?.focus();
+		inputRef.current?.select();
+	}, []);
+
+	useEffect(() => {
+		if (inputRef.current) inputRef.current.value = activeWord;
+	}, [activeWord]);
+
+	useEffect(() => {
 		const ownerWindow = cardRef.current?.ownerDocument.defaultView;
 		if (!ownerWindow) return;
 		const handleKeyDown = (event: KeyboardEvent) => {
@@ -75,7 +84,7 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 				event.preventDefault();
 				event.stopPropagation();
 				onClose();
-			} else if (allowsMainTabShortcut(event)) {
+			} else if (allowsMainTabShortcut(event, cardRef.current, props.openMainShortcut)) {
 				event.preventDefault();
 				event.stopPropagation();
 				onOpenInMainTab(activeWord);
@@ -83,7 +92,25 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 		};
 		ownerWindow.addEventListener("keydown", handleKeyDown, true);
 		return () => ownerWindow.removeEventListener("keydown", handleKeyDown, true);
-	}, [activeWord, onOpenInMainTab, onClose]);
+	}, [activeWord, onOpenInMainTab, onClose, props.openMainShortcut]);
+
+	const submitDraft: React.KeyboardEventHandler<HTMLInputElement> = (event) => {
+		if (
+			event.key !== "Enter" ||
+			event.nativeEvent.isComposing ||
+			event.ctrlKey ||
+			event.altKey ||
+			event.metaKey ||
+			event.shiftKey
+		)
+			return;
+		event.preventDefault();
+		event.stopPropagation();
+		const normalized = event.currentTarget.value.trim().replace(/\s+/g, " ");
+		if (!normalized) return;
+		event.currentTarget.value = normalized;
+		void session.lookup(normalized);
+	};
 
 	const failure = (
 		<div className={cls(styles.status, styles.statusError)} role="alert">
@@ -100,7 +127,16 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 			<header className={styles.header}>
 				<div className={styles.dragHandle} onPointerDown={props.onHeaderPointerDown}>
 					<div className={styles.titleRow}>
-						<h3 className={styles.word}>{activeWord}</h3>
+						<input
+							ref={inputRef}
+							type="text"
+							className={styles.word}
+							defaultValue={activeWord}
+							onKeyDown={submitDraft}
+							aria-label={strings.lookupInputLabel}
+							autoComplete="off"
+							spellCheck={false}
+						/>
 						<div className={styles.headerActions}>
 							{onFavorite && (
 								<button
@@ -201,6 +237,8 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 									session.selectSection(activeSource.id, sectionIndex)
 								}
 								onClose={onClose}
+								mainTabShortcut={props.openMainShortcut}
+								onOpenMainTab={() => onOpenInMainTab(activeWord)}
 							/>
 						) : (
 							failure
@@ -217,9 +255,9 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 					type="button"
 					className={styles.openButton}
 					onClick={() => onOpenInMainTab(activeWord)}
-					title={strings.openInMainTabHint}
+					title={strings.openInMainTabHint(props.openMainShortcut)}
 				>
-					{strings.openInMainTab} <kbd>Enter</kbd>
+					{strings.openInMainTab} <kbd>{props.openMainShortcut}</kbd>
 				</button>
 			</footer>
 		</dialog>

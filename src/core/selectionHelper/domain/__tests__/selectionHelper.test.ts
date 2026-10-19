@@ -20,6 +20,7 @@ describe("SelectionHelper", () => {
 			settings: {
 				enabled: true,
 				modifier: "none",
+				openMainShortcut: "Ctrl+Enter",
 				selectedDictionaries,
 				dictionaryOrder: ["b", "missing", "b", "a"],
 			},
@@ -39,6 +40,7 @@ describe("SelectionHelper", () => {
 			settings: {
 				enabled: true,
 				modifier: "alt",
+				openMainShortcut: "Ctrl+Enter",
 				dictionaryOrder: [],
 				selectedDictionaries: [],
 			},
@@ -64,6 +66,7 @@ describe("SelectionHelper", () => {
 			settings: {
 				enabled: true,
 				modifier: "none",
+				openMainShortcut: "Ctrl+Enter",
 				dictionaryOrder: [],
 				selectedDictionaries: ["b", "a"],
 			},
@@ -93,6 +96,7 @@ describe("SelectionHelper", () => {
 			settings: {
 				enabled: true,
 				modifier: "none",
+				openMainShortcut: "Ctrl+Enter",
 				dictionaryOrder: [],
 				selectedDictionaries: ["missing"],
 			},
@@ -154,6 +158,7 @@ describe("SelectionHelper", () => {
 			settings: {
 				enabled: true,
 				modifier: "alt",
+				openMainShortcut: "Ctrl+Enter",
 				dictionaryOrder: [],
 				selectedDictionaries: [],
 			},
@@ -383,6 +388,7 @@ function setup(
 		({
 			enabled: true,
 			modifier: "none",
+			openMainShortcut: "Ctrl+Enter",
 			dictionaryOrder: [],
 			selectedDictionaries: [],
 		} satisfies SelectionHelperSettings);

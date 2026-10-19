@@ -5,6 +5,7 @@ import { SandboxDocumentFrame, type SandboxDocumentFrameProps } from "./SandboxD
 const lifecycle = vi.hoisted(() => ({
 	effects: [] as Array<() => void | (() => void)>,
 	refs: [] as Array<{ current: unknown }>,
+	options: [] as unknown[],
 	hosts: [] as Array<{
 		register: ReturnType<typeof vi.fn>;
 		unregister: ReturnType<typeof vi.fn>;
@@ -22,7 +23,8 @@ vi.mock("react", async (original) => ({
 	},
 }));
 vi.mock("../domain/sandbox-document", () => ({
-	createDictionarySandboxHost: () => {
+	createDictionarySandboxHost: (options: unknown) => {
+		lifecycle.options.push(options);
 		const host = {
 			register: vi.fn(),
 			unregister: vi.fn(),
@@ -37,17 +39,18 @@ vi.mock("../domain/sandbox-document", () => ({
 afterEach(() => {
 	lifecycle.effects.length = 0;
 	lifecycle.refs.length = 0;
+	lifecycle.options.length = 0;
 	lifecycle.hosts.length = 0;
 	vi.restoreAllMocks();
 });
 
-function render() {
+function render(props: Partial<SandboxDocumentFrameProps> = {}) {
 	const component = (
 		SandboxDocumentFrame as unknown as {
 			type: (props: SandboxDocumentFrameProps) => React.ReactElement;
 		}
 	).type;
-	component({ document: {} as never, theme: "dark" });
+	component({ document: {} as never, theme: "dark", ...props });
 	lifecycle.refs[0]!.current = {};
 }
 
@@ -79,5 +82,18 @@ describe("sandbox frame lifetime", () => {
 		expect(lifecycle.hosts[1]?.register).toHaveBeenCalledOnce();
 		expect(lifecycle.hosts[1]?.dispose).not.toHaveBeenCalled();
 		for (const cleanup of replay) cleanup?.();
+	});
+
+	it("enables the main-tab bridge only for assistant frames", () => {
+		const onOpenMainTab = vi.fn();
+		render({ mainTabShortcut: "Ctrl+Enter", onOpenMainTab });
+		for (const effect of lifecycle.effects) effect();
+		const options = lifecycle.options[0] as {
+			mainTabShortcut?: string;
+			onOpenMainTab?: () => void;
+		};
+		expect(options.mainTabShortcut).toBe("Ctrl+Enter");
+		options.onOpenMainTab?.();
+		expect(onOpenMainTab).toHaveBeenCalledOnce();
 	});
 });

@@ -23,6 +23,7 @@ describe("selectionPopupSettingsSlice", () => {
 		).toEqual({
 			enabled: false,
 			modifier: "alt",
+			openMainShortcut: "Ctrl+Enter",
 			dictionaryOrder: [],
 			selectedDictionaries: ["youdao"],
 		});
@@ -36,6 +37,7 @@ describe("selectionPopupSettingsSlice", () => {
 		expect(normalizeSelectionPopupSettings({ enabled: "yes", modifier: "invalid" })).toEqual({
 			enabled: true,
 			modifier: "none",
+			openMainShortcut: "Ctrl+Enter",
 			dictionaryOrder: [],
 			selectedDictionaries: [],
 		});
@@ -49,11 +51,22 @@ describe("selectionPopupSettingsSlice", () => {
 		expect(normalizeSelectionPopupModifier("unknown")).toBe("none");
 	});
 
+	it("keeps a valid custom main-tab shortcut and repairs legacy or invalid values", () => {
+		expect(
+			normalizeSelectionPopupSettings({ openMainShortcut: "Meta+Shift+K" }).openMainShortcut,
+		).toBe("Shift+Meta+K");
+		expect(normalizeSelectionPopupSettings({}).openMainShortcut).toBe("Ctrl+Enter");
+		expect(
+			normalizeSelectionPopupSettings({ openMainShortcut: "Enter" }).openMainShortcut,
+		).toBe("Ctrl+Enter");
+	});
+
 	it("clones settings without mutating original", () => {
 		const original = {
 			selectionPopup: {
 				enabled: true,
 				modifier: "alt" as const,
+				openMainShortcut: "Ctrl+Enter",
 				dictionaryOrder: ["youdao"],
 				selectedDictionaries: ["youdao"],
 			},

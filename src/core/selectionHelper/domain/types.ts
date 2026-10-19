@@ -5,6 +5,8 @@ export interface SelectionHelperSettings {
 	enabled: boolean;
 	/** Modifier key required to trigger the helper after selecting text. */
 	modifier: SelectionHelperModifier;
+	/** Shortcut to open the current lookup in the main dictionary tab. */
+	openMainShortcut: string;
 	/** Persisted IDs of dictionary sources selected for inline lookup. */
 	selectedDictionaries: string[];
 	/** Popup-specific source order, independent of selection and the main dictionary catalog. */

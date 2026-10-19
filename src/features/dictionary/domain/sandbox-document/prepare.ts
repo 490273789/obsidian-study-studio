@@ -351,6 +351,11 @@ function assistantEscapeScript(documentId: string): string {
 	return `<script nonce="${documentId}">if(document.documentElement.getAttribute('data-obsidian-tools-dictionary-close-on-escape')==='true')document.addEventListener('keydown',e=>{if(e.key!=='Escape'||e.isComposing)return;e.preventDefault();${postMessage}},true)</script>`;
 }
 
+function assistantMainTabScript(documentId: string): string {
+	const postMessage = sandboxMessageExpression(documentId, "request-main-tab", "null");
+	return `<script nonce="${documentId}">(()=>{const shortcut=document.documentElement.getAttribute('data-obsidian-tools-dictionary-main-tab-shortcut');if(!shortcut)return;document.addEventListener('keydown',e=>{if(e.isComposing||e.keyCode===229)return;const k=e.key.length===1?e.key.toUpperCase():e.key;const chord=[e.ctrlKey?'Ctrl':null,e.altKey?'Alt':null,e.shiftKey?'Shift':null,e.metaKey?'Meta':null,k===' '?'Space':k==='+'?'Plus':k==='-'?'Minus':k].filter(x=>x!==null).join('+');if(chord!==shortcut)return;e.preventDefault();e.stopImmediatePropagation();${postMessage}},true)})()</script>`;
+}
+
 function contentFitScript(documentId: string): string {
 	const postMessage = sandboxMessageExpression(documentId, "content-height", "h");
 	return `<script nonce="${documentId}">(()=>{
@@ -523,7 +528,7 @@ function sandboxDocument(
 	const dictionaryScript = companionScript ? `<script>${companionScript}</script>` : "";
 	const contentFitStyles =
 		'<style>html[data-obsidian-tools-dictionary-fit-content="true"],html[data-obsidian-tools-dictionary-fit-content="true"] body{height:auto!important;min-height:0!important;max-height:none!important}html[data-obsidian-tools-dictionary-fit-content="true"]:not([data-obsidian-tools-dictionary-fit-bounded="true"]),html[data-obsidian-tools-dictionary-fit-content="true"]:not([data-obsidian-tools-dictionary-fit-bounded="true"]) body{overflow-y:hidden!important}html[data-obsidian-tools-dictionary-fit-bounded="true"]{overflow-y:auto!important}html[data-obsidian-tools-dictionary-fit-bounded="true"] body{overflow-y:visible!important}</style>';
-	return `<!doctype html><html ${THEME_ATTRIBUTE}="light"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}">${assistantEscapeScript(documentId)}${contentFitScript(documentId)}${strictStyles}${customStyles}${responsiveMediaStyles}${contentFitStyles}</head><body>${storageScript}${body}${themeScript(documentId)}${dictionaryScript}${navigationScript}${audioScript}${entryScript}</body></html>`;
+	return `<!doctype html><html ${THEME_ATTRIBUTE}="light"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}">${assistantEscapeScript(documentId)}${assistantMainTabScript(documentId)}${contentFitScript(documentId)}${strictStyles}${customStyles}${responsiveMediaStyles}${contentFitStyles}</head><body>${storageScript}${body}${themeScript(documentId)}${dictionaryScript}${navigationScript}${audioScript}${entryScript}</body></html>`;
 }
 
 export async function prepareDictionarySandboxDocument(

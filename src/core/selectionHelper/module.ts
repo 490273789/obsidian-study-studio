@@ -1,4 +1,4 @@
-import { Platform } from "obsidian";
+import { Notice, Platform } from "obsidian";
 import { defineFeatureLifetime } from "../host/featureLifetime";
 import type { WorkbenchHost, WorkbenchModule, WorkbenchSettingsSection } from "../host/workbench";
 import { SelectionHelper } from "./domain/selectionHelper";
@@ -11,6 +11,7 @@ import type {
 import { SelectionListener } from "./obsidian/selectionListener";
 import { WebviewSelectionAdapter, type WebviewSelectionStatus } from "./obsidian/webviewSelection";
 import { buildSelectionHelperSettingsViewModel } from "./settings/viewModel";
+import { parseOpenMainShortcut } from "./settings/openMainShortcut";
 import { selectionHelperStrings } from "./strings/selectionPopup";
 import type { SelectionResultContentRenderer } from "./ui/types";
 
@@ -85,6 +86,15 @@ export function createSelectionHelperModule(
 					},
 					setModifier: async (modifier) => {
 						await save(host, { modifier });
+					},
+					setOpenMainShortcut: async (value) => {
+						const shortcut = parseOpenMainShortcut(value);
+						if (!shortcut) {
+							new Notice(selectionHelperStrings(language).shortcutInvalid);
+							host.settingsTab.refresh(SELECTION_HELPER_SECTION_ID);
+							return;
+						}
+						await save(host, { openMainShortcut: shortcut });
 					},
 					toggleDictionary: async (id, enabled) => {
 						const current = host.settings.read().selectionPopup.selectedDictionaries;

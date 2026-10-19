@@ -41,13 +41,17 @@ export function sandboxDocumentSource(
 	theme?: DictionaryTheme,
 	closeOnEscape = false,
 	fitContent = false,
+	mainTabShortcut?: string,
 ): string {
 	const source = preparedSandboxDocument(document).srcdoc;
-	if (!theme && !closeOnEscape && !fitContent) return source;
+	if (!theme && !closeOnEscape && !fitContent && !mainTabShortcut) return source;
+	const shortcutAttribute = mainTabShortcut
+		? ` data-obsidian-tools-dictionary-main-tab-shortcut="${mainTabShortcut.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}"`
+		: "";
 	// Only replace the generated root, never matching text inside dictionary content.
 	return source.replace(
 		/^<!doctype html><html data-obsidian-tools-dictionary-theme="light">/,
-		`<!doctype html><html data-obsidian-tools-dictionary-theme="${theme ?? "light"}"${theme ? ` style="color-scheme:${theme}"` : ""}${closeOnEscape ? ' data-obsidian-tools-dictionary-close-on-escape="true"' : ""}${fitContent ? ' data-obsidian-tools-dictionary-fit-content="true"' : ""}>`,
+		`<!doctype html><html data-obsidian-tools-dictionary-theme="${theme ?? "light"}"${theme ? ` style="color-scheme:${theme}"` : ""}${closeOnEscape ? ' data-obsidian-tools-dictionary-close-on-escape="true"' : ""}${fitContent ? ' data-obsidian-tools-dictionary-fit-content="true"' : ""}${shortcutAttribute}>`,
 	);
 }
 

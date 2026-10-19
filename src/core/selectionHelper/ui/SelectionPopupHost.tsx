@@ -190,6 +190,7 @@ export const SelectionPopupHost: React.FC<SelectionPopupHostProps> = ({
 					language={language}
 					renderResultContent={renderResultContent}
 					strings={strings}
+					openMainShortcut={helper.openMainShortcut}
 					onOpenInMainTab={() => void helper.openDictionaryInMainTab()}
 					onFavorite={
 						helper.canFavorite ? (word) => void helper.openFavorite(word) : undefined

@@ -9,6 +9,7 @@ describe("selection helper settings presentation", () => {
 			{
 				enabled: true,
 				modifier: "none",
+				openMainShortcut: "Ctrl+Enter",
 				selectedDictionaries: ["a"],
 				dictionaryOrder: ["b", "missing", "a", "b"],
 			},
@@ -16,12 +17,13 @@ describe("selection helper settings presentation", () => {
 			{
 				setEnabled: vi.fn(),
 				setModifier: vi.fn(),
+				setOpenMainShortcut: vi.fn(),
 				toggleDictionary: vi.fn(),
 				moveDictionary,
 			},
 			"zh",
 		);
-		const list = presentation.snapshot.groups[0]!.rows[3]!.controls[0];
+		const list = presentation.snapshot.groups[0]!.rows[4]!.controls[0];
 		if (list?.kind !== "reorderable") throw new Error("Expected reorderable list");
 		expect(list.allowDrag).toBe(true);
 		expect(list.items.map(({ id, enabled }) => ({ id, enabled }))).toEqual([
@@ -37,6 +39,7 @@ describe("selection helper settings presentation", () => {
 		const actions = {
 			setEnabled: vi.fn().mockResolvedValue(undefined),
 			setModifier: vi.fn().mockResolvedValue(undefined),
+			setOpenMainShortcut: vi.fn().mockResolvedValue(undefined),
 			moveDictionary: vi.fn().mockResolvedValue(undefined),
 			toggleDictionary: vi.fn().mockResolvedValue(undefined),
 		};
@@ -46,6 +49,7 @@ describe("selection helper settings presentation", () => {
 				{
 					enabled: true,
 					modifier: "alt",
+					openMainShortcut: "Ctrl+Enter",
 					dictionaryOrder: [],
 					selectedDictionaries: ["local"],
 				},
@@ -60,10 +64,16 @@ describe("selection helper settings presentation", () => {
 		expect(group.rows.map((row) => row.name)).toEqual([
 			"启用划词快捷浮窗",
 			"触发修饰键",
+			"在词典主标签打开的快捷键",
 			"网页划词兼容状态",
 			"划词展示字典",
 		]);
-		const list = group.rows[3]!.controls[0];
+		const list = group.rows[4]!.controls[0];
+		const shortcut = group.rows[2]!.controls[0];
+		if (shortcut?.kind !== "keybinding") throw new Error("Expected keybinding");
+		expect(shortcut.value).toBe("Ctrl+Enter");
+		expect(await adapter.dispatch(shortcut.action, "Alt+K")).toEqual({ status: "applied" });
+		expect(actions.setOpenMainShortcut).toHaveBeenCalledWith("Alt+K");
 		if (list?.kind !== "reorderable") throw new Error("Expected reorderable list");
 		expect(await adapter.dispatch(list.items[0]!.toggleAction, false)).toEqual({
 			status: "applied",
@@ -75,11 +85,18 @@ describe("selection helper settings presentation", () => {
 		"shows actionable %s web compatibility status",
 		(status) => {
 			const presentation = buildSelectionHelperSettingsViewModel(
-				{ enabled: true, modifier: "none", dictionaryOrder: [], selectedDictionaries: [] },
+				{
+					enabled: true,
+					modifier: "none",
+					openMainShortcut: "Ctrl+Enter",
+					dictionaryOrder: [],
+					selectedDictionaries: [],
+				},
 				[],
 				{
 					setEnabled: vi.fn(),
 					setModifier: vi.fn(),
+					setOpenMainShortcut: vi.fn(),
 					moveDictionary: vi.fn().mockResolvedValue(undefined),
 					toggleDictionary: vi.fn(),
 				},
@@ -97,16 +114,23 @@ describe("selection helper settings presentation", () => {
 
 	it("omits dictionary rows when no dictionary adapter is available", () => {
 		const presentation = buildSelectionHelperSettingsViewModel(
-			{ enabled: false, modifier: "none", dictionaryOrder: [], selectedDictionaries: [] },
+			{
+				enabled: false,
+				modifier: "none",
+				openMainShortcut: "Ctrl+Enter",
+				dictionaryOrder: [],
+				selectedDictionaries: [],
+			},
 			[],
 			{
 				setEnabled: vi.fn().mockResolvedValue(undefined),
 				setModifier: vi.fn().mockResolvedValue(undefined),
+				setOpenMainShortcut: vi.fn().mockResolvedValue(undefined),
 				moveDictionary: vi.fn().mockResolvedValue(undefined),
 				toggleDictionary: vi.fn().mockResolvedValue(undefined),
 			},
 			"en",
 		);
-		expect(presentation.snapshot.groups[0]?.rows).toHaveLength(3);
+		expect(presentation.snapshot.groups[0]?.rows).toHaveLength(4);
 	});
 });

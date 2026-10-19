@@ -10,6 +10,7 @@ export type DictionarySandboxAction =
 	| "play-audio"
 	| "set-theme"
 	| "storage-update"
+	| "request-main-tab"
 	| "request-close";
 
 export type DictionarySandboxStorageMutation =
@@ -63,6 +64,7 @@ export function parseSandboxEnvelope(value: unknown): DictionarySandboxEnvelope 
 		(envelope.action !== "open-entry" &&
 			envelope.action !== "content-height" &&
 			envelope.action !== "request-close" &&
+			envelope.action !== "request-main-tab" &&
 			envelope.action !== "play-audio" &&
 			envelope.action !== "set-theme" &&
 			envelope.action !== "storage-update")

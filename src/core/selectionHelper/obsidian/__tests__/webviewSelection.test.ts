@@ -52,6 +52,7 @@ function setup() {
 		settings: () => ({
 			enabled: true,
 			modifier: "none",
+			openMainShortcut: "Ctrl+Enter",
 			dictionaryOrder: [],
 			selectedDictionaries: [],
 		}),

@@ -67,6 +67,7 @@ function helper(modifier: "none" | "alt" = "none") {
 		settings: () => ({
 			enabled: true,
 			modifier,
+			openMainShortcut: "Ctrl+Enter",
 			dictionaryOrder: [],
 			selectedDictionaries: [],
 		}),
@@ -95,6 +96,7 @@ function dictionaryHelper() {
 		settings: () => ({
 			enabled: true,
 			modifier: "none",
+			openMainShortcut: "Ctrl+Enter",
 			dictionaryOrder: [],
 			selectedDictionaries: [],
 		}),

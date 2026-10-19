@@ -3,6 +3,7 @@ import type { Language } from "../../shared/types";
 import type { SelectionHelperModifier, SelectionHelperSettings } from "../domain/types";
 import { selectionHelperStrings } from "../strings/selectionPopup";
 import { orderSelectionDictionaries } from "../domain/dictionaryOrder";
+import { DEFAULT_OPEN_MAIN_SHORTCUT } from "./openMainShortcut";
 
 export interface AvailableDictionaryItem {
 	id: string;
@@ -12,6 +13,7 @@ export interface AvailableDictionaryItem {
 export interface SelectionHelperSettingsActions {
 	setEnabled: (enabled: boolean) => Promise<void>;
 	setModifier: (modifier: SelectionHelperModifier) => Promise<void>;
+	setOpenMainShortcut: (shortcut: string) => Promise<void>;
 	toggleDictionary: (id: string, enabled: boolean) => Promise<void>;
 	moveDictionary: (fromIndex: number, toIndex: number) => Promise<void>;
 }
@@ -46,6 +48,27 @@ export function buildSelectionHelperSettingsViewModel(
 						{ value: "ctrl", label: strings.modifierCtrl },
 					],
 					onChange: (value) => actions.setModifier(value as SelectionHelperModifier),
+				},
+			);
+			group.row(
+				"open-main-shortcut",
+				{ name: strings.openMainShortcut, description: strings.openMainShortcutDesc },
+				(row) => {
+					row.keybinding("binding", {
+						value: settings.openMainShortcut,
+						disabled: saving,
+						emptyLabel: DEFAULT_OPEN_MAIN_SHORTCUT,
+						recordingLabel: strings.shortcutRecording,
+						conflictMessage: strings.shortcutInvalid,
+						unavailableValues: [],
+						onChange: actions.setOpenMainShortcut,
+					});
+					row.button("reset", {
+						label: strings.shortcutReset,
+						disabled:
+							saving || settings.openMainShortcut === DEFAULT_OPEN_MAIN_SHORTCUT,
+						onPress: () => actions.setOpenMainShortcut(DEFAULT_OPEN_MAIN_SHORTCUT),
+					});
 				},
 			);
 

@@ -5,8 +5,9 @@ export interface SelectionHelperStrings {
 	webStatus: Record<"idle" | "available" | "unavailable" | "mobile", string>;
 	lookup: string;
 	translate: string;
-	openInMainTabHint: string;
+	openInMainTabHint: (shortcut: string) => string;
 	openInMainTab: string;
+	lookupInputLabel: string;
 	favorite: string;
 	close: string;
 	details: string;
@@ -22,6 +23,11 @@ export interface SelectionHelperStrings {
 	modifierAlt: string;
 	modifierShift: string;
 	modifierCtrl: string;
+	openMainShortcut: string;
+	openMainShortcutDesc: string;
+	shortcutRecording: string;
+	shortcutInvalid: string;
+	shortcutReset: string;
 	dictionaryDisabled: string;
 	translationDisabled: string;
 	dictSelectionHeading: string;
@@ -46,8 +52,9 @@ const ZH_STRINGS: SelectionHelperStrings = {
 	},
 	lookup: "查词",
 	translate: "翻译",
-	openInMainTabHint: "按 Enter 在主标签页打开",
+	openInMainTabHint: (shortcut) => `按 ${shortcut} 在主标签页打开`,
 	openInMainTab: "在词典主标签打开",
+	lookupInputLabel: "查询单词或短语",
 	favorite: "收藏",
 	close: "关闭",
 	details: "词条章节",
@@ -64,6 +71,12 @@ const ZH_STRINGS: SelectionHelperStrings = {
 	modifierAlt: "Alt / Option",
 	modifierShift: "Shift",
 	modifierCtrl: "Ctrl / Command",
+	openMainShortcut: "在词典主标签打开的快捷键",
+	openMainShortcutDesc:
+		"点击按键框录制组合键；仅在查词弹窗获得焦点时生效，需包含 Ctrl、Alt 或 Command。",
+	shortcutRecording: "请按快捷键…",
+	shortcutInvalid: "快捷键需包含 Ctrl、Alt 或 Command，且不能使用 Esc。",
+	shortcutReset: "恢复默认",
 	dictionaryDisabled: "词典功能未开启，请先在词典设置中启用",
 	translationDisabled: "AI 翻译未开启，请先在翻译设置中启用",
 	dictSelectionHeading: "划词展示字典",
@@ -90,8 +103,9 @@ const EN_OVERRIDES: Partial<SelectionHelperStrings> = {
 	},
 	lookup: "Lookup",
 	translate: "Translate",
-	openInMainTabHint: "Press Enter to open in main tab",
+	openInMainTabHint: (shortcut) => `Press ${shortcut} to open in main tab`,
 	openInMainTab: "Open in dictionary tab",
+	lookupInputLabel: "Look up a word or phrase",
 	favorite: "Favorite",
 	close: "Close",
 	details: "Entry sections",
@@ -109,6 +123,12 @@ const EN_OVERRIDES: Partial<SelectionHelperStrings> = {
 	modifierAlt: "Alt / Option",
 	modifierShift: "Shift",
 	modifierCtrl: "Ctrl / Command",
+	openMainShortcut: "Open in dictionary tab shortcut",
+	openMainShortcutDesc:
+		"Record a key combination. Active only while the lookup popup has focus; requires Ctrl, Alt, or Command.",
+	shortcutRecording: "Press shortcut…",
+	shortcutInvalid: "Shortcut needs Ctrl, Alt, or Command and cannot use Esc.",
+	shortcutReset: "Reset to default",
 	dictionaryDisabled: "Dictionary is disabled in settings",
 	translationDisabled: "Translation is disabled in settings",
 	dictSelectionHeading: "Popup Dictionaries",

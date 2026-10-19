@@ -125,11 +125,24 @@
 
 	.word {
 		min-width: 0;
-		overflow-wrap: anywhere;
+		flex: 1 1 auto;
+		width: 100%;
+		padding: 2px 4px;
 		font-size: var(--fc-font-lg);
 		font-weight: var(--fc-weight-semibold);
 		color: var(--text-normal);
 		margin: 0;
+		background: transparent;
+		border: 1px solid transparent;
+		border-radius: var(--fc-radius-sm);
+		cursor: text;
+		touch-action: auto;
+		user-select: text;
+
+		&:focus-visible {
+			border-color: var(--interactive-accent);
+			outline: none;
+		}
 	}
 
 	.phonetics {

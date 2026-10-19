@@ -41,6 +41,10 @@ export class SelectionHelper {
 		return this.snapshot;
 	}
 
+	get openMainShortcut(): string {
+		return this.options.settings().openMainShortcut;
+	}
+
 	subscribe(listener: () => void): () => void {
 		this.listeners.add(listener);
 		return () => this.listeners.delete(listener);

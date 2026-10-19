@@ -116,6 +116,8 @@ export const DictionarySectionContent = memo(function DictionarySectionContent({
 	title,
 	onLookup,
 	onClose,
+	mainTabShortcut,
+	onOpenMainTab,
 	fitContent,
 	className,
 	strings,
@@ -126,6 +128,8 @@ export const DictionarySectionContent = memo(function DictionarySectionContent({
 	title: string;
 	onLookup?: (word: string) => void;
 	onClose?: () => void;
+	mainTabShortcut?: string;
+	onOpenMainTab?: () => void;
 	fitContent?: boolean;
 	className?: string;
 	strings: DictionaryStrings;
@@ -161,6 +165,8 @@ export const DictionarySectionContent = memo(function DictionarySectionContent({
 			title={title}
 			onLookup={onLookup}
 			onClose={onClose}
+			mainTabShortcut={mainTabShortcut}
+			onOpenMainTab={onOpenMainTab}
 			fitContent={fitContent}
 			className={className}
 		/>

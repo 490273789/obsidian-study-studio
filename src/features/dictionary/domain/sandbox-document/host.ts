@@ -34,6 +34,8 @@ export interface DictionarySandboxHostOptions {
 	readonly fitContent?: boolean;
 	readonly initialTheme?: DictionaryTheme;
 	readonly onClose?: () => void;
+	readonly mainTabShortcut?: string;
+	readonly onOpenMainTab?: () => void;
 	openEntry(term: string): void;
 }
 
@@ -132,6 +134,12 @@ export function createDictionarySandboxHost(
 					options.onClose();
 				}
 				break;
+			case "request-main-tab":
+				if (envelope.payload === null && options.mainTabShortcut && options.onOpenMainTab) {
+					stopAudio();
+					options.onOpenMainTab();
+				}
+				break;
 			case "open-entry":
 				openEntry(envelope.payload);
 				break;
@@ -187,6 +195,7 @@ export function createDictionarySandboxHost(
 				theme,
 				Boolean(options.onClose),
 				options.fitContent,
+				options.onOpenMainTab ? options.mainTabShortcut : undefined,
 			);
 			const registered: RegisteredFrame = {
 				documentId,

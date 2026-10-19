@@ -55,6 +55,7 @@ function find(
 describe("SelectionDictionaryResultContent", () => {
 	it("renders detail tabs and delegates their selection back to the session action", () => {
 		const onSelectSection = vi.fn();
+		const onOpenMainTab = vi.fn();
 		const handle: DictionarySelectionResultHandle = {
 			result: result(),
 			activeSectionIndex: 1,
@@ -73,6 +74,8 @@ describe("SelectionDictionaryResultContent", () => {
 			onLookup: vi.fn(),
 			onSelectSection,
 			onClose: vi.fn(),
+			mainTabShortcut: "Ctrl+Enter",
+			onOpenMainTab,
 		});
 
 		const tabs = find(
@@ -85,6 +88,13 @@ describe("SelectionDictionaryResultContent", () => {
 		expect(tab.props["aria-selected"]).toBe(true);
 		(tab.props.onClick as () => void)();
 		expect(onSelectSection).toHaveBeenCalledWith(1);
+		const sections = find(
+			element,
+			(entry) => typeof entry.type !== "string" && "mainTabShortcut" in entry.props,
+		);
+		expect(sections).toHaveLength(2);
+		expect(sections[0]?.props.mainTabShortcut).toBe("Ctrl+Enter");
+		expect(sections[0]?.props.onOpenMainTab).toBe(onOpenMainTab);
 
 		const panels = find(element, (entry) => entry.props.role === "tabpanel");
 		expect(panels).toHaveLength(1);

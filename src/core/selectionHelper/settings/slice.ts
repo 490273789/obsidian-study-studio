@@ -1,5 +1,6 @@
 import type { SelectionHelperModifier, SelectionHelperSettings } from "../domain/types";
 import { settingsRecord, type SettingsSlice } from "../../settings/slice";
+import { DEFAULT_OPEN_MAIN_SHORTCUT, normalizeOpenMainShortcut } from "./openMainShortcut";
 
 export interface SelectionPopupSliceSettings {
 	selectionPopup: SelectionHelperSettings;
@@ -8,6 +9,7 @@ export interface SelectionPopupSliceSettings {
 export const DEFAULT_SELECTION_POPUP_SETTINGS: SelectionHelperSettings = {
 	enabled: true,
 	modifier: "none",
+	openMainShortcut: DEFAULT_OPEN_MAIN_SHORTCUT,
 	selectedDictionaries: [],
 	dictionaryOrder: [],
 };
@@ -35,6 +37,7 @@ export function normalizeSelectionPopupSettings(value: unknown): SelectionHelper
 	return {
 		enabled: typeof candidate.enabled === "boolean" ? candidate.enabled : true,
 		modifier: normalizeSelectionPopupModifier(candidate.modifier),
+		openMainShortcut: normalizeOpenMainShortcut(candidate.openMainShortcut),
 		selectedDictionaries,
 		dictionaryOrder: Array.isArray(candidate.dictionaryOrder)
 			? [

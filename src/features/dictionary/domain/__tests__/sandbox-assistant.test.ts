@@ -185,6 +185,152 @@ describe("assistant sandbox close bridge", () => {
 	);
 });
 
+describe("assistant sandbox main-tab shortcut bridge", () => {
+	it("accepts only enabled, current frame/document/version requests with null payload", () => {
+		const h = harness();
+		const openMainTab = vi.fn();
+		const host = createDictionarySandboxHost({
+			openEntry: vi.fn(),
+			mainTabShortcut: "Ctrl+Enter",
+			onOpenMainTab: openMainTab,
+		});
+		const document = documentHandle();
+		host.register(h.frame, document);
+		expect(h.frame.srcdoc).toContain('dictionary-main-tab-shortcut="Ctrl+Enter"');
+		expect(sandboxDocumentSource(document)).not.toContain("main-tab-shortcut");
+		const envelope = createSandboxEnvelope("entry", "request-main-tab", null);
+		h.send(envelope, {});
+		h.send({ ...envelope, documentId: "other" });
+		h.send({ ...envelope, version: 2 });
+		h.send({ ...envelope, channel: "other" });
+		h.send({ ...envelope, payload: {} });
+		expect(openMainTab).not.toHaveBeenCalled();
+		h.send(envelope);
+		expect(openMainTab).toHaveBeenCalledOnce();
+		host.register(h.frame, documentHandle("next"));
+		h.send(envelope);
+		host.unregister(h.frame);
+		h.send(createSandboxEnvelope("next", "request-main-tab", null));
+		host.register(h.frame, documentHandle("next"));
+		const lateListener = [...h.listeners][0]!;
+		host.dispose();
+		lateListener({
+			data: createSandboxEnvelope("next", "request-main-tab", null),
+			source: h.source,
+		} as unknown as MessageEvent);
+		expect(openMainTab).toHaveBeenCalledOnce();
+	});
+
+	it.each(["neither", "shortcut", "callback"])("does not enable with %s option only", (mode) => {
+		const h = harness();
+		const callback = vi.fn();
+		const host = createDictionarySandboxHost({
+			openEntry: vi.fn(),
+			...(mode === "shortcut" ? { mainTabShortcut: "Ctrl+Enter" } : {}),
+			...(mode === "callback" ? { onOpenMainTab: callback } : {}),
+		});
+		host.register(h.frame, documentHandle());
+		expect(h.frame.srcdoc).not.toContain("main-tab-shortcut");
+		h.send(createSandboxEnvelope("entry", "request-main-tab", null));
+		expect(callback).not.toHaveBeenCalled();
+		host.dispose();
+	});
+
+	it("escapes the shortcut attribute without allowing markup injection", () => {
+		const source = sandboxDocumentSource(
+			documentHandle(),
+			undefined,
+			false,
+			false,
+			'"><script>bad</script>&',
+		);
+		expect(source).toContain(
+			'main-tab-shortcut="&quot;&gt;&lt;script&gt;bad&lt;/script&gt;&amp;"',
+		);
+		expect(source).not.toContain("<script>");
+	});
+
+	it.each([
+		["Ctrl+Enter", { key: "Enter", ctrlKey: true }],
+		["Alt+K", { key: "k", altKey: true }],
+		["Shift+Meta+K", { key: "K", metaKey: true, shiftKey: true }],
+		["Ctrl+Space", { key: " ", ctrlKey: true }],
+		["Ctrl+Plus", { key: "+", ctrlKey: true }],
+		["Ctrl+Minus", { key: "-", ctrlKey: true }],
+	] as const)(
+		"matches exactly %s and ignores IME, plain Enter and extra modifiers",
+		async (shortcut, matching) => {
+			vi.stubGlobal(
+				"DOMParser",
+				class {
+					parseFromString() {
+						return {
+							querySelectorAll: () => [],
+							body: { innerHTML: "", querySelectorAll: () => [] },
+						};
+					}
+				},
+			);
+			const document = await prepareDictionarySandboxDocument("", async () => null);
+			const source = sandboxDocumentSource(document, "light", false, false, shortcut);
+			const script =
+				/<script nonce="[^"]+">(\(\(\)=>\{const shortcut=[\s\S]*?)<\/script>/.exec(
+					source,
+				)?.[1];
+			expect(script).toBeDefined();
+			for (const enabled of [false, true]) {
+				const listeners: Array<(event: Record<string, unknown>) => void> = [];
+				const postMessage = vi.fn();
+				runInNewContext(script!, {
+					document: {
+						documentElement: { getAttribute: () => (enabled ? shortcut : null) },
+						addEventListener: (_: string, listener: (typeof listeners)[number]) =>
+							listeners.push(listener),
+					},
+					parent: { postMessage },
+				});
+				const preventDefault = vi.fn();
+				const stopImmediatePropagation = vi.fn();
+				const event = {
+					ctrlKey: false,
+					altKey: false,
+					shiftKey: false,
+					metaKey: false,
+					isComposing: false,
+					keyCode: 0,
+					preventDefault,
+					stopImmediatePropagation,
+					...matching,
+				};
+				for (const listener of listeners) {
+					listener({
+						...event,
+						key: "Enter",
+						ctrlKey: false,
+						altKey: false,
+						shiftKey: false,
+						metaKey: false,
+					});
+					listener({ ...event, isComposing: true });
+					listener({ ...event, keyCode: 229 });
+					listener({ ...event, shiftKey: !event.shiftKey });
+				}
+				expect(postMessage).not.toHaveBeenCalled();
+				expect(preventDefault).not.toHaveBeenCalled();
+				for (const listener of listeners) listener(event);
+				expect(postMessage).toHaveBeenCalledTimes(enabled ? 1 : 0);
+				expect(preventDefault).toHaveBeenCalledTimes(enabled ? 1 : 0);
+				if (enabled)
+					expect(postMessage.mock.calls[0]?.[0]).toMatchObject({
+						action: "request-main-tab",
+						payload: null,
+						version: 1,
+					});
+			}
+		},
+	);
+});
+
 describe("stacked sandbox content fitting", () => {
 	it("seeds fitting only for configured hosts and restores the original height", () => {
 		const h = harness();

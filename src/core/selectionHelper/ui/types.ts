@@ -9,6 +9,8 @@ export interface SelectionResultContentProps {
 	onLookup: (word: string) => void;
 	onSelectSection: (sectionIndex: number) => void;
 	onClose: () => void;
+	mainTabShortcut: string;
+	onOpenMainTab: () => void;
 }
 
 export type SelectionResultContentRenderer = ComponentType<SelectionResultContentProps>;

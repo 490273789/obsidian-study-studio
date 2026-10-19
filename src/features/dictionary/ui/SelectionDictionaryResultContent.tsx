@@ -22,6 +22,8 @@ export const SelectionDictionaryResultContent = memo(function SelectionDictionar
 	onLookup,
 	onSelectSection,
 	onClose,
+	mainTabShortcut,
+	onOpenMainTab,
 }: SelectionResultContentProps) {
 	const { result, activeSectionIndex, word } = handle as DictionarySelectionResultHandle;
 	const strings = dictionaryStrings(language);
@@ -67,6 +69,8 @@ export const SelectionDictionaryResultContent = memo(function SelectionDictionar
 						title={`${result.sourceLabel} · ${section.title}`}
 						onLookup={onLookup}
 						onClose={onClose}
+						mainTabShortcut={mainTabShortcut}
+						onOpenMainTab={onOpenMainTab}
 						fitContent
 						strings={strings}
 					/>

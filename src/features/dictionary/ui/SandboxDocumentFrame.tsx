@@ -14,6 +14,9 @@ export interface SandboxDocumentFrameProps {
 	onLookup?: (word: string) => void;
 	/** Enables the assistant-only Escape bridge. */
 	onClose?: () => void;
+	/** Assistant-only shortcut bridge to the main dictionary tab. */
+	mainTabShortcut?: string;
+	onOpenMainTab?: () => void;
 	className?: string;
 	/** Lets stacked documents share the containing reading area's scrollbar. */
 	fitContent?: boolean;
@@ -35,6 +38,8 @@ export const SandboxDocumentFrame = React.memo(function SandboxDocumentFrame({
 	theme,
 	onLookup,
 	onClose,
+	mainTabShortcut,
+	onOpenMainTab,
 	className,
 	fitContent = false,
 	title,
@@ -44,7 +49,9 @@ export const SandboxDocumentFrame = React.memo(function SandboxDocumentFrame({
 	const themeRef = useRef(theme);
 	const onLookupRef = useRef(onLookup);
 	const onCloseRef = useRef(onClose);
+	const onOpenMainTabRef = useRef(onOpenMainTab);
 	const closeOnEscape = Boolean(onClose);
+	const hasMainTabShortcut = Boolean(mainTabShortcut && onOpenMainTab);
 
 	useEffect(() => {
 		onLookupRef.current = onLookup;
@@ -53,6 +60,10 @@ export const SandboxDocumentFrame = React.memo(function SandboxDocumentFrame({
 	useEffect(() => {
 		onCloseRef.current = onClose;
 	}, [onClose]);
+
+	useEffect(() => {
+		onOpenMainTabRef.current = onOpenMainTab;
+	}, [onOpenMainTab]);
 
 	useEffect(() => {
 		themeRef.current = theme;
@@ -67,6 +78,9 @@ export const SandboxDocumentFrame = React.memo(function SandboxDocumentFrame({
 			fitContent,
 			openEntry: (term) => onLookupRef.current?.(term),
 			...(closeOnEscape ? { onClose: () => onCloseRef.current?.() } : {}),
+			...(hasMainTabShortcut
+				? { mainTabShortcut, onOpenMainTab: () => onOpenMainTabRef.current?.() }
+				: {}),
 		});
 		hostRef.current = host;
 		try {
@@ -82,7 +96,7 @@ export const SandboxDocumentFrame = React.memo(function SandboxDocumentFrame({
 			host.dispose();
 			if (hostRef.current === host) hostRef.current = null;
 		};
-	}, [document, closeOnEscape, fitContent]);
+	}, [document, closeOnEscape, fitContent, hasMainTabShortcut, mainTabShortcut]);
 
 	return (
 		<iframe
