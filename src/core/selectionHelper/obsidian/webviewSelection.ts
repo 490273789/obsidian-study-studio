@@ -11,7 +11,10 @@ interface WebviewElement extends HTMLElement {
 
 interface GuestEvent {
 	sequence: number;
+	captureSequence: number;
 	text: string;
+	shouldDismiss?: boolean;
+	reposition?: boolean;
 	x: number;
 	y: number;
 	width: number;
@@ -25,6 +28,7 @@ interface Page {
 	lease: SelectionSourceLease;
 	key: string;
 	sequence: number;
+	captureSequence: number;
 	ready: boolean;
 	failed: boolean;
 	busy: boolean;
@@ -40,6 +44,7 @@ interface WebviewSelectionOptions {
 	document: Document;
 	openSource(): SelectionSourceLease;
 	interrupt(): void;
+	isDictionaryPopup(): boolean;
 	onStatus(status: WebviewSelectionStatus): void;
 	isEnabled(): boolean;
 }
@@ -53,28 +58,39 @@ const removeCollector = `(() => { window.${collectorKey}?.dispose(); delete wind
 const installCollector = `(() => {
 	window.${collectorKey}?.dispose();
 	let sequence = 0;
+	let captureSequence = 0;
 	let latest = null;
 	let origin = null;
+	let selectionIdentity = null;
 	const handlers = [];
-	const record = (text, x, y, event) => {
-		latest = { sequence: ++sequence, text, x, y, width: innerWidth, height: innerHeight,
+	const record = (text, x, y, event, shouldDismiss = false, reposition = false) => {
+		if (text && !reposition) captureSequence++;
+		latest = { sequence: ++sequence, captureSequence,
+			text, shouldDismiss, reposition, x, y, width: innerWidth, height: innerHeight,
 			altKey: !!event?.altKey, shiftKey: !!event?.shiftKey,
 			ctrlOrMetaKey: !!(event?.ctrlKey || event?.metaKey) };
 	};
-	const clear = () => { origin = null; record('', 0, 0); };
+	// Ordinary clears retain the displayed source node so later removal still expires it.
+	const clear = () => { record('', 0, 0); };
+	const close = () => { origin = null; selectionIdentity = null; record('', 0, 0, null, true); };
+	const sameSelection = (a, b) => a && b && a.node === b.node &&
+		a.focusNode === b.focusNode && a.start === b.start && a.end === b.end && a.text === b.text;
 	// Losing focus suppresses selection replay, but the displayed snapshot still
 	// needs its origin tracked. Preserve pending expiry events as well.
 	const suppressSelection = () => { if (latest?.text) latest = null; };
 	const capture = (event) => {
 		if (!document.hasFocus()) return;
 		const active = document.activeElement;
-		origin = null;
+		let capturedOrigin = null;
+		let identity = null;
 		let text = '', x = event?.clientX ?? 0, y = event?.clientY ?? 0;
 		if (active?.matches('input,textarea')) {
 			if (active.type === 'password') { clear(); return; }
-			origin = active;
+			capturedOrigin = active;
 			if (typeof active.selectionStart === 'number' && typeof active.selectionEnd === 'number') {
 				text = active.value.slice(active.selectionStart, active.selectionEnd);
+				identity = { node: active, focusNode: active, start: active.selectionStart,
+					end: active.selectionEnd, text: text.trim() };
 				const rect = active.getBoundingClientRect();
 				if (rect) { x = rect.left; y = rect.bottom; }
 			}
@@ -82,7 +98,9 @@ const installCollector = `(() => {
 			const selection = window.getSelection();
 			text = selection?.toString() || '';
 			const node = selection?.anchorNode;
-			origin = node;
+			capturedOrigin = node;
+			identity = { node, focusNode: selection?.focusNode,
+				start: selection?.anchorOffset, end: selection?.focusOffset, text: text.trim() };
 			const element = node?.nodeType === 1 ? node : node?.parentElement;
 			if (element?.closest?.('input[type=password],.fc-selection-popup-host,.fc-selection-popup-container')) { clear(); return; }
 			if (selection?.rangeCount) {
@@ -90,7 +108,10 @@ const installCollector = `(() => {
 				if (rect) { x = rect.left; y = rect.bottom; }
 			}
 		}
-		record(text.trim().slice(0, 10000), x, y, event);
+		const trimmed = text.trim().slice(0, 10000);
+		const reposition = Boolean(trimmed && sameSelection(selectionIdentity, identity));
+		if (trimmed) { origin = capturedOrigin; selectionIdentity = identity; }
+		record(trimmed, x, y, event, false, reposition);
 	};
 	const onScroll = () => {
 		if (!latest?.text) return;
@@ -104,6 +125,7 @@ const installCollector = `(() => {
 				} else {
 					latest.x = rect.left;
 					latest.y = rect.bottom;
+					latest.reposition = true;
 					latest.sequence = ++sequence;
 				}
 				return;
@@ -117,9 +139,9 @@ const installCollector = `(() => {
 	bind('mousedown', clear);
 	bind('blur', suppressSelection);
 	bind('scroll', onScroll);
-	bind('keydown', (event) => { if (event.key === 'Escape') clear(); });
+	bind('keydown', (event) => { if (event.key === 'Escape') close(); });
 	window.${collectorKey} = { read: () => {
-		if (origin?.isConnected === false) clear();
+		if (origin?.isConnected === false) close();
 		if (!document.hasFocus()) suppressSelection();
 		return latest;
 	}, dispose: () => {
@@ -135,6 +157,8 @@ function guestEvent(value: unknown): GuestEvent | null {
 	if (
 		!Number.isSafeInteger(event.sequence) ||
 		(event.sequence as number) < 1 ||
+		!Number.isSafeInteger(event.captureSequence) ||
+		(event.captureSequence as number) < 0 ||
 		typeof event.text !== "string" ||
 		event.text.length > 10000 ||
 		![event.x, event.y, event.width, event.height].every(
@@ -142,6 +166,8 @@ function guestEvent(value: unknown): GuestEvent | null {
 		) ||
 		(event.width as number) <= 0 ||
 		(event.height as number) <= 0 ||
+		(event.shouldDismiss !== undefined && typeof event.shouldDismiss !== "boolean") ||
+		(event.reposition !== undefined && typeof event.reposition !== "boolean") ||
 		![event.altKey, event.shiftKey, event.ctrlOrMetaKey].every(
 			(item) => typeof item === "boolean",
 		)
@@ -268,6 +294,7 @@ export class WebviewSelectionAdapter {
 			lease,
 			key: `${collectorKey}_${lease.reference.id.replace(/[^A-Za-z0-9_]/g, "_")}_${++nextPage}`,
 			sequence: 0,
+			captureSequence: 0,
 			ready: false,
 			failed: false,
 			busy: false,
@@ -345,9 +372,13 @@ export class WebviewSelectionAdapter {
 			)
 				return;
 			if (!event.text.trim()) {
-				read.dismiss();
+				if (event.shouldDismiss || !this.options.isDictionaryPopup()) read.dismiss();
 				return;
 			}
+			// A scroll can follow a new capture before this poll consumes either event.
+			const freshCapture = event.captureSequence > page.captureSequence;
+			page.captureSequence = Math.max(page.captureSequence, event.captureSequence);
+			if (event.reposition && !freshCapture && this.options.isDictionaryPopup()) return;
 			read.submit({
 				text: event.text,
 				x: rect.left + (event.x * rect.width) / event.width,

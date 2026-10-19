@@ -116,4 +116,48 @@ describe("SelectionDictCard", () => {
 		(content.props.onLookup as (word: string) => void)("science");
 		expect(session.lookup).toHaveBeenCalledWith("science");
 	});
+
+	it("keeps the title and phonetics in the drag handle with source tabs outside it", () => {
+		const onHeaderPointerDown = vi.fn();
+		const lookup = {
+			...mockLookup,
+			sources: [
+				{ ...mockLookup.sources[0]!, pronunciations: [{ label: "UK", phonetic: "test" }] },
+				{ ...mockLookup.sources[0]!, id: "other" },
+			],
+		};
+		const tree = (
+			SelectionDictCard as unknown as {
+				type: (props: React.ComponentProps<typeof SelectionDictCard>) => React.ReactNode;
+			}
+		).type({
+			query: "commercial",
+			lookup,
+			session: mockSession,
+			strings: selectionHelperStrings("zh"),
+			language: "zh",
+			theme: "dark",
+			onClose: vi.fn(),
+			onOpenInMainTab: vi.fn(),
+			onHeaderPointerDown,
+		});
+		const handle = findElement(
+			tree,
+			(element) => element.props.onPointerDown === onHeaderPointerDown,
+		);
+		expect(handle).toBeDefined();
+		expect(findElement(handle, (element) => element.type === "h3")).toBeDefined();
+		expect(
+			findElement(
+				handle,
+				(element) =>
+					element.type === "span" &&
+					React.Children.toArray(element.props.children as React.ReactNode)
+						.map((child) => (typeof child === "string" ? child : ""))
+						.join("") === "[UK] /test/",
+			),
+		).toBeDefined();
+		expect(findElement(handle, (element) => element.props.role === "tablist")).toBeUndefined();
+		expect(findElement(tree, (element) => element.props.role === "tablist")).toBeDefined();
+	});
 });

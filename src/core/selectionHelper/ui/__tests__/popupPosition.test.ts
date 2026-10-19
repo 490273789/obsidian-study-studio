@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { popupPosition } from "../popupPosition";
+import { popupPosition, popupPositionAtAnchor } from "../popupPosition";
 
 describe("popupPosition", () => {
 	it("uses measured size to place the popup above the selection near an edge", () => {
@@ -45,5 +45,13 @@ describe("popupPosition", () => {
 			maxWidth: 968,
 			maxHeight: 560,
 		});
+	});
+	it("keeps an existing corner and limits growth to the remaining viewport", () => {
+		expect(
+			popupPositionAtAnchor(
+				{ left: 650, top: 612 },
+				{ left: 0, top: 0, width: 1000, height: 800 },
+			),
+		).toEqual({ left: 650, top: 612, maxWidth: 334, maxHeight: 172 });
 	});
 });

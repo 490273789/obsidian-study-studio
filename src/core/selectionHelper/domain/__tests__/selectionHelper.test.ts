@@ -118,6 +118,25 @@ describe("SelectionHelper", () => {
 		expect(helper.getSnapshot().target?.text).toBe("second");
 		expect(helper.getSnapshot().lookup).toBeNull();
 	});
+	it("preserves an open lookup when its source reports the same selection again", () => {
+		const { session, dispose } = fakeSession();
+		const { helper } = setup({ startLookup: () => session });
+		const source = helper.openSource({});
+		source.capture().submit(candidate("hello"));
+		helper.beginLookup();
+		expect(source.capture().submit(candidate(""))).toBe(false);
+		expect(source.capture().submit(candidate("hello"))).toBe(false);
+		expect(helper.getSnapshot()).toMatchObject({ visible: true, mode: "dictionary" });
+		expect(dispose).not.toHaveBeenCalled();
+
+		expect(source.capture().submit(candidate("hello", { x: 30 }))).toBe(true);
+		expect(helper.getSnapshot()).toMatchObject({
+			visible: true,
+			mode: "actions",
+			target: { x: 30 },
+		});
+		expect(dispose).toHaveBeenCalledOnce();
+	});
 
 	it("closes before handing text to the translation adapter", async () => {
 		const openPrefilled = vi.fn().mockResolvedValue(undefined);

@@ -135,6 +135,10 @@ export function createSelectionHelperModule(
 							isEnabled: () => host.settings.read().selectionPopup.enabled,
 							openSource: () => helper.openSource(owner),
 							interrupt: () => helper.interrupt(),
+							isDictionaryPopup: () => {
+								const snapshot = helper.getSnapshot();
+								return snapshot.visible && snapshot.mode === "dictionary";
+							},
 							onStatus: (status) => {
 								if (webStatuses.get(doc) === status) return;
 								webStatuses.set(doc, status);

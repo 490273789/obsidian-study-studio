@@ -89,6 +89,10 @@ function setup() {
 		document: document as unknown as Document,
 		openSource,
 		interrupt: () => helper.interrupt(),
+		isDictionaryPopup: () => {
+			const snapshot = helper.getSnapshot();
+			return snapshot.visible && snapshot.mode === "dictionary";
+		},
 		onStatus,
 		isEnabled,
 	});
@@ -115,6 +119,7 @@ function setup() {
 
 const event = {
 	sequence: 1,
+	captureSequence: 1,
 	text: "hello",
 	x: 20,
 	y: 40,
@@ -473,8 +478,9 @@ describe("WebviewSelectionAdapter", () => {
 		const range = {
 			getBoundingClientRect: () => rangeRect,
 		};
+		let selectionText = "hello";
 		const selection = {
-			toString: () => "hello",
+			toString: () => selectionText,
 			rangeCount: 1,
 			getRangeAt: () => range,
 			anchorNode: { nodeType: 1, parentElement: null, closest: () => null },
@@ -502,15 +508,31 @@ describe("WebviewSelectionAdapter", () => {
 		// Scroll slightly down
 		rangeRect = { left: 20, bottom: 60, width: 100, height: 20 };
 		handlers.get("scroll")?.({});
-		expect(collector.read()).toMatchObject({ text: "hello", x: 20, y: 60 });
+		expect(collector.read()).toMatchObject({
+			text: "hello",
+			x: 20,
+			y: 60,
+			reposition: true,
+		});
 		const afterScroll = collector.read().sequence;
 		handlers.get("mouseup")?.({ clientX: 20, clientY: 60 });
 		expect(collector.read().sequence).toBeGreaterThan(afterScroll);
+		expect(collector.read()).toMatchObject({ captureSequence: 1, reposition: true });
+		selectionText = "world";
+		handlers.get("mouseup")?.({ clientX: 20, clientY: 60 });
+		handlers.get("scroll")?.({});
+		expect(collector.read()).toMatchObject({
+			text: "world",
+			captureSequence: 2,
+			reposition: true,
+		});
 
 		// Scroll completely out of view
 		rangeRect = { left: 20, bottom: -10, width: 100, height: 20 };
 		handlers.get("scroll")?.({});
-		expect(collector.read()).toMatchObject({ text: "" });
+		expect(collector.read()).toMatchObject({ text: "", shouldDismiss: false });
+		handlers.get("keydown")?.({ key: "Escape" });
+		expect(collector.read()).toMatchObject({ text: "", shouldDismiss: true });
 
 		env.adapter.stop();
 	});
@@ -630,27 +652,103 @@ describe("WebviewSelectionAdapter", () => {
 		expect(env.helper.getSnapshot().target?.text).toBe("hello");
 		env.adapter.stop();
 	});
-	it.each(["guest clear", "failure", "stop"])(
-		"releases an owned lookup on %s",
-		async (reason) => {
-			const env = setup();
-			env.adapter.start();
-			await flush();
-			env.executeJavaScript.mockResolvedValue(event);
+	it("keeps an owned lookup after a guest clears its selection", async () => {
+		const env = setup();
+		env.adapter.start();
+		await flush();
+		env.executeJavaScript.mockResolvedValue(event);
+		await vi.advanceTimersByTimeAsync(150);
+		env.helper.beginLookup();
+		env.executeJavaScript.mockResolvedValue({ ...event, sequence: 2, text: "" });
+		await vi.advanceTimersByTimeAsync(150);
+		expect(env.helper.getSnapshot()).toMatchObject({ visible: true, mode: "dictionary" });
+		expect(env.lookupDispose).not.toHaveBeenCalled();
+		env.executeJavaScript.mockResolvedValue({ ...event, sequence: 3, text: "world" });
+		await vi.advanceTimersByTimeAsync(150);
+		expect(env.helper.getSnapshot()).toMatchObject({
+			visible: true,
+			mode: "actions",
+			target: { text: "world" },
+		});
+		expect(env.lookupDispose).toHaveBeenCalledOnce();
+		env.adapter.stop();
+	});
+	it("keeps the dictionary popup when guest scrolling only repositions its selection", async () => {
+		const env = setup();
+		env.adapter.start();
+		await flush();
+		env.executeJavaScript.mockResolvedValue(event);
+		await vi.advanceTimersByTimeAsync(150);
+		env.helper.beginLookup();
+		env.executeJavaScript.mockResolvedValue({
+			...event,
+			sequence: 2,
+			y: 80,
+			reposition: true,
+		});
+		await vi.advanceTimersByTimeAsync(150);
+		expect(env.helper.getSnapshot()).toMatchObject({ visible: true, mode: "dictionary" });
+		expect(env.lookupDispose).not.toHaveBeenCalled();
+		env.adapter.stop();
+	});
+	it("accepts a new guest selection even if it scrolls before the next poll", async () => {
+		const env = setup();
+		env.adapter.start();
+		await flush();
+		env.executeJavaScript.mockResolvedValue(event);
+		await vi.advanceTimersByTimeAsync(150);
+		env.helper.beginLookup();
+		env.executeJavaScript.mockResolvedValue({
+			...event,
+			sequence: 3,
+			captureSequence: 2,
+			text: "world",
+			y: 80,
+			reposition: true,
+		});
+		await vi.advanceTimersByTimeAsync(150);
+		expect(env.helper.getSnapshot()).toMatchObject({
+			visible: true,
+			mode: "actions",
+			target: { text: "world" },
+		});
+		expect(env.lookupDispose).toHaveBeenCalledOnce();
+		env.adapter.stop();
+	});
+	it("closes the dictionary popup when the guest reports Escape", async () => {
+		const env = setup();
+		env.adapter.start();
+		await flush();
+		env.executeJavaScript.mockResolvedValue(event);
+		await vi.advanceTimersByTimeAsync(150);
+		env.helper.beginLookup();
+		env.executeJavaScript.mockResolvedValue({
+			...event,
+			sequence: 2,
+			text: "",
+			shouldDismiss: true,
+		});
+		await vi.advanceTimersByTimeAsync(150);
+		expect(env.helper.getSnapshot().visible).toBe(false);
+		expect(env.lookupDispose).toHaveBeenCalledOnce();
+		env.adapter.stop();
+	});
+	it.each(["failure", "stop"])("releases an owned lookup on %s", async (reason) => {
+		const env = setup();
+		env.adapter.start();
+		await flush();
+		env.executeJavaScript.mockResolvedValue(event);
+		await vi.advanceTimersByTimeAsync(150);
+		env.helper.beginLookup();
+		if (reason === "stop") env.adapter.stop();
+		else {
+			env.executeJavaScript.mockRejectedValueOnce(new Error("gone"));
 			await vi.advanceTimersByTimeAsync(150);
-			env.helper.beginLookup();
-			if (reason === "stop") env.adapter.stop();
-			else {
-				if (reason === "failure")
-					env.executeJavaScript.mockRejectedValueOnce(new Error("gone"));
-				else env.executeJavaScript.mockResolvedValue({ ...event, sequence: 2, text: "" });
-				await vi.advanceTimersByTimeAsync(150);
-			}
-			expect(env.lookupDispose).toHaveBeenCalledOnce();
-			expect(env.helper.getSnapshot().visible).toBe(false);
-			env.adapter.stop();
-		},
-	);
+		}
+		expect(env.lookupDispose).toHaveBeenCalledOnce();
+		expect(env.helper.getSnapshot().visible).toBe(false);
+		env.adapter.stop();
+	});
 
 	it("finishes a pending installation across a host interruption", async () => {
 		const env = setup();
@@ -794,6 +892,9 @@ describe("WebviewSelectionAdapter", () => {
 				expect(env.lookupDispose).not.toHaveBeenCalled();
 				expect(env.selections).toHaveLength(1);
 			}
+			handlers.get("mousedown")?.({});
+			await vi.advanceTimersByTimeAsync(150);
+			expect(env.helper.getSnapshot().mode).toBe("dictionary");
 			origin.isConnected = false;
 			const cleared = collector.read();
 			expect(cleared.text).toBe("");

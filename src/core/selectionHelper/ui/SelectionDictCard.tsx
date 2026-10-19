@@ -18,6 +18,7 @@ export interface SelectionDictCardProps {
 	onOpenInMainTab: (word: string) => void;
 	onFavorite?: (word: string) => void;
 	onClose: () => void;
+	onHeaderPointerDown?: React.PointerEventHandler<HTMLElement>;
 }
 
 export class SelectionContentBoundary extends React.Component<
@@ -97,41 +98,43 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 	return (
 		<dialog ref={cardRef} open className={styles.card} aria-label={activeWord} tabIndex={-1}>
 			<header className={styles.header}>
-				<div className={styles.titleRow}>
-					<h3 className={styles.word}>{activeWord}</h3>
-					<div className={styles.headerActions}>
-						{onFavorite && (
+				<div className={styles.dragHandle} onPointerDown={props.onHeaderPointerDown}>
+					<div className={styles.titleRow}>
+						<h3 className={styles.word}>{activeWord}</h3>
+						<div className={styles.headerActions}>
+							{onFavorite && (
+								<button
+									type="button"
+									className={styles.favoriteButton}
+									onClick={() => onFavorite(activeWord)}
+									aria-label={strings.favorite}
+									title={strings.favorite}
+								>
+									<Bookmark size={14} aria-hidden="true" />
+									<span>{strings.favorite}</span>
+								</button>
+							)}
 							<button
 								type="button"
-								className={styles.favoriteButton}
-								onClick={() => onFavorite(activeWord)}
-								aria-label={strings.favorite}
-								title={strings.favorite}
+								className={styles.closeButton}
+								onClick={onClose}
+								aria-label={strings.close}
 							>
-								<Bookmark size={14} aria-hidden="true" />
-								<span>{strings.favorite}</span>
+								{strings.close} <kbd>Esc</kbd>
 							</button>
-						)}
-						<button
-							type="button"
-							className={styles.closeButton}
-							onClick={onClose}
-							aria-label={strings.close}
-						>
-							{strings.close} <kbd>Esc</kbd>
-						</button>
+						</div>
 					</div>
+					{(activeSource?.pronunciations.length ?? 0) > 0 && (
+						<div className={styles.phonetics}>
+							{activeSource?.pronunciations.map((p, idx) => (
+								<span key={`${idx}-${p.label}-${p.phonetic}`}>
+									{p.label ? `[${p.label}] ` : ""}
+									{p.phonetic ? `/${p.phonetic}/` : ""}
+								</span>
+							))}
+						</div>
+					)}
 				</div>
-				{(activeSource?.pronunciations.length ?? 0) > 0 && (
-					<div className={styles.phonetics}>
-						{activeSource?.pronunciations.map((p, idx) => (
-							<span key={`${idx}-${p.label}-${p.phonetic}`}>
-								{p.label ? `[${p.label}] ` : ""}
-								{p.phonetic ? `/${p.phonetic}/` : ""}
-							</span>
-						))}
-					</div>
-				)}
 				{lookup.sources.length > 1 && (
 					<div className={styles.tabs} role="tablist" aria-label={strings.lookup}>
 						{lookup.sources.map((source) => (

@@ -90,6 +90,15 @@ export class SelectionListener {
 		};
 		const internal = (target: EventTarget | null) =>
 			isAssistantElement(target) || Boolean(this.containerEl?.contains(target as Node));
+		const handleOutsideInteraction = (ownerScoped = false) => {
+			const snapshot = this.deps.helper.getSnapshot();
+			if (snapshot.visible && snapshot.mode === "dictionary") {
+				this.deps.helper.interrupt();
+				return;
+			}
+			if (ownerScoped) this.dismiss();
+			else this.deps.helper.dismiss();
+		};
 		const read = (target: EventTarget | null, x = 0, y = 0) => {
 			const captured = captureSelection(doc, target, { x, y });
 			return captured && this.host ? toHostCoordinates(doc, this.host, captured) : null;
@@ -165,14 +174,14 @@ export class SelectionListener {
 				if (Date.now() < suppressMouseUntil || internal(event.target)) return;
 				touchContext = null;
 				cancelTimer();
-				this.deps.helper.dismiss();
+				handleOutsideInteraction();
 			},
 			true,
 		);
 		bind(
 			"scroll",
 			(event) => {
-				if (!internal(event.target)) this.dismiss();
+				if (!internal(event.target)) handleOutsideInteraction(true);
 			},
 			true,
 		);
@@ -192,13 +201,13 @@ export class SelectionListener {
 				moved: false,
 			};
 			// Do not prevent default or focus anything: native menus and handles remain usable.
-			this.deps.helper.dismiss();
+			handleOutsideInteraction();
 		});
 		bind("touchmove", () => {
 			if (touchGesture) {
 				touchGesture.moved = true;
 				cancelTimer();
-				this.dismiss();
+				handleOutsideInteraction(true);
 			}
 		});
 		bind("touchcancel", () => {
@@ -226,13 +235,13 @@ export class SelectionListener {
 		});
 		bind("selectionchange", () => {
 			if (touchGesture) {
-				this.dismiss();
+				handleOutsideInteraction(true);
 				cancelTimer();
 			} else if (touchContext) {
 				const selection = read(touchContext.target);
 				if (!selection || JSON.stringify(selection) === lastTouchSelection) return;
 				// Native selection handles may emit selectionchange without touchstart.
-				this.dismiss();
+				handleOutsideInteraction(true);
 				scheduleTouch();
 			}
 		});

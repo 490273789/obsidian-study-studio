@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { SelectionHelper } from "../../domain/selectionHelper";
+import type { SelectionLookupSession } from "../../domain/types";
 import { SelectionListener } from "../selectionListener";
 
 const roots = vi.hoisted(() => ({ create: vi.fn() }));
@@ -70,6 +71,38 @@ function helper(modifier: "none" | "alt" = "none") {
 			selectedDictionaries: [],
 		}),
 		dictionary: { sources: () => [], startLookup: () => null, openInMainTab: async () => {} },
+		translation: { available: () => true, openPrefilled: async () => {} },
+	});
+}
+function dictionaryHelper() {
+	const session: SelectionLookupSession = {
+		getSnapshot: () => ({
+			query: "hello",
+			activeSourceId: "dictionary",
+			aiEngineName: "",
+			status: "ready",
+			sources: [],
+		}),
+		subscribe: () => () => {},
+		selectSource: () => {},
+		selectSection: () => {},
+		lookup: async () => {},
+		retry: async () => {},
+		generateAi: async () => {},
+		dispose: () => {},
+	};
+	return new SelectionHelper({
+		settings: () => ({
+			enabled: true,
+			modifier: "none",
+			dictionaryOrder: [],
+			selectedDictionaries: [],
+		}),
+		dictionary: {
+			sources: () => [{ id: "dictionary", label: "Dictionary", kind: "dictionary" }],
+			startLookup: () => session,
+			openInMainTab: async () => {},
+		},
 		translation: { available: () => true, openPrefilled: async () => {} },
 	});
 }
@@ -273,6 +306,37 @@ describe("SelectionListener", () => {
 		env.emit("mouseup", mouse(env.element));
 		env.emit("keydown", { key: "Escape" });
 		expect(shared.getSnapshot().visible).toBe(false);
+		listener.stop();
+	});
+	it("keeps the dictionary popup through outside gestures and replaces it on a new selection", () => {
+		const env = environment();
+		const shared = dictionaryHelper();
+		const listener = listen(env, shared);
+		env.emit("mouseup", mouse(env.element));
+		shared.beginLookup();
+		expect(shared.getSnapshot().mode).toBe("dictionary");
+
+		env.emit("mousedown", mouse(env.element));
+		env.setText("");
+		env.emit("mouseup", mouse(env.element));
+		expect(shared.getSnapshot()).toMatchObject({ visible: true, mode: "dictionary" });
+		env.setText("hello");
+		env.emit("mousedown", mouse(env.element));
+		env.emit("mouseup", mouse(env.element));
+		env.emit("scroll", { target: env.element });
+		env.emit("touchstart", touch(env.element));
+		env.emit("touchmove", touch(env.element));
+		expect(shared.getSnapshot()).toMatchObject({ visible: true, mode: "dictionary" });
+
+		env.setText("world");
+		env.setX(140);
+		env.emit("mousedown", mouse(env.element));
+		env.emit("mouseup", mouse(env.element));
+		expect(shared.getSnapshot()).toMatchObject({
+			visible: true,
+			mode: "actions",
+			target: { text: "world", x: 140 },
+		});
 		listener.stop();
 	});
 	it("binds accessible frames and releases navigation and removed-frame sources", () => {

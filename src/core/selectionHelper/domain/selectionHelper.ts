@@ -117,9 +117,19 @@ export class SelectionHelper {
 		}
 		const text = candidate.text.trim();
 		if (!text) {
-			this.clearSelection();
+			// A click may collapse the source selection without dismissing an open lookup.
+			if (this.snapshot.mode !== "dictionary") this.clearSelection();
 			return false;
 		}
+		const current = this.snapshot.target;
+		if (
+			this.snapshot.mode === "dictionary" &&
+			current?.source === source &&
+			current.text === text &&
+			current.x === candidate.x &&
+			current.y === candidate.y
+		)
+			return false;
 
 		const sources = selectedSources(
 			orderSelectionDictionaries(this.options.dictionary.sources(), settings.dictionaryOrder),

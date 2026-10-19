@@ -98,9 +98,15 @@
 
 	.header {
 		flex-shrink: 0;
-		padding: 12px 14px 8px;
 		border-bottom: 1px solid var(--fc-border-color);
 		background: var(--background-secondary);
+	}
+
+	.dragHandle {
+		padding: 12px 14px 8px;
+		cursor: grab;
+		touch-action: none;
+		user-select: none;
 	}
 
 	.titleRow {
@@ -137,10 +143,13 @@
 	}
 
 	.tabs {
+		cursor: default;
+		touch-action: pan-x;
 		display: flex;
 		gap: 4px;
 		overflow-x: auto;
-		margin-top: 8px;
+		margin: 0 14px 8px;
+		padding-top: 8px;
 		padding-bottom: 2px;
 
 		&::-webkit-scrollbar {
