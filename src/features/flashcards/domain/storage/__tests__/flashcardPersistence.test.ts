@@ -94,9 +94,10 @@ describe("createFlashcardPersistence", () => {
 	});
 
 	it("routes grouped journal configuration into the session commit path", async () => {
+		const append = vi.fn(async () => {});
 		const journal: SessionJournalStore = {
 			load: vi.fn(async () => []),
-			append: vi.fn(async () => {}),
+			append,
 			clear: vi.fn(async () => {}),
 		};
 		const { persistence } = fixture(journal);
@@ -117,7 +118,7 @@ describe("createFlashcardPersistence", () => {
 		);
 
 		expect(result.kind).toBe("applied");
-		expect(journal.append).toHaveBeenCalledOnce();
+		expect(append).toHaveBeenCalledOnce();
 		persistence.dispose();
 	});
 

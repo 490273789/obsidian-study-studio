@@ -35,6 +35,7 @@ import type {
 	SessionSourceChange,
 } from "../sessions/sessionPersistence";
 import { formatSessionCommit, type SessionWriteSet } from "./sessionCommitFormat";
+import { CardCodec } from "./cardCodec";
 import type { SessionJournalEntry, SessionJournalStore } from "./sessionJournal";
 import { appendStudyHistory, createWordListHistoryEntry } from "../history/studyHistory";
 import {
@@ -53,9 +54,7 @@ import {
 	type LegacyFlashcardDocument,
 	type PersistedCardLearningState,
 	type PersistedDeckLearningState,
-	type SerializedCard,
 	type SerializedDeck,
-	type SerializedFSRSCard,
 } from "./persistenceTypes";
 
 export type {
@@ -148,9 +147,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	private announcedStructureRevision = 0;
 	private announcedChallengeProgressRevision = 0;
 	private cardIndex = new Map<string, CardIndexLocation>();
-	private serializedDeckCache = new WeakMap<Deck, SerializedDeck>();
-	private serializedCardCache = new WeakMap<FlashCard, SerializedCard>();
-	private serializedFSRSCardCache = new WeakMap<Card, SerializedFSRSCard>();
+	private readonly codec = new CardCodec();
 	private persistedCardStateCache = new WeakMap<FlashCard, PersistedCardLearningState>();
 	private deckDueTimes = new Map<string, number[]>();
 	private deckDueTimesValid = false;
@@ -587,7 +584,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 				cardUpdate: {
 					deckId: update.deckId,
 					cardId: update.cardId,
-					fsrsCard: this.serializeFSRSCard(update.fsrsCard),
+					fsrsCard: this.codec.fsrsCard(update.fsrsCard),
 				},
 			});
 		}
@@ -912,9 +909,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 		this.decks = new Map();
 		this.availableTags = [];
 		this.hasAvailableTagsSnapshotValue = false;
-		this.serializedDeckCache = new WeakMap();
-		this.serializedCardCache = new WeakMap();
-		this.serializedFSRSCardCache = new WeakMap();
+		this.codec.reset();
 		this.persistedCardStateCache = new WeakMap();
 		this.deckDueTimes = new Map();
 		const cache = this.deckIndexRequested ? await this.deckIndexCache?.load() : null;
@@ -932,7 +927,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	private restoreLegacyDocument(legacy: LegacyFlashcardDocument): void {
 		this.journalSeq = 0;
 		this.decks = new Map(
-			Object.entries(legacy.decks).map(([id, deck]) => [id, this.deserializeDeck(deck)]),
+			Object.entries(legacy.decks).map(([id, deck]) => [id, this.codec.decodeDeck(deck)]),
 		);
 		this.studyHistory = [...(legacy.studyHistory ?? [])];
 		this.dailyLearningActivity = restoreDailyLearningActivity(undefined);
@@ -1121,7 +1116,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 				cardUpdates.push({
 					deckId: entry.cardUpdate.deckId,
 					cardId: entry.cardUpdate.cardId,
-					fsrsCard: this.deserializeFSRSCard(entry.cardUpdate.fsrsCard),
+					fsrsCard: this.codec.decodeFsrsCard(entry.cardUpdate.fsrsCard),
 				});
 				continue;
 			}
@@ -1302,7 +1297,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 		const cached = this.persistedCardStateCache.get(card);
 		if (cached) return cached;
 		const state: PersistedCardLearningState = {
-			fsrsCard: this.serializeFSRSCard(card.fsrsCard),
+			fsrsCard: this.codec.fsrsCard(card.fsrsCard),
 		};
 		this.persistedCardStateCache.set(card, state);
 		return state;
@@ -1327,7 +1322,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	): Promise<void> {
 		if (!this.deckIndexCache) return;
 		const serializedDecks: Record<string, SerializedDeck> = {};
-		for (const [id, deck] of decks) serializedDecks[id] = this.getSerializedDeck(deck);
+		for (const [id, deck] of decks) serializedDecks[id] = this.codec.deck(deck);
 		await this.deckIndexCache.save({
 			version: DECK_INDEX_CACHE_VERSION,
 			updatedAt: new Date().toISOString(),
@@ -1341,7 +1336,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 		learning: LearningStateDocument,
 	): void {
 		for (const [deckId, serializedDeck] of Object.entries(cache.decks)) {
-			const deck = this.deserializeDeck(serializedDeck);
+			const deck = this.codec.decodeDeck(serializedDeck);
 			const persistedDeck = learning.decks[deckId];
 			if (persistedDeck) {
 				deck.studyCount = persistedDeck.studyCount;
@@ -1349,7 +1344,8 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 			}
 			for (const card of deck.cards) {
 				const persistedCard = learning.cards[card.id];
-				if (persistedCard) card.fsrsCard = this.deserializeFSRSCard(persistedCard.fsrsCard);
+				if (persistedCard)
+					card.fsrsCard = this.codec.decodeFsrsCard(persistedCard.fsrsCard);
 			}
 			this.decks.set(deckId, deck);
 		}
@@ -1381,7 +1377,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 				id: cardId,
 				front: "",
 				back: "",
-				fsrsCard: this.deserializeFSRSCard(state.fsrsCard),
+				fsrsCard: this.codec.decodeFsrsCard(state.fsrsCard),
 				sourceFile: state.sourceFile ?? "",
 				indexInFile: deck.cards.length,
 			});
@@ -1395,89 +1391,6 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 			new Set(value.filter((tag): tag is string => typeof tag === "string")),
 		);
 		this.hasAvailableTagsSnapshotValue = true;
-	}
-
-	private getSerializedDeck(deck: Deck): SerializedDeck {
-		const cached = this.serializedDeckCache.get(deck);
-		if (cached) return cached;
-		const serialized = this.serializeDeck(deck);
-		this.serializedDeckCache.set(deck, serialized);
-		return serialized;
-	}
-
-	private serializeDeck(deck: Deck): SerializedDeck {
-		return {
-			...deck,
-			cards: deck.cards.map((card) => this.getSerializedCard(card)),
-		};
-	}
-
-	private getSerializedCard(card: FlashCard): SerializedCard {
-		const cached = this.serializedCardCache.get(card);
-		if (cached) return cached;
-		const serialized = this.serializeCard(card);
-		this.serializedCardCache.set(card, serialized);
-		return serialized;
-	}
-
-	private serializeCard(card: FlashCard): SerializedCard {
-		return {
-			...card,
-			fsrsCard: this.serializeFSRSCard(card.fsrsCard),
-		};
-	}
-
-	private serializeFSRSCard(card: Card): SerializedFSRSCard {
-		const cached = this.serializedFSRSCardCache.get(card);
-		if (cached) return cached;
-		const { due, last_review, ...serializedCard } = card;
-
-		const serialized: SerializedFSRSCard = {
-			...serializedCard,
-			due: due instanceof Date ? due.toISOString() : due,
-			last_review:
-				last_review instanceof Date ? last_review.toISOString() : (last_review ?? null),
-			learning_steps: serializedCard.learning_steps ?? 0,
-		};
-		this.serializedFSRSCardCache.set(card, serialized);
-		return serialized;
-	}
-
-	private deserializeDeck(data: SerializedDeck): Deck {
-		return {
-			...data,
-			cards: data.cards.map((card) => this.deserializeCard(card)),
-		};
-	}
-
-	private deserializeCard(
-		data: SerializedCard & {
-			question?: string;
-			answer?: string;
-		},
-	): FlashCard {
-		return {
-			...data,
-			front: data.front ?? data.question ?? "",
-			back: data.back ?? data.answer ?? "",
-			explanation: data.explanation?.trim() || undefined,
-			fsrsCard: this.deserializeFSRSCard(data.fsrsCard),
-		};
-	}
-
-	private deserializeFSRSCard(data: SerializedFSRSCard): Card {
-		return {
-			due: new Date(data.due),
-			stability: data.stability,
-			difficulty: data.difficulty,
-			elapsed_days: data.elapsed_days,
-			scheduled_days: data.scheduled_days,
-			reps: data.reps,
-			lapses: data.lapses,
-			state: data.state,
-			last_review: data.last_review ? new Date(data.last_review) : undefined,
-			learning_steps: data.learning_steps ?? 0,
-		};
 	}
 
 	private refreshDerivedState(): void {
