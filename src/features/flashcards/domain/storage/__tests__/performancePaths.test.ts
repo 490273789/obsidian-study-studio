@@ -88,7 +88,7 @@ async function fixture(options: FixtureOptions = {}) {
 			content: `${deck.tag}\n${deck.cards.map((card) => `<!-- wsr-card-id: ${card.id} -->\n${card.front}\n??\n${card.back}\n;;`).join("\n")}`,
 		};
 	});
-	await repo.commit(state);
+	await repo.createContinuityStateStore().commit(state);
 	const identity = createCardIdentityContinuity({
 		state: repo.createContinuityStateStore(),
 		sources: { list: async () => sources, replaceIfUnchanged: vi.fn() },

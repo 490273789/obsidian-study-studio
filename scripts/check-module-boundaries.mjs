@@ -2,6 +2,15 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 const sourceRoot = path.resolve("src");
+const storageCommitFormat = path.join(
+	sourceRoot,
+	"features",
+	"flashcards",
+	"domain",
+	"storage",
+	"sessionCommitFormat",
+);
+const storageRoot = path.join(sourceRoot, "features", "flashcards", "domain", "storage");
 const files = (await readdir(sourceRoot, { recursive: true }))
 	.filter((file) => /\.(?:ts|tsx)$/.test(file))
 	.map((file) => path.join(sourceRoot, file));
@@ -27,6 +36,11 @@ for (const file of files) {
 		}
 		if (isCore(file) && /[\\/]features[\\/][^\\/]+[\\/]ui(?:[\\/]|$)/.test(target)) {
 			violations.push(`${relative(file)} imports feature UI (${specifier})`);
+		}
+		if (target === storageCommitFormat && !file.startsWith(storageRoot + path.sep)) {
+			violations.push(
+				`${relative(file)} imports storage-private session commit formatting (${specifier})`,
+			);
 		}
 	}
 }

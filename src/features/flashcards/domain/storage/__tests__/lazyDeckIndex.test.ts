@@ -9,6 +9,7 @@ import {
 	type LearningStateDocument,
 } from "../flashcardRepository";
 import { MemoryFlashcardAuthority } from "./memoryFlashcardAuthority";
+import { recordCommit } from "./sessionCommitBuilders";
 
 const PATH = "notes/words.md";
 const ID = "550e8400-e29b-41d4-a716-446655440000";
@@ -169,12 +170,19 @@ describe("deferred deck index", () => {
 			await f.repo.load();
 			if (kind === "word-list") await f.repo.recordWordListVisit(PATH, "Words", 0, 6_000);
 			else
-				await f.repo.commitSessionTransition({
-					cardUpdates: [],
-					spellingAttempts: [],
-					historyEntries: [],
-					incrementStudyCountFor: [PATH],
-				});
+				await f.repo.commitSession(
+					recordCommit({
+						mode: "study",
+						deckId: PATH,
+						deckName: "Words",
+						occurredAt: 1_000,
+						activity: {
+							completion: "completed",
+							answerCount: 1,
+							durationSeconds: 0,
+						},
+					}),
+				);
 			expect(f.cache.load).toHaveBeenCalledOnce();
 			const snapshot = await f.authority.read();
 			if (snapshot.content.kind !== "current") throw new Error("Expected current learning");

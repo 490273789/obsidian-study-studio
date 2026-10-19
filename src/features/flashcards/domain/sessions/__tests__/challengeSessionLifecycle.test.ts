@@ -532,12 +532,8 @@ describe("challenge reconciliation and concurrency", () => {
 			if (result.kind !== "applied") return result;
 			const saved = h.repo.getChallengeProgress()!;
 			const replacement = { ...saved, round: { ...saved.round!, id: "newer-round" } };
-			await h.repo.commitSessionTransition({
-				cardUpdates: [],
-				spellingAttempts: [],
-				incrementStudyCountFor: [],
-				historyEntries: [],
-				challengeProgress: replacement,
+			await commit({
+				challenge: { progress: replacement, expectedProgress: saved },
 			});
 			return result;
 		});
@@ -599,16 +595,11 @@ describe("challenge reconciliation and concurrency", () => {
 		await act(h.lifecycle, { kind: "exit" });
 		await h.start("spelling");
 		const current = h.repo.getChallengeProgress();
-		await expect(
-			h.repo.commitSessionTransition({
-				cardUpdates: [],
-				spellingAttempts: [],
-				incrementStudyCountFor: [],
-				historyEntries: [],
-				challengeProgress: saved,
-				expectedChallengeProgress: saved,
+		expect(
+			await h.repo.commitSession({
+				challenge: { progress: saved, expectedProgress: saved },
 			}),
-		).rejects.toThrow("Challenge progress changed");
+		).toMatchObject({ kind: "rejected", reason: "challenge-progress-changed" });
 		expect(h.repo.getChallengeProgress()).toEqual(current);
 	});
 	it("revalidates disabled spelling decks before accepting an answer", async () => {

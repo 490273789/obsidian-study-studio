@@ -11,6 +11,13 @@ import { WorkbenchStore, type StorageBackend } from "../../../../../core/storage
 import type { Deck, FlashCard } from "../../../../../core/shared/types";
 import { DEFAULT_SETTINGS } from "../../../../../core/host/settingsSlices";
 import type { ChallengeProgress } from "../../sessions/challengeSessionEngine";
+import {
+	answerCommit,
+	challengeCommit,
+	mergeCommits,
+	recordCommit,
+	spellingCommit,
+} from "./sessionCommitBuilders";
 
 function createMockBackend(initialData: unknown = null): StorageBackend & {
 	data: unknown;
@@ -140,12 +147,7 @@ describe("FlashcardRepository", () => {
 		const initial = repo.getSpellingProgress();
 		expect(repo.getSpellingProgress()).toBe(initial);
 		expect(Object.isFrozen(initial)).toBe(true);
-		await repo.commitSessionTransition({
-			cardUpdates: [],
-			incrementStudyCountFor: [],
-			historyEntries: [],
-			spellingAttempts: [{ cardId: "c1", correct: true, attemptedAt: 100 }],
-		});
+		await repo.commitSession(spellingCommit({ cardId: "c1", correct: true, attemptedAt: 100 }));
 		const committed = repo.getSpellingProgress();
 		expect(committed).not.toBe(initial);
 		expect(repo.getSpellingProgress()).toBe(committed);
@@ -154,14 +156,11 @@ describe("FlashcardRepository", () => {
 		expect(committed.c1?.attempts).toBe(1);
 		expect(initial).toEqual({});
 		authority.failNextCommit = true;
-		await expect(
-			repo.commitSessionTransition({
-				cardUpdates: [],
-				incrementStudyCountFor: [],
-				historyEntries: [],
-				spellingAttempts: [{ cardId: "c1", correct: false, attemptedAt: 200 }],
-			}),
-		).rejects.toMatchObject({ code: "authority-write-failed" });
+		expect(
+			await repo.commitSession(
+				spellingCommit({ cardId: "c1", correct: false, attemptedAt: 200 }),
+			),
+		).toMatchObject({ kind: "failed" });
 		expect(repo.getSpellingProgress()).toBe(committed);
 		repo.dispose();
 	});
@@ -356,45 +355,33 @@ describe("FlashcardRepository", () => {
 		await repo.loadDeckIndex();
 		repo.subscribe(listener);
 
-		await repo.commitSessionTransition({
-			cardUpdates: [
-				{
-					cardId: "c1",
+		const occurredAt = new Date(2026, 2, 1, 12).getTime();
+		await repo.commitSession(
+			mergeCommits(
+				answerCommit({
 					deckId: "deck-1",
+					cardId: "c1",
 					fsrsCard: {
 						...createEmptyCard(),
 						due: new Date("2026-03-05T00:00:00.000Z"),
 						state: State.Review,
 					},
-				},
-			],
-			incrementStudyCountFor: ["deck-1"],
-			spellingAttempts: [
-				{
-					cardId: "c1",
-					correct: true,
-					attemptedAt: Date.now(),
-				},
-			],
-			historyEntries: [
-				{
+				}),
+				spellingCommit({ cardId: "c1", correct: true, attemptedAt: Date.now() }),
+				recordCommit({
+					mode: "study",
 					deckId: "deck-1",
 					deckName: "Test Deck",
-					mode: "study",
-					cardCount: 1,
-					duration: 5000,
-					occurredAt: new Date(2026, 2, 1, 12).getTime(),
-				},
-			],
-			learningActivity: {
-				kind: "session",
-				mode: "study",
-				completion: "completed",
-				answerCount: 3,
-				durationSeconds: 5000,
-				occurredAt: new Date(2026, 2, 1, 12).getTime(),
-			},
-		});
+					occurredAt,
+					activity: {
+						completion: "completed",
+						answerCount: 3,
+						durationSeconds: 5000,
+					},
+					history: { cardCount: 1, durationSeconds: 5000 },
+				}),
+			),
+		);
 
 		const updatedDeck = repo.getDeck("deck-1")!;
 		expect(updatedDeck.studyCount).toBe(1);
@@ -435,30 +422,23 @@ describe("FlashcardRepository", () => {
 		const occurredAt = new Date(2026, 2, 5, 12).getTime();
 		const progress = challengeProgress();
 
-		await repo.commitSessionTransition({
-			cardUpdates: [],
-			incrementStudyCountFor: [],
-			spellingAttempts: [],
-			historyEntries: [
-				{
+		await repo.commitSession(
+			mergeCommits(
+				recordCommit({
+					mode: "challenge",
 					deckId: "challenge",
 					deckName: "Challenge",
-					mode: "challenge",
-					cardCount: 1,
-					duration: 20,
 					occurredAt,
-				},
-			],
-			learningActivity: {
-				kind: "session",
-				mode: "challenge",
-				completion: "completed",
-				answerCount: 2,
-				durationSeconds: 20,
-				occurredAt,
-			},
-			challengeProgress: progress,
-		});
+					activity: {
+						completion: "completed",
+						answerCount: 2,
+						durationSeconds: 20,
+					},
+					history: { cardCount: 1, durationSeconds: 20 },
+				}),
+				challengeCommit({ progress, expectedProgress: null }),
+			),
+		);
 
 		expect(repo.getChallengeProgress()).toEqual(progress);
 		expect(repo.getChallengeProgress()).not.toBe(progress);
@@ -482,15 +462,11 @@ describe("FlashcardRepository", () => {
 		const revision = repo.getRevision();
 		authority.failNextCommit = true;
 
-		await expect(
-			repo.commitSessionTransition({
-				cardUpdates: [],
-				incrementStudyCountFor: [],
-				spellingAttempts: [],
-				historyEntries: [],
-				challengeProgress: challengeProgress(),
-			}),
-		).rejects.toMatchObject({ code: "authority-write-failed" });
+		expect(
+			await repo.commitSession(
+				challengeCommit({ progress: challengeProgress(), expectedProgress: null }),
+			),
+		).toMatchObject({ kind: "failed" });
 
 		expect(repo.getChallengeProgress()).toBeNull();
 		expect(repo.getRevision()).toBe(revision);
@@ -726,29 +702,16 @@ describe("FlashcardRepository", () => {
 		authority.conflictNextCommit = true;
 		const occurredAt = new Date(2026, 2, 1, 23, 59).getTime();
 
-		await repo.commitSessionTransition({
-			cardUpdates: [],
-			spellingAttempts: [],
-			incrementStudyCountFor: [],
-			historyEntries: [
-				{
-					deckId: "deck",
-					deckName: "Deck",
-					mode: "practice",
-					cardCount: 2,
-					duration: 30,
-					occurredAt,
-				},
-			],
-			learningActivity: {
-				kind: "session",
+		await repo.commitSession(
+			recordCommit({
 				mode: "practice",
-				completion: "completed",
-				answerCount: 2,
-				durationSeconds: 30,
+				deckId: "deck",
+				deckName: "Deck",
 				occurredAt,
-			},
-		});
+				activity: { completion: "completed", answerCount: 2, durationSeconds: 30 },
+				history: { cardCount: 2, durationSeconds: 30 },
+			}),
+		);
 
 		expect(repo.getLearningFootprint(new Date(2026, 2, 1, 23, 59)).today).toMatchObject({
 			date: "2026-03-01",
@@ -774,7 +737,7 @@ describe("FlashcardRepository", () => {
 		const state = await repo.createContinuityStateStore().load();
 		const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
-		await repo.commit(state);
+		await repo.createContinuityStateStore().commit(state);
 
 		await vi.waitFor(() => expect(cache.save).toHaveBeenCalledOnce());
 		expect(repo.getRevision()).toBe(2);
@@ -837,7 +800,7 @@ describe("FlashcardRepository", () => {
 			"deck-1",
 			makeDeck("deck-1", [makeCard("c1", State.New, new Date("2026-03-01T00:00:00Z"), 0)]),
 		);
-		await repo.commit(state);
+		await repo.createContinuityStateStore().commit(state);
 
 		const deck = repo.getDeck("deck-1");
 		const structureRevision = repo.getDeckStructureRevision();
@@ -876,11 +839,11 @@ describe("FlashcardRepository", () => {
 			"deck-1",
 			makeDeck("deck-1", [makeCard("c1", State.New, new Date("2026-03-01T00:00:00Z"), 0)]),
 		);
-		await repo.commit(state);
+		await repo.createContinuityStateStore().commit(state);
 		expect(save).toHaveBeenCalledTimes(1);
 
 		const unchanged = await repo.createContinuityStateStore().load();
-		await repo.commit(unchanged);
+		await repo.createContinuityStateStore().commit(unchanged);
 
 		// The no-op sync must not rewrite the rebuildable cache.
 		expect(save).toHaveBeenCalledTimes(1);
@@ -910,7 +873,7 @@ describe("FlashcardRepository", () => {
 			"deck-1",
 			makeDeck("deck-1", [makeCard("c1", State.Review, new Date("2026-03-01T00:00:00Z"), 0)]),
 		);
-		await repo.commit(state);
+		await repo.createContinuityStateStore().commit(state);
 
 		// The authority adopts the repository's copy-on-write document by reference,
 		// so every later transition must produce a new document instead of mutating
@@ -919,21 +882,16 @@ describe("FlashcardRepository", () => {
 		const committedJson = JSON.stringify(committed);
 
 		for (const day of [2, 3]) {
-			await repo.commitSessionTransition({
-				cardUpdates: [
-					{
-						deckId: "deck-1",
-						cardId: "c1",
-						fsrsCard: {
-							...createEmptyCard(new Date(`2026-03-0${day}T00:00:00Z`)),
-							reps: day,
-						},
+			await repo.commitSession(
+				answerCommit({
+					deckId: "deck-1",
+					cardId: "c1",
+					fsrsCard: {
+						...createEmptyCard(new Date(`2026-03-0${day}T00:00:00Z`)),
+						reps: day,
 					},
-				],
-				spellingAttempts: [],
-				incrementStudyCountFor: [],
-				historyEntries: [],
-			});
+				}),
+			);
 		}
 
 		expect(JSON.stringify(committed)).toBe(committedJson);

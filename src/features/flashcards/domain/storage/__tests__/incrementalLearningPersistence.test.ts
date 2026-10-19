@@ -2,19 +2,12 @@ import { createEmptyCard } from "ts-fsrs";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { DEFAULT_SETTINGS } from "../../../../../core/host/settingsSlices";
 import type { Deck, FlashCard } from "../../../../../core/shared/types";
-import type { SessionWriteSet } from "../sessionCommitFormat";
 import { FlashcardRepository, type SerializedDeck } from "../flashcardRepository";
 import type { LearningStateDocument } from "../persistenceTypes";
 import { MemoryFlashcardAuthority } from "./memoryFlashcardAuthority";
+import { answerCommit, mergeCommits, recordCommit, spellingCommit } from "./sessionCommitBuilders";
 
 vi.mock("obsidian", () => ({ normalizePath: (value: string) => value }));
-
-const EMPTY_TRANSITION: SessionWriteSet = {
-	cardUpdates: [],
-	incrementStudyCountFor: [],
-	historyEntries: [],
-	spellingAttempts: [],
-};
 
 function makeCard(id: string, index: number): FlashCard {
 	return {
@@ -42,7 +35,7 @@ async function fixture(count = 2) {
 		lastStudied: null,
 	};
 	state.decks.set(deck.id, deck);
-	await repo.commit(state);
+	await repo.createContinuityStateStore().commit(state);
 	const baseline = commit.mock.calls[0]![1].learning;
 	commit.mockClear();
 	return { authority, commit, repo, baseline };
@@ -50,10 +43,9 @@ async function fixture(count = 2) {
 
 function answer(repo: FlashcardRepository, reps: number): Promise<unknown> {
 	const card = repo.getCard("deck.md", "c0")!;
-	return repo.commitSessionTransition({
-		...EMPTY_TRANSITION,
-		cardUpdates: [{ deckId: "deck.md", cardId: "c0", fsrsCard: { ...card.fsrsCard, reps } }],
-	});
+	return repo.commitSession(
+		answerCommit({ deckId: "deck.md", cardId: "c0", fsrsCard: { ...card.fsrsCard, reps } }),
+	);
 }
 
 async function readLearning(authority: MemoryFlashcardAuthority): Promise<LearningStateDocument> {
@@ -91,11 +83,18 @@ describe("incremental learning persistence", () => {
 
 	it("reuses the cards record for spelling, deck statistics, and word-list history", async () => {
 		const f = await fixture();
-		await f.repo.commitSessionTransition({
-			...EMPTY_TRANSITION,
-			incrementStudyCountFor: ["deck.md"],
-			spellingAttempts: [{ cardId: "c0", correct: true, attemptedAt: Date.now() }],
-		});
+		await f.repo.commitSession(
+			mergeCommits(
+				spellingCommit({ cardId: "c0", correct: true, attemptedAt: Date.now() }),
+				recordCommit({
+					mode: "study",
+					deckId: "deck.md",
+					deckName: "words",
+					occurredAt: Date.now(),
+					activity: { completion: "completed", answerCount: 1, durationSeconds: 0 },
+				}),
+			),
+		);
 		const now = Date.now();
 		await f.repo.recordWordListVisit("deck.md", "words", now - 6_000, now);
 		for (const [, candidate] of f.commit.mock.calls) {
@@ -111,7 +110,7 @@ describe("incremental learning persistence", () => {
 	it("keeps the committed baseline and live card unchanged on failure before retrying", async () => {
 		const f = await fixture();
 		f.authority.failNextCommit = true;
-		await expect(answer(f.repo, 5)).rejects.toMatchObject({ code: "authority-write-failed" });
+		expect(await answer(f.repo, 5)).toMatchObject({ kind: "failed" });
 		expect(f.repo.getCard("deck.md", "c0")?.fsrsCard.reps).toBe(0);
 		expect((await readLearning(f.authority)).cards.c0?.fsrsCard.reps).toBe(0);
 		await answer(f.repo, 1);
@@ -149,14 +148,15 @@ describe("incremental learning persistence", () => {
 		const moved = { ...original.cards[0]!, sourceFile: "moved.md" };
 		state.decks.set("deck.md", { ...original, cards: [makeCard("added", 0)] });
 		state.decks.set("moved.md", { ...original, id: "moved.md", cards: [moved] });
-		await f.repo.commit(state);
+		await f.repo.createContinuityStateStore().commit(state);
 		// The answer still carries the original deck ID; stable identity locates the move.
-		await f.repo.commitSessionTransition({
-			...EMPTY_TRANSITION,
-			cardUpdates: [
-				{ deckId: "deck.md", cardId: "c0", fsrsCard: { ...moved.fsrsCard, reps: 2 } },
-			],
-		});
+		await f.repo.commitSession(
+			answerCommit({
+				deckId: "deck.md",
+				cardId: "c0",
+				fsrsCard: { ...moved.fsrsCard, reps: 2 },
+			}),
+		);
 		const saved = await readLearning(f.authority);
 		expect(Object.keys(saved.cards).sort()).toEqual(["added", "c0"]);
 		expect(saved.cards.c0?.fsrsCard.reps).toBe(2);

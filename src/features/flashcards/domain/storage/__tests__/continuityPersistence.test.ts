@@ -12,6 +12,7 @@ import { FlashcardRepository, type SerializedDeck } from "../flashcardRepository
 import { decodePersistedLearning } from "../persistedLearningCodec";
 import type { LearningStateDocument } from "../persistenceTypes";
 import { MemoryFlashcardAuthority } from "./memoryFlashcardAuthority";
+import { answerCommit, mergeCommits, recordCommit, spellingCommit } from "./sessionCommitBuilders";
 
 const PATH = "notes/words.md";
 const ID = "550e8400-e29b-41d4-a716-446655440000";
@@ -88,12 +89,22 @@ describe("continuity learning persistence", () => {
 	it("rebuilds a missing deferred cache without losing FSRS or deck study metadata", async () => {
 		const f = await fixture();
 		const card = f.repo.getCard(PATH, ID)!;
-		await f.repo.commitSessionTransition({
-			cardUpdates: [{ deckId: PATH, cardId: ID, fsrsCard: { ...card.fsrsCard, reps: 3 } }],
-			spellingAttempts: [],
-			incrementStudyCountFor: [PATH],
-			historyEntries: [],
-		});
+		await f.repo.commitSession(
+			mergeCommits(
+				answerCommit({
+					deckId: PATH,
+					cardId: ID,
+					fsrsCard: { ...card.fsrsCard, reps: 3 },
+				}),
+				recordCommit({
+					mode: "study",
+					deckId: PATH,
+					deckName: "words",
+					occurredAt: Date.now(),
+					activity: { completion: "completed", answerCount: 1, durationSeconds: 0 },
+				}),
+			),
+		);
 		const before = structuredClone(f.store.getPartition("learning"));
 		f.repo.dispose();
 		f.cache.load.mockResolvedValueOnce(null);
@@ -207,7 +218,7 @@ describe("continuity learning persistence", () => {
 		const f = await fixture();
 		const state = await f.repo.createContinuityStateStore().load();
 		state.availableTags = [...state.availableTags!, "#discovered"];
-		await f.repo.commit(state);
+		await f.repo.createContinuityStateStore().commit(state);
 		expect(f.repo.getAvailableTags()).toContain("#discovered");
 		expect(f.backend.saveData).not.toHaveBeenCalled();
 		await vi.waitFor(() => expect(f.cache.save).toHaveBeenCalledOnce());
@@ -225,18 +236,18 @@ describe("continuity learning persistence", () => {
 			completedSources: [],
 			pendingSources: [PATH],
 		};
-		await f.repo.commit(state);
+		await f.repo.createContinuityStateStore().commit(state);
 		expect(f.backend.saveData).toHaveBeenCalledOnce();
 		state.continuity.journal.completedSources = [PATH];
 		state.continuity.journal.pendingSources = [];
-		await f.repo.commit(state);
+		await f.repo.createContinuityStateStore().commit(state);
 		expect(f.backend.saveData).toHaveBeenCalledTimes(2);
 		expect(f.store.getPartition<LearningStateDocument>("learning")?.continuity.journal).toEqual(
 			state.continuity.journal,
 		);
 		state.continuity.journal = null;
-		await f.repo.commit(state);
-		await f.repo.commit(state);
+		await f.repo.createContinuityStateStore().commit(state);
+		await f.repo.createContinuityStateStore().commit(state);
 		expect(f.backend.saveData).toHaveBeenCalledTimes(3);
 		expect(
 			f.store.getPartition<LearningStateDocument>("learning")?.continuity.journal,
@@ -255,9 +266,9 @@ describe("continuity learning persistence", () => {
 		state.continuity.sources[PATH] = { type: "last-known-good", reason: "source-failure" };
 		authority.conflictNextCommit = true;
 		const commit = vi.spyOn(authority, "commit");
-		await repo.commit(state);
+		await repo.createContinuityStateStore().commit(state);
 		expect(commit).toHaveBeenCalledTimes(2);
-		await repo.commit(state);
+		await repo.createContinuityStateStore().commit(state);
 		expect(commit).toHaveBeenCalledTimes(2);
 		expect((await authority.read()).content).toMatchObject({
 			kind: "current",
@@ -303,12 +314,23 @@ describe("continuity learning persistence", () => {
 	it("compares against learning committed by a session transition", async () => {
 		const f = await fixture();
 		const card = f.repo.getCard(PATH, ID)!;
-		await f.repo.commitSessionTransition({
-			cardUpdates: [{ deckId: PATH, cardId: ID, fsrsCard: { ...card.fsrsCard, reps: 2 } }],
-			incrementStudyCountFor: [PATH],
-			spellingAttempts: [{ cardId: ID, correct: false, attemptedAt: Date.now() }],
-			historyEntries: [],
-		});
+		await f.repo.commitSession(
+			mergeCommits(
+				answerCommit({
+					deckId: PATH,
+					cardId: ID,
+					fsrsCard: { ...card.fsrsCard, reps: 2 },
+				}),
+				spellingCommit({ cardId: ID, correct: false, attemptedAt: Date.now() }),
+				recordCommit({
+					mode: "study",
+					deckId: PATH,
+					deckName: "words",
+					occurredAt: Date.now(),
+					activity: { completion: "completed", answerCount: 1, durationSeconds: 0 },
+				}),
+			),
+		);
 		const learning = structuredClone(f.store.getPartition("learning"));
 		f.backend.saveData.mockClear();
 		await f.identity.synchronize();

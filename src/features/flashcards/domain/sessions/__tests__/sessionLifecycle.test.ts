@@ -17,7 +17,7 @@ import type {
 	SessionCommitResult,
 	SessionSourceChange,
 } from "../sessionPersistence";
-import { formatSessionCommit, type SessionWriteSet } from "../../storage/sessionCommitFormat";
+import type { PendingStudyHistoryEntry } from "../../history/studyHistory";
 import type { LearningActivityRecord } from "../../history/dailyLearningActivity";
 
 const DECK_ID = "notes/deck.md";
@@ -63,10 +63,10 @@ class MemoryLifecycleRepository implements SessionLifecycleRepository {
 		return null;
 	}
 	readonly decks = new Map<string, Deck>();
-	readonly history: SessionWriteSet["historyEntries"][number][] = [];
+	readonly history: PendingStudyHistoryEntry[] = [];
 	readonly activity: LearningActivityRecord[] = [];
 	readonly spellingProgress: Record<string, SpellingCardProgress> = {};
-	commits: SessionWriteSet[] = [];
+	commits: SessionCommit[] = [];
 	failNextCommit = false;
 	commitBarrier: Promise<void> | null = null;
 	settings: Pick<FlashcardSettings, "wordLearningDecks"> = {
@@ -139,18 +139,17 @@ class MemoryLifecycleRepository implements SessionLifecycleRepository {
 	}
 
 	async commitSession(commit: SessionCommit): Promise<SessionCommitResult> {
-		const transition = formatSessionCommit(commit);
 		if (this.failNextCommit) {
 			this.failNextCommit = false;
 			return { kind: "failed", message: "disk unavailable", retryable: true };
 		}
 		if (this.commitBarrier) await this.commitBarrier;
-		this.commits.push(transition);
-		for (const update of transition.cardUpdates) {
-			const card = this.getCard(update.deckId, update.cardId);
-			if (card) card.fsrsCard = update.fsrsCard;
+		this.commits.push(commit);
+		for (const schedule of commit.cardSchedules ?? []) {
+			const card = this.getCard(schedule.deckId, schedule.cardId);
+			if (card) card.fsrsCard = schedule.fsrsCard;
 		}
-		for (const attempt of transition.spellingAttempts) {
+		for (const attempt of commit.spellingAttempts ?? []) {
 			const current = this.spellingProgress[attempt.cardId] ?? {
 				attempts: 0,
 				correctAttempts: 0,
@@ -165,12 +164,33 @@ class MemoryLifecycleRepository implements SessionLifecycleRepository {
 				lastAttemptAt: attempt.attemptedAt,
 			};
 		}
-		for (const deckId of transition.incrementStudyCountFor) {
-			const deck = this.decks.get(deckId);
-			if (deck) deck.studyCount++;
+		for (const record of commit.records ?? []) {
+			if (record.history) {
+				this.history.push({
+					deckId: record.deckId,
+					deckName: record.deckName,
+					mode: record.mode,
+					cardCount: record.history.cardCount,
+					duration: record.history.durationSeconds,
+					occurredAt: record.occurredAt,
+				});
+			}
+			this.activity.push({
+				kind: "session",
+				mode: record.mode,
+				completion: record.activity.completion,
+				answerCount: record.activity.answerCount,
+				...(record.activity.completedAnswerCount === undefined
+					? {}
+					: { completedAnswerCount: record.activity.completedAnswerCount }),
+				durationSeconds: record.activity.durationSeconds,
+				occurredAt: record.occurredAt,
+			});
+			if (record.mode === "study" && record.activity.completion === "completed") {
+				const deck = this.decks.get(record.deckId);
+				if (deck) deck.studyCount++;
+			}
 		}
-		this.history.push(...transition.historyEntries);
-		if (transition.learningActivity) this.activity.push(transition.learningActivity);
 		return { kind: "applied", receipt: { challengeProgressRevision: 0 } };
 	}
 }
@@ -265,17 +285,20 @@ describe("SessionLifecycle", () => {
 		expect(resultSnapshot.mode).toBe("study");
 		expect(subject.repository.commits).toHaveLength(1);
 		expect(subject.repository.commits[0]).toMatchObject({
-			cardUpdates: [{ cardId: "one" }],
-			incrementStudyCountFor: [DECK_ID],
-			historyEntries: [{ mode: "study", cardCount: 1, duration: 60 }],
-			learningActivity: {
-				kind: "session",
-				mode: "study",
-				completion: "completed",
-				answerCount: 1,
-				durationSeconds: 60,
-				occurredAt: 61_000,
-			},
+			cardSchedules: [{ cardId: "one" }],
+			records: [
+				{
+					mode: "study",
+					deckId: DECK_ID,
+					occurredAt: 61_000,
+					activity: {
+						completion: "completed",
+						answerCount: 1,
+						durationSeconds: 60,
+					},
+					history: { cardCount: 1, durationSeconds: 60 },
+				},
+			],
 		});
 	});
 
@@ -405,13 +428,13 @@ describe("SessionLifecycle", () => {
 		expect(subject.repository.commits).toHaveLength(2);
 		expect(subject.repository.commits[1]).toMatchObject({
 			spellingAttempts: [{ cardId: identity, correct: true }],
-			historyEntries: [{ mode: "spelling", cardCount: 1 }],
-			learningActivity: {
-				kind: "session",
-				mode: "spelling",
-				completion: "completed",
-				answerCount: 4,
-			},
+			records: [
+				{
+					mode: "spelling",
+					activity: { completion: "completed", answerCount: 4 },
+					history: { cardCount: 1 },
+				},
+			],
 		});
 		expect(subject.repository.history).toMatchObject([{ mode: "spelling", cardCount: 1 }]);
 		if (result.kind !== "result" || result.mode !== "spelling") throw new Error("result");

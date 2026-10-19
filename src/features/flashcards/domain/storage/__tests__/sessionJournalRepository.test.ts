@@ -2,10 +2,10 @@ import { createEmptyCard } from "ts-fsrs";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { Deck, FlashCard } from "../../../../../core/shared/types";
 import { DEFAULT_SETTINGS } from "../../../../../core/host/settingsSlices";
-import type { SessionWriteSet } from "../sessionCommitFormat";
 import { FlashcardRepository } from "../flashcardRepository";
 import type { LearningStateDocument } from "../persistenceTypes";
 import { MemoryFlashcardAuthority } from "./memoryFlashcardAuthority";
+import { answerCommit, recordCommit, spellingCommit } from "./sessionCommitBuilders";
 import {
 	MemorySessionJournal,
 	createManualJournalTimer,
@@ -16,15 +16,6 @@ vi.mock("obsidian", () => ({ normalizePath: (value: string) => value }));
 
 const DECK_ID = "deck.md";
 const NOW = new Date("2026-10-17T12:00:00Z").getTime();
-
-function emptyTransition(): SessionWriteSet {
-	return {
-		cardUpdates: [],
-		spellingAttempts: [],
-		incrementStudyCountFor: [],
-		historyEntries: [],
-	};
-}
 
 function makeCard(id: string, index: number): FlashCard {
 	return {
@@ -72,17 +63,16 @@ async function fixture(options: FixtureOptions = {}): Promise<Fixture> {
 		cards: Array.from({ length: 3 }, (_, index) => makeCard(`c${index}`, index)),
 	};
 	state.decks.set(deck.id, deck);
-	await repo.commit(state);
+	await repo.createContinuityStateStore().commit(state);
 	commit.mockClear();
 	return { authority, repo, journal, commit, timer };
 }
 
 function answer(repo: FlashcardRepository, cardId: string, reps: number): Promise<unknown> {
 	const card = repo.getCard(DECK_ID, cardId)!;
-	return repo.commitSessionTransition({
-		...emptyTransition(),
-		cardUpdates: [{ deckId: DECK_ID, cardId, fsrsCard: { ...card.fsrsCard, reps } }],
-	});
+	return repo.commitSession(
+		answerCommit({ deckId: DECK_ID, cardId, fsrsCard: { ...card.fsrsCard, reps } }),
+	);
 }
 
 function spelling(
@@ -91,10 +81,7 @@ function spelling(
 	correct: boolean,
 	attemptedAt: number,
 ): Promise<unknown> {
-	return repo.commitSessionTransition({
-		...emptyTransition(),
-		spellingAttempts: [{ cardId, correct, attemptedAt }],
-	});
+	return repo.commitSession(spellingCommit({ cardId, correct, attemptedAt }));
 }
 
 async function readLearning(authority: MemoryFlashcardAuthority): Promise<LearningStateDocument> {
@@ -175,20 +162,16 @@ describe("session journal integration", () => {
 		await answer(f.repo, "c0", 2);
 		expect(f.commit).not.toHaveBeenCalled();
 
-		await f.repo.commitSessionTransition({
-			...emptyTransition(),
-			incrementStudyCountFor: [DECK_ID],
-			historyEntries: [
-				{
-					deckId: DECK_ID,
-					deckName: "words",
-					mode: "study",
-					cardCount: 2,
-					duration: 5,
-					occurredAt: NOW,
-				},
-			],
-		});
+		await f.repo.commitSession(
+			recordCommit({
+				mode: "study",
+				deckId: DECK_ID,
+				deckName: "words",
+				occurredAt: NOW,
+				activity: { completion: "completed", answerCount: 2, durationSeconds: 5 },
+				history: { cardCount: 2, durationSeconds: 5 },
+			}),
+		);
 
 		expect(f.commit).toHaveBeenCalledTimes(2);
 		expect(f.journal.entries()).toHaveLength(0);
@@ -356,8 +339,8 @@ describe("session journal integration", () => {
 		const journal = new MemorySessionJournal();
 		const first = await fixture({ journal });
 		await answer(first.repo, "c0", 1);
-		await first.repo.flushJournal();
-		expect(first.commit).toHaveBeenCalledTimes(1);
+		first.timer.runAll();
+		await vi.waitFor(() => expect(first.commit).toHaveBeenCalledTimes(1));
 		expect((await readLearning(first.authority)).journalSeq).toBe(1);
 		expect(journal.entries()).toHaveLength(0);
 

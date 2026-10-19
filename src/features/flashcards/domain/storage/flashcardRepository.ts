@@ -508,11 +508,6 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 		}
 	}
 
-	/** Document write set used by storage tests and by `commitSession` internally. */
-	async commitSessionTransition(transition: SessionWriteSet): Promise<SessionPersistenceReceipt> {
-		return this.applySessionWriteSet(transition);
-	}
-
 	private async applySessionWriteSet(
 		transition: SessionWriteSet,
 	): Promise<SessionPersistenceReceipt> {
@@ -803,10 +798,6 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 		};
 	}
 
-	async commit(state: CardIdentityContinuityState): Promise<void> {
-		return this.createContinuityStateStore().commit(state);
-	}
-
 	dispose(): void {
 		this.disposed = true;
 		this.cancelJournalFlushTimer();
@@ -979,7 +970,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	}
 
 	/** Merges every journal entry above the persisted sequence into data.json. */
-	async flushJournal(): Promise<void> {
+	private async flushJournal(): Promise<void> {
 		if (!this.sessionJournal) return;
 		await this.enqueueOperation(async () => {
 			await this.flushJournalLocked();

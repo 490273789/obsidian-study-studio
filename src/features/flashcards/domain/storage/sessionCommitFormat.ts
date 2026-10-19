@@ -4,7 +4,11 @@ import type { PendingStudyHistoryEntry } from "../history/studyHistory";
 import type { ChallengeProgress } from "../sessions/challengeSessionEngine";
 import type { SessionCommit } from "../sessions/sessionPersistence";
 
-/** Document-shaped write set; storage-private, never exposed to the session seam. */
+/**
+ * Document-shaped write set. Storage-private: only files under
+ * `domain/storage/` may import this module, and the module-boundary check
+ * enforces that callers never name it.
+ */
 export interface SessionWriteSet {
 	readonly cardUpdates: readonly {
 		deckId: string;
