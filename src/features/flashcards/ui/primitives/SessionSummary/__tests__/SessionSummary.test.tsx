@@ -135,7 +135,6 @@ describe("session result actions", () => {
 			const result = {
 				roundComplete,
 				canContinue,
-				sourceChanged: !roundComplete && !canContinue,
 				levelResult: {
 					levelIndex: 0,
 					firstTryAccuracy: 80,

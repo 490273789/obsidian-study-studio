@@ -40,9 +40,7 @@ export const ChallengeSummary = memo(function ChallengeSummary({
 	const roundComplete = result.roundComplete;
 	const title = roundComplete
 		? t("challenge.roundCompletedTitle")
-		: result.sourceChanged
-			? t("challenge.sourceChangedTitle")
-			: t("challenge.completedTitle");
+		: t("challenge.completedTitle");
 	return (
 		<SessionSummary
 			mode={t("challenge.title")}
@@ -53,9 +51,7 @@ export const ChallengeSummary = memo(function ChallengeSummary({
 					{t("challenge.level", { current: result.levelResult.levelIndex + 1 })} ·{" "}
 					{result.roundSummary.completedLevels}/{result.roundSummary.totalLevels}
 					<br />
-					{result.sourceChanged
-						? t("challenge.sourceChangedNote")
-						: t("challenge.completedSubtitle")}
+					{t("challenge.completedSubtitle")}
 				</>
 			}
 			metric={{
@@ -74,7 +70,6 @@ export const ChallengeSummary = memo(function ChallengeSummary({
 				},
 			]}
 			onHome={onEnd}
-			celebrate={!result.sourceChanged}
 			actions={[
 				{
 					label: t("challenge.end"),

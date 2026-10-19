@@ -64,6 +64,7 @@ class MemoryLifecycleRepository implements SessionLifecycleRepository {
 	readonly spellingProgress: Record<string, SpellingCardProgress> = {};
 	commits: SessionCommit[] = [];
 	failNextCommit = false;
+	rejectNextCommit: "card-missing" | "challenge-progress-changed" | null = null;
 	commitBarrier: Promise<void> | null = null;
 	settings: Pick<FlashcardSettings, "wordLearningDecks"> = {
 		wordLearningDecks: { [DECK_ID]: true },
@@ -135,6 +136,11 @@ class MemoryLifecycleRepository implements SessionLifecycleRepository {
 	}
 
 	async commitSession(commit: SessionCommit): Promise<SessionCommitResult> {
+		if (this.rejectNextCommit) {
+			const reason = this.rejectNextCommit;
+			this.rejectNextCommit = null;
+			return { kind: "rejected", reason, message: "rejected", retryable: true };
+		}
 		if (this.failNextCommit) {
 			this.failNextCommit = false;
 			return { kind: "failed", message: "disk unavailable", retryable: true };
@@ -712,5 +718,40 @@ describe("SessionLifecycle", () => {
 		});
 		expect(dismiss.kind).toBe("applied");
 		expect(subject.lifecycle.getSnapshot().kind).toBe("idle");
+	});
+
+	it("surfaces repository semantic rejections as typed lifecycle rejections", async () => {
+		const subject = makeLifecycle([makeCard("one")]);
+		await subject.lifecycle.start({
+			mode: "study",
+			deckId: DECK_ID,
+			studyOrder: "sequential",
+			direction: "normal",
+		});
+		const active = subject.lifecycle.getSnapshot();
+		if (active.kind !== "active") throw new Error("active");
+
+		subject.repository.rejectNextCommit = "card-missing";
+		expect(
+			await subject.lifecycle.act(active.reference, { kind: "answer", rating: 3 }),
+		).toMatchObject({ kind: "rejected", reason: "current-card-unavailable" });
+		expect(subject.lifecycle.getSnapshot()).toBe(active);
+
+		subject.repository.rejectNextCommit = "challenge-progress-changed";
+		expect(
+			await subject.lifecycle.act(active.reference, { kind: "answer", rating: 3 }),
+		).toMatchObject({ kind: "rejected", reason: "challenge-progress-changed" });
+		expect(subject.lifecycle.getSnapshot()).toBe(active);
+	});
+
+	it("rejects continuing a challenge when no progress can be resumed", async () => {
+		const subject = makeLifecycle([makeCard("one")]);
+		expect(
+			await subject.lifecycle.start({
+				mode: "challenge",
+				challengeMode: "normal",
+				intent: "continue",
+			}),
+		).toMatchObject({ kind: "rejected", reason: "no-challenge-progress" });
 	});
 });

@@ -215,6 +215,26 @@ describe("FlashcardNavigation", () => {
 		expect(notify).not.toHaveBeenCalledWith("不应显示");
 	});
 
+	it("notifies the semantic rejections that are now reachable", async () => {
+		const cases = [
+			["challenge-progress-changed", "挑战进度已更新，请重新开始挑战。"],
+			["no-challenge-progress", "没有可继续的挑战进度，请重新开始。"],
+			["current-card-unavailable", "当前卡片已不可用，请重试。"],
+		] as const;
+		for (const [reason, message] of cases) {
+			const { navigation, lifecycle, notify, cleanup } = mounted();
+			lifecycle.startImpl = async () => ({ kind: "rejected", reason, snapshot: idle() });
+			await navigation.start({
+				mode: "study",
+				deckId: "deck",
+				studyOrder: "sequential",
+				direction: "normal",
+			});
+			expect(notify).toHaveBeenCalledWith(message);
+			cleanup();
+		}
+	});
+
 	it("cancels an exit confirmation when its reference changes, including a revision-only change", async () => {
 		const initial = active(1, "same");
 		const { navigation, lifecycle } = mounted(initial);

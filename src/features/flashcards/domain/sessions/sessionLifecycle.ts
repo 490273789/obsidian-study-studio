@@ -337,7 +337,6 @@ export interface ChallengeResultSnapshot {
 	readonly roundComplete: boolean;
 	readonly canContinue: boolean;
 	readonly removedCardCount: number;
-	readonly sourceChanged: boolean;
 	readonly restartOrigin: Readonly<Extract<SessionRestartOrigin, { mode: "challenge" }>>;
 }
 
@@ -571,7 +570,6 @@ type InternalResultState =
 			levelResult: ChallengeLevelResult;
 			progress: ChallengeProgress;
 			incorrectCards: SessionCardSnapshot[];
-			sourceChanged: boolean;
 			restartOrigin: Extract<SessionRestartOrigin, { mode: "challenge" }>;
 	  };
 
@@ -594,6 +592,14 @@ class PersistenceFailure extends Error {
 		readonly retryable: boolean,
 	) {
 		super(message);
+	}
+}
+
+/** A durable transition the repository semantically rejected, not an infrastructure failure. */
+class SessionCommitRejection extends Error {
+	constructor(readonly reason: LifecycleRejection) {
+		super(reason);
+		this.name = "SessionCommitRejection";
 	}
 }
 
@@ -670,7 +676,10 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			this.publish(active);
 			return this.applied();
 		} catch (error) {
-			return this.failed("read-failed", error, true);
+			if (error instanceof SessionCommitRejection) return this.rejected(error.reason);
+			return error instanceof PersistenceFailure
+				? this.failed("persistence-failed", error, error.retryable)
+				: this.failed("read-failed", error, true);
 		} finally {
 			this.unlock();
 		}
@@ -685,6 +694,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			if (!this.matchesReference(reference)) return this.rejected("stale-reference");
 			return await this.applyAction(action as AnyLifecycleAction);
 		} catch (error) {
+			if (error instanceof SessionCommitRejection) return this.rejected(error.reason);
 			return error instanceof PersistenceFailure
 				? this.failed("persistence-failed", error, error.retryable)
 				: this.failed("invariant-violated", error, false);
@@ -796,7 +806,10 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 						random: this.random,
 					})
 				: saved;
-		if (!initialProgress?.round) return this.rejected("no-eligible-cards");
+		if (!initialProgress?.round)
+			return this.rejected(
+				request.intent === "continue" ? "no-challenge-progress" : "no-eligible-cards",
+			);
 		if (request.intent === "continue" && initialProgress.round.mode !== request.challengeMode)
 			return this.rejected("invalid-state");
 		const { progress, session } = prepareChallengeLevel({
@@ -961,7 +974,6 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 							]
 						: [];
 				}),
-				sourceChanged: false,
 				restartOrigin: state.restartOrigin,
 			});
 		} else
@@ -1059,7 +1071,6 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			roundComplete: round.completedLevelCount >= round.levels.length,
 			canContinue: round.completedLevelCount < round.levels.length,
 			removedCardCount: round.removedIdentities.length,
-			sourceChanged: state.sourceChanged,
 			restartOrigin: state.restartOrigin,
 		};
 	}
@@ -1496,9 +1507,16 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		try {
 			const result = await this.repository.commitSession(commit);
 			if (result.kind === "applied") return result.receipt;
+			if (result.kind === "rejected")
+				throw new SessionCommitRejection(
+					result.reason === "challenge-progress-changed"
+						? "challenge-progress-changed"
+						: "current-card-unavailable",
+				);
 			throw new PersistenceFailure(result.message, result.retryable);
 		} catch (error) {
-			if (error instanceof PersistenceFailure) throw error;
+			if (error instanceof SessionCommitRejection || error instanceof PersistenceFailure)
+				throw error;
 			throw new PersistenceFailure(errorMessage(error), true);
 		}
 	}

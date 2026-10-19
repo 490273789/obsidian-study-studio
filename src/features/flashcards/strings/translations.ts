@@ -461,8 +461,6 @@ export const flashcardTranslations = {
 		"challenge.removedCards": "有 {count} 个词条因题库变化移出挑战。",
 		"challenge.nextLevel": "继续下一关",
 		"challenge.end": "结束挑战",
-		"challenge.sourceChangedTitle": "挑战因题目变化结束",
-		"challenge.sourceChangedNote": "当前关剩余词条已不再符合挑战条件。",
 		"spelling.title": "单词拼写",
 		"spelling.selectionMode": "选词方式",
 		"spelling.smartSelection": "智能选词",
@@ -1025,9 +1023,6 @@ export const flashcardTranslations = {
 		"challenge.removedCards": "{count} items were removed because their source changed.",
 		"challenge.nextLevel": "Continue to next level",
 		"challenge.end": "End challenge",
-		"challenge.sourceChangedTitle": "Challenge ended because items changed",
-		"challenge.sourceChangedNote":
-			"No remaining items in this level still qualify for the challenge.",
 		"spelling.title": "Word Spelling",
 		"spelling.selectionMode": "Selection",
 		"spelling.smartSelection": "Smart selection",

@@ -459,6 +459,12 @@ export class FlashcardNavigation {
 			this.options.notify(this.t("spelling.identityRequired"));
 		else if (outcome.reason === "no-retryable-cards")
 			this.options.notify(this.t("session.noRetryCards"));
+		else if (outcome.reason === "challenge-progress-changed")
+			this.options.notify(this.t("notice.challengeProgressChanged"));
+		else if (outcome.reason === "no-challenge-progress")
+			this.options.notify(this.t("notice.noChallengeProgress"));
+		else if (outcome.reason === "current-card-unavailable")
+			this.options.notify(this.t("notice.currentCardUnavailable"));
 		return false;
 	}
 

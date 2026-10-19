@@ -65,6 +65,8 @@ Pure engines and planners under `src/features/flashcards/domain/sessions/` are i
 
 `src/features/flashcards/domain/sessions/sessionPersistence.ts` is the whole persistence seam the lifecycle sees: minimal reads, the card scheduler, and one atomic `commitSession`. A commit carries session facts only — scheduled card states, spelling attempts, finished/partial session records, and challenge progress with its expected revision. It never carries document-shaped fields such as history entries, learning-activity records, study-count increments, or serialized card maps.
 
+Repository semantic rejections map to lifecycle rejections (`card-missing` → `current-card-unavailable`, `challenge-progress-changed` → `challenge-progress-changed`); only infrastructure failures become `failed`. Every published rejection has a real production path and a typed interface-level test.
+
 `src/features/flashcards/domain/storage/sessionCommitFormat.ts` owns the document conversion: history formatting, activity records, deck study counts, spelling progress, and challenge persistence. `FlashcardRepository.commitSession` validates every scheduled card and the challenge revision first, then applies the formatted write set atomically and returns a semantic result (`applied` with receipt, `rejected` with reason, or `failed` with retryability). A missing card or moved challenge revision is rejected explicitly; it is never skipped silently.
 
 ## Card presentation shortcuts
