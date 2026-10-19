@@ -105,7 +105,7 @@ function result(revision = 1, key = "result"): StudyResultSnapshot {
 		totalReviews: 1,
 		timeSpent: 1,
 		ratingCounts: { 1: 0, 2: 0, 3: 1, 4: 0, 5: 0 },
-		setupDefaults: {
+		restartOrigin: {
 			mode: "study",
 			deckId: "deck",
 			studyOrder: "sequential",

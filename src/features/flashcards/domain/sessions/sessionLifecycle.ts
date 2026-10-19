@@ -22,7 +22,6 @@ import type {
 	StudyRating,
 	StudySession,
 	StudySettings,
-	ViewState,
 } from "../../../../core/shared/types";
 import { shuffleArray } from "../../../../core/shared/utils";
 import {
@@ -243,6 +242,27 @@ export type SessionStartRequest =
 			readonly expectedRoundId?: string | null;
 	  };
 
+/** Mode-neutral restart provenance: session facts, no view-route vocabulary. */
+export type SessionRestartOrigin =
+	| {
+			readonly mode: "study";
+			readonly deckId: string;
+			readonly studyOrder: StudySettings["studyOrder"];
+			readonly direction: CardDirection;
+	  }
+	| {
+			readonly mode: "practice";
+			readonly deckId: string;
+			readonly direction: CardDirection;
+			readonly selection: PracticeSelection;
+	  }
+	| {
+			readonly mode: "spelling";
+			readonly deckId: string;
+			readonly selection: SpellingSelection;
+	  }
+	| { readonly mode: "challenge"; readonly challengeMode: ChallengeMode };
+
 export interface StudyResultSnapshot {
 	readonly kind: "result";
 	readonly mode: "study";
@@ -254,7 +274,7 @@ export interface StudyResultSnapshot {
 	readonly totalReviews: number;
 	readonly timeSpent: number;
 	readonly ratingCounts: Record<StudyRating, number>;
-	readonly setupDefaults: Readonly<Extract<SessionStartRequest, { mode: "study" }>>;
+	readonly restartOrigin: Readonly<Extract<SessionRestartOrigin, { mode: "study" }>>;
 }
 
 export interface PracticeResultSnapshot {
@@ -271,7 +291,7 @@ export interface PracticeResultSnapshot {
 	readonly accuracy: number;
 	readonly timeSpent: number;
 	readonly incorrectCards: readonly Readonly<SessionCardSnapshot>[];
-	readonly setupDefaults: Readonly<Extract<SessionStartRequest, { mode: "practice" }>>;
+	readonly restartOrigin: Readonly<Extract<SessionRestartOrigin, { mode: "practice" }>>;
 }
 
 export interface SpellingIncorrectCardSnapshot extends SessionCardSnapshot {
@@ -293,7 +313,7 @@ export interface SpellingResultSnapshot {
 	readonly totalRetrievalAttempts: number;
 	readonly timeSpent: number;
 	readonly incorrectCards: readonly Readonly<SpellingIncorrectCardSnapshot>[];
-	readonly setupDefaults: Readonly<Extract<SessionStartRequest, { mode: "spelling" }>>;
+	readonly restartOrigin: Readonly<Extract<SessionRestartOrigin, { mode: "spelling" }>>;
 }
 
 export interface ChallengeRoundSummarySnapshot {
@@ -318,7 +338,7 @@ export interface ChallengeResultSnapshot {
 	readonly canContinue: boolean;
 	readonly removedCardCount: number;
 	readonly sourceChanged: boolean;
-	readonly setupDefaults: Readonly<Extract<SessionStartRequest, { mode: "challenge" }>>;
+	readonly restartOrigin: Readonly<Extract<SessionRestartOrigin, { mode: "challenge" }>>;
 }
 
 export type ResultLifecycleSnapshot =
@@ -326,54 +346,6 @@ export type ResultLifecycleSnapshot =
 	| PracticeResultSnapshot
 	| SpellingResultSnapshot
 	| ChallengeResultSnapshot;
-
-export function getRestartViewState(
-	setupDefaults:
-		| Readonly<Extract<SessionStartRequest, { mode: "study" }>>
-		| Readonly<Extract<SessionStartRequest, { mode: "practice" }>>
-		| Readonly<Extract<SessionStartRequest, { mode: "spelling" }>>
-		| Readonly<Extract<SessionStartRequest, { mode: "challenge" }>>,
-): ViewState {
-	if (setupDefaults.mode === "challenge") return { type: "challenge-setup" };
-	if (setupDefaults.mode === "study") {
-		return {
-			type: "study-setup",
-			deckId: setupDefaults.deckId,
-			initialStudyOrder: setupDefaults.studyOrder,
-			initialDirection: setupDefaults.direction,
-		};
-	}
-
-	if (setupDefaults.selection.kind === "study-day") {
-		if (setupDefaults.mode === "practice") {
-			return {
-				type: "study-setup",
-				deckId: setupDefaults.deckId,
-				initialStudyOrder: setupDefaults.selection.studyOrder,
-				initialDirection: setupDefaults.direction,
-			};
-		}
-		return {
-			type: "study-setup",
-			deckId: setupDefaults.deckId,
-		};
-	}
-
-	if (setupDefaults.mode === "practice") {
-		return {
-			type: "practice-setup",
-			deckId: setupDefaults.deckId,
-			initialSelection: setupDefaults.selection,
-			initialDirection: setupDefaults.direction,
-		};
-	}
-
-	return {
-		type: "spelling-setup",
-		deckId: setupDefaults.deckId,
-		initialSelection: setupDefaults.selection,
-	};
-}
 
 export type SessionLifecycleSnapshot =
 	| IdleLifecycleSnapshot
@@ -530,21 +502,21 @@ type InternalActiveState =
 			mode: "study";
 			key: string;
 			session: StudySession;
-			setupDefaults: Extract<SessionStartRequest, { mode: "study" }>;
+			restartOrigin: Extract<SessionRestartOrigin, { mode: "study" }>;
 	  }
 	| {
 			kind: "active";
 			mode: "practice";
 			key: string;
 			session: PracticeSession;
-			setupDefaults: Extract<SessionStartRequest, { mode: "practice" }>;
+			restartOrigin: Extract<SessionRestartOrigin, { mode: "practice" }>;
 	  }
 	| {
 			kind: "active";
 			mode: "spelling";
 			key: string;
 			session: SpellingSession;
-			setupDefaults: Extract<SessionStartRequest, { mode: "spelling" }>;
+			restartOrigin: Extract<SessionRestartOrigin, { mode: "spelling" }>;
 	  }
 	| {
 			kind: "active";
@@ -555,7 +527,7 @@ type InternalActiveState =
 			progressRevision: number;
 			/** Deck-structure revision the active round was last reconciled against. */
 			structureRevision: number;
-			setupDefaults: Extract<SessionStartRequest, { mode: "challenge" }>;
+			restartOrigin: Extract<SessionRestartOrigin, { mode: "challenge" }>;
 	  };
 
 type InternalResultState =
@@ -569,7 +541,7 @@ type InternalResultState =
 			totalReviews: number;
 			timeSpent: number;
 			ratingCounts: Record<StudyRating, number>;
-			setupDefaults: Extract<SessionStartRequest, { mode: "study" }>;
+			restartOrigin: Extract<SessionRestartOrigin, { mode: "study" }>;
 	  }
 	| {
 			kind: "result";
@@ -579,7 +551,7 @@ type InternalResultState =
 			completedAt: number;
 			result: PracticeResult;
 			incorrectCards: SessionCardSnapshot[];
-			setupDefaults: Extract<SessionStartRequest, { mode: "practice" }>;
+			restartOrigin: Extract<SessionRestartOrigin, { mode: "practice" }>;
 	  }
 	| {
 			kind: "result";
@@ -589,7 +561,7 @@ type InternalResultState =
 			completedAt: number;
 			result: SpellingResult;
 			incorrectCards: SpellingIncorrectCardSnapshot[];
-			setupDefaults: Extract<SessionStartRequest, { mode: "spelling" }>;
+			restartOrigin: Extract<SessionRestartOrigin, { mode: "spelling" }>;
 	  }
 	| {
 			kind: "result";
@@ -600,7 +572,7 @@ type InternalResultState =
 			progress: ChallengeProgress;
 			incorrectCards: SessionCardSnapshot[];
 			sourceChanged: boolean;
-			setupDefaults: Extract<SessionStartRequest, { mode: "challenge" }>;
+			restartOrigin: Extract<SessionRestartOrigin, { mode: "challenge" }>;
 	  };
 
 type InternalState =
@@ -851,7 +823,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			progress,
 			progressRevision: receipt.challengeProgressRevision,
 			structureRevision: this.repository.getDeckStructureRevision(),
-			setupDefaults: { ...request, expectedRoundId: session.roundId },
+			restartOrigin: { mode: "challenge", challengeMode: request.challengeMode },
 		});
 		return this.applied();
 	}
@@ -990,7 +962,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 						: [];
 				}),
 				sourceChanged: false,
-				setupDefaults: state.setupDefaults,
+				restartOrigin: state.restartOrigin,
 			});
 		} else
 			this.publish({
@@ -1088,7 +1060,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			canContinue: round.completedLevelCount < round.levels.length,
 			removedCardCount: round.removedIdentities.length,
 			sourceChanged: state.sourceChanged,
-			setupDefaults: state.setupDefaults,
+			restartOrigin: state.restartOrigin,
 		};
 	}
 
@@ -1126,7 +1098,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 						mode: "study",
 						key,
 						session: { ...session, originDeck },
-						setupDefaults: cloneStartRequest(request),
+						restartOrigin: toRestartOrigin(request),
 					}
 				: null;
 		}
@@ -1145,7 +1117,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 					}),
 					originDeck,
 				},
-				setupDefaults: cloneStartRequest(request),
+				restartOrigin: toRestartOrigin(request),
 			};
 		}
 
@@ -1161,7 +1133,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 				}),
 				originDeck,
 			},
-			setupDefaults: cloneStartRequest(request),
+			restartOrigin: toRestartOrigin(request),
 		};
 	}
 
@@ -1242,7 +1214,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 				totalReviews: step.session.answerEvents.length,
 				timeSpent: step.finishIntent.duration,
 				ratingCounts,
-				setupDefaults: state.setupDefaults,
+				restartOrigin: state.restartOrigin,
 			});
 		} else {
 			this.publish({ ...state, session: step.session });
@@ -1300,7 +1272,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			completedAt: now,
 			result: step.result,
 			incorrectCards,
-			setupDefaults: state.setupDefaults,
+			restartOrigin: state.restartOrigin,
 		});
 		return this.applied();
 	}
@@ -1362,7 +1334,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 				completedAt: now,
 				result: step.result,
 				incorrectCards: this.snapshotSpellingCards(state.session, step.result),
-				setupDefaults: state.setupDefaults,
+				restartOrigin: state.restartOrigin,
 			});
 		}
 		return this.applied(feedback);
@@ -1380,7 +1352,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 				return this.rejected("action-not-available");
 			return this.startChallenge({
 				mode: "challenge",
-				challengeMode: state.setupDefaults.challengeMode,
+				challengeMode: state.restartOrigin.challengeMode,
 				intent: action.kind === "next-level" ? "continue" : "new",
 				expectedRoundId: state.progress.round?.id ?? null,
 			});
@@ -1413,7 +1385,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 					}),
 					originDeck: state.originDeck,
 				},
-				setupDefaults: state.setupDefaults,
+				restartOrigin: state.restartOrigin,
 			});
 		} else {
 			this.publish({
@@ -1428,7 +1400,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 					}),
 					originDeck: state.originDeck,
 				},
-				setupDefaults: state.setupDefaults,
+				restartOrigin: state.restartOrigin,
 			});
 		}
 		return this.applied(undefined, planResult.omittedCardCount);
@@ -1646,7 +1618,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 				totalReviews: state.totalReviews,
 				timeSpent: state.timeSpent,
 				ratingCounts: state.ratingCounts,
-				setupDefaults: state.setupDefaults,
+				restartOrigin: state.restartOrigin,
 			};
 		}
 		if (state.mode === "practice") {
@@ -1664,7 +1636,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 				completedAt: state.completedAt,
 				...state.result,
 				incorrectCards: state.incorrectCards,
-				setupDefaults: state.setupDefaults,
+				restartOrigin: state.restartOrigin,
 			};
 		}
 		return {
@@ -1681,7 +1653,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			completedAt: state.completedAt,
 			...state.result,
 			incorrectCards: state.incorrectCards,
-			setupDefaults: state.setupDefaults,
+			restartOrigin: state.restartOrigin,
 		};
 	}
 
@@ -1875,11 +1847,40 @@ function hasCommitContent(commit: SessionCommit): boolean {
 	);
 }
 
-function cloneStartRequest<T extends SessionStartRequest>(request: T): T {
-	return {
-		...request,
-		...("selection" in request ? { selection: { ...request.selection } } : {}),
-	} as T;
+function toRestartOrigin(
+	request: Extract<SessionStartRequest, { mode: "study" }>,
+): Extract<SessionRestartOrigin, { mode: "study" }>;
+function toRestartOrigin(
+	request: Extract<SessionStartRequest, { mode: "practice" }>,
+): Extract<SessionRestartOrigin, { mode: "practice" }>;
+function toRestartOrigin(
+	request: Extract<SessionStartRequest, { mode: "spelling" }>,
+): Extract<SessionRestartOrigin, { mode: "spelling" }>;
+function toRestartOrigin(
+	request: Extract<SessionStartRequest, { mode: "challenge" }>,
+): Extract<SessionRestartOrigin, { mode: "challenge" }>;
+function toRestartOrigin(request: SessionStartRequest): SessionRestartOrigin {
+	if (request.mode === "study")
+		return {
+			mode: "study",
+			deckId: request.deckId,
+			studyOrder: request.studyOrder,
+			direction: request.direction,
+		};
+	if (request.mode === "practice")
+		return {
+			mode: "practice",
+			deckId: request.deckId,
+			direction: request.direction,
+			selection: { ...request.selection },
+		};
+	if (request.mode === "spelling")
+		return {
+			mode: "spelling",
+			deckId: request.deckId,
+			selection: { ...request.selection },
+		};
+	return { mode: "challenge", challengeMode: request.challengeMode };
 }
 
 function errorMessage(error: unknown): string {

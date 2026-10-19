@@ -178,7 +178,7 @@ function practiceResult(revision: number): SessionLifecycleSnapshot {
 		accuracy: 1,
 		timeSpent: 1,
 		incorrectCards: [],
-		setupDefaults: {
+		restartOrigin: {
 			mode: "practice",
 			deckId: "deck",
 			direction: "normal",

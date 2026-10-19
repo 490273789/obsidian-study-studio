@@ -1,13 +1,13 @@
 import type { Language, ViewState } from "../../../core/shared/types";
 import type { DeckHome, DeckHomeDestination, DeckHomeOutcome } from "../domain/decks/deckHome";
 import {
-	getRestartViewState,
 	type LifecycleOutcome,
 	type LifecycleReference,
 	type SessionLifecycle,
 	type SessionStartRequest,
 } from "../domain/sessions/sessionLifecycle";
 import { createTranslator } from "../strings";
+import { toRestartViewState } from "./restartViewState";
 
 type ActiveReference = Extract<LifecycleReference, { kind: "active" }>;
 type ResultReference = Extract<LifecycleReference, { kind: "result" }>;
@@ -218,7 +218,7 @@ export class FlashcardNavigation {
 		)
 			return;
 		this.publishView(
-			action === "restart" ? getRestartViewState(result.setupDefaults) : { type: "home" },
+			action === "restart" ? toRestartViewState(result.restartOrigin) : { type: "home" },
 		);
 	}
 
