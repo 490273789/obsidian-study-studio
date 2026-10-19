@@ -34,8 +34,10 @@ import type {
 	SessionPersistenceReceipt,
 	SessionSourceChange,
 } from "../sessions/sessionPersistence";
-import { formatSessionCommit, type SessionWriteSet } from "./sessionCommitFormat";
+import type { SessionWriteSet } from "./sessionCommitFormat";
 import { CardCodec } from "./cardCodec";
+import { findCardLocation, type CardIndexLocation } from "./cardLocation";
+import { SessionCommitter } from "./sessionCommitter";
 import {
 	realSessionJournalTimer,
 	type SessionJournalEntry,
@@ -74,11 +76,6 @@ export type {
 	SerializedFSRSCard,
 } from "./persistenceTypes";
 
-interface CardIndexLocation {
-	deckId: string;
-	cardIndex: number;
-}
-
 const LEARNING_PLACEHOLDER_DECK_ID = "__markdown-rebuild__";
 
 export type { SessionJournalTimer } from "./sessionJournal";
@@ -112,6 +109,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	private readonly deckIndexCache: DeckIndexCacheStore<SerializedDeck> | null;
 	private readonly journals: SessionJournalCoordinator;
 	private readonly documents: LearningDocumentStore;
+	private readonly committer: SessionCommitter;
 
 	private decks: Map<string, Deck> = new Map();
 	private scheduler: FSRSScheduler;
@@ -165,6 +163,19 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 			flushThreshold: options.journalFlushThreshold,
 			idleFlushMilliseconds: options.journalIdleFlushMilliseconds,
 			timer: options.journalTimer ?? realSessionJournalTimer,
+		});
+
+		this.committer = new SessionCommitter({
+			loadDeckIndex: () => this.loadDeckIndex(),
+			enqueueOperation: (operation) => this.documents.enqueueOperation(operation),
+			getDecks: () => this.decks,
+			getCardIndex: () => this.cardIndex,
+			getChallengeProgress: () => this.challengeProgress,
+			canAppendJournal: () => this.journals.hasStore,
+			appendJournal: (transition) => this.applyJournalWriteSet(transition),
+			commitDocument: (transition, adoptJournalSeq) =>
+				this.commitWriteSetAsDocument(transition, adoptJournalSeq),
+			mergeJournalBeforeWrite: () => this.flushJournalBeforeWrite(),
 		});
 
 		this.settings = options.initialSettings
@@ -442,59 +453,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	}
 
 	async commitSession(commit: SessionCommit): Promise<SessionCommitResult> {
-		await this.loadDeckIndex();
-		const writeSet = formatSessionCommit(commit);
-		const missing = writeSet.cardUpdates.find(
-			(update) => !findCardLocation(this.decks, update.deckId, update.cardId, this.cardIndex),
-		);
-		if (missing) {
-			return {
-				kind: "rejected",
-				reason: "card-missing",
-				message: `Card ${missing.cardId} is no longer part of deck ${missing.deckId}`,
-				retryable: true,
-			};
-		}
-		if (
-			writeSet.challengeProgress !== undefined &&
-			JSON.stringify(this.challengeProgress) !==
-				JSON.stringify(writeSet.expectedChallengeProgress ?? null)
-		) {
-			return {
-				kind: "rejected",
-				reason: "challenge-progress-changed",
-				message: "Challenge progress changed; reopen the challenge to continue.",
-				retryable: true,
-			};
-		}
-		try {
-			return { kind: "applied", receipt: await this.applySessionWriteSet(writeSet) };
-		} catch (error) {
-			if (error instanceof FlashcardPersistenceError) {
-				return { kind: "failed", message: error.message, retryable: error.retryable };
-			}
-			return {
-				kind: "failed",
-				message: error instanceof Error ? error.message : "Session commit failed",
-				retryable: false,
-			};
-		}
-	}
-
-	private async applySessionWriteSet(
-		transition: SessionWriteSet,
-	): Promise<SessionPersistenceReceipt> {
-		await this.loadDeckIndex();
-		let receipt!: SessionPersistenceReceipt;
-		await this.documents.enqueueOperation(async () => {
-			if (this.journals.hasStore && isPureJournalWriteSet(transition)) {
-				receipt = await this.applyJournalWriteSet(transition);
-				return;
-			}
-			await this.flushJournalBeforeWrite();
-			receipt = await this.commitWriteSetAsDocument(transition);
-		});
-		return receipt;
+		return this.committer.commit(commit);
 	}
 
 	/**
@@ -1251,17 +1210,6 @@ function normalizeJournalSeq(value: unknown): number {
  * session record, activity, challenge progress, or study-count change needs the
  * full learning document and therefore forces a merge first.
  */
-function isPureJournalWriteSet(transition: SessionWriteSet): boolean {
-	return (
-		transition.incrementStudyCountFor.length === 0 &&
-		transition.historyEntries.length === 0 &&
-		transition.learningActivity === undefined &&
-		transition.challengeProgress === undefined &&
-		transition.expectedChallengeProgress === undefined &&
-		(transition.cardUpdates.length > 0 || transition.spellingAttempts.length > 0)
-	);
-}
-
 function sameDeckObjects(
 	left: ReadonlyMap<string, Deck>,
 	right: ReadonlyMap<string, Deck>,
@@ -1410,45 +1358,6 @@ function cloneSpellingProgress(
 	return Object.fromEntries(
 		Object.entries(progress).map(([cardId, value]) => [cardId, { ...value }]),
 	);
-}
-
-function findCardLocation(
-	decks: ReadonlyMap<string, Deck>,
-	deckId: string,
-	cardId: string,
-	cardIndex?: ReadonlyMap<string, CardIndexLocation>,
-): { deckId: string; deck: Deck; cardIndex: number } | null {
-	if (cardIndex) {
-		const location = cardIndex.get(cardId);
-		if (location) {
-			const candidateDeck = decks.get(location.deckId);
-			const card = candidateDeck?.cards[location.cardIndex];
-			if (card && card.id === cardId) {
-				return {
-					deckId: location.deckId,
-					deck: candidateDeck!,
-					cardIndex: location.cardIndex,
-				};
-			}
-		}
-	}
-	const originDeck = decks.get(deckId);
-	const originIndex = originDeck?.cards.findIndex((card) => card.id === cardId) ?? -1;
-	if (originDeck && originIndex !== -1) {
-		return { deckId, deck: originDeck, cardIndex: originIndex };
-	}
-	for (const [candidateDeckId, deck] of decks) {
-		if (candidateDeckId === deckId) continue;
-		const cardIndexInDeck = deck.cards.findIndex((card) => card.id === cardId);
-		if (cardIndexInDeck !== -1) {
-			return {
-				deckId: candidateDeckId,
-				deck,
-				cardIndex: cardIndexInDeck,
-			};
-		}
-	}
-	return null;
 }
 
 function applySpellingAttempt(

@@ -28,6 +28,21 @@ export interface SessionWriteSet {
 }
 
 /**
+ * A pure answer write reaches durability through the local journal: it changes
+ * no records, history, activity, study counts, or challenge progress.
+ */
+export function isPureJournalWriteSet(transition: SessionWriteSet): boolean {
+	return (
+		transition.incrementStudyCountFor.length === 0 &&
+		transition.historyEntries.length === 0 &&
+		transition.learningActivity === undefined &&
+		transition.challengeProgress === undefined &&
+		transition.expectedChallengeProgress === undefined &&
+		(transition.cardUpdates.length > 0 || transition.spellingAttempts.length > 0)
+	);
+}
+
+/**
  * Formats one semantic session commit into the learning-document write set.
  * All document rules live here so the lifecycle and engines stay unaware of it.
  */
