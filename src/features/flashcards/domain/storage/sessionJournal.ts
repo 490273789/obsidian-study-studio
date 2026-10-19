@@ -35,6 +35,17 @@ export type SessionJournalEntry =
 			readonly spellingAttempt: SessionJournalSpellingAttempt;
 	  });
 
+/** Timer seam for the idle journal merge; tests inject a manual clock. */
+export interface SessionJournalTimer {
+	setTimeout(handler: () => void, milliseconds: number): unknown;
+	clearTimeout(handle: unknown): void;
+}
+
+export const realSessionJournalTimer: SessionJournalTimer = {
+	setTimeout: (handler, milliseconds) => setTimeout(handler, milliseconds),
+	clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+};
+
 /**
  * Local write-ahead log for per-answer durability. Implementations must make
  * `append` durable before resolving: the repository publishes the next card

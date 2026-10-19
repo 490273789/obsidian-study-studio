@@ -36,7 +36,13 @@ import type {
 } from "../sessions/sessionPersistence";
 import { formatSessionCommit, type SessionWriteSet } from "./sessionCommitFormat";
 import { CardCodec } from "./cardCodec";
-import type { SessionJournalEntry, SessionJournalStore } from "./sessionJournal";
+import {
+	realSessionJournalTimer,
+	type SessionJournalEntry,
+	type SessionJournalStore,
+	type SessionJournalTimer,
+} from "./sessionJournal";
+import { SessionJournalCoordinator } from "./sessionJournalCoordinator";
 import { appendStudyHistory, createWordListHistoryEntry } from "../history/studyHistory";
 import {
 	type DailyLearningActivity,
@@ -77,19 +83,8 @@ interface AuthorityCandidate {
 }
 
 const LEARNING_PLACEHOLDER_DECK_ID = "__markdown-rebuild__";
-const DEFAULT_JOURNAL_FLUSH_THRESHOLD = 128;
-const DEFAULT_JOURNAL_IDLE_FLUSH_MILLISECONDS = 3_000;
 
-/** Timer seam for the idle journal merge; tests inject a manual clock. */
-export interface SessionJournalTimer {
-	setTimeout(handler: () => void, milliseconds: number): unknown;
-	clearTimeout(handle: unknown): void;
-}
-
-const realSessionJournalTimer: SessionJournalTimer = {
-	setTimeout: (handler, milliseconds) => setTimeout(handler, milliseconds),
-	clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
-};
+export type { SessionJournalTimer } from "./sessionJournal";
 
 export interface FlashcardRepositoryOptions {
 	authority: FlashcardAuthority;
@@ -119,10 +114,7 @@ export interface FlashcardRepositoryOptions {
 export class FlashcardRepository implements DeckHomeRepository, SessionPersistencePort {
 	private readonly authority: FlashcardAuthority;
 	private readonly deckIndexCache: DeckIndexCacheStore<SerializedDeck> | null;
-	private readonly sessionJournal: SessionJournalStore | null;
-	private readonly journalFlushThreshold: number;
-	private readonly journalIdleFlushMilliseconds: number;
-	private readonly journalTimer: SessionJournalTimer;
+	private readonly journals: SessionJournalCoordinator;
 
 	private decks: Map<string, Deck> = new Map();
 	private scheduler: FSRSScheduler;
@@ -163,29 +155,28 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	private operationTail: Promise<void> = Promise.resolve();
 	private cacheWriteTail: Promise<void> = Promise.resolve();
 	private disposed = false;
-	/** Highest journal sequence already merged into `persistedLearning`. */
-	private journalSeq = 0;
-	/** Highest journal sequence this repository has written (pending included). */
-	private lastJournalSeq = 0;
-	/** Journal entries applied to memory but not yet merged into `data.json`. */
-	private pendingJournal: SessionJournalEntry[] = [];
-	/** A journal file may still hold entries that need a merge attempt. */
-	private journalFileDirty = false;
-	private journalFlushTimer: unknown = null;
 
 	constructor(options: FlashcardRepositoryOptions) {
 		this.authority = options.authority;
 		this.deckIndexCache = options.deckIndexCache ?? null;
-		this.sessionJournal = options.sessionJournal ?? null;
-		this.journalFlushThreshold = Math.max(
-			1,
-			Math.floor(options.journalFlushThreshold ?? DEFAULT_JOURNAL_FLUSH_THRESHOLD),
-		);
-		this.journalIdleFlushMilliseconds = Math.max(
-			0,
-			options.journalIdleFlushMilliseconds ?? DEFAULT_JOURNAL_IDLE_FLUSH_MILLISECONDS,
-		);
-		this.journalTimer = options.journalTimer ?? realSessionJournalTimer;
+		this.journals = new SessionJournalCoordinator({
+			merge: (watermark) => this.mergeJournalDocument(watermark),
+			apply: (entries, includeSpellingAttempts) =>
+				this.applyJournalEntriesToMemory(entries, includeSpellingAttempts),
+			serializeFsrsCard: (card) => this.codec.fsrsCard(card),
+			requestMerge: () => {
+				void this.flushJournal().catch((error: unknown) => {
+					console.warn(
+						"Failed to merge the local session journal into data.json:",
+						error,
+					);
+				});
+			},
+			journal: options.sessionJournal ?? null,
+			flushThreshold: options.journalFlushThreshold,
+			idleFlushMilliseconds: options.journalIdleFlushMilliseconds,
+			timer: options.journalTimer ?? realSessionJournalTimer,
+		});
 
 		this.settings = options.initialSettings
 			? structuredClone(options.initialSettings)
@@ -216,7 +207,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 			this.dataLoaded = true;
 			// Answers written before a crash are durable in the local journal but
 			// may be missing from data.json; merge them before anything publishes.
-			await this.tryFlushJournalLocked();
+			await this.journals.tryMerge();
 			this.publishRevision();
 		}).finally(() => {
 			this.loadPromise = null;
@@ -243,7 +234,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 				this.refreshDerivedState();
 				// The cache was hydrated from the last merged learning document;
 				// reapply journal card states that have not been merged yet.
-				this.applyJournalEntriesToMemory(this.pendingJournal, false);
+				this.journals.applyPending(false);
 			}
 			this.deckIndexLoaded = true;
 			if (cache) this.publishRevision();
@@ -508,7 +499,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 		await this.loadDeckIndex();
 		let receipt!: SessionPersistenceReceipt;
 		await this.enqueueOperation(async () => {
-			if (this.sessionJournal && isPureJournalWriteSet(transition)) {
+			if (this.journals.hasStore && isPureJournalWriteSet(transition)) {
 				receipt = await this.applyJournalWriteSet(transition);
 				return;
 			}
@@ -526,43 +517,33 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	private async applyJournalWriteSet(
 		transition: SessionWriteSet,
 	): Promise<SessionPersistenceReceipt> {
-		const journal = this.sessionJournal;
-		if (!journal) return this.commitWriteSetAsDocument(transition);
-		if (this.journalFileDirty && this.pendingJournal.length === 0) {
+		const result = await this.journals.append(transition);
+		if (result.kind === "unavailable") return this.commitWriteSetAsDocument(transition);
+		if (result.kind === "settle-failed") {
 			// The on-disk journal state is unknown (a restore read failed or an
 			// interrupted truncation left merged lines). Settle it before allocating
 			// new sequence numbers so entries cannot collide.
-			try {
-				await this.flushJournalLocked();
-			} catch (error) {
-				console.warn(
-					"Failed to settle the local session journal; committing the full document instead:",
-					error,
-				);
-				return this.commitWriteSetAsDocument(transition);
-			}
+			console.warn(
+				"Failed to settle the local session journal; committing the full document instead:",
+				result.error,
+			);
+			return this.commitWriteSetAsDocument(transition);
 		}
-		const entries = this.createJournalEntries(transition);
-		try {
-			await journal.append(entries);
-		} catch (error) {
+		if (result.kind === "append-failed") {
 			// Durability must not depend on the journal being writable.
 			console.warn(
 				"Failed to append to the local session journal; committing the full document instead:",
-				error,
+				result.error,
 			);
-			return this.commitWriteSetAsDocument(transition, this.lastJournalSeq);
+			return this.commitWriteSetAsDocument(transition, this.journals.lastWritten);
 		}
-		this.registerJournalEntries(entries);
-		this.applyJournalEntriesToMemory(entries, true);
-		this.scheduleJournalFlushTimer();
 		const receipt: SessionPersistenceReceipt = {
 			challengeProgressRevision: this.challengeProgressRevision,
 		};
 		this.publishRevision();
-		if (this.pendingJournal.length >= this.journalFlushThreshold) {
+		if (this.journals.reachedFlushThreshold()) {
 			try {
-				await this.flushJournalLocked();
+				await this.journals.mergeNow();
 			} catch (error) {
 				// The answer is already durable in the journal. A failed merge keeps it
 				// there for a later attempt instead of failing a confirmed commit.
@@ -570,44 +551,6 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 			}
 		}
 		return receipt;
-	}
-
-	private createJournalEntries(transition: SessionWriteSet): SessionJournalEntry[] {
-		const at = Date.now();
-		let seq = this.lastJournalSeq;
-		const entries: SessionJournalEntry[] = [];
-		for (const update of transition.cardUpdates) {
-			entries.push({
-				seq: ++seq,
-				at,
-				kind: "card-update",
-				cardUpdate: {
-					deckId: update.deckId,
-					cardId: update.cardId,
-					fsrsCard: this.codec.fsrsCard(update.fsrsCard),
-				},
-			});
-		}
-		for (const attempt of transition.spellingAttempts) {
-			entries.push({
-				seq: ++seq,
-				at,
-				kind: "spelling-attempt",
-				spellingAttempt: {
-					cardId: attempt.cardId,
-					correct: attempt.correct,
-					attemptedAt: attempt.attemptedAt,
-				},
-			});
-		}
-		return entries;
-	}
-
-	private registerJournalEntries(entries: readonly SessionJournalEntry[]): void {
-		const highest = entries[entries.length - 1]?.seq;
-		if (highest !== undefined) this.lastJournalSeq = Math.max(this.lastJournalSeq, highest);
-		this.pendingJournal.push(...entries);
-		this.journalFileDirty = true;
 	}
 
 	/** Full-document path for non-pure commits and the journal append fallback. */
@@ -618,7 +561,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 		let receipt!: SessionPersistenceReceipt;
 		let updatedDeckIds = new Set<string>();
 		const requestedJournalSeq =
-			adoptJournalSeq === undefined ? this.journalSeq : adoptJournalSeq;
+			adoptJournalSeq === undefined ? this.journals.watermark : adoptJournalSeq;
 		await this.commitAuthority(() => {
 			if (
 				transition.expectedChallengeProgress !== undefined &&
@@ -696,7 +639,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 					nextActivity,
 					nextChallengeProgress,
 					nextCards,
-					Math.max(requestedJournalSeq, this.journalSeq),
+					Math.max(requestedJournalSeq, this.journals.watermark),
 				),
 				install: () => {
 					this.decks = nextDecks;
@@ -707,14 +650,10 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 					for (const deckId of updatedDeckIds) {
 						this.refreshDeckDueTimes(deckId, nextDecks);
 					}
-					if (adoptJournalSeq !== undefined) {
-						this.journalSeq = Math.max(this.journalSeq, adoptJournalSeq);
-						this.pendingJournal = [];
-					}
 				},
 			};
 		});
-		if (adoptJournalSeq !== undefined) await this.clearSessionJournal();
+		if (adoptJournalSeq !== undefined) await this.journals.adoptFromDocument(adoptJournalSeq);
 		receipt = { challengeProgressRevision: this.challengeProgressRevision };
 		this.publishRevision();
 		return receipt;
@@ -811,8 +750,8 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 
 	dispose(): void {
 		this.disposed = true;
-		this.cancelJournalFlushTimer();
-		if (this.pendingJournal.length > 0) {
+		this.journals.cancelIdleMerge();
+		if (this.journals.pendingCount > 0) {
 			// A confirmed answer must not stay only in memory: merge it best-effort.
 			void this.flushJournalOnDispose();
 		}
@@ -820,6 +759,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 		this.authority.dispose?.();
 		this.revisionListeners.clear();
 		this.sourceChangeListeners.clear();
+		this.journals.dispose();
 	}
 
 	private handleAuthorityChange(change: FlashcardAuthorityChange): Promise<void> {
@@ -828,7 +768,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 			// A settings-only commit leaves the learning partition untouched. Apply the
 			// new slice and scheduler without re-deserializing every card and deck.
 			return this.enqueueOperation(async () => {
-				await this.tryFlushJournalLocked();
+				await this.journals.tryMerge();
 				const settings = await this.authority.readSettings();
 				this.settings = structuredClone(settings);
 				this.scheduler = new FSRSScheduler(this.settings);
@@ -840,7 +780,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 		return this.enqueueOperation(async () => {
 			// Merge locally confirmed answers before adopting an externally changed
 			// document. A conflict here replays the journal on the restored state.
-			await this.tryFlushJournalLocked();
+			await this.journals.tryMerge();
 			await this.restoreAuthority(false);
 			this.dataLoaded = true;
 			this.publishRevision();
@@ -888,7 +828,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 					{ cause: error },
 				);
 			}
-			await this.replaySessionJournal();
+			await this.journals.replay();
 			this.scheduleDeckIndexCacheWrite(this.decks, this.availableTags);
 			return;
 		}
@@ -897,14 +837,14 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 		await this.restoreLearningState(learning);
 		// Reapply answers that were durable in the journal but never merged into the
 		// restored document (crash, interrupted merge, or external Sync reload).
-		await this.replaySessionJournal();
+		await this.journals.replay();
 		this.persistedLearning = snapshot.content.learning;
 		if (!initial && !this.dataLoaded) return;
 	}
 
 	private async restoreLearningState(learning: LearningStateDocument): Promise<void> {
 		this.persistedCardDecks = null;
-		this.journalSeq = normalizeJournalSeq(learning.journalSeq);
+		this.journals.reset(normalizeJournalSeq(learning.journalSeq));
 		this.deckIndexLoaded = false;
 		this.decks = new Map();
 		this.availableTags = [];
@@ -925,7 +865,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	}
 
 	private restoreLegacyDocument(legacy: LegacyFlashcardDocument): void {
-		this.journalSeq = 0;
+		this.journals.reset(0);
 		this.decks = new Map(
 			Object.entries(legacy.decks).map(([id, deck]) => [id, this.codec.decodeDeck(deck)]),
 		);
@@ -980,121 +920,29 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 
 	/** Merges every journal entry above the persisted sequence into data.json. */
 	private async flushJournal(): Promise<void> {
-		if (!this.sessionJournal) return;
-		await this.enqueueOperation(async () => {
-			await this.flushJournalLocked();
-		});
+		if (!this.journals.hasStore) return;
+		await this.enqueueOperation(() => this.journals.mergeNow());
 	}
 
 	private async flushJournalBeforeWrite(): Promise<void> {
-		if (!this.sessionJournal || !this.hasUnmergedJournal()) return;
-		await this.flushJournalLocked();
+		await this.journals.mergeBeforeWrite();
 	}
 
-	private async tryFlushJournalLocked(): Promise<boolean> {
-		if (!this.sessionJournal || !this.hasUnmergedJournal()) return true;
-		try {
-			await this.flushJournalLocked();
-			return true;
-		} catch (error) {
-			console.warn("Failed to merge the local session journal into data.json:", error);
-			return false;
-		}
-	}
-
-	private hasUnmergedJournal(): boolean {
-		return this.pendingJournal.length > 0 || this.journalFileDirty;
-	}
-
-	/**
-	 * Reads the journal, rebuilds one complete learning document from the current
-	 * decks plus every entry above `journalSeq`, commits it through the authority,
-	 * and only then truncates the journal. A failure keeps both the journal and
-	 * memory intact so the merge can be retried without losing an answer.
-	 */
-	private async flushJournalLocked(): Promise<void> {
-		const journal = this.sessionJournal;
-		if (!journal) return;
-		this.cancelJournalFlushTimer();
-		const entries = await journal.load();
-		const pending = entries
-			.filter((entry) => entry.seq > this.journalSeq)
-			.sort((left, right) => left.seq - right.seq);
-		if (pending.length === 0) {
-			if (entries.length > 0 || this.journalFileDirty) await this.clearSessionJournal();
-			this.pendingJournal = [];
-			return;
-		}
-		// Entries loaded from disk but not applied in this process (for example when
-		// the startup read failed) still need to reach memory before the build.
-		const appliedSequences = new Set(this.pendingJournal.map((entry) => entry.seq));
-		const unseen = pending.filter((entry) => !appliedSequences.has(entry.seq));
-		if (unseen.length > 0) this.applyJournalEntriesToMemory(unseen, true);
-		const highestWritten = entries.reduce(
-			(maximum, entry) => Math.max(maximum, entry.seq),
-			Math.max(this.journalSeq, this.lastJournalSeq),
-		);
-		await this.commitAuthority(() => {
-			const mergeJournalSeq = Math.max(highestWritten, this.journalSeq);
-			return {
-				learning: this.buildLearningState(
-					this.decks,
-					this.studyHistory,
-					this.spellingProgress,
-					this.continuity,
-					this.dailyLearningActivity,
-					this.challengeProgress,
-					this.getCommittedCardStates(),
-					mergeJournalSeq,
-				),
-				install: () => {
-					this.journalSeq = Math.max(this.journalSeq, mergeJournalSeq);
-					this.lastJournalSeq = Math.max(this.lastJournalSeq, mergeJournalSeq);
-					this.pendingJournal = [];
-				},
-			};
-		});
-		await this.clearSessionJournal();
-	}
-
-	/**
-	 * Rebuilds pending state from the journal after a full memory reset (startup,
-	 * external Sync restore, or a conflict retry). Card updates are last-wins and
-	 * spelling attempts are only applied for sequences above the persisted
-	 * `journalSeq`, so repeated restarts never double-count them.
-	 */
-	private async replaySessionJournal(): Promise<void> {
-		this.pendingJournal = [];
-		this.lastJournalSeq = this.journalSeq;
-		this.journalFileDirty = false;
-		this.cancelJournalFlushTimer();
-		const journal = this.sessionJournal;
-		if (!journal) return;
-		let entries: SessionJournalEntry[];
-		try {
-			entries = await journal.load();
-		} catch (error) {
-			// The journal is a durability aid; a read failure must never block startup.
-			this.journalFileDirty = true;
-			console.warn("Failed to read the local session journal:", error);
-			return;
-		}
-		const pending = entries
-			.filter((entry) => entry.seq > this.journalSeq)
-			.sort((left, right) => left.seq - right.seq);
-		this.lastJournalSeq = entries.reduce(
-			(maximum, entry) => Math.max(maximum, entry.seq),
-			this.journalSeq,
-		);
-		if (pending.length === 0) {
-			// Entries at or below the persisted sequence were merged before a crash
-			// interrupted the truncation; their answers are already in data.json.
-			if (entries.length > 0) await this.clearSessionJournal();
-			return;
-		}
-		this.pendingJournal = pending;
-		this.journalFileDirty = true;
-		this.applyJournalEntriesToMemory(pending, true);
+	/** Builds and durably commits the merged learning document for the journal merge. */
+	private async mergeJournalDocument(watermark: number): Promise<void> {
+		await this.commitAuthority(() => ({
+			learning: this.buildLearningState(
+				this.decks,
+				this.studyHistory,
+				this.spellingProgress,
+				this.continuity,
+				this.dailyLearningActivity,
+				this.challengeProgress,
+				this.getCommittedCardStates(),
+				watermark,
+			),
+			install: () => {},
+		}));
 	}
 
 	private applyJournalEntriesToMemory(
@@ -1184,42 +1032,10 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 		}
 	}
 
-	private scheduleJournalFlushTimer(): void {
-		this.cancelJournalFlushTimer();
-		if (this.disposed || this.pendingJournal.length === 0) return;
-		this.journalFlushTimer = this.journalTimer.setTimeout(() => {
-			this.journalFlushTimer = null;
-			void this.flushJournal().catch((error: unknown) => {
-				console.warn("Failed to merge the local session journal into data.json:", error);
-			});
-		}, this.journalIdleFlushMilliseconds);
-	}
-
-	private cancelJournalFlushTimer(): void {
-		if (this.journalFlushTimer === null) return;
-		this.journalTimer.clearTimeout(this.journalFlushTimer);
-		this.journalFlushTimer = null;
-	}
-
-	private async clearSessionJournal(): Promise<void> {
-		const journal = this.sessionJournal;
-		this.cancelJournalFlushTimer();
-		if (!journal) return;
-		try {
-			await journal.clear();
-			this.journalFileDirty = false;
-		} catch (error) {
-			// The answers are already in data.json; the next startup merge will drop
-			// the stale duplicate lines instead of replaying them.
-			this.journalFileDirty = true;
-			console.warn("Failed to truncate the local session journal:", error);
-		}
-	}
-
 	private async flushJournalOnDispose(): Promise<void> {
 		try {
 			await this.operationTail;
-			await this.flushJournalLocked();
+			await this.journals.mergeNow();
 		} catch (error) {
 			console.warn("Failed to merge the local session journal during disposal:", error);
 		}
@@ -1246,7 +1062,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	private getCommittedCardStates(): Record<string, PersistedCardLearningState> | undefined {
 		// A pending journal already advanced card states in memory, so the persisted
 		// baseline no longer describes this deck snapshot.
-		if (this.pendingJournal.length > 0) return undefined;
+		if (this.journals.pendingCount > 0) return undefined;
 		// Restored/cache-hydrated decks may contain identities absent from learning.
 		// Only reuse a baseline established by a complete successful build/install.
 		return this.persistedCardDecks === this.decks ? this.persistedLearning?.cards : undefined;
@@ -1260,7 +1076,7 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 		dailyLearningActivity: DailyLearningActivity = this.dailyLearningActivity,
 		challengeProgress: ChallengeProgress | null = this.challengeProgress,
 		committedCards?: Record<string, PersistedCardLearningState>,
-		journalSeq: number = this.journalSeq,
+		journalSeq: number = this.journals.watermark,
 	): LearningStateDocument {
 		const cards: Record<string, PersistedCardLearningState> = committedCards ?? {};
 		const persistedDecks: Record<string, PersistedDeckLearningState> = {};
