@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import type {
 	DeckHome,
+	DeckHomeDeckSnapshot,
 	DeckHomeDestination,
 	DeckHomeSnapshot,
 } from "../../../domain/decks/deckHome";
@@ -30,7 +31,7 @@ import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
 import { DeckSettingsModal } from "../DeckSettings";
 import { useFlashcardI18n } from "../../../strings/context";
-import { selectDeckCardPresentations, type DeckCardPresentation } from "../../deckCardPresentation";
+import { selectContinueDeck, selectDeckVisualState } from "../../homePresentation";
 import { DeckCard } from "./DeckCard/DeckCard";
 import { formatDeckCount } from "./deckCountFormat";
 import styles from "./DeckList.module.scss";
@@ -105,28 +106,21 @@ export const DeckList = React.memo(function DeckList({
 	 * the reorder action writes the working set back with the finished
 	 * decks appended in their existing order.
 	 */
-	const deckPresentations = useMemo(
-		() => selectDeckCardPresentations(snapshot.decks, snapshot, ownerId),
-		[snapshot, ownerId],
-	);
 	const { sortableRows, completedRows } = useMemo(() => {
-		const sortable: DeckCardPresentation[] = [];
-		const completed: DeckCardPresentation[] = [];
-		for (const presentation of deckPresentations) {
-			if (presentation.isDone) completed.push(presentation);
-			else sortable.push(presentation);
+		const sortable: DeckHomeDeckSnapshot[] = [];
+		const completed: DeckHomeDeckSnapshot[] = [];
+		for (const deck of snapshot.decks) {
+			if (selectDeckVisualState(deck) === "done") completed.push(deck);
+			else sortable.push(deck);
 		}
 		return { sortableRows: sortable, completedRows: completed };
-	}, [deckPresentations]);
-	const visibleOpenMenuDeckId = deckPresentations.some((row) => row.deck.id === openMenuDeckId)
+	}, [snapshot.decks]);
+	const visibleOpenMenuDeckId = snapshot.decks.some((deck) => deck.id === openMenuDeckId)
 		? openMenuDeckId
 		: null;
 
-	const sortableDeckIds = useMemo(() => sortableRows.map((row) => row.deck.id), [sortableRows]);
-	const completedDeckIds = useMemo(
-		() => completedRows.map((row) => row.deck.id),
-		[completedRows],
-	);
+	const sortableDeckIds = useMemo(() => sortableRows.map((deck) => deck.id), [sortableRows]);
+	const completedDeckIds = useMemo(() => completedRows.map((deck) => deck.id), [completedRows]);
 	const { interaction: sorting, snapshot: sortingSnapshot } = useSortableInteraction({
 		items: sortableDeckIds,
 		disabled: visibleOpenMenuDeckId !== null,
@@ -164,21 +158,17 @@ export const DeckList = React.memo(function DeckList({
 	 * has been started outranks an untouched one, and the largest backlog wins
 	 * inside each tier.
 	 */
-	const nextDeck = useMemo(() => {
-		let started: DeckCardPresentation | null = null;
-		let untouched: DeckCardPresentation | null = null;
-		for (const row of sortableRows) {
-			if (row.deck.stats.newCards <= 0) continue;
-			if (row.deck.studyCount > 0) {
-				if (!started || row.deck.stats.newCards > started.deck.stats.newCards) {
-					started = row;
-				}
-			} else if (!untouched || row.deck.stats.newCards > untouched.deck.stats.newCards) {
-				untouched = row;
-			}
-		}
-		return (started ?? untouched)?.deck ?? null;
-	}, [sortableRows]);
+	const nextDeck = useMemo(() => selectContinueDeck(sortableRows), [sortableRows]);
+
+	/** Another view's settings draft blocks a row unless that draft targets it. */
+	const isSettingsLocked = (deckId: string): boolean => {
+		const draft = snapshot.settingsDraft;
+		return (
+			draft !== null &&
+			draft.ownerId !== ownerId &&
+			(draft.ownerId !== "" || draft.deckId !== deckId)
+		);
+	};
 
 	const learnedCards = snapshot.totals.totalCards - snapshot.totals.newCards;
 	const streak = snapshot.learningFootprint;
@@ -399,17 +389,21 @@ export const DeckList = React.memo(function DeckList({
 									strategy={rectSortingStrategy}
 								>
 									<div className={cls("flashcard-deck-list", styles.deckList)}>
-										{visibleRows.map((presentation) => (
+										{visibleRows.map((deck) => (
 											<DeckCard
-												key={presentation.deck.id}
-												presentation={presentation}
+												key={deck.id}
+												deck={deck}
+												isSettingsLocked={isSettingsLocked(deck.id)}
+												isExporting={
+													snapshot.export.kind === "exporting" &&
+													snapshot.export.deckId === deck.id
+												}
+												isExportBusy={snapshot.export.kind === "exporting"}
 												language={language}
 												isRecentlyDropped={
-													recentlyDroppedDeckId === presentation.deck.id
+													recentlyDroppedDeckId === deck.id
 												}
-												isMenuOpen={
-													visibleOpenMenuDeckId === presentation.deck.id
-												}
+												isMenuOpen={visibleOpenMenuDeckId === deck.id}
 												onNavigate={onNavigate}
 												onExport={handleExportDeck}
 												onOpenSourceFile={onOpenSourceFile}
@@ -467,15 +461,28 @@ export const DeckList = React.memo(function DeckList({
 													)}
 												>
 													{isCompletedGroupOpen &&
-														completedRows.map((presentation) => (
+														completedRows.map((deck) => (
 															<DeckCard
-																key={presentation.deck.id}
-																presentation={presentation}
+																key={deck.id}
+																deck={deck}
+																isSettingsLocked={isSettingsLocked(
+																	deck.id,
+																)}
+																isExporting={
+																	snapshot.export.kind ===
+																		"exporting" &&
+																	snapshot.export.deckId ===
+																		deck.id
+																}
+																isExportBusy={
+																	snapshot.export.kind ===
+																	"exporting"
+																}
 																language={language}
 																isRecentlyDropped={false}
 																isMenuOpen={
 																	visibleOpenMenuDeckId ===
-																	presentation.deck.id
+																	deck.id
 																}
 																onNavigate={onNavigate}
 																onExport={handleExportDeck}
@@ -549,13 +556,13 @@ export const DeckList = React.memo(function DeckList({
 });
 
 function orderDeckRows(
-	rows: readonly DeckCardPresentation[],
+	rows: readonly DeckHomeDeckSnapshot[],
 	deckIds: readonly string[],
-): DeckCardPresentation[] {
-	const rowsById = new Map(rows.map((row) => [row.deck.id, row]));
+): DeckHomeDeckSnapshot[] {
+	const rowsById = new Map(rows.map((row) => [row.id, row]));
 	const orderedRows = deckIds
 		.map((deckId) => rowsById.get(deckId))
-		.filter((row): row is DeckCardPresentation => row !== undefined);
-	const seen = new Set(orderedRows.map((row) => row.deck.id));
-	return [...orderedRows, ...rows.filter((row) => !seen.has(row.deck.id))];
+		.filter((row): row is DeckHomeDeckSnapshot => row !== undefined);
+	const seen = new Set(orderedRows.map((row) => row.id));
+	return [...orderedRows, ...rows.filter((row) => !seen.has(row.id))];
 }

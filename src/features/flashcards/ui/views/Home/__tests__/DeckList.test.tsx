@@ -6,13 +6,13 @@ import type { DragEndEvent, DragStartEvent, DndContextProps } from "@dnd-kit/cor
 import { rectSortingStrategy } from "@dnd-kit/sortable";
 import type {
 	DeckHome,
+	DeckHomeDeckSnapshot,
 	DeckHomeSettingsDraft,
 	DeckHomeSnapshot,
 } from "../../../../domain/decks/deckHome";
 import { restoreDailyLearningActivity } from "../../../../domain/history/dailyLearningActivity";
 import { DEFAULT_SETTINGS } from "../../../../../../core/host/settingsSlices";
 import { DeckList } from "../DeckList";
-import type { DeckCardPresentation } from "../../../deckCardPresentation";
 import { ReorderableList } from "../../../../../../core/ui/primitives/Sortable/Sortable";
 import type { SortableInteraction } from "../../../../../../core/ui/primitives/Sortable/sortableInteraction";
 
@@ -100,7 +100,10 @@ interface ElementProps {
 	className?: string;
 	style?: React.CSSProperties;
 	onClick?: (event: { stopPropagation(): void }) => void;
-	presentation?: DeckCardPresentation;
+	deck?: DeckHomeDeckSnapshot;
+	isSettingsLocked?: boolean;
+	isExporting?: boolean;
+	isExportBusy?: boolean;
 	onMenuOpenChange?: (deckId: string, open: boolean) => void;
 	isMenuOpen?: boolean;
 	"data-state"?: string;
@@ -257,13 +260,13 @@ function harness(decks?: DeckOverrides[]) {
 		return found;
 	}
 	function setCardMenu(deckId: string, open: boolean): void {
-		const card = findElement(tree, (element) => element.props.presentation?.deck.id === deckId);
+		const card = findElement(tree, (element) => element.props.deck?.id === deckId);
 		card.props.onMenuOpenChange!(deckId, open);
 		render();
 	}
 	function openCardMenuIds(): string[] {
 		return findAll(tree, (element) => element.props.isMenuOpen === true).map(
-			(element) => element.props.presentation!.deck.id,
+			(element) => element.props.deck!.id,
 		);
 	}
 	function drop(): void {
@@ -282,11 +285,11 @@ function harness(decks?: DeckOverrides[]) {
 		render();
 	}
 	function deckIds(): string[] {
-		return presentations().map((presentation) => presentation.deck.id);
+		return deckRows().map((deck) => deck.id);
 	}
-	function presentations(): DeckCardPresentation[] {
-		return findAll(tree, (element) => element.props.presentation !== undefined).map(
-			(element) => element.props.presentation!,
+	function deckRows(): DeckHomeDeckSnapshot[] {
+		return findAll(tree, (element) => element.props.deck !== undefined).map(
+			(element) => element.props.deck!,
 		);
 	}
 	render();
@@ -300,7 +303,7 @@ function harness(decks?: DeckOverrides[]) {
 		openCardMenuIds,
 		clickTreeButton,
 		deckIds,
-		presentations,
+		deckRows,
 		findAll,
 		findElement: (
 			node: React.ReactNode,
@@ -351,9 +354,9 @@ describe("deck reorder availability", () => {
 		expect((h.dnd().children as React.ReactElement<{ strategy: unknown }>).props.strategy).toBe(
 			rectSortingStrategy,
 		);
-		const cards = h.findAll(h.tree(), (element) => element.props.presentation !== undefined);
+		const cards = h.findAll(h.tree(), (element) => element.props.deck !== undefined);
 		const [first, second] = cards;
-		drag.activeId = first!.props.presentation!.deck.id;
+		drag.activeId = first!.props.deck!.id;
 		// Reproduce the geometry after pickup: the active row has visually shrunk.
 		const rects = [
 			{ left: 0, top: 0, width: 380, height: 95, right: 380, bottom: 95 },
@@ -361,7 +364,7 @@ describe("deck reorder availability", () => {
 		];
 		for (const overIndex of [0, 1, 0, 1]) {
 			cards.forEach((card, index) => {
-				drag.transforms[card.props.presentation!.deck.id] = rectSortingStrategy({
+				drag.transforms[card.props.deck!.id] = rectSortingStrategy({
 					activeIndex: 0,
 					overIndex,
 					index,
@@ -537,9 +540,9 @@ describe("deck row presentation state", () => {
 			{ id: "started", totalCards: 10, newCards: 7, studyCount: 2 },
 		]);
 		const states = h
-			.findAll(h.tree(), (element) => element.props.presentation !== undefined)
+			.findAll(h.tree(), (element) => element.props.deck !== undefined)
 			.map((element) => [
-				element.props.presentation!.deck.id,
+				element.props.deck!.id,
 				renderDeckCard(element).props["data-state"],
 			]);
 		expect(states).toEqual([
@@ -553,10 +556,7 @@ describe("deck row presentation state", () => {
 		// state="done" routes the deck into the collapsed group, so it is not in
 		// the sortable list until that group is opened.
 		h.clickTreeButton("flashcard-completed-group-toggle");
-		const card = h.findElement(
-			h.tree(),
-			(element) => element.props.presentation?.deck.id === "finished",
-		);
+		const card = h.findElement(h.tree(), (element) => element.props.deck?.id === "finished");
 		const article = renderDeckCard(card);
 		expect(article.props["data-state"]).toBe("done");
 		const study = findElement(
@@ -566,78 +566,19 @@ describe("deck row presentation state", () => {
 		expect(textOf(study.props.children)).toContain("home.review");
 	});
 
-	it("keeps unchanged row models referentially stable across unrelated publishes", () => {
-		const h = harness([
-			{ id: "started", totalCards: 10, newCards: 7, studyCount: 2 },
-			{ id: "untouched", totalCards: 10, newCards: 10 },
-		]);
-		const before = h.presentations();
-		// A publish that only touches unrelated read model fields: same deck
-		// objects, new snapshot wrapper.
-		h.props.snapshot = {
-			...h.props.snapshot,
-			revision: 1,
-			mutation: { kind: "refreshing" },
-			totals: { ...h.props.snapshot.totals },
-		};
-		h.render();
-		const after = h.presentations();
-
-		expect(after).toHaveLength(2);
-		expect(after[0]).toBe(before[0]);
-		expect(after[1]).toBe(before[1]);
-	});
-
-	it("rebuilds only the rows whose deck content changed", () => {
-		const h = harness([
-			{ id: "started", totalCards: 10, newCards: 7, studyCount: 2 },
-			{ id: "untouched", totalCards: 10, newCards: 10 },
-		]);
-		const before = h.presentations();
-		// Deck home rebuilds every deck wrapper on each publish, so unchanged
-		// content must still keep its row model.
-		h.props.snapshot = {
-			...h.props.snapshot,
-			decks: h.props.snapshot.decks.map((deck) =>
-				deck.id === "untouched"
-					? { ...deck, stats: { ...deck.stats, newCards: 4 } }
-					: { ...deck },
-			),
-		};
-		h.render();
-		const after = h.presentations();
-
-		expect(after[0]).toBe(before[0]);
-		expect(after[1]).not.toBe(before[1]);
-		expect(after[1]!.learnedCards).toBe(6);
-	});
-
-	it("refreshes row models when the settings draft or export target changes", () => {
+	it("passes the settings lock and export target to the affected rows", () => {
 		const h = harness();
-		const before = h.presentations();
 
 		h.props.snapshot = {
 			...h.props.snapshot,
 			settingsDraft: makeSettingsDraft("", "first"),
 		};
 		h.render();
-		const locked = h.presentations();
+		const locked = h.findAll(h.tree(), (element) => element.props.deck !== undefined);
 
-		expect(locked[0]).not.toBe(before[0]);
-		expect(locked[1]).not.toBe(before[1]);
-		expect(locked[0]!.isSettingsLocked).toBe(false);
-		expect(locked[1]!.isSettingsLocked).toBe(true);
-
-		h.props.snapshot = {
-			...h.props.snapshot,
-			settingsDraft: makeSettingsDraft("", "second"),
-		};
-		h.render();
-		const retargeted = h.presentations();
-
-		expect(retargeted[0]).not.toBe(locked[0]);
-		expect(retargeted[0]!.isSettingsLocked).toBe(true);
-		expect(retargeted[1]!.isSettingsLocked).toBe(false);
+		expect(locked[0]!.props.deck!.id).toBe("first");
+		expect(locked[0]!.props.isSettingsLocked).toBe(false);
+		expect(locked[1]!.props.isSettingsLocked).toBe(true);
 
 		h.props.snapshot = {
 			...h.props.snapshot,
@@ -645,12 +586,11 @@ describe("deck row presentation state", () => {
 			export: { kind: "exporting", deckId: "second", phase: null, completed: 0, total: 1 },
 		};
 		h.render();
-		const exporting = h.presentations();
+		const exporting = h.findAll(h.tree(), (element) => element.props.deck !== undefined);
 
-		expect(exporting[0]).not.toBe(retargeted[0]);
-		expect(exporting[0]!.isExporting).toBe(false);
-		expect(exporting[0]!.isExportBusy).toBe(true);
-		expect(exporting[1]!.isExporting).toBe(true);
+		expect(exporting[0]!.props.isExporting).toBe(false);
+		expect(exporting[0]!.props.isExportBusy).toBe(true);
+		expect(exporting[1]!.props.isExporting).toBe(true);
 	});
 });
 

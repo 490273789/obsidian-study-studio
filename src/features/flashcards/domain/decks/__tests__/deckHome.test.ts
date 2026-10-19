@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type {
 	CardIdentityContinuity,
 	CardIdentityContinuitySnapshot,
+	SynchronizeOutcome,
 } from "../../identity/cardIdentityContinuity";
 import {
 	type Deck,
@@ -14,6 +15,7 @@ import {
 import { DEFAULT_SETTINGS } from "../../../../../core/host/settingsSlices";
 import {
 	createDeckHome,
+	type CreateDeckHomeOptions,
 	type DeckHomeClock,
 	type DeckHomeEvent,
 	type DeckHomeRepository,
@@ -977,5 +979,112 @@ describe("DeckHome", () => {
 				endTimeMs: 4000,
 			},
 		]);
+	});
+});
+
+describe("DeckHome row identity", () => {
+	function createHome(
+		repository: MemoryRepository,
+		options: {
+			identity?: CardIdentityContinuity;
+			exportDeck?: CreateDeckHomeOptions["exportDeck"];
+		} = {},
+	) {
+		return createDeckHome({
+			repository,
+			identity: options.identity ?? makeIdentity(),
+			saveSettingsPatch: vi.fn(),
+			exportDeck: options.exportDeck ?? vi.fn(),
+			report: vi.fn(),
+		});
+	}
+
+	it("reuses every deck row when a publish changes only the revision", () => {
+		const repository = new MemoryRepository([
+			makeDeck("notes/first.md"),
+			makeDeck("notes/second.md"),
+		]);
+		const home = createHome(repository);
+		const before = home.getSnapshot();
+
+		repository.commit(() => {});
+		const after = home.getSnapshot();
+
+		expect(after.revision).toBe(before.revision + 1);
+		expect(after.decks).toHaveLength(2);
+		expect(after.decks[0]).toBe(before.decks[0]);
+		expect(after.decks[1]).toBe(before.decks[1]);
+		home.dispose();
+	});
+
+	it("rebuilds only the row whose deck content changed", () => {
+		const changed = makeDeck("notes/changed.md");
+		const untouched = makeDeck("notes/untouched.md");
+		const repository = new MemoryRepository([changed, untouched]);
+		const home = createHome(repository);
+		const before = home.getSnapshot();
+
+		repository.commit(() => {
+			repository.decks = [{ ...changed, name: "Renamed" }, untouched];
+		});
+		const after = home.getSnapshot();
+
+		expect(after.decks[0]).not.toBe(before.decks[0]);
+		expect(after.decks[0]?.name).toBe("Renamed");
+		expect(after.decks[1]).toBe(before.decks[1]);
+		home.dispose();
+	});
+
+	it("keeps rows stable across draft, export and refresh activity", async () => {
+		const deck = makeDeck();
+		const repository = new MemoryRepository([deck]);
+		const synchronizing = deferred<SynchronizeOutcome>();
+		const identity = makeIdentity();
+		identity.synchronize = vi.fn(() => synchronizing.promise);
+		const exporting = deferred<{ kind: "saved"; filePath: string }>();
+		const home = createHome(repository, {
+			identity,
+			exportDeck: vi.fn(() => exporting.promise),
+		});
+		const before = home.getSnapshot();
+
+		await home.act({ kind: "open-settings", ownerId: "view", deckId: deck.id });
+		const withDraft = home.getSnapshot();
+		expect(withDraft.settingsDraft).not.toBeNull();
+		expect(withDraft.decks[0]).toBe(before.decks[0]);
+
+		const refreshing = home.act({ kind: "refresh" });
+		expect(home.getSnapshot().mutation.kind).toBe("refreshing");
+		expect(home.getSnapshot().decks[0]).toBe(before.decks[0]);
+		synchronizing.resolve({
+			kind: "current",
+			change: { changedDeckIds: [], removedDeckIds: [], tagsChanged: false },
+		});
+		await refreshing;
+
+		const exportingAction = home.act({ kind: "export", deckId: deck.id });
+		expect(home.getSnapshot().export.kind).toBe("exporting");
+		expect(home.getSnapshot().decks[0]).toBe(before.decks[0]);
+		exporting.resolve({ kind: "saved", filePath: "notes/words.pdf" });
+		await exportingAction;
+		home.dispose();
+	});
+
+	it("keeps rows stable when the deck order changes", () => {
+		const first = makeDeck("notes/first.md");
+		const second = makeDeck("notes/second.md");
+		const repository = new MemoryRepository([first, second]);
+		const home = createHome(repository);
+		const before = home.getSnapshot();
+
+		repository.commit(() => {
+			repository.settings = { ...repository.settings, deckOrder: [second.id, first.id] };
+		});
+		const after = home.getSnapshot();
+
+		expect(after.decks.map((row) => row.id)).toEqual([second.id, first.id]);
+		expect(after.decks[0]).toBe(before.decks[1]);
+		expect(after.decks[1]).toBe(before.decks[0]);
+		home.dispose();
 	});
 });

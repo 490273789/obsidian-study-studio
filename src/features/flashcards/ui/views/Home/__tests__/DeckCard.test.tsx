@@ -2,7 +2,6 @@ import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { FlashcardButton } from "../../../../../../core/ui/primitives/Button";
 import type { DeckHomeDeckSnapshot } from "../../../../domain/decks/deckHome";
-import type { DeckCardPresentation } from "../../../deckCardPresentation";
 import { DeckCard } from "../DeckCard/DeckCard";
 
 const hooks = vi.hoisted(() => ({
@@ -41,8 +40,8 @@ vi.mock("@dnd-kit/sortable", () => ({
 	}),
 }));
 
-function presentation(overrides: Partial<DeckCardPresentation> = {}): DeckCardPresentation {
-	const deck: DeckHomeDeckSnapshot = {
+function makeDeck(): DeckHomeDeckSnapshot {
+	return {
 		id: "deck",
 		name: "Deck",
 		filePath: "deck.md",
@@ -72,17 +71,6 @@ function presentation(overrides: Partial<DeckCardPresentation> = {}): DeckCardPr
 			ignoredCardCount: 0,
 		},
 	};
-	return {
-		deck,
-		state: "active",
-		learnedCards: 6,
-		progressPercent: 60,
-		isDone: false,
-		isExporting: false,
-		isExportBusy: false,
-		isSettingsLocked: false,
-		...overrides,
-	};
 }
 
 type Element = React.ReactElement<{
@@ -111,7 +99,8 @@ function findAll(node: React.ReactNode, predicate: (element: Element) => boolean
 }
 
 function renderCard(
-	row: DeckCardPresentation,
+	deck: DeckHomeDeckSnapshot,
+	flags: { isSettingsLocked?: boolean; isExporting?: boolean; isExportBusy?: boolean },
 	isMenuOpen: boolean,
 	handlers: {
 		onNavigate: ReturnType<typeof vi.fn>;
@@ -127,7 +116,10 @@ function renderCard(
 			type: (props: React.ComponentProps<typeof DeckCard>) => React.ReactElement;
 		}
 	).type({
-		presentation: row,
+		deck,
+		isSettingsLocked: flags.isSettingsLocked ?? false,
+		isExporting: flags.isExporting ?? false,
+		isExportBusy: flags.isExportBusy ?? false,
 		language: "en",
 		isRecentlyDropped: false,
 		isMenuOpen,
@@ -167,7 +159,7 @@ function handlers() {
 describe("DeckCard row action overlay", () => {
 	it("opens on the current row and wires its four actions", () => {
 		const calls = handlers();
-		const closed = renderCard(presentation(), false, calls);
+		const closed = renderCard(makeDeck(), {}, false, calls);
 		expect(actionButtons(closed)).toHaveLength(0);
 		const trigger = findAll(
 			closed,
@@ -176,7 +168,7 @@ describe("DeckCard row action overlay", () => {
 		click(trigger);
 		expect(calls.onMenuOpenChange).toHaveBeenCalledWith("deck", true);
 
-		const open = renderCard(presentation(), true, calls);
+		const open = renderCard(makeDeck(), {}, true, calls);
 		const actions = actionButtons(open);
 		expect(actions.map((action) => action.props.children)).toEqual([
 			"home.exportPdfTitle",
@@ -200,7 +192,8 @@ describe("DeckCard row action overlay", () => {
 	it("disables export while an export is running and settings while another view owns the draft", () => {
 		const calls = handlers();
 		const open = renderCard(
-			presentation({ isExporting: true, isExportBusy: true, isSettingsLocked: true }),
+			makeDeck(),
+			{ isExporting: true, isExportBusy: true, isSettingsLocked: true },
 			true,
 			calls,
 		);
@@ -211,7 +204,7 @@ describe("DeckCard row action overlay", () => {
 
 	it("closes from the overlay toggle, empty backdrop, Escape, and outside pointer", () => {
 		const calls = handlers();
-		const open = renderCard(presentation(), true, calls);
+		const open = renderCard(makeDeck(), {}, true, calls);
 		const closeButtons = findAll(
 			open,
 			(element) => element.props["aria-label"] === "home.hideMoreActions",
@@ -235,7 +228,7 @@ describe("DeckCard row action overlay", () => {
 		listeners.get("pointerdown")?.({ target: {} } as never);
 		listeners.get("keydown")?.({ key: "Escape", preventDefault: vi.fn() } as never);
 		expect(calls.onMenuOpenChange).toHaveBeenCalledTimes(4);
-		renderCard(presentation(), false, calls);
+		renderCard(makeDeck(), {}, false, calls);
 		hooks.effects[hooks.effects.length - 1]!();
 		expect(focus).toHaveBeenCalledOnce();
 		cleanup?.();

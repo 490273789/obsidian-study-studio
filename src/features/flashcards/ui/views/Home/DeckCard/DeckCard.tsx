@@ -19,13 +19,16 @@ import { cls } from "../../../../../../core/shared/classNames";
 import { FlashcardButton } from "../../../../../../core/ui/primitives/Button";
 import type { FlashcardMenuItem } from "../../../../../../core/ui/primitives/Menu";
 import { useFlashcardI18n } from "../../../../strings/context";
-import type { DeckHomeDestination } from "../../../../domain/decks/deckHome";
-import type { DeckCardPresentation } from "../../../deckCardPresentation";
+import type { DeckHomeDeckSnapshot, DeckHomeDestination } from "../../../../domain/decks/deckHome";
+import { selectDeckCardMetrics } from "../../../homePresentation";
 import styles from "../DeckList.module.scss";
 import { formatDeckCount } from "../deckCountFormat";
 
 export interface DeckCardProps {
-	presentation: DeckCardPresentation;
+	deck: DeckHomeDeckSnapshot;
+	isSettingsLocked: boolean;
+	isExporting: boolean;
+	isExportBusy: boolean;
 	language: "zh" | "en";
 	isRecentlyDropped: boolean;
 	isMenuOpen: boolean;
@@ -38,7 +41,10 @@ export interface DeckCardProps {
 
 /** One deck row: owns its drag surface, progress presentation and action menu. */
 export const DeckCard = memo(function DeckCard({
-	presentation,
+	deck,
+	isSettingsLocked,
+	isExporting,
+	isExportBusy,
 	language,
 	isRecentlyDropped,
 	isMenuOpen,
@@ -62,7 +68,7 @@ export const DeckCard = memo(function DeckCard({
 		setNodeRef,
 		transform,
 		transition,
-	} = useSortable({ id: presentation.deck.id });
+	} = useSortable({ id: deck.id });
 	// Keep pickup scale in the same transform as translation: dnd-kit can then
 	// exclude it from measurements. Never inherit another slot's size ratio.
 	const cardTransform =
@@ -83,7 +89,7 @@ export const DeckCard = memo(function DeckCard({
 		[setNodeRef, setActivatorNodeRef],
 	);
 
-	const { deck, state, learnedCards, progressPercent, isDone } = presentation;
+	const { state, learnedCards, progressPercent, isDone } = selectDeckCardMetrics(deck);
 	const { totalCards, newCards } = deck.stats;
 	const spellingReady = deck.spelling.ready;
 
@@ -91,10 +97,10 @@ export const DeckCard = memo(function DeckCard({
 		{
 			key: "export",
 			label: t("home.exportPdfTitle"),
-			icon: presentation.isExporting ? LoaderCircle : FileDown,
-			iconClassName: presentation.isExporting ? "spinning" : undefined,
+			icon: isExporting ? LoaderCircle : FileDown,
+			iconClassName: isExporting ? "spinning" : undefined,
 			onSelect: () => void onExport(deck.id),
-			disabled: presentation.isExportBusy,
+			disabled: isExportBusy,
 			title: t("home.exportPdfTitle"),
 		},
 		{
@@ -114,7 +120,7 @@ export const DeckCard = memo(function DeckCard({
 			label: t("home.setting"),
 			icon: Settings,
 			onSelect: () => onOpenSettings(deck.id),
-			disabled: presentation.isSettingsLocked,
+			disabled: isSettingsLocked,
 		},
 	];
 	const firstEnabledAction = moreActions.findIndex((action) => !action.disabled);

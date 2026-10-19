@@ -37,6 +37,16 @@ export interface DeckHomeTotals {
 	readonly studyCount: number;
 }
 
+export interface DeckSpellingSnapshot {
+	readonly enabled: boolean;
+	readonly ready: boolean;
+	readonly valid: boolean;
+	readonly canStart: boolean;
+	readonly hasStableIdentities: boolean;
+	readonly issueCount: number;
+	readonly ignoredCardCount: number;
+}
+
 export interface DeckHomeDeckSnapshot {
 	readonly id: string;
 	readonly name: string;
@@ -45,15 +55,7 @@ export interface DeckHomeDeckSnapshot {
 	readonly studyCount: number;
 	readonly stats: Readonly<DeckStats>;
 	readonly effectiveStudySettings: Readonly<StudySettings>;
-	readonly spelling: {
-		readonly enabled: boolean;
-		readonly ready: boolean;
-		readonly valid: boolean;
-		readonly canStart: boolean;
-		readonly hasStableIdentities: boolean;
-		readonly issueCount: number;
-		readonly ignoredCardCount: number;
-	};
+	readonly spelling: DeckSpellingSnapshot;
 }
 
 export interface DeckHomeSettingsDraft {
@@ -335,6 +337,16 @@ export function createDeckHome(options: CreateDeckHomeOptions): DeckHome {
 	return new DefaultDeckHome(options);
 }
 
+/**
+ * One deck row and the serialized content that produced it. A rebuild reuses the
+ * row only while the content key holds, so equal snapshots keep equal row
+ * references and memoized consumers see the reuse.
+ */
+interface DeckRowCacheEntry {
+	readonly contentKey: string;
+	readonly row: DeckHomeDeckSnapshot;
+}
+
 class DefaultDeckHome implements DeckHome {
 	private readonly listeners = new Set<() => void>();
 	private readonly clock: DeckHomeClock;
@@ -350,11 +362,21 @@ class DefaultDeckHome implements DeckHome {
 	private readonly unsubscribeRepository: () => void;
 	/** Per-deck statistics keyed by stable deck object identity. */
 	private readonly deckStatsCache = new Map<string, { deck: Deck; stats: DeckStats }>();
-	/** Per-deck spelling eligibility keyed by deck object identity and the enabled flag. */
+	/** Per-deck spelling eligibility and its row projection, keyed by deck and enabled flag. */
 	private readonly deckEligibilityCache = new Map<
 		string,
-		{ deck: Deck; enabled: boolean; eligibility: SpellingDeckEligibility }
+		{
+			deck: Deck;
+			enabled: boolean;
+			eligibility: SpellingDeckEligibility;
+			spelling: DeckSpellingSnapshot;
+		}
 	>();
+	/**
+	 * Rows keyed by deck id. The key serializes every input that determines a
+	 * row's content, so a rebuild only allocates rows whose content changed.
+	 */
+	private readonly deckRowCache = new Map<string, DeckRowCacheEntry>();
 
 	private readonly challengeCountCache = new WeakMap<Deck, { enabled: boolean; count: number }>();
 
@@ -429,6 +451,9 @@ class DefaultDeckHome implements DeckHome {
 		this.unsubscribeRepository();
 		this.stopTimer();
 		this.listeners.clear();
+		this.deckRowCache.clear();
+		this.deckStatsCache.clear();
+		this.deckEligibilityCache.clear();
 	}
 
 	getDeck(deckId: string): Deck | undefined {
@@ -837,31 +862,8 @@ class DefaultDeckHome implements DeckHome {
 		const settings = this.options.repository.getSettings();
 		const decks = orderDecks(this.options.repository.getAllDecks(), settings.deckOrder);
 		const revision = this.options.repository.getRevision();
-		const deckSnapshots = decks.map((deck): DeckHomeDeckSnapshot => {
-			const stats = this.getDeckStatsCached(deck, now);
-			const spelling = this.getDeckEligibilityCached(
-				deck,
-				settings.wordLearningDecks[deck.id] === true,
-			);
-			return {
-				id: deck.id,
-				name: deck.name,
-				filePath: deck.filePath,
-				tag: deck.tag,
-				studyCount: deck.studyCount,
-				stats: { ...stats },
-				effectiveStudySettings: this.options.repository.getEffectiveStudySettings(deck.id),
-				spelling: {
-					enabled: spelling.enabled,
-					ready: spelling.ready,
-					valid: spelling.valid,
-					canStart: spelling.canStart,
-					hasStableIdentities: spelling.hasStableIdentities,
-					issueCount: spelling.issueCount,
-					ignoredCardCount: spelling.invalidCards.length,
-				},
-			};
-		});
+		const deckSnapshots = decks.map((deck) => this.buildDeckRow(deck, settings, now));
+		this.pruneDeckCaches(decks);
 		const totals = deckSnapshots.reduce<DeckHomeTotals>(
 			(current, deck) => ({
 				deckCount: current.deckCount + 1,
@@ -938,15 +940,81 @@ class DefaultDeckHome implements DeckHome {
 		return stats;
 	}
 
-	/** evaluateSpellingDeckEligibility with a per-deck object-identity cache. */
-	private getDeckEligibilityCached(deck: Deck, enabled: boolean): SpellingDeckEligibility {
-		const cached = this.deckEligibilityCache.get(deck.id);
-		if (cached?.deck === deck && cached.enabled === enabled) {
-			return cached.eligibility;
+	/**
+	 * Builds one deck row, reusing the previous row while its content holds.
+	 *
+	 * Every input that determines a row's content — deck identity text, study
+	 * count, statistics, effective study settings and spelling readiness — is
+	 * serialized into one content key. Equal content therefore returns the same
+	 * row reference across publishes, which keeps memoized row consumers stable
+	 * without a second field-by-field cache in the UI.
+	 */
+	private buildDeckRow(
+		deck: Deck,
+		settings: FlashcardStudySettings,
+		now: Date,
+	): DeckHomeDeckSnapshot {
+		const stats = this.getDeckStatsCached(deck, now);
+		const spelling = this.getDeckEligibilityCached(
+			deck,
+			settings.wordLearningDecks[deck.id] === true,
+		).spelling;
+		const effectiveStudySettings = this.options.repository.getEffectiveStudySettings(deck.id);
+		const contentKey = JSON.stringify([
+			deck.id,
+			deck.name,
+			deck.filePath,
+			deck.tag,
+			deck.studyCount,
+			stats,
+			spelling,
+			effectiveStudySettings,
+		]);
+		const cached = this.deckRowCache.get(deck.id);
+		if (cached?.contentKey === contentKey) return cached.row;
+
+		const row: DeckHomeDeckSnapshot = {
+			id: deck.id,
+			name: deck.name,
+			filePath: deck.filePath,
+			tag: deck.tag,
+			studyCount: deck.studyCount,
+			stats,
+			effectiveStudySettings,
+			spelling,
+		};
+		this.deckRowCache.set(deck.id, { contentKey, row });
+		return row;
+	}
+
+	/** Drops cached parts for decks that left the committed index. */
+	private pruneDeckCaches(decks: readonly Deck[]): void {
+		const liveDeckIds = new Set(decks.map((deck) => deck.id));
+		for (const deckId of this.deckRowCache.keys()) {
+			if (!liveDeckIds.has(deckId)) this.deckRowCache.delete(deckId);
 		}
+		for (const [key, entry] of this.deckEligibilityCache) {
+			if (!liveDeckIds.has(entry.deck.id)) this.deckEligibilityCache.delete(key);
+		}
+	}
+
+	/** evaluateSpellingDeckEligibility with a per-deck, per-enabled cache. */
+	private getDeckEligibilityCached(
+		deck: Deck,
+		enabled: boolean,
+	): { eligibility: SpellingDeckEligibility; spelling: DeckSpellingSnapshot } {
+		const key = spellingCacheKey(deck.id, enabled);
+		const cached = this.deckEligibilityCache.get(key);
+		if (cached?.deck === deck) return cached;
 		const eligibility = evaluateSpellingDeckEligibility(deck, enabled);
-		this.deckEligibilityCache.set(deck.id, { deck, enabled, eligibility });
-		return eligibility;
+		const entry = {
+			deck,
+			enabled,
+			eligibility,
+			spelling: toSpellingSnapshot(eligibility),
+		};
+		this.deckEligibilityCache.set(key, entry);
+		return entry;
 	}
 
 	private getChallengeCountCached(deck: Deck, enabled: boolean): number {
@@ -985,7 +1053,7 @@ class DefaultDeckHome implements DeckHome {
 		}
 		// Dragging a settings slider republishes the draft; reuse the cached
 		// eligibility scan instead of walking every card of the deck per event.
-		const spelling = this.getDeckEligibilityCached(deck, draft.wordLearningEnabled);
+		const spelling = this.getDeckEligibilityCached(deck, draft.wordLearningEnabled).eligibility;
 		return {
 			...draft,
 			deckName: deck.name,
@@ -1101,6 +1169,23 @@ function orderDecks(decks: readonly Deck[], preferredOrder: readonly string[]): 
 
 function areStringArraysEqual(left: readonly string[], right: readonly string[]): boolean {
 	return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+/** Cache key for eligibility that keeps the row and settings-draft enabled flags apart. */
+function spellingCacheKey(deckId: string, enabled: boolean): string {
+	return `${deckId}\u0000${enabled ? "1" : "0"}`;
+}
+
+function toSpellingSnapshot(eligibility: SpellingDeckEligibility): DeckSpellingSnapshot {
+	return {
+		enabled: eligibility.enabled,
+		ready: eligibility.ready,
+		valid: eligibility.valid,
+		canStart: eligibility.canStart,
+		hasStableIdentities: eligibility.hasStableIdentities,
+		issueCount: eligibility.issueCount,
+		ignoredCardCount: eligibility.invalidCards.length,
+	};
 }
 
 const frozenLearningFootprints = new WeakSet<LearningFootprintSnapshot>();
