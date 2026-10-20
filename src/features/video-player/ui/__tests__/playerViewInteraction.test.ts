@@ -1,34 +1,16 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { FloatingRect, VideoPlayerStateStore } from "../../domain/types";
-import { VideoPlayerRuntime, emptyPlaybackState } from "../../domain/videoPlayerRuntime";
-import type { VideoPlayerPresentationStateStore } from "../../domain/localVideoPlayerState";
+import type { DeviceVideoPlayerStateV1, VideoPlayerDocumentStore } from "../../domain/types";
+import { VideoPlayerRuntime, emptyState } from "../../domain/videoPlayerRuntime";
 import { PlayerViewInteraction } from "../playerViewInteraction";
 
-class MemoryPlaybackStore implements VideoPlayerStateStore {
-	state = emptyPlaybackState();
+class MemoryStore implements VideoPlayerDocumentStore {
+	state: DeviceVideoPlayerStateV1 = emptyState();
 	load = () => this.state;
-	save = (state: ReturnType<typeof emptyPlaybackState>) => {
+	save = (state: DeviceVideoPlayerStateV1) => {
 		this.state = state;
 	};
 	clear = () => {
-		this.state = emptyPlaybackState();
-	};
-}
-
-class MemoryPresentationStore implements VideoPlayerPresentationStateStore {
-	state: { floatingRect: FloatingRect | null; queueExpanded: boolean } = {
-		floatingRect: null,
-		queueExpanded: true,
-	};
-	private readonly listeners = new Set<() => void>();
-	load = () => this.state;
-	save = (state: typeof this.state) => {
-		this.state = state;
-		for (const listener of this.listeners) listener();
-	};
-	subscribe = (listener: () => void) => {
-		this.listeners.add(listener);
-		return () => this.listeners.delete(listener);
+		this.state = emptyState();
 	};
 }
 
@@ -173,11 +155,10 @@ function createTestDocument(viewport = { width: 1000, height: 800 }): TestDocume
 
 describe("PlayerViewInteraction", () => {
 	it("gives the earliest live Player view presentation and hands it off in registration order", async () => {
-		const playback = new MemoryPlaybackStore();
-		const runtime = new VideoPlayerRuntime({ state: playback, toMediaUrl: (path) => path });
+		const playback = new MemoryStore();
+		const runtime = new VideoPlayerRuntime({ store: playback, toMediaUrl: (path) => path });
 		runtime.addSources([{ id: "one", path: "/one.mp4", name: "one.mp4" }]);
-		const presentation = new MemoryPresentationStore();
-		const interaction = new PlayerViewInteraction({ runtime, presentation });
+		const interaction = new PlayerViewInteraction({ runtime });
 
 		const doc1 = createTestDocument();
 		const doc2 = createTestDocument();
@@ -207,11 +188,10 @@ describe("PlayerViewInteraction", () => {
 
 	it("owns the docked, Floating player, and maximized transitions", () => {
 		const runtime = new VideoPlayerRuntime({
-			state: new MemoryPlaybackStore(),
+			store: new MemoryStore(),
 			toMediaUrl: (path) => path,
 		});
-		const presentation = new MemoryPresentationStore();
-		const interaction = new PlayerViewInteraction({ runtime, presentation });
+		const interaction = new PlayerViewInteraction({ runtime });
 		const doc = createTestDocument();
 		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
 
@@ -234,11 +214,10 @@ describe("PlayerViewInteraction", () => {
 
 	it("focuses only after the new docked or Floating surface reports that it mounted", () => {
 		const runtime = new VideoPlayerRuntime({
-			state: new MemoryPlaybackStore(),
+			store: new MemoryStore(),
 			toMediaUrl: (path) => path,
 		});
-		const presentation = new MemoryPresentationStore();
-		const interaction = new PlayerViewInteraction({ runtime, presentation });
+		const interaction = new PlayerViewInteraction({ runtime });
 		const doc = createTestDocument();
 		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
 		const focusSurfaceEl = createTestElement("div");
@@ -257,11 +236,10 @@ describe("PlayerViewInteraction", () => {
 
 	it("opens a docked Player view, focuses a Floating player, and persists queue disclosure", async () => {
 		const runtime = new VideoPlayerRuntime({
-			state: new MemoryPlaybackStore(),
+			store: new MemoryStore(),
 			toMediaUrl: (path) => path,
 		});
-		const presentation = new MemoryPresentationStore();
-		const interaction = new PlayerViewInteraction({ runtime, presentation });
+		const interaction = new PlayerViewInteraction({ runtime });
 		const doc = createTestDocument();
 		const activate = vi.fn(async () => undefined);
 
@@ -275,7 +253,7 @@ describe("PlayerViewInteraction", () => {
 
 		view.act({ type: "set-queue-expanded", expanded: false });
 		expect(view.getSnapshot().queueExpanded).toBe(false);
-		expect(presentation.state.queueExpanded).toBe(false);
+		expect(runtime.getSnapshot().queueExpanded).toBe(false);
 
 		view.act({ type: "enter-floating" });
 		await interaction.open(activate);
@@ -285,11 +263,10 @@ describe("PlayerViewInteraction", () => {
 
 	it("creates one owner-document media element and reparents it across player surfaces", () => {
 		const runtime = new VideoPlayerRuntime({
-			state: new MemoryPlaybackStore(),
+			store: new MemoryStore(),
 			toMediaUrl: (path) => path,
 		});
-		const presentation = new MemoryPresentationStore();
-		const interaction = new PlayerViewInteraction({ runtime, presentation });
+		const interaction = new PlayerViewInteraction({ runtime });
 		const doc = createTestDocument();
 		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
 
@@ -312,11 +289,10 @@ describe("PlayerViewInteraction", () => {
 
 	it("demotes a maximized Floating player during drag and persists only the committed rect", () => {
 		const runtime = new VideoPlayerRuntime({
-			state: new MemoryPlaybackStore(),
+			store: new MemoryStore(),
 			toMediaUrl: (path) => path,
 		});
-		const presentation = new MemoryPresentationStore();
-		const interaction = new PlayerViewInteraction({ runtime, presentation });
+		const interaction = new PlayerViewInteraction({ runtime });
 		const doc = createTestDocument();
 		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
 		const header = createTestElement("div");
@@ -346,7 +322,7 @@ describe("PlayerViewInteraction", () => {
 			kind: "floating",
 			maximized: false,
 		});
-		expect(presentation.state.floatingRect).toBeNull();
+		expect(runtime.getSnapshot().floatingRect).toBeNull();
 
 		// Trigger pointerup on window to commit
 		doc.defaultView.dispatchEvent({
@@ -356,18 +332,17 @@ describe("PlayerViewInteraction", () => {
 			pointerId: 1,
 		});
 
-		expect(presentation.state.floatingRect).toEqual(
+		expect(runtime.getSnapshot().floatingRect).toEqual(
 			expect.objectContaining({ width: 480, height: 320 }),
 		);
 	});
 
 	it("toggles maximized on double clicking header or media surface", () => {
 		const runtime = new VideoPlayerRuntime({
-			state: new MemoryPlaybackStore(),
+			store: new MemoryStore(),
 			toMediaUrl: (path) => path,
 		});
-		const presentation = new MemoryPresentationStore();
-		const interaction = new PlayerViewInteraction({ runtime, presentation });
+		const interaction = new PlayerViewInteraction({ runtime });
 		const doc = createTestDocument();
 		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
 
@@ -397,11 +372,10 @@ describe("PlayerViewInteraction", () => {
 
 	it("toggles maximized on Escape key when floating and maximized", () => {
 		const runtime = new VideoPlayerRuntime({
-			state: new MemoryPlaybackStore(),
+			store: new MemoryStore(),
 			toMediaUrl: (path) => path,
 		});
-		const presentation = new MemoryPresentationStore();
-		const interaction = new PlayerViewInteraction({ runtime, presentation });
+		const interaction = new PlayerViewInteraction({ runtime });
 		const doc = createTestDocument();
 		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
 

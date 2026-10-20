@@ -1,4 +1,3 @@
-import type { VideoPlayerPresentationStateStore } from "../domain/localVideoPlayerState";
 import type { FloatingRect } from "../domain/types";
 import type { VideoPlayerRuntime } from "../domain/videoPlayerRuntime";
 import styles from "./VideoPlayer.module.scss";
@@ -53,7 +52,6 @@ export interface PointerPoint {
 
 export interface PlayerViewInteractionOptions {
 	readonly runtime: VideoPlayerRuntime;
-	readonly presentation: VideoPlayerPresentationStateStore;
 }
 
 type PointerKind = "move" | "resize-left" | "resize-right";
@@ -91,9 +89,9 @@ export class PlayerViewInteraction {
 	private readonly unsubscribePresentation: () => void;
 
 	constructor(private readonly options: PlayerViewInteractionOptions) {
-		this.queueExpanded = options.presentation.load().queueExpanded;
-		this.unsubscribePresentation = options.presentation.subscribe(() => {
-			const state = options.presentation.load();
+		this.queueExpanded = options.runtime.getSnapshot().queueExpanded;
+		this.unsubscribePresentation = options.runtime.subscribe(() => {
+			const state = options.runtime.getSnapshot();
 			const rect =
 				this.presentation.kind === "floating" && state.floatingRect
 					? state.floatingRect
@@ -188,7 +186,7 @@ export class PlayerViewInteraction {
 		switch (action.type) {
 			case "enter-floating": {
 				if (this.presentation.kind === "floating") return { kind: "applied" };
-				const saved = this.options.presentation.load().floatingRect;
+				const saved = this.options.runtime.getSnapshot().floatingRect;
 				this.presentation = {
 					kind: "floating",
 					maximized: false,
@@ -217,10 +215,7 @@ export class PlayerViewInteraction {
 			case "set-queue-expanded":
 				if (this.queueExpanded === action.expanded) return { kind: "applied" };
 				this.queueExpanded = action.expanded;
-				this.options.presentation.save({
-					...this.options.presentation.load(),
-					queueExpanded: action.expanded,
-				});
+				this.options.runtime.setQueueExpanded(action.expanded);
 				this.publish();
 				return { kind: "applied" };
 		}
@@ -484,10 +479,7 @@ export class PlayerViewInteraction {
 		const gesture = this.pointerGesture;
 		this.pointerGesture = null;
 		if (!gesture?.moved || this.presentation.kind !== "floating") return;
-		this.options.presentation.save({
-			...this.options.presentation.load(),
-			floatingRect: this.presentation.rect,
-		});
+		this.options.runtime.setFloatingRect(this.presentation.rect);
 	}
 
 	private clearPointer(registration: Registration): void {
@@ -507,10 +499,7 @@ export class PlayerViewInteraction {
 		this.presentation = { ...this.presentation, rect };
 		this.publish();
 		if (!this.presentation.maximized) {
-			this.options.presentation.save({
-				...this.options.presentation.load(),
-				floatingRect: rect,
-			});
+			this.options.runtime.setFloatingRect(rect);
 		}
 	};
 

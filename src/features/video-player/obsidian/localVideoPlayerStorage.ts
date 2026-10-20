@@ -1,5 +1,5 @@
 import type { App } from "obsidian";
-import type { VideoPlayerDocumentStore } from "../domain/localVideoPlayerState";
+import type { VideoPlayerDocumentStore } from "../domain/types";
 import { emptyState } from "../domain/videoPlayerRuntime";
 import {
 	VIDEO_PLAYBACK_RATES,

@@ -51,6 +51,8 @@ export interface VideoPlayerSnapshot {
 	readonly playbackRate: VideoPlaybackRate;
 	readonly playing: boolean;
 	readonly error: "media" | "playback" | null;
+	readonly queueExpanded: boolean;
+	readonly floatingRect: FloatingRect | null;
 }
 
 /** Narrow boundary over the single media element owned by the runtime. */
@@ -67,8 +69,10 @@ export interface VideoMediaPort {
 	removeEventListener(type: string, listener: EventListener): void;
 }
 
-export interface VideoPlayerStateStore {
-	load(): VideoPlayerPlaybackStateV1;
-	save(state: VideoPlayerPlaybackStateV1): void;
+export interface VideoPlayerDocumentStore {
+	load(): DeviceVideoPlayerStateV1;
+	save(state: DeviceVideoPlayerStateV1): void;
 	clear(): void;
 }
+
+export type VideoPlayerStateStore = VideoPlayerDocumentStore;

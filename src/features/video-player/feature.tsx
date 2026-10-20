@@ -9,7 +9,7 @@ import type {
 	WorkbenchModule,
 	WorkbenchSettingsSection,
 } from "../../core/host/workbench";
-import { LocalVideoPlayerStateAuthority, VideoPlayerRuntime } from "./domain";
+import { VideoPlayerRuntime } from "./domain";
 import {
 	localVideoMediaUrl,
 	ObsidianVideoPlayerStateStore,
@@ -33,23 +33,17 @@ export function createVideoPlayerFeature(): WorkbenchModule<"videoPlayer"> {
 	return defineFeatureLifetime({
 		id: "videoPlayer",
 		start(host, lifetime) {
-			const localState = new LocalVideoPlayerStateAuthority(
-				new ObsidianVideoPlayerStateStore(host.app),
-				{
-					report: ({ error }) =>
-						console.error("Failed to save local video player presentation:", error),
-				},
-			);
 			const runtime = lifetime.own(
 				new VideoPlayerRuntime({
-					state: localState.playback,
+					store: new ObsidianVideoPlayerStateStore(host.app),
 					toMediaUrl: localVideoMediaUrl,
+					reportError: (error) =>
+						console.error("Failed to save local video player state:", error),
 				}),
 			);
 			const interaction = lifetime.own(
 				new PlayerViewInteraction({
 					runtime,
-					presentation: localState.presentation,
 				}),
 			);
 			const open = async (): Promise<void> => {

@@ -90,6 +90,8 @@ function harness() {
 		playbackRate: 1,
 		playing: true,
 		error: null,
+		queueExpanded: true,
+		floatingRect: null,
 	};
 	const runtime = {
 		getSnapshot: () => snapshot,

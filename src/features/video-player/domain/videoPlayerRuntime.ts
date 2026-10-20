@@ -1,18 +1,20 @@
 import {
 	VIDEO_PLAYBACK_RATES,
 	type DeviceVideoPlayerStateV1,
+	type FloatingRect,
 	type LocalVideoSource,
 	type VideoMediaPort,
 	type VideoPlaybackRate,
+	type VideoPlayerDocumentStore,
 	type VideoPlayerSnapshot,
-	type VideoPlayerPlaybackStateV1,
-	type VideoPlayerStateStore,
 } from "./types";
 
 export interface VideoPlayerRuntimeOptions {
-	readonly state: VideoPlayerStateStore;
+	readonly store?: VideoPlayerDocumentStore;
+	readonly state?: VideoPlayerDocumentStore;
 	readonly toMediaUrl: (path: string) => string;
 	readonly now?: () => number;
+	readonly reportError?: (error: unknown) => void;
 }
 
 const PROGRESS_SAVE_INTERVAL_MS = 5_000;
@@ -22,7 +24,7 @@ const PROGRESS_SAVE_INTERVAL_MS = 5_000;
  * the view may move its one bound media element between docked and floating UI.
  */
 export class VideoPlayerRuntime {
-	private state: VideoPlayerPlaybackStateV1;
+	private state: DeviceVideoPlayerStateV1;
 	private media: VideoMediaPort | null = null;
 	private snapshot!: VideoPlayerSnapshot;
 	private readonly listeners = new Set<() => void>();
@@ -32,7 +34,8 @@ export class VideoPlayerRuntime {
 	private disposed = false;
 
 	constructor(private readonly options: VideoPlayerRuntimeOptions) {
-		this.state = options.state.load();
+		const store = options.store ?? options.state;
+		this.state = store ? store.load() : emptyState();
 		this.publish();
 	}
 
@@ -211,10 +214,25 @@ export class VideoPlayerRuntime {
 		this.saveProgress(true);
 	}
 
+	setQueueExpanded(expanded: boolean): void {
+		if (this.disposed || this.state.queueExpanded === expanded) return;
+		this.state = { ...this.state, queueExpanded: expanded };
+		this.persist();
+		this.publish();
+	}
+
+	setFloatingRect(rect: FloatingRect | null): void {
+		if (this.disposed || this.state.floatingRect === rect) return;
+		this.state = { ...this.state, floatingRect: rect };
+		this.persist();
+		this.publish();
+	}
+
 	clearLocalData(): void {
 		this.pause();
-		this.state = emptyPlaybackState();
-		this.options.state.clear();
+		this.state = emptyState();
+		const store = this.options.store ?? this.options.state;
+		store?.clear();
 		this.loadCurrentMedia();
 		this.publish();
 	}
@@ -321,7 +339,13 @@ export class VideoPlayerRuntime {
 		this.saveProgress(true);
 	}
 	private persist(): void {
-		this.options.state.save(this.state);
+		const store = this.options.store ?? this.options.state;
+		if (!store) return;
+		try {
+			store.save(this.state);
+		} catch (error) {
+			this.options.reportError?.(error);
+		}
 	}
 	private publish(): void {
 		const source = this.currentSource();
@@ -338,6 +362,8 @@ export class VideoPlayerRuntime {
 			playbackRate: this.state.playbackRate,
 			playing: this.media ? !this.media.paused : false,
 			error: this.error,
+			queueExpanded: this.state.queueExpanded,
+			floatingRect: this.state.floatingRect,
 		};
 		for (const listener of this.listeners) listener();
 	}
@@ -358,21 +384,19 @@ export class VideoPlayerRuntime {
 
 export function emptyState(): DeviceVideoPlayerStateV1 {
 	return {
-		...emptyPlaybackState(),
-		floatingRect: null,
-		queueExpanded: true,
-	};
-}
-
-export function emptyPlaybackState(): VideoPlayerPlaybackStateV1 {
-	return {
 		schemaVersion: 1,
 		sources: [],
 		currentSourceId: null,
 		progressBySource: {},
 		completedSourceIds: [],
 		playbackRate: 1,
+		floatingRect: null,
+		queueExpanded: true,
 	};
+}
+
+export function emptyPlaybackState(): DeviceVideoPlayerStateV1 {
+	return emptyState();
 }
 
 function clamp(value: number, min: number, max: number): number {

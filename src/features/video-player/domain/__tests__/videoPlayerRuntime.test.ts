@@ -1,17 +1,17 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { VideoPlayerRuntime, emptyPlaybackState } from "../videoPlayerRuntime";
-import type { VideoMediaPort, VideoPlayerPlaybackStateV1, VideoPlayerStateStore } from "../types";
+import { VideoPlayerRuntime, emptyState } from "../videoPlayerRuntime";
+import type { DeviceVideoPlayerStateV1, VideoMediaPort, VideoPlayerDocumentStore } from "../types";
 
-class MemoryStore implements VideoPlayerStateStore {
-	state: VideoPlayerPlaybackStateV1 = emptyPlaybackState();
+class MemoryStore implements VideoPlayerDocumentStore {
+	state: DeviceVideoPlayerStateV1 = emptyState();
 	saves = 0;
 	load = () => this.state;
-	save = (state: VideoPlayerPlaybackStateV1) => {
+	save = (state: DeviceVideoPlayerStateV1) => {
 		this.state = state;
 		this.saves++;
 	};
 	clear = () => {
-		this.state = emptyPlaybackState();
+		this.state = emptyState();
 	};
 }
 
@@ -129,7 +129,7 @@ describe("VideoPlayerRuntime", () => {
 	it("restores a completed video's saved end position until it is actively selected", () => {
 		const store = new MemoryStore();
 		store.state = {
-			...emptyPlaybackState(),
+			...emptyState(),
 			sources: [source("one")],
 			currentSourceId: "one",
 			progressBySource: { one: 100 },
@@ -155,5 +155,60 @@ describe("VideoPlayerRuntime", () => {
 		expect(runtime.getSnapshot().currentSourceId).toBe("three");
 		runtime.removeSource("three");
 		expect(runtime.getSnapshot().currentSourceId).toBe("one");
+	});
+
+	it("updates queue disclosure and floating geometry in snapshot and document", () => {
+		const store = new MemoryStore();
+		const runtime = new VideoPlayerRuntime({
+			store,
+			toMediaUrl: (path) => path,
+		});
+
+		expect(runtime.getSnapshot().queueExpanded).toBe(true);
+		expect(runtime.getSnapshot().floatingRect).toBeNull();
+
+		runtime.setQueueExpanded(false);
+		expect(runtime.getSnapshot().queueExpanded).toBe(false);
+		expect(store.state.queueExpanded).toBe(false);
+
+		const rect = { x: 50, y: 60, width: 400, height: 300 };
+		runtime.setFloatingRect(rect);
+		expect(runtime.getSnapshot().floatingRect).toEqual(rect);
+		expect(store.state.floatingRect).toEqual(rect);
+	});
+
+	it("keeps in-memory state and reports error when document save throws", () => {
+		const store = new MemoryStore();
+		const failure = new Error("disk full");
+		vi.spyOn(store, "save").mockImplementationOnce(() => {
+			throw failure;
+		});
+		const reportError = vi.fn();
+		const runtime = new VideoPlayerRuntime({
+			store,
+			toMediaUrl: (path) => path,
+			reportError,
+		});
+
+		runtime.setQueueExpanded(false);
+		expect(runtime.getSnapshot().queueExpanded).toBe(false);
+		expect(reportError).toHaveBeenCalledWith(failure);
+	});
+
+	it("clears local data and resets both playback and presentation state", () => {
+		const store = new MemoryStore();
+		const runtime = new VideoPlayerRuntime({
+			store,
+			toMediaUrl: (path) => path,
+		});
+		runtime.addSources([source("one")]);
+		runtime.setQueueExpanded(false);
+		runtime.setFloatingRect({ x: 10, y: 20, width: 300, height: 200 });
+
+		runtime.clearLocalData();
+		expect(runtime.getSnapshot().sources).toEqual([]);
+		expect(runtime.getSnapshot().queueExpanded).toBe(true);
+		expect(runtime.getSnapshot().floatingRect).toBeNull();
+		expect(store.state).toEqual(emptyState());
 	});
 });
