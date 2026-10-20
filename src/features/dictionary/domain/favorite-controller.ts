@@ -7,9 +7,9 @@ import {
 	DICTIONARY_FAVORITE_MEANING_MAX_LENGTH,
 	DICTIONARY_FAVORITE_NOTE_MAX_LENGTH,
 	DICTIONARY_FAVORITE_PATH_MAX_LENGTH,
-} from "./favorite-limits";
-import type { DictionaryFavoriteStore } from "./favorite-file";
-import { FavoriteSaveError } from "./favorite-save-error";
+	FavoriteSaveError,
+	type DictionaryFavoriteStore,
+} from "./favorite-file";
 import { isFavoriteAiWord, type FavoriteDraftGenerator } from "./favorite-ai";
 import { aiFailureCode } from "../../../core/ai";
 import { aiErrorText } from "../../../core/i18n/ai";

@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { ObsidianDictionaryFavoriteStore } from "../favoriteStore";
-import { formatDictionaryFavorite } from "../../domain/favorite-file";
-import { FavoriteSaveError } from "../../domain/favorite-save-error";
+import { FavoriteSaveError, formatDictionaryFavorite } from "../../domain/favorite-file";
 import type { App } from "obsidian";
 import { TFile } from "obsidian";
 import type {

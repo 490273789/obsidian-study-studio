@@ -5,7 +5,7 @@ import { normalizeDictionaryQuery } from "./configuration";
 import {
 	DICTIONARY_FAVORITE_MEANING_MAX_LENGTH,
 	DICTIONARY_FAVORITE_NOTE_MAX_LENGTH,
-} from "./favorite-limits";
+} from "./favorite-file";
 
 export interface FavoriteGeneratedDraft {
 	readonly meaning: string;

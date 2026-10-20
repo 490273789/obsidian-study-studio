@@ -1,9 +1,9 @@
 import { normalizePath, TFile, TFolder, type App } from "obsidian";
 import type { CardSourceMutation } from "../../../core/shared/cardSourceMutation";
 import { normalizeDictionaryFavoritePath } from "../domain/configuration";
-import { FavoriteSaveError } from "../domain/favorite-save-error";
 import {
 	dictionaryFavoriteSuggestions,
+	FavoriteSaveError,
 	favoriteSourceChanges,
 	findDictionaryFavorite,
 	formatDictionaryFavorite,

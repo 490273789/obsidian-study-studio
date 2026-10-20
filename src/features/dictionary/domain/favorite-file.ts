@@ -1,6 +1,23 @@
 import { normalizeDictionaryFavoritePath, normalizeDictionaryQuery } from "./configuration";
 import type { CardSourceOperation, SourceCard } from "../../../core/shared/cardSourceMutation";
-import { FavoriteSaveError } from "./favorite-save-error";
+
+export const DICTIONARY_FAVORITE_MEANING_MAX_LENGTH = 8_000;
+export const DICTIONARY_FAVORITE_NOTE_MAX_LENGTH = 16_000;
+export const DICTIONARY_FAVORITE_PATH_MAX_LENGTH = 500;
+export const DICTIONARY_FAVORITE_SUGGESTION_LIMIT = 300;
+
+export type FavoriteSaveFailure =
+	| "migration-required"
+	| "source-needs-repair"
+	| "source-changing"
+	| "invalid-card-content";
+
+export class FavoriteSaveError extends Error {
+	constructor(readonly reason: FavoriteSaveFailure) {
+		super(reason);
+		this.name = "FavoriteSaveError";
+	}
+}
 
 export interface DictionaryFavoriteEntry {
 	meaning: string;
@@ -23,13 +40,6 @@ export interface DictionaryFavoriteStore {
 	find(path: string, word: string): Promise<StoredDictionaryFavorite | null>;
 	open(path: string): Promise<boolean>;
 }
-
-import {
-	DICTIONARY_FAVORITE_MEANING_MAX_LENGTH,
-	DICTIONARY_FAVORITE_NOTE_MAX_LENGTH,
-	DICTIONARY_FAVORITE_SUGGESTION_LIMIT,
-} from "./favorite-limits";
-export * from "./favorite-limits";
 
 /** Matches one `## word / ?? / meaning / :: / note / ;;` favorite block. */
 export const DICTIONARY_FAVORITE_BLOCK_PATTERN =

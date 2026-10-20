@@ -1,11 +1,10 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { DictionaryFavoriteController } from "../favorite-controller";
 import { normalizeDictionarySettings } from "../configuration";
-import type { StoredDictionaryFavorite } from "../favorite-file";
+import { FavoriteSaveError, type StoredDictionaryFavorite } from "../favorite-file";
 import type { DictionarySettingsStore } from "../types";
 import type { FavoriteGeneratedDraft } from "../favorite-ai";
 import { TransportError } from "../../../../core/net/types";
-import { FavoriteSaveError } from "../favorite-save-error";
 
 function deferred<T>() {
 	let resolve!: (value: T) => void;

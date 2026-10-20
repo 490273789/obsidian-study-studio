@@ -2,13 +2,17 @@ import { describe, expect, it } from "vite-plus/test";
 import {
 	appendDictionaryFavorite,
 	createMemoryDictionaryFavoriteStore,
+	DICTIONARY_FAVORITE_MEANING_MAX_LENGTH,
+	DICTIONARY_FAVORITE_NOTE_MAX_LENGTH,
+	DICTIONARY_FAVORITE_PATH_MAX_LENGTH,
+	DICTIONARY_FAVORITE_SUGGESTION_LIMIT,
 	dictionaryFavoriteSuggestions,
+	FavoriteSaveError,
 	findDictionaryFavorite,
 	formatDictionaryFavorite,
 	parseDictionaryFavorites,
 	upsertDictionaryFavorite,
 } from "../favorite-file";
-import { DICTIONARY_FAVORITE_SUGGESTION_LIMIT } from "../favorite-limits";
 import { parseFavoriteAiDraft } from "../favorite-ai";
 
 describe("generated favorite Markdown", () => {
@@ -258,5 +262,18 @@ describe("memory favorite store", () => {
 		const updated = await store.find("word.md", "apple");
 		expect(updated?.meaning).toBe("新释义");
 		expect(updated?.note).toBe("新笔记");
+	});
+
+	it("exports domain limits and FavoriteSaveError", () => {
+		expect(DICTIONARY_FAVORITE_MEANING_MAX_LENGTH).toBe(8_000);
+		expect(DICTIONARY_FAVORITE_NOTE_MAX_LENGTH).toBe(16_000);
+		expect(DICTIONARY_FAVORITE_PATH_MAX_LENGTH).toBe(500);
+		expect(DICTIONARY_FAVORITE_SUGGESTION_LIMIT).toBe(300);
+
+		const error = new FavoriteSaveError("migration-required");
+		expect(error.name).toBe("FavoriteSaveError");
+		expect(error.reason).toBe("migration-required");
+		expect(error.message).toBe("migration-required");
+		expect(error instanceof Error).toBe(true);
 	});
 });
