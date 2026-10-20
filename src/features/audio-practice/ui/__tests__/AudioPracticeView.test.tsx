@@ -220,14 +220,29 @@ describe("subtitle draft review", () => {
 		const draft: AudioPracticeDraftSnapshot = {
 			status: "review",
 			cues: [
-				{ id: "cue-1", text: "First sentence", start: 1, end: 2, needsReview: true },
-				{ id: "cue-2", text: "Second sentence", start: 3, end: 4, needsReview: false },
+				{
+					id: "cue-1",
+					text: "First sentence",
+					start: 1,
+					end: 2,
+					needsReview: true,
+					highlightable: false,
+				},
+				{
+					id: "cue-2",
+					text: "Second sentence",
+					start: 3,
+					end: 4,
+					needsReview: false,
+					highlightable: false,
+				},
 			],
 			completedChunks: 1,
 			totalChunks: 1,
 			failure: null,
 			error: null,
 			notice: null,
+			hasReviewWordTimings: true,
 		};
 		const edits: { id: string; patch: Record<string, unknown> }[] = [];
 		const previews: number[][] = [];
@@ -238,20 +253,18 @@ describe("subtitle draft review", () => {
 			draft,
 			material,
 			runtime: {
-				hasReviewWordTimings: () => true,
-				canHighlightDraftCue: () => false,
 				preview: (start: number, end: number) => {
 					previews.push([start, end]);
 				},
-				editSubtitleDraftCue: (id: string, patch: Record<string, unknown>) => {
-					edits.push({ id, patch });
+				actOnSubtitleDraft: (action) => {
+					if (action.type === "edit-cue")
+						edits.push({
+							id: action.id,
+							patch: action.patch as Record<string, unknown>,
+						});
+					if (action.type === "confirm-all-cues") confirms++;
 				},
-				addSubtitleDraftCue: () => {},
-				removeSubtitleDraftCue: () => {},
-				confirmAllSubtitleDraftCues: () => {
-					confirms++;
-				},
-			} as unknown as Parameters<typeof DraftReviewBody>[0]["runtime"],
+			},
 			t,
 			busy: false,
 			error: null,

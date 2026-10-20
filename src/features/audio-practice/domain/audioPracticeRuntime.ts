@@ -4,14 +4,13 @@ import { parseSubtitles, serializeSrt, validateCues } from "./subtitles";
 import type { AudioPracticeSettings } from "../settings/slice";
 import type {
 	AudioSourceFiles,
-	DraftCue,
 	GenerationInput,
+	TimedTextWord,
 	TranscriptionConfig,
-} from "../generation/types";
-import type { SubtitleGeneration } from "../generation/subtitleGeneration";
-import { validateTranscriptionConfig } from "../generation/transcriptionConfig";
-import { MAX_AUDIO_BYTES } from "../generation/limits";
-import { alignTimedWords } from "../generation/wordAlignment";
+} from "./transcriptionTypes";
+import { MAX_AUDIO_BYTES } from "./transcriptionTypes";
+import { SubtitleDraftEngine, type SubtitleDraftAction } from "./subtitleDraftEngine";
+import { validateTranscriptionConfig } from "./transcription/transcriptionConfig";
 import {
 	AUDIO_PLAYBACK_RATES,
 	type AudioMaterial,
@@ -29,7 +28,6 @@ import {
 	type AudioPlaybackRate,
 	type AudioFileChange,
 	type SubtitleCue,
-	type TimedTextWord,
 } from "./types";
 
 export interface AudioPracticeSettingsReader {
@@ -42,7 +40,7 @@ export interface AudioPracticeRuntimeOptions {
 	readonly files: AudioPracticeFiles;
 	readonly source?: AudioSourceFiles;
 	readonly settings?: AudioPracticeSettingsReader;
-	readonly generation?: SubtitleGeneration;
+	readonly generation?: SubtitleDraftEngine;
 }
 
 interface MaterialEdit {
@@ -59,7 +57,7 @@ export class AudioPracticeRuntime {
 	private readonly files: AudioPracticeFiles;
 	private readonly source?: AudioSourceFiles;
 	private readonly settings?: AudioPracticeSettingsReader;
-	private readonly generationService?: SubtitleGeneration;
+	private readonly generationService?: SubtitleDraftEngine;
 
 	private data: AudioPracticeData;
 	private cues: readonly SubtitleCue[] = [];
@@ -105,7 +103,7 @@ export class AudioPracticeRuntime {
 		extra?: {
 			source?: AudioSourceFiles;
 			settings?: AudioPracticeSettingsReader;
-			generation?: SubtitleGeneration;
+			generation?: SubtitleDraftEngine;
 		},
 	) {
 		if ("repository" in repositoryOrOptions) {
@@ -1303,16 +1301,10 @@ export class AudioPracticeRuntime {
 				throw audioFailure({ kind: "source-changed" });
 			}
 			const cues = this.generationService.validatedCues();
-			const recognizedWords = this.generationService.getTimedWords();
+			const wordTimingsObj = this.generationService.getValidatedWordTimings();
 			const timings = new Map<string, readonly TimedTextWord[]>();
-			for (const cue of cues) {
-				const matched = alignTimedWords(
-					cue.text.trim(),
-					cue.start,
-					cue.end,
-					recognizedWords,
-				);
-				if (matched) timings.set(cue.id, matched);
+			for (const [cueId, cueTimings] of Object.entries(wordTimingsObj)) {
+				timings.set(cueId, cueTimings);
 			}
 			await this.saveSubtitles(material.id, cues, timings);
 			return true;
@@ -1325,35 +1317,8 @@ export class AudioPracticeRuntime {
 		}
 	}
 
-	editSubtitleDraftCue(id: string, patch: Partial<DraftCue>): void {
-		this.generationService?.editCue(id, patch);
-	}
-
-	addSubtitleDraftCue(): void {
-		this.generationService?.addCue();
-	}
-
-	removeSubtitleDraftCue(id: string): void {
-		this.generationService?.removeCue(id);
-	}
-
-	confirmAllSubtitleDraftCues(): void {
-		this.generationService?.confirmAllCues();
-	}
-	hasReviewWordTimings(): boolean {
-		return (this.generationService?.getTimedWords().length ?? 0) > 0;
-	}
-	canHighlightDraftCue(cue: DraftCue): boolean {
-		return (
-			cue.start !== null &&
-			cue.end !== null &&
-			alignTimedWords(
-				cue.text.trim(),
-				cue.start,
-				cue.end,
-				this.generationService?.getTimedWords() ?? [],
-			) !== null
-		);
+	actOnSubtitleDraft(action: SubtitleDraftAction): void {
+		this.generationService?.act(action);
 	}
 
 	private reconcileRestore(): void {
@@ -1416,6 +1381,7 @@ export class AudioPracticeRuntime {
 				failure: null,
 				error: this.draftError,
 				notice: null,
+				hasReviewWordTimings: false,
 			};
 		}
 		const gen = this.generationService.getSnapshot();
@@ -1435,6 +1401,7 @@ export class AudioPracticeRuntime {
 			failure: isCurrent && sourceValid ? gen.failure : null,
 			error: this.draftError,
 			notice: isCurrent && sourceValid ? gen.notice : null,
+			hasReviewWordTimings: isCurrent && sourceValid ? gen.hasReviewWordTimings : false,
 		};
 	}
 

@@ -1,5 +1,5 @@
 import { settingsRecord, type SettingsSlice } from "../../../core/settings/slice";
-import type { TranscriptionProviderId } from "../generation/types";
+import type { TranscriptionProviderId } from "../domain/transcriptionTypes";
 
 export const DEFAULT_BAILIAN_MODEL = "fun-asr-flash-2026-06-15";
 export const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";

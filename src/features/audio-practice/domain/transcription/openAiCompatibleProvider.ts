@@ -1,7 +1,7 @@
-import { isRecord } from "../../../core/shared/isRecord";
-import type { OutboundPort } from "../../../core/net/types";
+import { isRecord } from "../../../../core/shared/isRecord";
+import type { OutboundPort } from "../../../../core/net/types";
 import { buildMultipartBody, createMultipartBoundary } from "./multipart";
-import { audioFailure } from "../domain/failures";
+import { audioFailure } from "../failures";
 import { toProviderFailure } from "./serviceErrors";
 import { openAiCompatibleAudioUrl, validateTranscriptionConfig } from "./transcriptionConfig";
 import type {
@@ -10,7 +10,7 @@ import type {
 	OpenAiCompatibleTranscriptionConfig,
 	TimedWord,
 	Transcript,
-} from "./types";
+} from "../transcriptionTypes";
 
 interface ParsedSegment {
 	text: string;

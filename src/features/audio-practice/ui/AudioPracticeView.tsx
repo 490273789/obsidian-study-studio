@@ -701,16 +701,7 @@ function MaterialForm(props: MaterialFormProps): React.ReactNode {
 interface DraftReviewBodyProps {
 	draft: AudioPracticeDraftSnapshot;
 	material: AudioMaterial;
-	runtime: Pick<
-		AudioPracticeRuntime,
-		| "preview"
-		| "editSubtitleDraftCue"
-		| "addSubtitleDraftCue"
-		| "removeSubtitleDraftCue"
-		| "confirmAllSubtitleDraftCues"
-		| "hasReviewWordTimings"
-		| "canHighlightDraftCue"
-	>;
+	runtime: Pick<AudioPracticeRuntime, "preview" | "actOnSubtitleDraft">;
 	t: AudioPracticeStrings;
 	busy: boolean;
 	error: string | null;
@@ -780,7 +771,7 @@ export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
 						size="sm"
 						icon={ListChecks}
 						disabled={busy || pending === 0}
-						onClick={() => runtime.confirmAllSubtitleDraftCues()}
+						onClick={() => runtime.actOnSubtitleDraft({ type: "confirm-all-cues" })}
 					>
 						{t.markAllReviewed}
 					</Button>
@@ -794,8 +785,7 @@ export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
 					{draft.cues.map((cue, index) => {
 						const invalid =
 							cue.start === null || cue.end === null || cue.end <= cue.start;
-						const wordFallback =
-							runtime.hasReviewWordTimings() && !runtime.canHighlightDraftCue(cue);
+						const wordFallback = draft.hasReviewWordTimings && !cue.highlightable;
 						return (
 							<li key={cue.id} className={styles.draftCue}>
 								<div className={styles.draftCueHeader}>
@@ -805,8 +795,12 @@ export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
 									<FlashcardCheckbox
 										checked={!cue.needsReview}
 										onChange={(event) =>
-											runtime.editSubtitleDraftCue(cue.id, {
-												needsReview: !event.target.checked,
+											runtime.actOnSubtitleDraft({
+												type: "edit-cue",
+												id: cue.id,
+												patch: {
+													needsReview: !event.target.checked,
+												},
 											})
 										}
 										label={cue.needsReview ? t.pending : t.checked}
@@ -823,14 +817,23 @@ export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
 										className={styles.draftDelete}
 										aria-label={`${t.deleteCue} ${index + 1}`}
 										title={t.deleteCue}
-										onClick={() => runtime.removeSubtitleDraftCue(cue.id)}
+										onClick={() =>
+											runtime.actOnSubtitleDraft({
+												type: "remove-cue",
+												id: cue.id,
+											})
+										}
 									/>
 								</div>
 								<FlashcardTextarea
 									value={cue.text}
 									onChange={(event) =>
-										runtime.editSubtitleDraftCue(cue.id, {
-											text: event.target.value,
+										runtime.actOnSubtitleDraft({
+											type: "edit-cue",
+											id: cue.id,
+											patch: {
+												text: event.target.value,
+											},
 										})
 									}
 									aria-label={`${t.cueText} ${index + 1}`}
@@ -853,11 +856,15 @@ export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
 											fullWidth={false}
 											value={cue.start ?? ""}
 											onChange={(event) =>
-												runtime.editSubtitleDraftCue(cue.id, {
-													start:
-														event.target.value === ""
-															? null
-															: Number(event.target.value),
+												runtime.actOnSubtitleDraft({
+													type: "edit-cue",
+													id: cue.id,
+													patch: {
+														start:
+															event.target.value === ""
+																? null
+																: Number(event.target.value),
+													},
 												})
 											}
 										/>
@@ -872,11 +879,15 @@ export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
 											fullWidth={false}
 											value={cue.end ?? ""}
 											onChange={(event) =>
-												runtime.editSubtitleDraftCue(cue.id, {
-													end:
-														event.target.value === ""
-															? null
-															: Number(event.target.value),
+												runtime.actOnSubtitleDraft({
+													type: "edit-cue",
+													id: cue.id,
+													patch: {
+														end:
+															event.target.value === ""
+																? null
+																: Number(event.target.value),
+													},
 												})
 											}
 										/>
@@ -899,7 +910,11 @@ export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
 				</ol>
 			</div>
 			<div className={cls("flashcard-modal-footer", styles.dialogFooter)}>
-				<Button icon={Plus} onClick={() => runtime.addSubtitleDraftCue()} disabled={busy}>
+				<Button
+					icon={Plus}
+					onClick={() => runtime.actOnSubtitleDraft({ type: "add-cue" })}
+					disabled={busy}
+				>
 					{t.addCue}
 				</Button>
 				<span className={styles.footerSpacer} />

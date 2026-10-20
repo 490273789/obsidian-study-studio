@@ -1,6 +1,6 @@
-import { audioFailure } from "../domain/failures";
-import { MAX_AUDIO_BYTES, MAX_AUDIO_DURATION_SECONDS } from "./limits";
-import type { PrepareAudio } from "./types";
+import { audioFailure } from "../failures";
+import { MAX_AUDIO_BYTES, MAX_AUDIO_DURATION_SECONDS } from "../transcriptionTypes";
+import type { PrepareAudio } from "../transcriptionTypes";
 
 export function encodeMonoWav(samples: Float32Array, sampleRate = 16000): ArrayBuffer {
 	const buffer = new ArrayBuffer(44 + samples.length * 2);

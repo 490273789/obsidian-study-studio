@@ -33,6 +33,7 @@ vi.mock("react", async (original) => ({
 		return hooks.values[index];
 	},
 	useEffect: () => {},
+	useId: () => "test-id",
 	useSyncExternalStore: (_subscribe: unknown, getSnapshot: () => unknown) => getSnapshot(),
 }));
 
@@ -98,6 +99,7 @@ function harness() {
 		draft: {
 			status: "idle",
 			cues: [],
+			hasReviewWordTimings: false,
 			completedChunks: 0,
 			totalChunks: 0,
 			failure: null,

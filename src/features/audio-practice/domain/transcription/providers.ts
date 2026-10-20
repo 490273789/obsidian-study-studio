@@ -1,7 +1,7 @@
-import type { OutboundPort } from "../../../core/net/types";
+import type { OutboundPort } from "../../../../core/net/types";
 import { createBailianProvider } from "./bailianProvider";
 import { createOpenAiCompatibleProvider } from "./openAiCompatibleProvider";
-import type { TranscribeAudio } from "./types";
+import type { TranscribeAudio } from "../transcriptionTypes";
 
 /** Dispatches one chunk transcription to the provider family selected in settings. */
 export function createTranscriptionProvider(outbound: OutboundPort): TranscribeAudio {

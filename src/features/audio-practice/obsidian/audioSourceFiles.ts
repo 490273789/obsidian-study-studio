@@ -1,6 +1,6 @@
 import { TFile, normalizePath, type App } from "obsidian";
 import { audioFailure } from "../domain/failures";
-import type { AudioSourceFiles } from "../generation/types";
+import type { AudioSourceFiles } from "../domain/transcriptionTypes";
 
 /** Vault-backed source identity for the subtitle workflow; no Obsidian types escape. */
 export function createAudioSourceFiles(app: App): AudioSourceFiles {

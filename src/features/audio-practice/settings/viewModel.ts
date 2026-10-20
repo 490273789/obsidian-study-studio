@@ -1,6 +1,6 @@
 import { defineSettings } from "../../../core/settings/presentation";
 import type { Language } from "../../../core/shared/types";
-import type { TranscriptionProviderId } from "../generation/types";
+import type { TranscriptionProviderId } from "../domain/transcriptionTypes";
 import type { AudioPracticeSettings } from "./slice";
 import { audioSettingsCopy } from "./copy";
 

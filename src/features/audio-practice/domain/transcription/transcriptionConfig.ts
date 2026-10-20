@@ -1,6 +1,6 @@
-import { EndpointValidationError, validateHttpEndpoint } from "../../../core/net/endpoint";
-import { audioFailure } from "../domain/failures";
-import type { TranscriptionConfig } from "./types";
+import { EndpointValidationError, validateHttpEndpoint } from "../../../../core/net/endpoint";
+import { audioFailure } from "../failures";
+import type { TranscriptionConfig } from "../transcriptionTypes";
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 

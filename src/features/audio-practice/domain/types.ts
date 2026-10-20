@@ -77,7 +77,8 @@ export interface AudioMediaPort {
 	addEventListener(event: string, listener: () => void): void;
 	removeEventListener(event: string, listener: () => void): void;
 }
-import type { DraftCue, GenerationNotice } from "../generation/types";
+import type { GenerationNotice } from "./transcriptionTypes";
+import type { SubtitleDraftCue } from "./subtitleDraftEngine";
 
 export type AudioPracticeDraftStatus =
 	| "idle"
@@ -91,12 +92,13 @@ export type AudioPracticeDraftStatus =
 
 export interface AudioPracticeDraftSnapshot {
 	readonly status: AudioPracticeDraftStatus;
-	readonly cues: readonly DraftCue[];
+	readonly cues: readonly SubtitleDraftCue[];
 	readonly completedChunks: number;
 	readonly totalChunks: number;
 	readonly failure: AudioFailure | null;
 	readonly error: AudioFailure | null;
 	readonly notice: GenerationNotice | null;
+	readonly hasReviewWordTimings: boolean;
 }
 
 export interface AudioPracticeSnapshot extends AudioPracticeData {

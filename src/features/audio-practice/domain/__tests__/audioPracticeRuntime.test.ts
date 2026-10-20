@@ -2,9 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { AudioPracticeRuntime } from "../audioPracticeRuntime";
 import { emptyAudioPracticeData, normalizeAudioPracticeData } from "../repository";
 import { audioFailure } from "../failures";
-import { MAX_AUDIO_BYTES } from "../../generation/limits";
-import type { AudioSourceStat, GenerationInput } from "../../generation/types";
-import type { GenerationSnapshot, SubtitleGeneration } from "../../generation/subtitleGeneration";
+import { MAX_AUDIO_BYTES } from "../transcriptionTypes";
+import type { AudioSourceStat, GenerationInput, TimedTextWord } from "../transcriptionTypes";
+import {
+	alignTimedWords,
+	type SubtitleDraftSnapshot,
+	type SubtitleDraftEngine,
+	type SubtitleDraftAction,
+} from "../subtitleDraftEngine";
 import type { AudioPracticeSettings } from "../../settings/slice";
 import type {
 	AudioFileChange,
@@ -890,7 +895,7 @@ function draftHarness(
 			originalText: string;
 		}[];
 		currentMaterialId?: string | null;
-		generationSnapshot?: Partial<GenerationSnapshot>;
+		generationSnapshot?: Partial<SubtitleDraftSnapshot>;
 		sourceStat?: AudioSourceStat | null;
 		sourceStats?: (AudioSourceStat | null)[];
 		readBinary?: () => Promise<ArrayBuffer>;
@@ -936,7 +941,7 @@ function draftHarness(
 		},
 	};
 
-	let genSnapshot: GenerationSnapshot = {
+	let genSnapshot: SubtitleDraftSnapshot = {
 		status: "idle",
 		cues: [],
 		completedChunks: 0,
@@ -945,10 +950,11 @@ function draftHarness(
 		failure: null,
 		notice: null,
 		taskKey: null,
+		hasReviewWordTimings: false,
 		...options.generationSnapshot,
 	};
 	const genListeners = new Set<() => void>();
-	const publishGen = (patch: Partial<GenerationSnapshot>) => {
+	const publishGen = (patch: Partial<SubtitleDraftSnapshot>) => {
 		genSnapshot = { ...genSnapshot, ...patch };
 		for (const listener of genListeners) listener();
 	};
@@ -973,21 +979,45 @@ function draftHarness(
 		restore: vi.fn(async () => true),
 		matchesSource: vi.fn(options.matchesSource ?? (async () => true)),
 		validatedCues: vi.fn(() => savedCues.map((c) => ({ ...c }))),
-		editCue: vi.fn((id: string, patch: Partial<SubtitleCue>) => {
-			publishGen({
-				cues: genSnapshot.cues.map((c) => (c.id === id ? { ...c, ...patch } : c)),
-			});
+		getValidatedWordTimings: vi.fn(() => {
+			const timings: Record<string, TimedTextWord[]> = {};
+			const words = options.timedWords ?? [];
+			for (const cue of savedCues) {
+				const matched = alignTimedWords(cue.text.trim(), cue.start, cue.end, words);
+				if (matched) timings[cue.id] = matched;
+			}
+			return timings;
 		}),
-		addCue: vi.fn(() => {
-			const cue = { id: "new-cue", start: null, end: null, text: "", needsReview: true };
-			publishGen({ cues: [...genSnapshot.cues, cue] });
-			return cue.id;
-		}),
-		removeCue: vi.fn((id: string) => {
-			publishGen({ cues: genSnapshot.cues.filter((c) => c.id !== id) });
-		}),
-		confirmAllCues: vi.fn(() => {
-			publishGen({ cues: genSnapshot.cues.map((c) => ({ ...c, needsReview: false })) });
+		act: vi.fn((action: SubtitleDraftAction) => {
+			switch (action.type) {
+				case "edit-cue":
+					publishGen({
+						cues: genSnapshot.cues.map((c) =>
+							c.id === action.id ? { ...c, ...action.patch } : c,
+						),
+					});
+					break;
+				case "add-cue": {
+					const cue = {
+						id: "new-cue",
+						start: null,
+						end: null,
+						text: "",
+						needsReview: true,
+						highlightable: false,
+					};
+					publishGen({ cues: [...genSnapshot.cues, cue] });
+					break;
+				}
+				case "remove-cue":
+					publishGen({ cues: genSnapshot.cues.filter((c) => c.id !== action.id) });
+					break;
+				case "confirm-all-cues":
+					publishGen({
+						cues: genSnapshot.cues.map((c) => ({ ...c, needsReview: false })),
+					});
+					break;
+			}
 		}),
 	};
 
@@ -1008,7 +1038,7 @@ function draftHarness(
 		files,
 		source,
 		settings: settingsReader,
-		generation: generation as unknown as SubtitleGeneration,
+		generation: generation as unknown as SubtitleDraftEngine,
 	});
 
 	return {
@@ -1192,7 +1222,11 @@ describe("audio practice runtime subtitle save adoption", () => {
 			generationSnapshot: {
 				taskKey: "a",
 				status: "review",
-				cues: savedCues.map((cue) => ({ ...cue, needsReview: false })),
+				cues: savedCues.map((cue) => ({
+					...cue,
+					needsReview: false,
+					highlightable: false,
+				})),
 			},
 			matchesSource: async () => false,
 		});
@@ -1213,7 +1247,11 @@ describe("audio practice runtime subtitle save adoption", () => {
 			generationSnapshot: {
 				taskKey: "a",
 				status: "review",
-				cues: savedCues.map((cue) => ({ ...cue, needsReview: false })),
+				cues: savedCues.map((cue) => ({
+					...cue,
+					needsReview: false,
+					highlightable: false,
+				})),
 			},
 			matchesSource: async () => false,
 		});
@@ -1332,9 +1370,6 @@ describe("audio practice runtime subtitle save adoption", () => {
 			generationSnapshot: { taskKey: "a", status: "review" },
 			timedWords: [{ text: "hullo", start: 0, end: 0.8 }],
 		});
-		expect(h.runtime.canHighlightDraftCue({ ...savedCues[0]!, needsReview: false })).toBe(
-			false,
-		);
 		expect(await h.runtime.saveSubtitleDraft()).toBe(true);
 		expect(h.runtime.getSnapshot().currentMaterial?.wordTimings).toBeUndefined();
 		h.runtime.dispose();
@@ -1358,21 +1393,34 @@ describe("audio practice runtime subtitle draft editing", () => {
 			generationSnapshot: {
 				taskKey: "a",
 				status: "review",
-				cues: [{ id: "cue-1", start: 0, end: 1, text: "original", needsReview: true }],
+				cues: [
+					{
+						id: "cue-1",
+						start: 0,
+						end: 1,
+						text: "original",
+						needsReview: true,
+						highlightable: false,
+					},
+				],
 			},
 		});
 		expect(h.runtime.getSnapshot().draft.cues).toHaveLength(1);
 
-		h.runtime.editSubtitleDraftCue("cue-1", { text: "updated" });
+		h.runtime.actOnSubtitleDraft({
+			type: "edit-cue",
+			id: "cue-1",
+			patch: { text: "updated" },
+		});
 		expect(h.runtime.getSnapshot().draft.cues[0]?.text).toBe("updated");
 
-		h.runtime.addSubtitleDraftCue();
+		h.runtime.actOnSubtitleDraft({ type: "add-cue" });
 		expect(h.runtime.getSnapshot().draft.cues).toHaveLength(2);
 
-		h.runtime.confirmAllSubtitleDraftCues();
+		h.runtime.actOnSubtitleDraft({ type: "confirm-all-cues" });
 		expect(h.runtime.getSnapshot().draft.cues.every((c) => !c.needsReview)).toBe(true);
 
-		h.runtime.removeSubtitleDraftCue("cue-1");
+		h.runtime.actOnSubtitleDraft({ type: "remove-cue", id: "cue-1" });
 		expect(h.runtime.getSnapshot().draft.cues).toHaveLength(1);
 	});
 });

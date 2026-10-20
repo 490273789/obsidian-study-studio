@@ -1,5 +1,5 @@
-import type { OutboundPort } from "../../../core/net/types";
-import { audioFailure, AudioFailureError } from "../domain/failures";
+import type { OutboundPort } from "../../../../core/net/types";
+import { audioFailure, AudioFailureError } from "../failures";
 import { toProviderFailure } from "./serviceErrors";
 import type {
 	AudioChunk,
@@ -7,7 +7,7 @@ import type {
 	DraftCue,
 	TimedWord,
 	Transcript,
-} from "./types";
+} from "../transcriptionTypes";
 
 function base64(buffer: ArrayBuffer): string {
 	const bytes = new Uint8Array(buffer);

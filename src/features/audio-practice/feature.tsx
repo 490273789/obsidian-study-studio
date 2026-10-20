@@ -10,9 +10,9 @@ import type { Language } from "../../core/shared/types";
 import { FlashcardButton } from "../../core/ui/primitives/Button";
 import { ModalProvider } from "../../core/ui/primitives/Modal";
 import { AudioPracticeRuntime } from "./domain/audioPracticeRuntime";
-import { SubtitleGeneration, normalizeGenerationDraft } from "./generation/subtitleGeneration";
-import { createBrowserAudioPreparation } from "./generation/browserAudio";
-import { createTranscriptionProvider } from "./generation/providers";
+import { SubtitleDraftEngine, normalizeGenerationDraft } from "./domain/subtitleDraftEngine";
+import { createBrowserAudioPreparation } from "./domain/transcription/browserAudio";
+import { createTranscriptionProvider } from "./domain/transcription/providers";
 import { createAudioSourceFiles } from "./obsidian/audioSourceFiles";
 import { createAudioPracticeRepository } from "./obsidian/repositoryAdapter";
 import { createAudioPracticeFiles, listAudioPracticeFiles } from "./obsidian/vaultFiles";
@@ -36,7 +36,7 @@ export function createAudioPracticeFeature(deps: {
 			const source = createAudioSourceFiles(host.app);
 			let mediaWindow: Window = window;
 			const generation = lifetime.own(
-				new SubtitleGeneration({
+				new SubtitleDraftEngine({
 					prepare: createBrowserAudioPreparation(() => mediaWindow),
 					transcribe: createTranscriptionProvider(deps.net),
 					drafts: {

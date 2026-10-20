@@ -1,5 +1,5 @@
-import { TransportError } from "../../../core/net/types";
-import type { AudioFailure } from "../domain/failures";
+import { TransportError } from "../../../../core/net/types";
+import type { AudioFailure } from "../failures";
 
 /**
  * Maps a transport failure into the audio-practice failure vocabulary.

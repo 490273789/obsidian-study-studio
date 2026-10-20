@@ -12,6 +12,13 @@ export interface TimedWord {
 	end: number;
 }
 
+export interface TimedTextWord {
+	startOffset: number;
+	endOffset: number;
+	start: number;
+	end: number;
+}
+
 export interface Transcript {
 	cues: DraftCue[];
 	words: TimedWord[];
@@ -109,3 +116,8 @@ export interface AudioSourceFiles {
 	stat(path: string): AudioSourceStat | null;
 	readBinary(path: string): Promise<ArrayBuffer>;
 }
+
+export const MAX_AUDIO_BYTES = 100 * 1024 * 1024;
+export const MAX_AUDIO_DURATION_SECONDS = 3 * 60 * 60;
+export const AUDIO_CHUNK_SECONDS = 60;
+export const AUDIO_CHUNK_OVERLAP_SECONDS = 1;

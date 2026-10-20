@@ -1,19 +1,19 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { AudioFailureError, type AudioFailure } from "../../domain/failures";
+import { AudioFailureError, type AudioFailure } from "../failures";
 import { TransportError } from "../../../../core/net/types";
 import type { OutboundPort } from "../../../../core/net/types";
-import { buildMultipartBody } from "../multipart";
+import { buildMultipartBody } from "../transcription/multipart";
 import {
 	createOpenAiCompatibleProvider,
 	parseOpenAiCompatibleResponse,
-} from "../openAiCompatibleProvider";
-import { createTranscriptionProvider } from "../providers";
+} from "../transcription/openAiCompatibleProvider";
+import { createTranscriptionProvider } from "../transcription/providers";
 import {
 	openAiCompatibleAudioUrl,
 	transcriptionConfigFingerprint,
 	validateTranscriptionConfig,
-} from "../transcriptionConfig";
-import type { OpenAiCompatibleTranscriptionConfig } from "../types";
+} from "../transcription/transcriptionConfig";
+import type { OpenAiCompatibleTranscriptionConfig } from "../transcriptionTypes";
 
 const chunk = {
 	index: 0,
