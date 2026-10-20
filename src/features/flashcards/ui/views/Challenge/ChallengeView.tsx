@@ -4,7 +4,6 @@ import { Check, CornerDownLeft, Lightbulb, X } from "lucide-react";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardInput } from "../../../../../core/ui/primitives/Input";
 import { useCardPresentationShortcuts } from "../../hooks/useCardPresentationShortcuts";
-import { useSessionSurface } from "../../hooks/useSessionSurface";
 import type { ActiveChallengeSnapshot } from "../../../domain/sessions/sessionLifecycle";
 import { useFlashcardI18n } from "../../../strings/context";
 import type { AnswerPresentationTransition } from "../../answerPresentationTransition";
@@ -51,7 +50,6 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 	const inputRef = useRef<HTMLInputElement>(null);
 	const viewRef = useRef<HTMLDivElement>(null);
 	const currentCard = session.currentCard;
-	const surface = useSessionSurface({ transition, reference: session.reference });
 	const isSpelling = session.questionMode === "spelling";
 	const feedback = session.feedback;
 	const isFeedback = session.phase === "feedback";
@@ -74,25 +72,33 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 	const answer = useCallback(
 		async (correct: boolean) => {
 			if (isFeedback) return;
-			await surface.act({ kind: "challenge-answer", correct });
+			await transition.act({
+				kind: "challenge-answer",
+				reference: session.reference,
+				correct,
+			});
 		},
-		[isFeedback, surface],
+		[isFeedback, transition, session.reference],
 	);
 
 	const submitSpelling = useCallback(
 		async (value: string, reveal = false) => {
 			if (isFeedback || (!reveal && !value.trim())) return;
 			await (reveal
-				? surface.act({ kind: "challenge-reveal" })
-				: surface.act({ kind: "challenge-answer", input: value }));
+				? transition.act({ kind: "challenge-reveal", reference: session.reference })
+				: transition.act({
+						kind: "challenge-answer",
+						reference: session.reference,
+						input: value,
+					}));
 		},
-		[isFeedback, surface],
+		[isFeedback, transition, session.reference],
 	);
 
 	const continueAfterFeedback = useCallback(async () => {
 		if (!isFeedback) return;
-		await surface.act({ kind: "challenge-continue" });
-	}, [isFeedback, surface]);
+		await transition.act({ kind: "challenge-continue", reference: session.reference });
+	}, [isFeedback, transition, session.reference]);
 
 	const shortcutRootRef = useCardPresentationShortcuts(
 		{

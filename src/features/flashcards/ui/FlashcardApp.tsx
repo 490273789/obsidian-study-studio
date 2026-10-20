@@ -95,6 +95,9 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 			createAnswerPresentationTransition({
 				lifecycle: sessionLifecycle,
 				pronunciationRuntime,
+				notify: (message) => {
+					new Notice(message);
+				},
 			}),
 		[pronunciationRuntime, sessionLifecycle],
 	);

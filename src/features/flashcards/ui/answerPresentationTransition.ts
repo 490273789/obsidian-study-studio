@@ -96,6 +96,7 @@ export interface CreateAnswerPresentationTransitionOptions {
 	wordLearningDecks?: Readonly<Record<string, boolean>>;
 	now?: () => number;
 	prepareSpellingAdvance?: (feedback: SpellingLifecycleFeedback) => Promise<number>;
+	notify?: (message: string) => void;
 }
 
 export interface AnswerPresentationTransition {
@@ -216,6 +217,7 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 		}
 		if (outcome.kind === "failed") {
 			this.settle();
+			this.options.notify?.(outcome.failure.message);
 			return {
 				kind: "failed",
 				message: outcome.failure.message,

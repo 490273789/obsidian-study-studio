@@ -12,7 +12,6 @@ import type {
 import { useFlashcardI18n } from "../../../strings/context";
 import type { AnswerPresentationTransition } from "../../answerPresentationTransition";
 import { useSessionInputVisibility } from "../../hooks/useSessionInputVisibility";
-import { useSessionSurface } from "../../hooks/useSessionSurface";
 import { SessionLayout } from "../../primitives/SessionLayout/SessionLayout";
 import { SessionToolbar } from "../../primitives/SessionToolbar";
 import { CardExplanationPanel, CardQuestionPanel } from "../../presentation/CardPanels";
@@ -87,7 +86,6 @@ const SpellingQuestion = React.memo(function SpellingQuestion({
 	const feedbackId = useId();
 	const viewRef = useRef<HTMLDivElement>(null);
 	const currentCard = session.currentCard;
-	const surface = useSessionSurface({ transition, reference: session.reference });
 
 	const { keepInputVisible, handleInputBlur, captureReturn } = useSessionInputVisibility(
 		inputRef,
@@ -105,8 +103,9 @@ const SpellingQuestion = React.memo(function SpellingQuestion({
 			if (!currentCard) return;
 			if (!allowEmpty && submittedInput.trim().length === 0) return;
 			const inputReturn = captureReturn();
-			const outcome = await surface.act({
+			const outcome = await transition.act({
 				kind: "spelling-answer",
+				reference: session.reference,
 				input: submittedInput,
 			});
 			if (outcome.kind !== "applied" || !outcome.feedback) return;
@@ -121,7 +120,7 @@ const SpellingQuestion = React.memo(function SpellingQuestion({
 				}
 			}
 		},
-		[captureReturn, currentCard, surface],
+		[captureReturn, currentCard, transition, session.reference],
 	);
 
 	if (!currentCard) {

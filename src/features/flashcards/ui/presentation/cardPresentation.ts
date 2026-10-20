@@ -1,6 +1,7 @@
 import type { CardDirection, FlashCard } from "../../../../core/shared/types";
 import { getDisplayCardContent } from "../../domain/cards/cardDisplay";
 import type { TranslationKey } from "../../strings";
+import type { CardPresentationSnapshot } from "../answerPresentationTransition";
 
 /**
  * One card presentation derived from what the view already knows. The model is
@@ -64,4 +65,21 @@ export function deriveCardPresentation(input: CardPresentationInput): CardPresen
 				? { label: "common.explanation", content: explanation, pronunciationWord: null }
 				: null,
 	};
+}
+
+/** Shared toolbar control for the study/practice auto-pronunciation toggle. */
+export function autoPronunciationControl(
+	cardPresentation: CardPresentationSnapshot,
+	onToggle: () => void,
+	enableTitle: string,
+	disableTitle: string,
+) {
+	return cardPresentation.pronunciationEnabled
+		? {
+				enabled: cardPresentation.autoPronunciationEnabled,
+				onToggle,
+				enableTitle,
+				disableTitle,
+			}
+		: undefined;
 }

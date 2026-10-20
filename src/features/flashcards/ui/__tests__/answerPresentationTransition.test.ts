@@ -761,22 +761,56 @@ describe("AnswerPresentationTransition", () => {
 		const initial = activeStudy("one", 1);
 		const lifecycle = new ScriptedLifecycle(initial);
 		const clock = new FakeClock();
+		const notify = vi.fn();
 		lifecycle.onAct = async () => ({
 			kind: "failed",
 			failure: { code: "persistence-failed", message: "disk unavailable", retryable: true },
 			snapshot: initial,
 		});
-		const subject = createAnswerPresentationTransition({ lifecycle, clock });
+		const subject = createAnswerPresentationTransition({ lifecycle, clock, notify });
 		const unsubscribe = subject.subscribe(() => undefined);
 
 		expect(
 			await subject.act({ kind: "study-answer", reference: initial.reference, rating: 3 }),
 		).toEqual({ kind: "failed", message: "disk unavailable", retryable: true });
+		expect(notify).toHaveBeenCalledWith("disk unavailable");
 		expect(subject.getSnapshot()).toMatchObject({
 			lifecycle: { currentCard: { identity: "one" } },
 			activity: { kind: "idle" },
 		});
 		expect(clock.pendingCount).toBe(0);
+		unsubscribe();
+	});
+
+	it("stays silent and does not notify for applied or rejected outcomes", async () => {
+		const initial = activeStudy("one", 1);
+		const lifecycle = new ScriptedLifecycle(initial);
+		const clock = new FakeClock();
+		const notify = vi.fn();
+		const subject = createAnswerPresentationTransition({ lifecycle, clock, notify });
+		const unsubscribe = subject.subscribe(() => undefined);
+
+		lifecycle.onAct = async () => ({
+			kind: "rejected",
+			reason: "action-not-available",
+			snapshot: initial,
+		});
+		await subject.act({ kind: "study-answer", reference: initial.reference, rating: 3 });
+		expect(notify).not.toHaveBeenCalled();
+
+		lifecycle.onAct = async () => ({
+			kind: "applied",
+			snapshot: activeStudy("two", 2),
+		});
+		const pending = subject.act({
+			kind: "study-answer",
+			reference: initial.reference,
+			rating: 4,
+		});
+		await flushPromises();
+		clock.runNext();
+		await pending;
+		expect(notify).not.toHaveBeenCalled();
 		unsubscribe();
 	});
 

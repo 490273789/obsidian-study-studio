@@ -8,15 +8,16 @@ import type {
 	CardPresentationSnapshot,
 } from "../../answerPresentationTransition";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
-import { deriveCardPresentation } from "../../presentation/cardPresentation";
+import {
+	autoPronunciationControl,
+	deriveCardPresentation,
+} from "../../presentation/cardPresentation";
 import { CardPresentationBody } from "../../presentation/CardPresentationBody";
-import { autoPronunciationControl } from "../../presentation/sessionSurface";
 import styles from "./Practice.module.scss";
 import { SessionLayout } from "../../primitives/SessionLayout/SessionLayout";
 import { SessionToolbar } from "../../primitives/SessionToolbar";
 import { sessionSurfaceFooter } from "../../primitives/SessionSurfaceFooter";
 import { useCardPresentationShortcuts } from "../../hooks/useCardPresentationShortcuts";
-import { useSessionSurface } from "../../hooks/useSessionSurface";
 import { useFlashcardI18n } from "../../../strings/context";
 
 interface PracticeViewProps {
@@ -42,7 +43,29 @@ export const PracticeView = React.memo(function PracticeView({
 }: PracticeViewProps) {
 	const { t } = useFlashcardI18n();
 	const { answerVisible: showAnswer, pronunciationWord } = cardPresentation;
-	const surface = useSessionSurface({ transition, reference: session.reference });
+
+	const handleReveal = () => {
+		void transition.act({ kind: "card-reveal", reference: session.reference });
+	};
+
+	const handleAnswer = (correct: boolean) => {
+		void transition.act({
+			kind: "practice-answer",
+			reference: session.reference,
+			correct,
+		});
+	};
+
+	const handlePrevious = () => {
+		void transition.act({ kind: "practice-previous", reference: session.reference });
+	};
+
+	const handleToggleAutoPronunciation = () => {
+		void transition.act({
+			kind: "card-toggle-auto-pronunciation",
+			reference: session.reference,
+		});
+	};
 
 	const currentCard = session.currentCard;
 	const model = useMemo(
@@ -66,13 +89,13 @@ export const PracticeView = React.memo(function PracticeView({
 		(intent) => {
 			switch (intent.kind) {
 				case "reveal":
-					void surface.act({ kind: "reveal" });
+					handleReveal();
 					break;
 				case "answer":
-					void surface.act({ kind: "practice-answer", correct: intent.correct });
+					handleAnswer(intent.correct);
 					break;
 				case "previous":
-					void surface.act({ kind: "previous" });
+					handlePrevious();
 					break;
 			}
 		},
@@ -110,7 +133,7 @@ export const PracticeView = React.memo(function PracticeView({
 					closeTitle={t("practice.exitTitle")}
 					autoPronunciation={autoPronunciationControl(
 						cardPresentation,
-						() => void surface.act({ kind: "toggle-auto-pronunciation" }),
+						handleToggleAutoPronunciation,
 						t("pronunciation.autoEnable"),
 						t("pronunciation.autoDisable"),
 					)}
@@ -119,7 +142,7 @@ export const PracticeView = React.memo(function PracticeView({
 			footer={sessionSurfaceFooter({
 				busy: isTransitioning,
 				answerVisible: showAnswer,
-				onReveal: () => void surface.act({ kind: "reveal" }),
+				onReveal: handleReveal,
 				revealLabel: t("common.showAnswer"),
 				shortcutLabel: t("common.space"),
 				children: (
@@ -133,7 +156,7 @@ export const PracticeView = React.memo(function PracticeView({
 							preset="prev"
 							icon={RotateCcw}
 							iconSize={24}
-							onClick={() => void surface.act({ kind: "previous" })}
+							onClick={handlePrevious}
 							disabled={!session.canPrevious || isTransitioning}
 							title={`${t("common.undo")} (6)`}
 						/>
@@ -148,9 +171,7 @@ export const PracticeView = React.memo(function PracticeView({
 								className={styles.btnWrong}
 								size="lg"
 								disabled={isTransitioning}
-								onClick={() =>
-									void surface.act({ kind: "practice-answer", correct: false })
-								}
+								onClick={() => handleAnswer(false)}
 							>
 								<span className={styles.btnIcon}>
 									<X size={18} />
@@ -167,9 +188,7 @@ export const PracticeView = React.memo(function PracticeView({
 								className={styles.btnCorrect}
 								size="lg"
 								disabled={isTransitioning}
-								onClick={() =>
-									void surface.act({ kind: "practice-answer", correct: true })
-								}
+								onClick={() => handleAnswer(true)}
 							>
 								<span className={styles.btnIcon}>
 									<Check size={18} />

@@ -15,11 +15,12 @@ import { SessionToolbar } from "../../primitives/SessionToolbar";
 import { sessionSurfaceFooter } from "../../primitives/SessionSurfaceFooter";
 import { SessionTimer } from "../../../../../core/ui/primitives/SessionTimer";
 import { useCardPresentationShortcuts } from "../../hooks/useCardPresentationShortcuts";
-import { useSessionSurface } from "../../hooks/useSessionSurface";
 import { useFlashcardI18n } from "../../../strings/context";
-import { deriveCardPresentation } from "../../presentation/cardPresentation";
+import {
+	autoPronunciationControl,
+	deriveCardPresentation,
+} from "../../presentation/cardPresentation";
 import { CardPresentationBody } from "../../presentation/CardPresentationBody";
-import { autoPronunciationControl } from "../../presentation/sessionSurface";
 import styles from "./CardView.module.scss";
 
 const RATING_CLASSES: Record<StudyRating, string> = {
@@ -55,13 +56,30 @@ export const CardView = React.memo(function CardView({
 }: CardViewProps) {
 	const { t, language } = useFlashcardI18n();
 	const { answerVisible: showAnswer, pronunciationWord } = cardPresentation;
-	const surface = useSessionSurface({
-		transition,
-		reference: session.reference,
-		onOutcome: (outcome) => {
-			if (outcome.kind === "applied" && outcome.studyCompleted) onComplete();
-		},
-	});
+
+	const handleRate = async (rating: StudyRating) => {
+		const outcome = await transition.act({
+			kind: "study-answer",
+			reference: session.reference,
+			rating,
+		});
+		if (outcome.kind === "applied" && outcome.studyCompleted) onComplete();
+	};
+
+	const handleReveal = () => {
+		void transition.act({ kind: "card-reveal", reference: session.reference });
+	};
+
+	const handleToggleAutoPronunciation = () => {
+		void transition.act({
+			kind: "card-toggle-auto-pronunciation",
+			reference: session.reference,
+		});
+	};
+
+	const handlePrevious = () => {
+		void transition.act({ kind: "study-previous", reference: session.reference });
+	};
 
 	const currentCard = session.currentCard;
 	const ratingButtons = useMemo(() => getRatingButtons(language), [language]);
@@ -86,13 +104,13 @@ export const CardView = React.memo(function CardView({
 		(intent) => {
 			switch (intent.kind) {
 				case "reveal":
-					void surface.act({ kind: "reveal" });
+					handleReveal();
 					break;
 				case "rate":
-					void surface.act({ kind: "rate", rating: intent.rating });
+					void handleRate(intent.rating);
 					break;
 				case "previous":
-					void surface.act({ kind: "previous" });
+					handlePrevious();
 					break;
 			}
 		},
@@ -139,7 +157,7 @@ export const CardView = React.memo(function CardView({
 					closeTitle={t("common.close")}
 					autoPronunciation={autoPronunciationControl(
 						cardPresentation,
-						() => void surface.act({ kind: "toggle-auto-pronunciation" }),
+						handleToggleAutoPronunciation,
 						t("pronunciation.autoEnable"),
 						t("pronunciation.autoDisable"),
 					)}
@@ -148,7 +166,7 @@ export const CardView = React.memo(function CardView({
 			footer={sessionSurfaceFooter({
 				busy: isTransitioning,
 				answerVisible: showAnswer,
-				onReveal: () => void surface.act({ kind: "reveal" }),
+				onReveal: handleReveal,
 				revealLabel: t("common.showAnswer"),
 				shortcutLabel: t("common.space"),
 				children: (
@@ -157,7 +175,7 @@ export const CardView = React.memo(function CardView({
 							preset="prev"
 							icon={RotateCcw}
 							iconSize={24}
-							onClick={() => void surface.act({ kind: "previous" })}
+							onClick={handlePrevious}
 							disabled={!session.canPrevious || isTransitioning}
 							title={`${t("common.undo")} (6)`}
 						/>
@@ -170,9 +188,7 @@ export const CardView = React.memo(function CardView({
 									rating={btn.rating}
 									className={cls(styles.ratingBtn, RATING_CLASSES[btn.rating])}
 									disabled={isTransitioning}
-									onClick={() =>
-										void surface.act({ kind: "rate", rating: btn.rating })
-									}
+									onClick={() => void handleRate(btn.rating)}
 									aria-label={`${btn.label}，${btn.intervalDesc}，${btn.shortcut}`}
 								>
 									<span
