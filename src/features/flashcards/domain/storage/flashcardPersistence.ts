@@ -13,6 +13,16 @@ export interface FlashcardTagRead {
 	read(): string[];
 }
 
+/** Learning activity port for recording non-session study events like word list visits. */
+export interface FlashcardLearningActivityPort {
+	recordWordListVisit(
+		deckId: string,
+		deckName: string,
+		startTimeMs: number,
+		endTimeMs: number,
+	): Promise<void>;
+}
+
 /**
  * Local per-answer write-ahead log configuration. When present, pure answer
  * commits append one durable journal entry instead of rewriting `data.json`;
@@ -52,6 +62,7 @@ export interface FlashcardPersistence {
 	readonly sessions: SessionPersistencePort;
 	readonly continuity: ContinuityStateStore;
 	readonly tags: FlashcardTagRead;
+	readonly learningActivity: FlashcardLearningActivityPort;
 }
 
 export function createFlashcardPersistence(
@@ -78,5 +89,6 @@ export function createFlashcardPersistence(
 		sessions: repository,
 		continuity: repository.createContinuityStateStore(),
 		tags,
+		learningActivity: repository,
 	});
 }

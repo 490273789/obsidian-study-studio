@@ -120,12 +120,6 @@ class MemoryRepository implements DeckHomeRepository {
 	challengeProgress: ChallengeProgress | null = null;
 	spellingProgress: SpellingProgressSnapshot = {};
 	studyHistory: StudyHistoryEntry[] = [];
-	readonly wordListVisits: Array<{
-		deckId: string;
-		deckName: string;
-		startTimeMs: number;
-		endTimeMs: number;
-	}> = [];
 
 	constructor(
 		public decks: Deck[],
@@ -172,15 +166,6 @@ class MemoryRepository implements DeckHomeRepository {
 	setChallengeProgress(progress: ChallengeProgress | null): void {
 		this.challengeProgress = progress;
 		this.challengeProgressRevision++;
-	}
-
-	async recordWordListVisit(
-		deckId: string,
-		deckName: string,
-		startTimeMs: number,
-		endTimeMs: number,
-	): Promise<void> {
-		this.wordListVisits.push({ deckId, deckName, startTimeMs, endTimeMs });
 	}
 
 	getRevision(): number {
@@ -961,24 +946,44 @@ describe("DeckHome", () => {
 			repository: memoryRepo,
 			identity: makeIdentity(),
 			saveSettingsPatch: vi.fn(),
-			exportDeck: vi.fn(),
 			report: (event) => events.push(event),
 		});
 
 		expect(home.getDeck(deck.id)).toBe(deck);
 		expect(home.getDeck("non-existent")).toBeUndefined();
 
-		await home.recordWordListVisit(deck.id, 1000, 2000);
-		await home.recordWordListVisit("non-existent", 3000, 4000);
-		expect(memoryRepo.wordListVisits).toEqual([
-			{ deckId: deck.id, deckName: deck.name, startTimeMs: 1000, endTimeMs: 2000 },
-			{
-				deckId: "non-existent",
-				deckName: "non-existent",
-				startTimeMs: 3000,
-				endTimeMs: 4000,
-			},
-		]);
+		const studyPlan = home.getStudySetupPlan(deck.id, "random");
+		expect(studyPlan).not.toBeNull();
+		expect(studyPlan?.defaultStudyOrder).toBe("random");
+
+		const practicePlan = home.getPracticeSetupPlan(deck.id, {
+			kind: "range",
+			startIndex: 1,
+			endIndex: 2,
+		});
+		expect(practicePlan).not.toBeNull();
+		expect(practicePlan?.initialSelectionMode).toBe("range");
+
+		const spellingPlan = home.getSpellingSetupPlan(deck.id);
+		expect(spellingPlan).not.toBeNull();
+
+		expect(home.getStudySetupPlan("missing")).toBeNull();
+		expect(home.getPracticeSetupPlan("missing")).toBeNull();
+		expect(home.getSpellingSetupPlan("missing")).toBeNull();
+	});
+
+	it("rejects export action when export adapter is not injected", async () => {
+		const deck = makeDeck("deck-1");
+		const memoryRepo = new MemoryRepository([deck]);
+		const home = createDeckHome({
+			repository: memoryRepo,
+			identity: makeIdentity(),
+			saveSettingsPatch: vi.fn(),
+			report: vi.fn(),
+		});
+
+		const result = await home.act({ kind: "export", deckId: deck.id });
+		expect(result).toEqual({ kind: "rejected", reason: "export-unavailable" });
 	});
 });
 

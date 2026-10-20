@@ -57,6 +57,7 @@ import {
 	restoreDailyLearningActivity,
 } from "../history/dailyLearningActivity";
 import type { DeckHomeRepository } from "../decks/deckHome";
+import type { FlashcardLearningActivityPort } from "./flashcardPersistence";
 import {
 	FlashcardPersistenceError,
 	type FlashcardAuthority,
@@ -107,7 +108,9 @@ export interface FlashcardRepositoryOptions {
  * feature-owned authority adapter and owns the semantic transition, migration,
  * revision, cache, and external-reload choreography.
  */
-export class FlashcardRepository implements DeckHomeRepository, SessionPersistencePort {
+export class FlashcardRepository
+	implements DeckHomeRepository, SessionPersistencePort, FlashcardLearningActivityPort
+{
 	private readonly deckIndexCache: DeckIndexCacheStore<SerializedDeck> | null;
 	private readonly journals: SessionJournalCoordinator;
 	private readonly documents: LearningDocumentStore;

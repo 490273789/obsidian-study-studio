@@ -11,8 +11,15 @@ import type {
 } from "../identity/cardIdentityContinuity";
 import {
 	evaluateSpellingDeckEligibility,
+	getPracticeSetupPlan,
+	getSpellingSetupPlan,
+	getStudySetupPlan,
+	type PracticeSetupPlan,
 	type SpellingDeckEligibility,
+	type SpellingSetupPlan,
+	type StudySetupPlan,
 } from "../sessions/sessionPlanner";
+import type { PracticeSelection, SpellingSelection } from "../sessions/sessionLifecycle";
 import type {
 	Deck,
 	DeckStats,
@@ -197,6 +204,7 @@ export type DeckHomeRejectionReason =
 	| "deck-empty"
 	| "draft-owned-by-another-view"
 	| "draft-missing"
+	| "export-unavailable"
 	| "invalid-continuation"
 	| "migration-unavailable"
 	| "spelling-not-enabled"
@@ -262,12 +270,6 @@ export interface DeckHomeRepository {
 	getSpellingProgress(): SpellingProgressSnapshot;
 	getStudyHistory(): StudyHistoryEntry[];
 	getLearningFootprint(now: Date): LearningFootprintSnapshot;
-	recordWordListVisit(
-		deckId: string,
-		deckName: string,
-		startTimeMs: number,
-		endTimeMs: number,
-	): Promise<void>;
 	/** Earliest future due time (epoch ms) across all decks, or null when nothing is due later. */
 	getNextDueTime(now: Date): number | null;
 }
@@ -289,7 +291,7 @@ export interface CreateDeckHomeOptions {
 	identity: CardIdentityContinuity;
 	saveSettingsPatch(patch: DeckHomeSettingsPatch): Promise<void>;
 	saveDeckOrder?(deckIds: readonly string[]): Promise<void>;
-	exportDeck(
+	exportDeck?(
 		deck: Deck,
 		onProgress: (progress: DeckPdfExportProgress) => void,
 	): Promise<DeckPdfExportResult>;
@@ -302,7 +304,18 @@ export interface DeckHome {
 	subscribe(listener: () => void): () => void;
 	act(action: DeckHomeAction): Promise<DeckHomeOutcome>;
 	getDeck(deckId: string): Deck | undefined;
-	recordWordListVisit(deckId: string, startTimeMs: number, endTimeMs: number): Promise<void>;
+	getStudySetupPlan(
+		deckId: string,
+		initialStudyOrder?: StudySettings["studyOrder"],
+	): StudySetupPlan | null;
+	getPracticeSetupPlan(
+		deckId: string,
+		initialSelection?: PracticeSelection,
+	): PracticeSetupPlan | null;
+	getSpellingSetupPlan(
+		deckId: string,
+		initialSelection?: SpellingSelection,
+	): SpellingSetupPlan | null;
 	dispose(): void;
 }
 
@@ -460,14 +473,40 @@ class DefaultDeckHome implements DeckHome {
 		return this.options.repository.getDeck(deckId);
 	}
 
-	async recordWordListVisit(
+	getStudySetupPlan(
 		deckId: string,
-		startTimeMs: number,
-		endTimeMs: number,
-	): Promise<void> {
+		initialStudyOrder?: StudySettings["studyOrder"],
+	): StudySetupPlan | null {
 		const deck = this.getDeck(deckId);
-		const deckName = deck ? deck.name : deckId;
-		await this.options.repository.recordWordListVisit(deckId, deckName, startTimeMs, endTimeMs);
+		if (!deck) return null;
+		const snapshot = this.getSnapshot();
+		const entry = snapshot.decks.find((candidate) => candidate.id === deckId);
+		if (!entry) return null;
+		return getStudySetupPlan(
+			deck,
+			entry.effectiveStudySettings,
+			new Date(snapshot.evaluatedAt),
+			initialStudyOrder,
+		);
+	}
+
+	getPracticeSetupPlan(
+		deckId: string,
+		initialSelection?: PracticeSelection,
+	): PracticeSetupPlan | null {
+		const deck = this.getDeck(deckId);
+		if (!deck) return null;
+		return getPracticeSetupPlan(deck, initialSelection);
+	}
+
+	getSpellingSetupPlan(
+		deckId: string,
+		initialSelection?: SpellingSelection,
+	): SpellingSetupPlan | null {
+		const deck = this.getDeck(deckId);
+		if (!deck) return null;
+		const snapshot = this.getSnapshot();
+		return getSpellingSetupPlan(deck, snapshot.spellingProgress, initialSelection);
 	}
 
 	private async refresh(): Promise<DeckHomeOutcome> {
@@ -761,6 +800,7 @@ class DefaultDeckHome implements DeckHome {
 	}
 
 	private async exportDeck(deckId: string): Promise<DeckHomeOutcome> {
+		if (!this.options.exportDeck) return { kind: "rejected", reason: "export-unavailable" };
 		if (this.exportActivity.kind !== "idle") return { kind: "rejected", reason: "busy" };
 		const deck = this.options.repository
 			.getAllDecks()

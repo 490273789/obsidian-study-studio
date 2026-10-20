@@ -11,11 +11,7 @@ import type { ScopedWorkbenchSettings } from "../../../core/host/settingsSlices"
 import type { WorkbenchFeatureShortcut } from "../../../core/host/workbench";
 import type { DeckHome, DeckHomeDestination } from "../domain/decks/deckHome";
 import { type SessionLifecycle } from "../domain/sessions/sessionLifecycle";
-import {
-	selectPracticeSetupPlan,
-	selectSpellingSetupPlan,
-	selectStudySetupPlan,
-} from "./deckHomeSetupPlans";
+import type { FlashcardLearningActivityPort } from "../domain/storage/flashcardPersistence";
 import { HomeRoute, DeckHomeSnapshotRoute } from "./views/Home/HomeRoute";
 import { CardView, CardEditorModal } from "./views/Card";
 import { PracticeSetup, PracticeView, PracticeSummary } from "./views/Practice";
@@ -44,6 +40,7 @@ interface FlashcardAppProps {
 	cardIdentityContinuity: CardIdentityContinuity;
 	pronunciationRuntime: PronunciationRuntime;
 	deckHome: DeckHome;
+	learningActivity?: FlashcardLearningActivityPort;
 	settings: ScopedWorkbenchSettings<"flashcards">;
 	shortcuts: readonly WorkbenchFeatureShortcut[];
 	onOpenSettings: () => void;
@@ -56,6 +53,7 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 	sessionLifecycle,
 	pronunciationRuntime,
 	deckHome,
+	learningActivity,
 	settings,
 	shortcuts,
 	onOpenSettings,
@@ -152,10 +150,16 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 	const wordListDeckId = viewState.type === "word-list" ? viewState.deckId : null;
 	const handleRecordWordListVisit = useCallback(
 		(startTimeMs: number, endTimeMs: number) => {
-			if (wordListDeckId === null) return;
-			void deckHome.recordWordListVisit(wordListDeckId, startTimeMs, endTimeMs);
+			if (wordListDeckId === null || !learningActivity) return;
+			const deckName = deckHome.getDeck(wordListDeckId)?.name ?? wordListDeckId;
+			void learningActivity.recordWordListVisit(
+				wordListDeckId,
+				deckName,
+				startTimeMs,
+				endTimeMs,
+			);
 		},
-		[deckHome, wordListDeckId],
+		[learningActivity, deckHome, wordListDeckId],
 	);
 
 	const handleOpenAddCard = useCallback(() => {
@@ -338,10 +342,9 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 				if (!deck) return renderHome();
 				return (
 					<DeckHomeSnapshotRoute home={deckHome}>
-						{(snapshot) => {
-							const plan = selectStudySetupPlan(
-								snapshot,
-								deck,
+						{() => {
+							const plan = deckHome.getStudySetupPlan(
+								deck.id,
 								viewState.initialStudyOrder,
 							);
 							if (!plan) return renderHome();
@@ -366,7 +369,8 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 			case "practice-setup": {
 				const deck = deckHome.getDeck(viewState.deckId);
 				if (!deck) return renderHome();
-				const plan = selectPracticeSetupPlan(deck, viewState.initialSelection);
+				const plan = deckHome.getPracticeSetupPlan(deck.id, viewState.initialSelection);
+				if (!plan) return renderHome();
 				return (
 					<PracticeSetup
 						key={deck.id}
@@ -385,12 +389,12 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 				if (!deck) return renderHome();
 				return (
 					<DeckHomeSnapshotRoute home={deckHome}>
-						{(snapshot) => {
-							const plan = selectSpellingSetupPlan(
-								snapshot,
-								deck,
+						{() => {
+							const plan = deckHome.getSpellingSetupPlan(
+								deck.id,
 								viewState.initialSelection,
 							);
+							if (!plan) return renderHome();
 							return (
 								<SpellingSetup
 									key={deck.id}
