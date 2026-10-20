@@ -1175,9 +1175,6 @@ function renderPlayerDock(
 			</div>
 			<div className={styles.playerRow}>
 				<div className={styles.nowPlaying}>
-					<span className={styles.nowPlayingTitle}>
-						{snapshot.currentMaterial?.title ?? ""}
-					</span>
 					<span className={styles.nowPlayingMeta}>
 						<span>{snapshot.mode === "sentence" ? t.sentence : t.continuous}</span>
 						<span aria-hidden="true">·</span>
@@ -1191,6 +1188,7 @@ function renderPlayerDock(
 				<fieldset className={styles.transport} aria-label={t.captions}>
 					<Button
 						preset="icon"
+						variant="ghost"
 						icon={SkipBack}
 						aria-label={t.previous}
 						title={t.previous}
@@ -1199,6 +1197,7 @@ function renderPlayerDock(
 					/>
 					<Button
 						preset="icon"
+						variant="ghost"
 						icon={RotateCcw}
 						aria-label={t.repeat}
 						title={t.repeat}
@@ -1217,6 +1216,7 @@ function renderPlayerDock(
 					/>
 					<Button
 						preset="icon"
+						variant="ghost"
 						icon={SkipForward}
 						aria-label={t.next}
 						title={t.next}
