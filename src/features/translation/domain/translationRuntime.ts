@@ -1,5 +1,6 @@
 import { AiError, aiFailureCode, type AiService } from "../../../core/ai";
 import {
+	detectTranslationDirection,
 	normalizeTranslationSettings,
 	renderTranslationPrompt,
 	validateTranslationSettings,
@@ -83,6 +84,20 @@ export class TranslationRuntime {
 	prefill(text: string): void {
 		this.clear();
 		this.setInput(text);
+	}
+	async openPrefilled(text: string): Promise<void> {
+		if (this.disposed) return;
+		const direction = detectTranslationDirection(text);
+		if (this.settings.direction !== direction) {
+			try {
+				await this.configure({ ...this.settings, direction });
+			} catch {
+				this.settings = { ...this.settings, direction };
+				this.invalidate(true);
+				this.publish();
+			}
+		}
+		this.prefill(text);
 	}
 	clear(): void {
 		this.invalidate(true);

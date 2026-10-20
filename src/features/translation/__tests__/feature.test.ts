@@ -23,6 +23,9 @@ const runtimeSpies = vi.hoisted(() => ({ instances: [] as unknown[] }));
 vi.mock("../domain/translationRuntime", () => ({
 	TranslationRuntime: class {
 		readonly prefill = vi.fn();
+		readonly openPrefilled = vi.fn(async (text: string) => {
+			this.prefill(text);
+		});
 		readonly attachView = vi.fn(() => vi.fn());
 		readonly dispose = vi.fn();
 		readonly subscribe = vi.fn(() => () => {});
@@ -53,7 +56,10 @@ const enabledSettings = {
 	translation: { ...DEFAULT_SETTINGS.translation, enabled: true },
 };
 
-function lastRuntime(): { prefill: { mock: { calls: unknown[] } } } {
+function lastRuntime(): {
+	prefill: { mock: { calls: unknown[] } };
+	openPrefilled: { mock: { calls: unknown[] } };
+} {
 	return runtimeSpies.instances[runtimeSpies.instances.length - 1] as never;
 }
 
@@ -106,7 +112,7 @@ describe("translation feature", () => {
 		await expect(
 			feature.selectionAdapter.openPrefilled("selected text"),
 		).resolves.toBeUndefined();
-		expect(lastRuntime().prefill.mock.calls).toEqual([]);
+		expect(lastRuntime().openPrefilled.mock.calls).toEqual([]);
 	});
 
 	it("adds no chrome while translation is disabled", () => {
@@ -135,7 +141,7 @@ describe("translation feature", () => {
 		expect(command.selection).toBeDefined();
 		command.selection!.run("selected text");
 
-		expect(lastRuntime().prefill.mock.calls).toEqual([["selected text"]]);
+		expect(lastRuntime().openPrefilled.mock.calls).toEqual([["selected text"]]);
 		expect(fake.activateView).toHaveBeenCalledWith("flashcard-translator-view");
 
 		feature.stop();
@@ -149,14 +155,11 @@ describe("translation feature", () => {
 		await feature.selectionAdapter.openPrefilled("selected text");
 
 		const runtime = runtimeSpies.instances[runtimeSpies.instances.length - 1] as {
-			configure: ReturnType<typeof vi.fn>;
+			openPrefilled: ReturnType<typeof vi.fn>;
 			prefill: ReturnType<typeof vi.fn>;
 			translate: ReturnType<typeof vi.fn>;
 		};
-		expect(runtime.configure).toHaveBeenCalledWith(
-			expect.objectContaining({ direction: "en-zh" }),
-		);
-		expect(runtime.prefill).toHaveBeenCalledWith("selected text");
+		expect(runtime.openPrefilled).toHaveBeenCalledWith("selected text");
 		expect(runtime.translate).not.toHaveBeenCalled();
 		expect(fake.activateView).toHaveBeenCalledWith("flashcard-translator-view", {
 			mainTab: true,

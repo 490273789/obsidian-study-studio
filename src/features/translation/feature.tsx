@@ -6,7 +6,6 @@ import { translationStrings } from "./strings/translation";
 import { translationSettingsStrings } from "./strings/settings";
 import { normalizeTranslationSettings } from "./domain/configuration";
 import { TranslationRuntime } from "./domain/translationRuntime";
-import { detectTranslationDirection } from "./domain/selectionDirection";
 import { translateYoudao } from "./domain/youdao";
 import { createSharedTranslator } from "../../core/i18n";
 import { TranslatorFocusController, TranslatorView } from "./ui";
@@ -68,12 +67,7 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 		openPrefilled: async (text) => {
 			if (!active) return;
 			const { host, runtime: translation, focusController } = active;
-			const direction = detectTranslationDirection(text);
-			const snapshot = translation.getSnapshot();
-			if (snapshot.settings.direction !== direction) {
-				await translation.configure({ ...snapshot.settings, direction });
-			}
-			translation.prefill(text);
+			await translation.openPrefilled(text);
 			try {
 				await host.activateView(VIEW_TYPE_TRANSLATOR, { mainTab: true });
 				focusController.requestFocus();
@@ -183,7 +177,7 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 						selection: {
 							// Prefilling only: translating always needs an explicit action.
 							run: (selection) => {
-								translation.prefill(selection);
+								void translation.openPrefilled(selection);
 								void activateView(host, focusController);
 							},
 						},

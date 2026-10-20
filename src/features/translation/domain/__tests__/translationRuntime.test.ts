@@ -199,4 +199,46 @@ describe("translation session", () => {
 		).toBe("英文/中文/英文");
 		runtime.dispose();
 	});
+
+	it("automatically adapts translation direction and prefills input with persistence", async () => {
+		const { runtime, persist } = setup();
+		// Initial direction is "zh-en"
+		expect(runtime.getSnapshot().settings.direction).toBe("zh-en");
+
+		// English text should trigger auto-switch to "en-zh"
+		await runtime.openPrefilled("hello world");
+		expect(persist).toHaveBeenCalledWith(expect.objectContaining({ direction: "en-zh" }));
+		expect(runtime.getSnapshot().settings.direction).toBe("en-zh");
+		expect(runtime.getSnapshot().input).toBe("hello world");
+
+		// Chinese text should trigger auto-switch back to "zh-en"
+		await runtime.openPrefilled("这是一个测试句子");
+		expect(persist).toHaveBeenCalledWith(expect.objectContaining({ direction: "zh-en" }));
+		expect(runtime.getSnapshot().settings.direction).toBe("zh-en");
+		expect(runtime.getSnapshot().input).toBe("这是一个测试句子");
+
+		// Mixed text with Chinese should detect "zh-en" without re-persisting
+		persist.mockClear();
+		await runtime.openPrefilled("Hello 世界");
+		expect(persist).not.toHaveBeenCalled();
+		expect(runtime.getSnapshot().settings.direction).toBe("zh-en");
+		expect(runtime.getSnapshot().input).toBe("Hello 世界");
+
+		runtime.dispose();
+	});
+
+	it("degrades gracefully and preserves prefilled text when direction persistence fails", async () => {
+		const { runtime, persist } = setup();
+		expect(runtime.getSnapshot().settings.direction).toBe("zh-en");
+
+		// Mock persistence failure
+		persist.mockRejectedValueOnce(new Error("disk write error"));
+
+		// Should not throw, should still prefill text and update in-memory direction
+		await runtime.openPrefilled("hello error handling");
+		expect(runtime.getSnapshot().settings.direction).toBe("en-zh");
+		expect(runtime.getSnapshot().input).toBe("hello error handling");
+
+		runtime.dispose();
+	});
 });
