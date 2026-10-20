@@ -4,7 +4,7 @@ import type { SelectionHelperStrings } from "../strings/selectionPopup";
 import { SelectionBubble } from "./SelectionBubble";
 import { SelectionDictCard } from "./SelectionDictCard";
 import styles from "./SelectionPopup.module.scss";
-import { popupPosition, popupPositionAtAnchor } from "./popupPosition";
+import { PopupPlacementController, type PopupPositionSnapshot } from "./popupPlacementController";
 import type { Language } from "../../shared/types";
 import type { SelectionResultContentRenderer } from "./types";
 
@@ -30,7 +30,12 @@ export const SelectionPopupHost: React.FC<SelectionPopupHostProps> = ({
 	const mode = state.mode;
 
 	const rootRef = useRef<HTMLDivElement>(null);
-	const [position, setPosition] = useState({ left: 0, top: 0, maxWidth: 570, maxHeight: 420 });
+	const [position, setPosition] = useState<PopupPositionSnapshot>({
+		left: 0,
+		top: 0,
+		maxWidth: 570,
+		maxHeight: 420,
+	});
 	const startDragRef = useRef<React.PointerEventHandler<HTMLElement> | null>(null);
 	const onHeaderPointerDown = useCallback<React.PointerEventHandler<HTMLElement>>(
 		(event) => startDragRef.current?.(event),
@@ -41,139 +46,29 @@ export const SelectionPopupHost: React.FC<SelectionPopupHostProps> = ({
 		const element = rootRef.current;
 		const ownerWindow = element?.ownerDocument.defaultView;
 		if (!element || !ownerWindow || !target) return;
-		// A target is one captured selection; dictionary navigation retains it.
-		let manualPosition: { left: number; top: number } | null = null;
-		let placedCorner: { left: number; top: number } | null = null;
-		let currentPosition = { left: 0, top: 0 };
-		let drag: {
-			pointerId: number;
-			header: HTMLElement;
-			x: number;
-			y: number;
-			left: number;
-			top: number;
-		} | null = null;
-		const measure = (reason: "initial" | "content" | "viewport" | "drag") => {
-			const viewport = ownerWindow.visualViewport;
-			const visibleArea = {
-				left: viewport?.offsetLeft ?? 0,
-				top: viewport?.offsetTop ?? 0,
-				width: viewport?.width ?? ownerWindow.innerWidth,
-				height: viewport?.height ?? ownerWindow.innerHeight,
-			};
-			const next =
-				mode === "dictionary" && reason === "content" && placedCorner
-					? popupPositionAtAnchor(placedCorner, visibleArea)
-					: popupPosition(
-							target,
-							{ width: element.offsetWidth, height: element.offsetHeight },
-							visibleArea,
-							manualPosition ??
-								placedCorner ??
-								(target.trigger === "manual"
-									? {
-											left:
-												visibleArea.left +
-												(visibleArea.width -
-													Math.min(
-														element.offsetWidth,
-														visibleArea.width - 32,
-													)) /
-													2,
-											top:
-												visibleArea.top +
-												(visibleArea.height -
-													Math.min(
-														element.offsetHeight,
-														visibleArea.height * 0.7,
-													)) /
-													2,
-										}
-									: null),
-						);
-			currentPosition = next;
-			if (mode === "dictionary") placedCorner = { left: next.left, top: next.top };
-			if (manualPosition) manualPosition = { left: next.left, top: next.top };
-			setPosition((current) =>
-				current.left === next.left &&
-				current.top === next.top &&
-				current.maxWidth === next.maxWidth &&
-				current.maxHeight === next.maxHeight
-					? current
-					: next,
-			);
-		};
-		const finishDrag = () => {
-			const previous = drag;
-			drag = null;
-			if (!previous) return;
-			previous.header.style.cursor = "";
-			previous.header.removeEventListener("lostpointercapture", finishDrag);
-			if (previous.header.hasPointerCapture?.(previous.pointerId)) {
-				previous.header.releasePointerCapture(previous.pointerId);
-			}
-		};
-		const moveDrag = (event: PointerEvent) => {
-			if (!drag || event.pointerId !== drag.pointerId) return;
-			event.preventDefault();
-			manualPosition = {
-				left: drag.left + event.clientX - drag.x,
-				top: drag.top + event.clientY - drag.y,
-			};
-			measure("drag");
-		};
-		const endDrag = (event: PointerEvent) => {
-			if (event.pointerId === drag?.pointerId) finishDrag();
-		};
-		if (mode === "dictionary") {
-			startDragRef.current = (event) => {
-				if (drag || event.button !== 0 || !event.isPrimary) return;
-				const header = event.currentTarget;
-				const targetElement = event.target as HTMLElement;
-				if (
-					targetElement.closest(
-						"button,a,input,textarea,select,[role='tablist'],[role='button']",
-					)
-				)
-					return;
-				event.preventDefault();
-				drag = {
-					pointerId: event.pointerId,
-					header,
-					x: event.clientX,
-					y: event.clientY,
-					left: currentPosition.left,
-					top: currentPosition.top,
-				};
-				header.style.cursor = "grabbing";
-				header.addEventListener("lostpointercapture", finishDrag);
-				header.setPointerCapture(event.pointerId);
-			};
-			ownerWindow.addEventListener("pointermove", moveDrag, { passive: false });
-			ownerWindow.addEventListener("pointerup", endDrag);
-			ownerWindow.addEventListener("pointercancel", endDrag);
-			ownerWindow.addEventListener("blur", finishDrag);
-		}
-		const Observer = (ownerWindow as Window & { ResizeObserver?: typeof ResizeObserver })
-			.ResizeObserver;
-		const observer = Observer ? new Observer(() => measure("content")) : null;
-		observer?.observe(element);
-		const measureViewport = () => measure("viewport");
-		ownerWindow.addEventListener("resize", measureViewport);
-		ownerWindow.visualViewport?.addEventListener("resize", measureViewport);
-		ownerWindow.visualViewport?.addEventListener("scroll", measureViewport);
-		measure("initial");
+
+		const controller = new PopupPlacementController({
+			element,
+			ownerWindow,
+			target,
+			mode,
+			onPositionChange: (next) => {
+				setPosition((current) =>
+					current.left === next.left &&
+					current.top === next.top &&
+					current.maxWidth === next.maxWidth &&
+					current.maxHeight === next.maxHeight
+						? current
+						: next,
+				);
+			},
+		});
+
+		startDragRef.current = controller.onHeaderPointerDown;
+
 		return () => {
 			startDragRef.current = null;
-			finishDrag();
-			ownerWindow.removeEventListener("pointermove", moveDrag);
-			ownerWindow.removeEventListener("pointerup", endDrag);
-			ownerWindow.removeEventListener("pointercancel", endDrag);
-			ownerWindow.removeEventListener("blur", finishDrag);
-			observer?.disconnect();
-			ownerWindow.removeEventListener("resize", measureViewport);
-			ownerWindow.visualViewport?.removeEventListener("resize", measureViewport);
-			ownerWindow.visualViewport?.removeEventListener("scroll", measureViewport);
+			controller.dispose();
 		};
 	}, [target, mode]);
 
