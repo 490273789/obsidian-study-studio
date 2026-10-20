@@ -11,6 +11,7 @@ import type {
 import type { SubtitleGeneration } from "../generation/subtitleGeneration";
 import { validateTranscriptionConfig } from "../generation/transcriptionConfig";
 import { MAX_AUDIO_BYTES } from "../generation/limits";
+import { alignTimedWords } from "../generation/wordAlignment";
 import {
 	AUDIO_PLAYBACK_RATES,
 	type AudioMaterial,
@@ -28,6 +29,7 @@ import {
 	type AudioPlaybackRate,
 	type AudioFileChange,
 	type SubtitleCue,
+	type TimedTextWord,
 } from "./types";
 
 export interface AudioPracticeSettingsReader {
@@ -80,6 +82,10 @@ export class AudioPracticeRuntime {
 	private epoch = 0;
 	private boundaryTimer: ReturnType<typeof setTimeout> | null = null;
 	private boundaryToken = 0;
+	private wordBoundaryTimer: ReturnType<typeof setTimeout> | null = null;
+	private wordBoundaryToken = 0;
+	private mediaBuffering = false;
+	private mediaBufferingAt = 0;
 	private mediaLease = 0;
 	private subtitleOperation = new Map<string, number>();
 	private materialEdit: MaterialEdit | null = null;
@@ -236,6 +242,11 @@ export class AudioPracticeRuntime {
 			audioPath: input.audioPath,
 			subtitlePath: input.subtitlePath,
 			originalText: input.originalText,
+			wordTimings:
+				input.audioPath === previous.audioPath &&
+				input.subtitlePath === previous.subtitlePath
+					? previous.wordTimings
+					: undefined,
 		};
 		const audioChanged = next.audioPath !== previous.audioPath;
 		const subtitleChanged = next.subtitlePath !== previous.subtitlePath;
@@ -615,6 +626,7 @@ export class AudioPracticeRuntime {
 		id: string,
 		path: string | null,
 		operation: { token: number; epoch: number; audioPath: string },
+		wordTimings?: Readonly<Record<string, readonly TimedTextWord[]>>,
 	): Promise<void> {
 		const cues = path ? parseSubtitles(await this.files.readText(path)) : [];
 		this.assertSubtitleOperation(id, operation);
@@ -622,7 +634,7 @@ export class AudioPracticeRuntime {
 		this.data = {
 			...this.data,
 			materials: this.data.materials.map((item) =>
-				item.id === id ? { ...item, subtitlePath: path } : item,
+				item.id === id ? { ...item, subtitlePath: path, wordTimings } : item,
 			),
 		};
 		await this.persist(true);
@@ -630,16 +642,33 @@ export class AudioPracticeRuntime {
 		if (id === this.data.currentMaterialId) await this.loadMaterial();
 		else this.publish();
 	}
-	async saveSubtitles(id: string, cues: readonly SubtitleCue[]): Promise<string> {
+	async saveSubtitles(
+		id: string,
+		cues: readonly SubtitleCue[],
+		timingsByDraftId?: ReadonlyMap<string, readonly TimedTextWord[]>,
+	): Promise<string> {
 		const operation = this.beginSubtitleOperation(id);
 		const errors = validateCues(
 			cues,
 			id === this.data.currentMaterialId ? (this.snapshot.duration ?? undefined) : undefined,
 		);
 		if (errors.length) throw audioFailure({ kind: "subtitle-invalid", problems: errors });
-		const path = await this.files.writeSubtitle(operation.audioPath, serializeSrt(cues));
+		const contents = serializeSrt(cues);
+		const savedCues = parseSubtitles(contents);
+		const sortedCues = [...cues].sort((left, right) => left.start - right.start);
+		const wordTimings: Record<string, readonly TimedTextWord[]> = {};
+		for (const [index, cue] of sortedCues.entries()) {
+			const words = timingsByDraftId?.get(cue.id);
+			if (words?.length && savedCues[index]) wordTimings[savedCues[index]!.id] = words;
+		}
+		const path = await this.files.writeSubtitle(operation.audioPath, contents);
 		this.assertSubtitleOperation(id, operation);
-		await this.bindSubtitle(id, path, operation);
+		await this.bindSubtitle(
+			id,
+			path,
+			operation,
+			Object.keys(wordTimings).length ? wordTimings : undefined,
+		);
 		return path;
 	}
 	async refreshSubtitles(): Promise<void> {
@@ -688,6 +717,7 @@ export class AudioPracticeRuntime {
 	}
 	pause(): void {
 		this.cancelBoundary();
+		this.cancelWordBoundary();
 		this.media?.pause();
 		this.saveProgress();
 		this.publish();
@@ -707,6 +737,7 @@ export class AudioPracticeRuntime {
 		this.patchProgress({ time: next, cueId: cue?.id ?? null });
 		this.revealed = false;
 		this.scheduleBoundary();
+		this.scheduleWordBoundary();
 		void this.persist();
 		this.publish();
 	}
@@ -750,6 +781,7 @@ export class AudioPracticeRuntime {
 		this.data = { ...this.data, playbackRate: rate };
 		if (this.media) this.media.playbackRate = rate;
 		this.scheduleBoundary();
+		this.scheduleWordBoundary();
 		void this.persist();
 		this.publish();
 	}
@@ -847,6 +879,7 @@ export class AudioPracticeRuntime {
 	}
 	private async loadMaterial(reconcile = false): Promise<void> {
 		this.cancelBoundary();
+		this.cancelWordBoundary();
 		const token = ++this.generation;
 		this.loadingMedia = true;
 		this.media?.pause();
@@ -903,6 +936,7 @@ export class AudioPracticeRuntime {
 	}
 	private loadMedia(): void {
 		this.cancelBoundary();
+		this.cancelWordBoundary();
 		if (!this.media) return;
 		this.loadingMedia = true;
 		try {
@@ -960,10 +994,12 @@ export class AudioPracticeRuntime {
 			this.saveProgress();
 		}
 		this.scheduleBoundary();
+		this.scheduleWordBoundary();
 		this.publish();
 	};
 	private paused = (): void => {
 		this.cancelBoundary();
+		this.cancelWordBoundary();
 		if (!this.loadingMedia) {
 			this.saveProgress();
 			this.publish();
@@ -975,14 +1011,34 @@ export class AudioPracticeRuntime {
 		this.publish();
 	};
 	private mediaEvents = {
-		timeupdate: this.tick,
-		play: this.tick,
-		playing: this.tick,
+		timeupdate: () => {
+			if (this.mediaBuffering && this.media && this.media.currentTime > this.mediaBufferingAt)
+				this.mediaBuffering = false;
+			this.tick();
+		},
+		play: () => {
+			this.mediaBuffering = false;
+			this.tick();
+		},
+		playing: () => {
+			this.mediaBuffering = false;
+			this.tick();
+		},
 		seeked: this.tick,
-		seeking: () => this.cancelBoundary(),
-		ratechange: () => this.scheduleBoundary(),
-		waiting: () => this.cancelBoundary(),
-		stalled: () => this.cancelBoundary(),
+		seeking: () => {
+			this.cancelBoundary();
+			this.cancelWordBoundary();
+		},
+		ratechange: () => {
+			this.scheduleBoundary();
+			this.scheduleWordBoundary();
+		},
+		waiting: () => {
+			this.markMediaBuffering();
+		},
+		stalled: () => {
+			this.markMediaBuffering();
+		},
 		pause: this.paused,
 		ended: this.paused,
 		loadedmetadata: this.metadata,
@@ -990,6 +1046,12 @@ export class AudioPracticeRuntime {
 			if (this.media?.src) this.fail({ kind: "unreadable-media" });
 		},
 	};
+	private markMediaBuffering(): void {
+		this.mediaBuffering = true;
+		this.mediaBufferingAt = this.media?.currentTime ?? 0;
+		this.cancelBoundary();
+		this.cancelWordBoundary();
+	}
 	private cancelBoundary(): void {
 		this.boundaryToken++;
 		if (this.boundaryTimer !== null) clearTimeout(this.boundaryTimer);
@@ -998,7 +1060,15 @@ export class AudioPracticeRuntime {
 	private scheduleBoundary(): void {
 		this.cancelBoundary();
 		const media = this.media;
-		if (!media || media.paused || this.loading || this.loadingMedia || this.disposed) return;
+		if (
+			!media ||
+			media.paused ||
+			this.mediaBuffering ||
+			this.loading ||
+			this.loadingMedia ||
+			this.disposed
+		)
+			return;
 		const cue = this.currentCue();
 		const end =
 			this.previewEnd ??
@@ -1028,9 +1098,56 @@ export class AudioPracticeRuntime {
 			Math.max(10, ((end - media.currentTime) / media.playbackRate) * 1000),
 		);
 	}
+	private cancelWordBoundary(): void {
+		this.wordBoundaryToken++;
+		if (this.wordBoundaryTimer !== null) clearTimeout(this.wordBoundaryTimer);
+		this.wordBoundaryTimer = null;
+	}
+	private scheduleWordBoundary(): void {
+		this.cancelWordBoundary();
+		const media = this.media;
+		const cue = this.currentCue();
+		const words = cue && this.currentMaterial()?.wordTimings?.[cue.id];
+		if (
+			!media ||
+			media.paused ||
+			this.mediaBuffering ||
+			this.loading ||
+			this.loadingMedia ||
+			this.disposed ||
+			!words?.length ||
+			!Number.isFinite(media.currentTime) ||
+			media.playbackRate <= 0
+		)
+			return;
+		const next = words.find((word) => word.start + this.progress().offset > media.currentTime);
+		if (!next) return;
+		const token = this.wordBoundaryToken;
+		const generation = this.generation;
+		this.wordBoundaryTimer = setTimeout(
+			() => {
+				this.wordBoundaryTimer = null;
+				if (
+					token !== this.wordBoundaryToken ||
+					generation !== this.generation ||
+					media !== this.media ||
+					this.disposed
+				)
+					return;
+				this.tick();
+			},
+			Math.max(
+				10,
+				((next.start + this.progress().offset - media.currentTime) / media.playbackRate) *
+					1000,
+			),
+		);
+	}
 	private unbindMedia(): void {
 		this.mediaLease++;
 		this.cancelBoundary();
+		this.cancelWordBoundary();
+		this.mediaBuffering = false;
 		if (!this.media) return;
 		this.pause();
 		for (const [event, listener] of Object.entries(this.mediaEvents))
@@ -1186,7 +1303,18 @@ export class AudioPracticeRuntime {
 				throw audioFailure({ kind: "source-changed" });
 			}
 			const cues = this.generationService.validatedCues();
-			await this.saveSubtitles(material.id, cues);
+			const recognizedWords = this.generationService.getTimedWords();
+			const timings = new Map<string, readonly TimedTextWord[]>();
+			for (const cue of cues) {
+				const matched = alignTimedWords(
+					cue.text.trim(),
+					cue.start,
+					cue.end,
+					recognizedWords,
+				);
+				if (matched) timings.set(cue.id, matched);
+			}
+			await this.saveSubtitles(material.id, cues, timings);
 			return true;
 		} catch (error) {
 			this.draftError = toAudioFailure(error);
@@ -1211,6 +1339,21 @@ export class AudioPracticeRuntime {
 
 	confirmAllSubtitleDraftCues(): void {
 		this.generationService?.confirmAllCues();
+	}
+	hasReviewWordTimings(): boolean {
+		return (this.generationService?.getTimedWords().length ?? 0) > 0;
+	}
+	canHighlightDraftCue(cue: DraftCue): boolean {
+		return (
+			cue.start !== null &&
+			cue.end !== null &&
+			alignTimedWords(
+				cue.text.trim(),
+				cue.start,
+				cue.end,
+				this.generationService?.getTimedWords() ?? [],
+			) !== null
+		);
 	}
 
 	private reconcileRestore(): void {
@@ -1325,6 +1468,24 @@ export class AudioPracticeRuntime {
 			)
 		)
 			this.materialEdit.invalidated = true;
+		if (change.kind === "change" || change.kind === "delete") {
+			let changedTimings = false;
+			const materials = this.data.materials.map((item) => {
+				if (
+					!item.wordTimings ||
+					(!contains(item.audioPath, change.path) &&
+						!contains(item.subtitlePath, change.path))
+				)
+					return item;
+				changedTimings = true;
+				return { ...item, wordTimings: undefined };
+			});
+			if (changedTimings) {
+				this.data = { ...this.data, materials };
+				void this.persist();
+				this.publish();
+			}
+		}
 		if (change.kind === "rename") {
 			const renamed = (path: string) =>
 				contains(path, change.path)

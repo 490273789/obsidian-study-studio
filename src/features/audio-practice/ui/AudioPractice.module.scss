@@ -485,6 +485,16 @@
 	white-space: normal;
 }
 
+.cueWordSpoken {
+	color: var(--fc-primary);
+}
+
+.draftWordFallback {
+	margin: 0;
+	color: var(--fc-muted);
+	font-size: var(--fc-font-xs);
+}
+
 .cueHidden {
 	display: inline-flex;
 	align-items: center;

@@ -43,6 +43,7 @@ export function normalizeAudioPracticeData(raw: unknown): AudioPracticeData {
 				audioPath: value.audioPath,
 				subtitlePath: typeof value.subtitlePath === "string" ? value.subtitlePath : null,
 				originalText: typeof value.originalText === "string" ? value.originalText : "",
+				wordTimings: normalizeWordTimings(value.wordTimings),
 			});
 		}
 	const progress: Record<string, AudioPracticeProgress> = {};
@@ -86,6 +87,54 @@ export function normalizeAudioPracticeData(raw: unknown): AudioPracticeData {
 		blind: raw.blind === true,
 		difficultOnly: raw.difficultOnly === true,
 	};
+}
+function normalizeWordTimings(value: unknown): AudioMaterial["wordTimings"] {
+	if (!record(value)) return undefined;
+	const result: Record<
+		string,
+		{ startOffset: number; endOffset: number; start: number; end: number }[]
+	> = {};
+	let count = 0;
+	for (const [id, raw] of Object.entries(value)) {
+		if (!id || !Array.isArray(raw) || count + raw.length > 5000) continue;
+		const words = raw.flatMap((item) => {
+			if (!record(item)) return [];
+			const { startOffset, endOffset, start, end } = item;
+			return Number.isSafeInteger(startOffset) &&
+				Number.isSafeInteger(endOffset) &&
+				(startOffset as number) >= 0 &&
+				(endOffset as number) > (startOffset as number) &&
+				typeof start === "number" &&
+				Number.isFinite(start) &&
+				start >= 0 &&
+				typeof end === "number" &&
+				Number.isFinite(end) &&
+				end > start
+				? [
+						{
+							startOffset: startOffset as number,
+							endOffset: endOffset as number,
+							start,
+							end,
+						},
+					]
+				: [];
+		});
+		if (
+			words.length !== raw.length ||
+			words.length === 0 ||
+			words.some(
+				(word, index) =>
+					index > 0 &&
+					(word.startOffset < words[index - 1]!.endOffset ||
+						word.start < words[index - 1]!.end),
+			)
+		)
+			continue;
+		result[id] = words;
+		count += words.length;
+	}
+	return Object.keys(result).length ? result : undefined;
 }
 export function emptyProgress(): AudioPracticeProgress {
 	return { time: 0, cueId: null, difficultCueIds: [], offset: 0 };

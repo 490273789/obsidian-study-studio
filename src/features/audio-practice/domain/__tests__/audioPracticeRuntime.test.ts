@@ -89,6 +89,28 @@ async function setup() {
 		},
 	};
 }
+async function setupTimedPlayback() {
+	const h = await setup();
+	const cue = h.runtime.getSnapshot().cues[0]!;
+	h.sync({
+		...h.runtime.getSnapshot(),
+		materials: h.runtime.getSnapshot().materials.map((material) =>
+			material.id === h.runtime.getSnapshot().currentMaterialId
+				? {
+						...material,
+						wordTimings: {
+							[cue.id]: [{ startOffset: 0, endOffset: 3, start: 1.5, end: 1.8 }],
+						},
+					}
+				: material,
+		),
+	});
+	await vi.waitFor(() => {
+		expect(h.runtime.getSnapshot().loading).toBe(false);
+		expect(h.runtime.getSnapshot().currentMaterial?.wordTimings?.[cue.id]).toHaveLength(1);
+	});
+	return h;
+}
 describe("audio practice runtime", () => {
 	afterEach(() => vi.useRealTimers());
 	it("difficult-only pauses, selects a marked sentence, and enforces sentence playback", async () => {
@@ -276,6 +298,64 @@ describe("audio practice runtime", () => {
 		expect(media.paused).toBe(true);
 		runtime.dispose();
 	});
+	it("updates at a word boundary even when timeupdate arrived a few milliseconds early", async () => {
+		const { runtime, media } = await setupTimedPlayback();
+		vi.useFakeTimers();
+		const published: number[] = [];
+		const release = runtime.subscribe(() => published.push(runtime.getSnapshot().currentTime));
+		runtime.repeat();
+		media.currentTime = 1.498;
+		media.emit("timeupdate");
+		media.currentTime = 1.5;
+		vi.advanceTimersByTime(10);
+		expect(published[published.length - 1]).toBe(1.5);
+		release();
+		runtime.dispose();
+	});
+	it("resumes word boundaries when media advances after stalled without a playing event", async () => {
+		const { runtime, media } = await setupTimedPlayback();
+		vi.useFakeTimers();
+		const published: number[] = [];
+		const release = runtime.subscribe(() => published.push(runtime.getSnapshot().currentTime));
+		runtime.repeat();
+		media.currentTime = 1.2;
+		media.emit("stalled");
+		expect(vi.getTimerCount()).toBe(0);
+		media.emit("timeupdate");
+		expect(vi.getTimerCount()).toBe(0);
+		media.currentTime = 1.498;
+		media.emit("timeupdate");
+		media.currentTime = 1.5;
+		vi.advanceTimersByTime(10);
+		expect(published[published.length - 1]).toBe(1.5);
+		release();
+		runtime.dispose();
+	});
+	it("cancels word boundary timers on pause and reschedules after seeking and rate changes", async () => {
+		const { runtime, media } = await setupTimedPlayback();
+		vi.useFakeTimers();
+		runtime.repeat();
+		runtime.setPlaybackRate(0.5);
+		media.currentTime = 1;
+		media.emit("timeupdate");
+		media.currentTime = 1.5;
+		vi.advanceTimersByTime(999);
+		expect(runtime.getSnapshot().currentTime).toBe(1);
+		vi.advanceTimersByTime(1);
+		expect(runtime.getSnapshot().currentTime).toBe(1.5);
+		runtime.pause();
+		expect(vi.getTimerCount()).toBe(0);
+		runtime.seekTo(1.2);
+		expect(vi.getTimerCount()).toBe(0);
+		runtime.togglePlayback();
+		media.emit("seeking");
+		expect(vi.getTimerCount()).toBe(0);
+		media.currentTime = 1.3;
+		media.emit("seeked");
+		expect(vi.getTimerCount()).toBeGreaterThan(0);
+		runtime.dispose();
+		expect(vi.getTimerCount()).toBe(0);
+	});
 	it("pauses at sentence end, plays the explicitly requested next sentence, and hides its text", async () => {
 		const { runtime, media } = await setup();
 		runtime.setBlind(true);
@@ -346,6 +426,29 @@ describe("audio practice runtime", () => {
 				playbackRate: Infinity,
 			}).materials,
 		).toEqual([]);
+	});
+	it("drops unsorted word timings from synchronized material data", () => {
+		const data = normalizeAudioPracticeData({
+			...emptyAudioPracticeData(),
+			materials: [
+				{
+					id: "a",
+					title: "Audio",
+					audioPath: "a.wav",
+					subtitlePath: "a.srt",
+					wordTimings: {
+						bad: [
+							{ startOffset: 4, endOffset: 7, start: 1, end: 1.2 },
+							{ startOffset: 0, endOffset: 3, start: 1.3, end: 1.5 },
+						],
+						good: [{ startOffset: 0, endOffset: 3, start: 2, end: 2.2 }],
+					},
+				},
+			],
+		});
+		expect(data.materials[0]?.wordTimings).toEqual({
+			good: [{ startOffset: 0, endOffset: 3, start: 2, end: 2.2 }],
+		});
 	});
 });
 
@@ -794,6 +897,7 @@ function draftHarness(
 		matchesSource?: () => Promise<boolean>;
 		settingsPatch?: Partial<AudioPracticeSettings>;
 		secret?: string | null;
+		timedWords?: { text: string; start: number; end: number }[];
 	} = {},
 ) {
 	const materials = options.materials ?? [
@@ -851,6 +955,7 @@ function draftHarness(
 
 	const generation = {
 		getSnapshot: () => genSnapshot,
+		getTimedWords: () => options.timedWords ?? [],
 		subscribe: (listener: () => void) => {
 			genListeners.add(listener);
 			return () => genListeners.delete(listener);
@@ -908,6 +1013,7 @@ function draftHarness(
 
 	return {
 		runtime,
+		getSaved: () => data,
 		repo,
 		generation,
 		source,
@@ -1171,6 +1277,78 @@ describe("audio practice runtime subtitle save adoption", () => {
 		expect(h.generation.validatedCues).toHaveBeenCalledTimes(1);
 		expect(h.files.writeSubtitle).toHaveBeenCalled();
 		expect(h.runtime.getSnapshot().draft.error).toBeNull();
+	});
+	it("stores generated word timing with parsed cue IDs and reloads it from synced data", async () => {
+		const h = draftHarness({
+			generationSnapshot: { taskKey: "a", status: "review" },
+			timedWords: [{ text: "hello", start: 0, end: 0.8 }],
+		});
+		expect(await h.runtime.saveSubtitleDraft()).toBe(true);
+		const cue = h.runtime.getSnapshot().cues[0]!;
+		expect(h.runtime.getSnapshot().currentMaterial?.wordTimings?.[cue.id]).toEqual([
+			{ startOffset: 0, endOffset: 5, start: 0, end: 0.8 },
+		]);
+		await vi.waitFor(() =>
+			expect(h.getSaved().materials[0]?.wordTimings?.[cue.id]).toHaveLength(1),
+		);
+		h.sync(normalizeAudioPracticeData(h.getSaved()));
+		await vi.waitFor(() =>
+			expect(h.runtime.getSnapshot().currentMaterial?.wordTimings?.[cue.id]).toHaveLength(1),
+		);
+		h.runtime.dispose();
+	});
+	it("keeps aligned offsets when the reviewed text has outer whitespace", async () => {
+		const h = draftHarness({
+			generationSnapshot: { taskKey: "a", status: "review" },
+			timedWords: [{ text: "hello", start: 0, end: 0.8 }],
+		});
+		h.generation.validatedCues.mockReturnValue([{ ...savedCues[0]!, text: " hello " }]);
+		expect(await h.runtime.saveSubtitleDraft()).toBe(true);
+		const cue = h.runtime.getSnapshot().cues[0]!;
+		expect(cue.text).toBe("hello");
+		expect(h.runtime.getSnapshot().currentMaterial?.wordTimings?.[cue.id]).toEqual([
+			{ startOffset: 0, endOffset: 5, start: 0, end: 0.8 },
+		]);
+		h.runtime.dispose();
+	});
+	it("retains synced word timing when an audio or subtitle file first arrives", async () => {
+		const h = draftHarness({
+			generationSnapshot: { taskKey: "a", status: "review" },
+			timedWords: [{ text: "hello", start: 0, end: 0.8 }],
+		});
+		expect(await h.runtime.saveSubtitleDraft()).toBe(true);
+		const synced = normalizeAudioPracticeData(h.getSaved());
+		h.sync(synced);
+		await vi.waitFor(() =>
+			expect(h.runtime.getSnapshot().currentMaterial?.wordTimings).toBeDefined(),
+		);
+		h.fileChange({ kind: "create", path: "a.wav" });
+		h.fileChange({ kind: "create", path: "a.srt" });
+		expect(h.runtime.getSnapshot().currentMaterial?.wordTimings).toBeDefined();
+		h.runtime.dispose();
+	});
+	it("keeps sentence highlighting when recognized words differ from reviewed text", async () => {
+		const h = draftHarness({
+			generationSnapshot: { taskKey: "a", status: "review" },
+			timedWords: [{ text: "hullo", start: 0, end: 0.8 }],
+		});
+		expect(h.runtime.canHighlightDraftCue({ ...savedCues[0]!, needsReview: false })).toBe(
+			false,
+		);
+		expect(await h.runtime.saveSubtitleDraft()).toBe(true);
+		expect(h.runtime.getSnapshot().currentMaterial?.wordTimings).toBeUndefined();
+		h.runtime.dispose();
+	});
+	it("invalidates generated timings after subtitle content changes", async () => {
+		const h = draftHarness({
+			generationSnapshot: { taskKey: "a", status: "review" },
+			timedWords: [{ text: "hello", start: 0, end: 0.8 }],
+		});
+		expect(await h.runtime.saveSubtitleDraft()).toBe(true);
+		expect(h.runtime.getSnapshot().currentMaterial?.wordTimings).toBeDefined();
+		h.fileChange({ kind: "change", path: "a.srt" });
+		expect(h.runtime.getSnapshot().currentMaterial?.wordTimings).toBeUndefined();
+		h.runtime.dispose();
 	});
 });
 

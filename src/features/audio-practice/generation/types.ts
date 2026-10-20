@@ -82,6 +82,8 @@ export interface GenerationDraft {
 	configFingerprint: string;
 	duration: number;
 	results: Transcript[];
+	/** Deduplicated audio-global word timings from the completed transcription. */
+	words?: TimedWord[];
 	cues: DraftCue[];
 	complete: boolean;
 	notice: GenerationNotice | null;

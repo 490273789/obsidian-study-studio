@@ -37,6 +37,7 @@ import type {
 	AudioMaterial,
 	AudioPracticeDraftSnapshot,
 	AudioPracticeSnapshot,
+	TimedTextWord,
 } from "../domain/types";
 import { AUDIO_PLAYBACK_RATES } from "../domain/types";
 import type { AudioPracticeRuntime } from "../domain/audioPracticeRuntime";
@@ -665,6 +666,8 @@ interface DraftReviewBodyProps {
 		| "addSubtitleDraftCue"
 		| "removeSubtitleDraftCue"
 		| "confirmAllSubtitleDraftCues"
+		| "hasReviewWordTimings"
+		| "canHighlightDraftCue"
 	>;
 	t: AudioPracticeStrings;
 	busy: boolean;
@@ -749,6 +752,8 @@ export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
 					{draft.cues.map((cue, index) => {
 						const invalid =
 							cue.start === null || cue.end === null || cue.end <= cue.start;
+						const wordFallback =
+							runtime.hasReviewWordTimings() && !runtime.canHighlightDraftCue(cue);
 						return (
 							<li key={cue.id} className={styles.draftCue}>
 								<div className={styles.draftCueHeader}>
@@ -790,6 +795,11 @@ export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
 									rows={2}
 									{...(index === 0 ? props.initialFocusProps : undefined)}
 								/>
+								{wordFallback && (
+									<p className={styles.draftWordFallback}>
+										{t.wordTimingFallback}
+									</p>
+								)}
 								<div className={styles.draftTimeRow}>
 									<label className={styles.timeField}>
 										<span>{t.start}</span>
@@ -862,6 +872,42 @@ export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
 	);
 }
 
+function renderTimedCueText(
+	text: string,
+	words: readonly TimedTextWord[] | undefined,
+	audioTime: number,
+): React.ReactNode {
+	if (!words?.length) return text;
+	let cursor = 0;
+	for (const word of words) {
+		if (
+			word.startOffset < cursor ||
+			word.endOffset <= word.startOffset ||
+			word.endOffset > text.length
+		)
+			return text;
+		cursor = word.endOffset;
+	}
+	const parts: React.ReactNode[] = [];
+	cursor = 0;
+	for (const [index, word] of words.entries()) {
+		if (word.startOffset > cursor) parts.push(text.slice(cursor, word.startOffset));
+		const end = words[index + 1]?.startOffset ?? text.length;
+		const spoken = audioTime >= word.start;
+		parts.push(
+			<span
+				key={index}
+				className={spoken ? styles.cueWordSpoken : undefined}
+				data-spoken-word={spoken ? "true" : undefined}
+			>
+				{text.slice(word.startOffset, end)}
+			</span>,
+		);
+		cursor = end;
+	}
+	return parts;
+}
+
 export function PracticeSurface({
 	runtime,
 	snapshot,
@@ -879,6 +925,9 @@ export function PracticeSurface({
 	const cues = snapshot.difficultOnly
 		? snapshot.cues.filter((cue) => marks.includes(cue.id))
 		: snapshot.cues;
+	const offset = snapshot.currentMaterial
+		? (snapshot.progress[snapshot.currentMaterial.id]?.offset ?? 0)
+		: 0;
 	return (
 		// The practice panel is a composite keyboard surface with its own focus target.
 		/* oxlint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */
@@ -999,7 +1048,15 @@ export function PracticeSurface({
 													{t.hidden}
 												</span>
 											) : (
-												cue.text
+												renderTimedCueText(
+													cue.text,
+													active
+														? snapshot.currentMaterial?.wordTimings?.[
+																cue.id
+															]
+														: undefined,
+													snapshot.currentTime - offset,
+												)
 											)}
 										</span>
 									</Button>

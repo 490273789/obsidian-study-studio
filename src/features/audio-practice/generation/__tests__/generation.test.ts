@@ -301,6 +301,15 @@ describe("subtitle generation", () => {
 		expect(controller.getSnapshot().status).toBe("error");
 		await controller.retry();
 		expect(controller.getSnapshot().status).toBe("review");
+		expect(controller.getTimedWords()).toEqual([
+			...transcript.words,
+			...transcript.words.map((word) => ({
+				...word,
+				start: word.start + 2,
+				end: word.end + 2,
+			})),
+		]);
+		expect(saved).toMatchObject({ words: controller.getTimedWords() });
 		expect(transcribe).toHaveBeenCalledTimes(3);
 		controller.editCue("0-1", { text: "Edited" });
 		await controller.retry();

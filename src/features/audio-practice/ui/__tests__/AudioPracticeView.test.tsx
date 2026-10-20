@@ -8,6 +8,7 @@ import { DraftReviewBody, PracticeSurface } from "../AudioPracticeView";
 
 interface ControlProps {
 	children?: React.ReactNode;
+	"data-spoken-word"?: string;
 	"aria-label"?: string;
 	"aria-pressed"?: boolean;
 	disabled?: boolean;
@@ -65,6 +66,41 @@ async function setup() {
 }
 
 describe("audio practice UI interaction", () => {
+	it("progressively colors spoken words and recalculates after seek and subtitle offset", async () => {
+		const { runtime, t } = await setup();
+		const base = runtime.getSnapshot();
+		const cue = base.cues[0]!;
+		const material = {
+			...base.currentMaterial!,
+			wordTimings: {
+				[cue.id]: [
+					{ startOffset: 0, endOffset: 5, start: 1, end: 1.4 },
+					{ startOffset: 6, endOffset: 14, start: 1.5, end: 2 },
+				],
+			},
+		};
+		const spoken = (time: number, offset = 0, blind = false) => {
+			const snapshot = {
+				...base,
+				currentMaterial: material,
+				currentTime: time,
+				blind,
+				progress: {
+					...base.progress,
+					[material.id]: { ...base.progress[material.id]!, offset },
+				},
+			};
+			return elements(PracticeSurface({ runtime, snapshot, t }))
+				.filter((element) => element.props["data-spoken-word"] === "true")
+				.map((element) => text(element.props.children).trim());
+		};
+		expect(spoken(1.3)).toEqual(["First"]);
+		expect(spoken(1.8)).toEqual(["First", "sentence"]);
+		expect(spoken(1.3)).toEqual(["First"]);
+		expect(spoken(1.8, 0.5)).toEqual(["First"]);
+		expect(spoken(1.8, 0, true)).toEqual([]);
+		runtime.dispose();
+	});
 	it("hides all sentence text, reveals only the current sentence, and hides again after next", async () => {
 		const { runtime, t, render, click } = await setup();
 		runtime.setBlind(true);
@@ -166,6 +202,8 @@ describe("subtitle draft review", () => {
 			draft,
 			material,
 			runtime: {
+				hasReviewWordTimings: () => true,
+				canHighlightDraftCue: () => false,
 				preview: (start: number, end: number) => {
 					previews.push([start, end]);
 				},
@@ -191,6 +229,7 @@ describe("subtitle draft review", () => {
 			},
 		});
 		expect(text(body)).toContain(t.reviewSummary(1, 2));
+		expect(text(body)).toContain(t.wordTimingFallback);
 
 		const confirmAll = elements(body).find(
 			(element) => text(element.props.children) === t.markAllReviewed,

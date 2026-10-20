@@ -23,6 +23,14 @@ export interface AudioMaterial {
 	readonly audioPath: string;
 	readonly subtitlePath: string | null;
 	readonly originalText: string;
+	/** Generated word timings keyed by the parsed SRT cue ID. Imported subtitles have none. */
+	readonly wordTimings?: Readonly<Record<string, readonly TimedTextWord[]>>;
+}
+export interface TimedTextWord {
+	readonly startOffset: number;
+	readonly endOffset: number;
+	readonly start: number;
+	readonly end: number;
 }
 export interface AudioPracticeProgress {
 	readonly time: number;
@@ -47,7 +55,7 @@ export interface AudioPracticeRepository {
 }
 export type AudioFileChange =
 	| { kind: "rename"; path: string; nextPath: string }
-	| { kind: "change" | "delete"; path: string };
+	| { kind: "create" | "change" | "delete"; path: string };
 export interface AudioPracticeFiles {
 	readText(path: string): Promise<string>;
 	stat(path: string): { readonly size: number; readonly mtime: number } | null;

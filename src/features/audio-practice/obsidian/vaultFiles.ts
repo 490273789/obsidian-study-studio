@@ -35,7 +35,7 @@ export function createAudioPracticeFiles(app: App): AudioPracticeFiles {
 				),
 				app.vault.on("modify", (file) => listener({ kind: "change", path: file.path })),
 				app.vault.on("delete", (file) => listener({ kind: "delete", path: file.path })),
-				app.vault.on("create", (file) => listener({ kind: "change", path: file.path })),
+				app.vault.on("create", (file) => listener({ kind: "create", path: file.path })),
 			];
 			return () => refs.forEach((ref) => app.vault.offref(ref));
 		},

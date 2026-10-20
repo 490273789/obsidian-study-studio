@@ -59,6 +59,7 @@ const zh = {
 	reviewHint: "逐段试听并检查文字和时间。未确定的时间必须修正，或删除该片段。",
 	noWordTimestamps:
 		"当前服务未返回词级时间戳，已使用识别分句结果；请人工校对时间，或改用支持词级时间戳的模型。",
+	wordTimingFallback: "此段文字与识别词无法可靠对应，保存后仍按整句高亮。",
 	start: "开始（秒）",
 	end: "结束（秒）",
 	cueText: "片段文字",
@@ -141,6 +142,8 @@ const en: typeof zh = {
 		"Listen to each segment and check its text and timing. Fix missing times or remove the segment.",
 	noWordTimestamps:
 		"The configured service returned no word timestamps. Sentence-level results are used; review the timing manually or switch to a model that returns word timestamps.",
+	wordTimingFallback:
+		"These words could not be matched reliably. This segment will keep sentence highlighting.",
 	start: "Start (seconds)",
 	end: "End (seconds)",
 	cueText: "Segment text",

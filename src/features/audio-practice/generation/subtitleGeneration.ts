@@ -15,6 +15,7 @@ import type {
 	GenerationInput,
 	GenerationNotice,
 	PrepareAudio,
+	TimedWord,
 	TranscribeAudio,
 	Transcript,
 } from "./types";
@@ -65,6 +66,8 @@ export class SubtitleGeneration {
 	) {}
 
 	getSnapshot = (): GenerationSnapshot => this.snapshot;
+	getTimedWords = (): readonly TimedWord[] =>
+		this.snapshot.status === "review" ? (this.draft?.words ?? []) : [];
 	subscribe = (listener: () => void): (() => void) => {
 		if (this.disposed) return () => {};
 		this.listeners.add(listener);
@@ -212,15 +215,14 @@ export class SubtitleGeneration {
 			}
 			this.publish({ status: "aligning" });
 			const transcript = mergeTranscripts(results, prepared.chunks);
+			this.draft.words = transcript.words;
 			const wantsReference = Boolean(input.referenceText?.trim());
 			const cues =
 				wantsReference && transcript.words.length > 0
 					? alignReference(input.referenceText!, transcript)
 					: transcript.cues;
 			const notice: GenerationNotice | null =
-				wantsReference && transcript.words.length === 0 && cues.length > 0
-					? "no-word-timestamps"
-					: null;
+				transcript.words.length === 0 && cues.length > 0 ? "no-word-timestamps" : null;
 			this.draft.cues = cues;
 			this.draft.complete = true;
 			this.draft.notice = notice;
@@ -366,6 +368,18 @@ export function normalizeGenerationDraft(value: unknown): GenerationDraft | null
 		!Array.isArray(draft.cues) ||
 		!draft.cues.every(cueValid) ||
 		!Array.isArray(draft.results) ||
+		(draft.words !== undefined &&
+			(!Array.isArray(draft.words) ||
+				draft.words.length > 5000 ||
+				!draft.words.every(
+					(word) =>
+						word &&
+						typeof word.text === "string" &&
+						Number.isFinite(word.start) &&
+						Number.isFinite(word.end) &&
+						word.start >= 0 &&
+						word.end > word.start,
+				))) ||
 		draft.results.length > 11
 	)
 		return null;
