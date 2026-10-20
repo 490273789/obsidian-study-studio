@@ -34,10 +34,13 @@ import type {
 	SessionPersistenceReceipt,
 	SessionSourceChange,
 } from "../sessions/sessionPersistence";
-import type { SessionWriteSet } from "./sessionCommitFormat";
+import {
+	formatSessionCommit,
+	isPureJournalWriteSet,
+	type SessionWriteSet,
+} from "./sessionCommitFormat";
 import { CardCodec } from "./cardCodec";
 import { findCardLocation, type CardIndexLocation } from "./cardLocation";
-import { SessionCommitter } from "./sessionCommitter";
 import {
 	realSessionJournalTimer,
 	type SessionJournalEntry,
@@ -109,7 +112,6 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	private readonly deckIndexCache: DeckIndexCacheStore<SerializedDeck> | null;
 	private readonly journals: SessionJournalCoordinator;
 	private readonly documents: LearningDocumentStore;
-	private readonly committer: SessionCommitter;
 
 	private decks: Map<string, Deck> = new Map();
 	private scheduler: FSRSScheduler;
@@ -163,19 +165,6 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 			flushThreshold: options.journalFlushThreshold,
 			idleFlushMilliseconds: options.journalIdleFlushMilliseconds,
 			timer: options.journalTimer ?? realSessionJournalTimer,
-		});
-
-		this.committer = new SessionCommitter({
-			loadDeckIndex: () => this.loadDeckIndex(),
-			enqueueOperation: (operation) => this.documents.enqueueOperation(operation),
-			getDecks: () => this.decks,
-			getCardIndex: () => this.cardIndex,
-			getChallengeProgress: () => this.challengeProgress,
-			canAppendJournal: () => this.journals.hasStore,
-			appendJournal: (transition) => this.applyJournalWriteSet(transition),
-			commitDocument: (transition, adoptJournalSeq) =>
-				this.commitWriteSetAsDocument(transition, adoptJournalSeq),
-			mergeJournalBeforeWrite: () => this.flushJournalBeforeWrite(),
 		});
 
 		this.settings = options.initialSettings
@@ -453,7 +442,52 @@ export class FlashcardRepository implements DeckHomeRepository, SessionPersisten
 	}
 
 	async commitSession(commit: SessionCommit): Promise<SessionCommitResult> {
-		return this.committer.commit(commit);
+		await this.loadDeckIndex();
+		const writeSet = formatSessionCommit(commit);
+		const missing = writeSet.cardUpdates.find(
+			(update) => !findCardLocation(this.decks, update.deckId, update.cardId, this.cardIndex),
+		);
+		if (missing) {
+			return {
+				kind: "rejected",
+				reason: "card-missing",
+				message: `Card ${missing.cardId} is no longer part of deck ${missing.deckId}`,
+				retryable: true,
+			};
+		}
+		if (
+			writeSet.challengeProgress !== undefined &&
+			JSON.stringify(this.challengeProgress) !==
+				JSON.stringify(writeSet.expectedChallengeProgress ?? null)
+		) {
+			return {
+				kind: "rejected",
+				reason: "challenge-progress-changed",
+				message: "Challenge progress changed; reopen the challenge to continue.",
+				retryable: true,
+			};
+		}
+		try {
+			let receipt!: SessionPersistenceReceipt;
+			await this.documents.enqueueOperation(async () => {
+				if (this.journals.hasStore && isPureJournalWriteSet(writeSet)) {
+					receipt = await this.applyJournalWriteSet(writeSet);
+					return;
+				}
+				await this.flushJournalBeforeWrite();
+				receipt = await this.commitWriteSetAsDocument(writeSet);
+			});
+			return { kind: "applied", receipt };
+		} catch (error) {
+			if (error instanceof FlashcardPersistenceError) {
+				return { kind: "failed", message: error.message, retryable: error.retryable };
+			}
+			return {
+				kind: "failed",
+				message: error instanceof Error ? error.message : "Session commit failed",
+				retryable: false,
+			};
+		}
 	}
 
 	/**

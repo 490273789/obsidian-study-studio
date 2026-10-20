@@ -5,6 +5,7 @@ vi.mock("obsidian", () => ({ normalizePath: (value: string) => value }));
 
 import { FlashcardRepository, type SerializedDeck } from "../flashcardRepository";
 import { decodePersistedLearning } from "../persistedLearningCodec";
+import { FlashcardAuthorityConflictError } from "../persistenceTypes";
 import { WorkbenchFlashcardAuthority } from "../../../obsidian/workbenchFlashcardAuthority";
 import { MemoryFlashcardAuthority } from "./memoryFlashcardAuthority";
 import { WorkbenchStore, type StorageBackend } from "../../../../../core/storage/workbenchStore";
@@ -160,8 +161,27 @@ describe("FlashcardRepository", () => {
 			await repo.commitSession(
 				spellingCommit({ cardId: "c1", correct: false, attemptedAt: 200 }),
 			),
-		).toMatchObject({ kind: "failed" });
+		).toMatchObject({ kind: "failed", retryable: false });
 		expect(repo.getSpellingProgress()).toBe(committed);
+
+		vi.spyOn(repo as any, "flushJournalBeforeWrite").mockRejectedValueOnce(
+			new Error("unexpected boom"),
+		);
+		expect(
+			await repo.commitSession(
+				spellingCommit({ cardId: "c1", correct: false, attemptedAt: 300 }),
+			),
+		).toEqual({ kind: "failed", message: "unexpected boom", retryable: false });
+
+		authority.commit = async () => {
+			throw new FlashcardAuthorityConflictError(0, 1);
+		};
+		expect(
+			await repo.commitSession(
+				spellingCommit({ cardId: "c1", correct: false, attemptedAt: 400 }),
+			),
+		).toMatchObject({ kind: "failed", retryable: true });
+
 		repo.dispose();
 	});
 
