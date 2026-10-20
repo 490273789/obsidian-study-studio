@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { DEFAULT_SETTINGS } from "../../../../../core/host/settingsSlices";
 import type { Deck } from "../../../../../core/shared/types";
-import { LearningDocumentStore } from "../learningDocumentStore";
+import { equalLearningValue, LearningDocumentStore } from "../learningDocumentStore";
 import type { LearningStateDocument } from "../persistenceTypes";
 import { MemoryFlashcardAuthority } from "./memoryFlashcardAuthority";
 
@@ -128,6 +128,38 @@ describe("LearningDocumentStore", () => {
 		store.dispose();
 		await expect(store.enqueueOperation(async () => {})).rejects.toMatchObject({
 			message: "Flashcard persistence is disposed",
+		});
+	});
+
+	describe("equalLearningValue", () => {
+		it("compares primitive and null values", () => {
+			expect(equalLearningValue(1, 1)).toBe(true);
+			expect(equalLearningValue(1, 2)).toBe(false);
+			expect(equalLearningValue("a", "a")).toBe(true);
+			expect(equalLearningValue("a", "b")).toBe(false);
+			expect(equalLearningValue(null, null)).toBe(true);
+			expect(equalLearningValue(null, {})).toBe(false);
+			expect(equalLearningValue(undefined, null)).toBe(false);
+		});
+
+		it("compares structured objects regardless of key insertion order", () => {
+			const a = { first: 1, second: { nested: true, count: 5 } };
+			const b = { second: { count: 5, nested: true }, first: 1 };
+			expect(equalLearningValue(a, b)).toBe(true);
+
+			const c = { first: 1, second: { count: 6, nested: true } };
+			expect(equalLearningValue(a, c)).toBe(false);
+
+			const d = { first: 1 };
+			expect(equalLearningValue(a, d)).toBe(false);
+		});
+
+		it("compares arrays by order and element equality", () => {
+			expect(equalLearningValue([1, 2, 3], [1, 2, 3])).toBe(true);
+			expect(equalLearningValue([1, 2, 3], [1, 3, 2])).toBe(false);
+			expect(equalLearningValue([1, 2], [1, 2, 3])).toBe(false);
+			expect(equalLearningValue([{ a: 1 }], [{ a: 1 }])).toBe(true);
+			expect(equalLearningValue([], {})).toBe(false);
 		});
 	});
 });
