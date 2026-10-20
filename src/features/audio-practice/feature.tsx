@@ -11,7 +11,6 @@ import { FlashcardButton } from "../../core/ui/primitives/Button";
 import { ModalProvider } from "../../core/ui/primitives/Modal";
 import { AudioPracticeRuntime } from "./domain/audioPracticeRuntime";
 import { SubtitleGeneration, normalizeGenerationDraft } from "./generation/subtitleGeneration";
-import { SubtitleWorkflow } from "./generation/subtitleWorkflow";
 import { createBrowserAudioPreparation } from "./generation/browserAudio";
 import { createTranscriptionProvider } from "./generation/providers";
 import { createAudioSourceFiles } from "./obsidian/audioSourceFiles";
@@ -35,9 +34,6 @@ export function createAudioPracticeFeature(deps: {
 		start(host, lifetime) {
 			const files = createAudioPracticeFiles(host.app);
 			const source = createAudioSourceFiles(host.app);
-			const runtime = lifetime.own(
-				new AudioPracticeRuntime(createAudioPracticeRepository(deps.store), files),
-			);
 			let mediaWindow: Window = window;
 			const generation = lifetime.own(
 				new SubtitleGeneration({
@@ -54,10 +50,11 @@ export function createAudioPracticeFeature(deps: {
 			);
 			const readSettings = () => host.settings.read();
 			const openSettings = () => host.settingsTab.open(SECTION);
-			const workflow = lifetime.own(
-				new SubtitleWorkflow({
-					runtime,
-					generation,
+			const runtime = lifetime.own(
+				new AudioPracticeRuntime({
+					repository: createAudioPracticeRepository(deps.store),
+					files,
+					source,
 					settings: {
 						read: () => readSettings().audioPractice,
 						readSecret: (id) => {
@@ -68,7 +65,7 @@ export function createAudioPracticeFeature(deps: {
 							}
 						},
 					},
-					source,
+					generation,
 				}),
 			);
 			host.registerView(
@@ -85,7 +82,7 @@ export function createAudioPracticeFeature(deps: {
 							resource: undefined,
 							dispose: () => {
 								runtime.pause();
-								workflow.cancel();
+								runtime.cancelSubtitleGeneration();
 							},
 						};
 					},
@@ -95,8 +92,6 @@ export function createAudioPracticeFeature(deps: {
 								<AudioPracticeHost
 									app={host.app}
 									runtime={runtime}
-									generation={generation}
-									workflow={workflow}
 									language={language}
 									onReadText={(path) => files.readText(path)}
 									onOpenSettings={openSettings}
@@ -143,7 +138,7 @@ export function createAudioPracticeFeature(deps: {
 			return () => {
 				if (!readSettings().audioPractice.enabled) {
 					runtime.pause();
-					workflow.cancel();
+					runtime.cancelSubtitleGeneration();
 				}
 			};
 		},
@@ -153,8 +148,6 @@ export function createAudioPracticeFeature(deps: {
 function AudioPracticeHost(props: {
 	app: App;
 	runtime: AudioPracticeRuntime;
-	generation: SubtitleGeneration;
-	workflow: SubtitleWorkflow;
 	language: Language;
 	onReadText(path: string): Promise<string>;
 	onOpenSettings(): void;

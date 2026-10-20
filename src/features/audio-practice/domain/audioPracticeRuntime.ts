@@ -1,11 +1,23 @@
 import { audioFailure, type AudioFailure, toAudioFailure } from "./failures";
 import { emptyProgress, normalizeAudioPracticeData } from "./repository";
 import { parseSubtitles, serializeSrt, validateCues } from "./subtitles";
+import type { AudioPracticeSettings } from "../settings/slice";
+import type {
+	AudioSourceFiles,
+	DraftCue,
+	GenerationInput,
+	TranscriptionConfig,
+} from "../generation/types";
+import type { SubtitleGeneration } from "../generation/subtitleGeneration";
+import { validateTranscriptionConfig } from "../generation/transcriptionConfig";
+import { MAX_AUDIO_BYTES } from "../generation/limits";
 import {
 	AUDIO_PLAYBACK_RATES,
 	type AudioMaterial,
 	type AudioMediaPort,
 	type AudioPracticeData,
+	type AudioPracticeDraftSnapshot,
+	type AudioPracticeDraftStatus,
 	type AudioPracticeFiles,
 	type AudioPracticeMode,
 	type AudioPracticeProgress,
@@ -16,8 +28,27 @@ import {
 	type SubtitleCue,
 } from "./types";
 
-/** Owns playback and synchronized learning metadata; media and vault I/O are borrowed ports. */
+export interface AudioPracticeSettingsReader {
+	read(): AudioPracticeSettings;
+	readSecret(id: string): string | null;
+}
+
+export interface AudioPracticeRuntimeOptions {
+	readonly repository: AudioPracticeRepository;
+	readonly files: AudioPracticeFiles;
+	readonly source?: AudioSourceFiles;
+	readonly settings?: AudioPracticeSettingsReader;
+	readonly generation?: SubtitleGeneration;
+}
+
+/** Owns playback, synchronized learning metadata, and subtitle draft workflows. */
 export class AudioPracticeRuntime {
+	private readonly repository: AudioPracticeRepository;
+	private readonly files: AudioPracticeFiles;
+	private readonly source?: AudioSourceFiles;
+	private readonly settings?: AudioPracticeSettingsReader;
+	private readonly generationService?: SubtitleGeneration;
+
 	private data: AudioPracticeData;
 	private cues: readonly SubtitleCue[] = [];
 	private media: AudioMediaPort | null = null;
@@ -25,6 +56,8 @@ export class AudioPracticeRuntime {
 	private listeners = new Set<() => void>();
 	private releases: (() => void)[] = [];
 	private error: AudioFailure | null = null;
+	private draftError: AudioFailure | null = null;
+	private savingDraft = false;
 	private revealed = false;
 	private loading = false;
 	private loadingMedia = false;
@@ -39,22 +72,45 @@ export class AudioPracticeRuntime {
 	private boundaryToken = 0;
 	private mediaLease = 0;
 	private subtitleOperation = new Map<string, number>();
+
 	constructor(
-		private readonly repository: AudioPracticeRepository,
-		private readonly files: AudioPracticeFiles,
+		repositoryOrOptions: AudioPracticeRepository | AudioPracticeRuntimeOptions,
+		files?: AudioPracticeFiles,
+		extra?: {
+			source?: AudioSourceFiles;
+			settings?: AudioPracticeSettingsReader;
+			generation?: SubtitleGeneration;
+		},
 	) {
-		this.data = normalizeAudioPracticeData(repository.load());
+		if ("repository" in repositoryOrOptions) {
+			this.repository = repositoryOrOptions.repository;
+			this.files = repositoryOrOptions.files;
+			this.source = repositoryOrOptions.source;
+			this.settings = repositoryOrOptions.settings;
+			this.generationService = repositoryOrOptions.generation;
+		} else {
+			this.repository = repositoryOrOptions;
+			this.files = files!;
+			this.source = extra?.source;
+			this.settings = extra?.settings;
+			this.generationService = extra?.generation;
+		}
+
+		this.data = normalizeAudioPracticeData(this.repository.load());
 		this.releases.push(
-			repository.subscribeExternal(() => {
+			this.repository.subscribeExternal(() => {
 				this.epoch++;
 				this.loadingMedia = true;
 				this.media?.pause();
 				this.loadingMedia = false;
-				this.data = normalizeAudioPracticeData(repository.load());
+				this.data = normalizeAudioPracticeData(this.repository.load());
 				void this.loadMaterial();
 			}),
 		);
-		if (files.subscribe) this.releases.push(files.subscribe(this.handleFileChange));
+		if (this.files.subscribe) this.releases.push(this.files.subscribe(this.handleFileChange));
+		if (this.generationService) {
+			this.releases.push(this.generationService.subscribe(() => this.publish()));
+		}
 		this.publish();
 		void this.loadMaterial();
 	}
@@ -124,6 +180,9 @@ export class AudioPracticeRuntime {
 	}
 	removeMaterial(id: string): void {
 		this.pause();
+		if (this.generationService?.getSnapshot().taskKey === id) {
+			this.generationService.cancel();
+		}
 		const { [id]: _removed, ...progress } = this.data.progress;
 		const materials = this.data.materials.filter((item) => item.id !== id);
 		this.data = {
@@ -365,6 +424,7 @@ export class AudioPracticeRuntime {
 		this.pause();
 		this.disposed = true;
 		this.generation++;
+		this.generationService?.cancel();
 		this.unbindMedia();
 		this.releases.forEach((release) => release());
 		this.listeners.clear();
@@ -445,6 +505,7 @@ export class AudioPracticeRuntime {
 		this.loading = false;
 		this.loadMedia();
 		this.publish();
+		this.reconcileRestore();
 	}
 	private reconcileCues(next: readonly SubtitleCue[], persist = true): void {
 		const identity = (cue: SubtitleCue) => JSON.stringify([cue.text, cue.start, cue.end]);
@@ -629,6 +690,179 @@ export class AudioPracticeRuntime {
 		this.error = failure;
 		this.publish();
 	}
+	async generateSubtitles(force = false): Promise<boolean> {
+		if (this.disposed || this.savingDraft) return false;
+		if (!this.generationService || !this.settings || !this.source) return false;
+		const genStatus = this.generationService.getSnapshot().status;
+		if (["preparing", "transcribing", "aligning"].includes(genStatus)) return false;
+		const material = this.currentMaterial();
+		if (!material) {
+			this.draftError = { kind: "missing-file" };
+			this.publish();
+			return false;
+		}
+		this.draftError = null;
+		const settings = this.settings.read();
+		const config = transcriptionConfig(settings);
+		try {
+			validateTranscriptionConfig(config);
+		} catch (error) {
+			this.draftError = toAudioFailure(error);
+			this.publish();
+			return false;
+		}
+		const secret = this.settings.readSecret(config.secretId);
+		if (!secret) {
+			this.draftError = { kind: "config-invalid", field: "secret" };
+			this.publish();
+			return false;
+		}
+		const stat = this.source.stat(material.audioPath);
+		if (!stat) {
+			this.draftError = { kind: "missing-file" };
+			this.publish();
+			return false;
+		}
+		if (stat.size > MAX_AUDIO_BYTES) {
+			this.draftError = { kind: "audio-too-large", maxBytes: MAX_AUDIO_BYTES };
+			this.publish();
+			return false;
+		}
+		try {
+			const audio = await this.source.readBinary(material.audioPath);
+			const current = this.currentMaterial();
+			if (!current || current.id !== material.id) {
+				this.draftError = { kind: "stale-material" };
+				this.publish();
+				return false;
+			}
+			const input: GenerationInput = {
+				audio,
+				name: fileName(current.audioPath),
+				taskKey: current.id,
+				referenceText: current.originalText,
+				config,
+			};
+			await this.generationService.generate(input, { force });
+			return true;
+		} catch (error) {
+			this.draftError = toAudioFailure(error);
+			this.publish();
+			return false;
+		}
+	}
+
+	cancelSubtitleGeneration(): void {
+		this.generationService?.cancel();
+	}
+
+	dismissFailure(): void {
+		this.error = null;
+		this.draftError = null;
+		this.publish();
+	}
+
+	async saveSubtitleDraft(): Promise<boolean> {
+		if (this.disposed || this.savingDraft) return false;
+		if (!this.generationService || !this.source) return false;
+		const genStatus = this.generationService.getSnapshot().status;
+		if (["preparing", "transcribing", "aligning"].includes(genStatus)) return false;
+		const material = this.currentMaterial();
+		if (!material) return false;
+		this.savingDraft = true;
+		this.draftError = null;
+		this.publish();
+		try {
+			const gen = this.generationService.getSnapshot();
+			if (gen.taskKey !== material.id) {
+				throw audioFailure({ kind: "stale-material" });
+			}
+			const stat = this.source.stat(material.audioPath);
+			if (!stat) throw audioFailure({ kind: "missing-file" });
+			const mtime = stat.mtime;
+			const audio = await this.source.readBinary(material.audioPath);
+			const matches = await this.generationService.matchesSource(
+				audio,
+				material.originalText,
+			);
+			const current = this.currentMaterial();
+			const afterStat = current ? this.source.stat(current.audioPath) : null;
+			if (
+				!matches ||
+				this.generationService.getSnapshot().taskKey !== material.id ||
+				current?.audioPath !== material.audioPath ||
+				current?.originalText !== material.originalText ||
+				afterStat?.mtime !== mtime
+			) {
+				throw audioFailure({ kind: "source-changed" });
+			}
+			const cues = this.generationService.validatedCues();
+			await this.saveSubtitles(material.id, cues);
+			return true;
+		} catch (error) {
+			this.draftError = toAudioFailure(error);
+			return false;
+		} finally {
+			this.savingDraft = false;
+			this.publish();
+		}
+	}
+
+	editSubtitleDraftCue(id: string, patch: Partial<DraftCue>): void {
+		this.generationService?.editCue(id, patch);
+	}
+
+	addSubtitleDraftCue(): void {
+		this.generationService?.addCue();
+	}
+
+	removeSubtitleDraftCue(id: string): void {
+		this.generationService?.removeCue(id);
+	}
+
+	confirmAllSubtitleDraftCues(): void {
+		this.generationService?.confirmAllCues();
+	}
+
+	private reconcileRestore(): void {
+		if (this.disposed || this.savingDraft || !this.generationService) return;
+		const gen = this.generationService.getSnapshot();
+		if (["preparing", "transcribing", "aligning"].includes(gen.status)) return;
+		const currentMaterialId = this.data.currentMaterialId;
+		if (!currentMaterialId || gen.taskKey === currentMaterialId) return;
+		void this.generationService.restore(currentMaterialId).catch(() => {});
+	}
+
+	private getDraftSnapshot(): AudioPracticeDraftSnapshot {
+		if (!this.generationService || !this.data.currentMaterialId) {
+			return {
+				status: this.savingDraft ? "saving" : "idle",
+				cues: [],
+				completedChunks: 0,
+				totalChunks: 0,
+				failure: null,
+				error: this.draftError,
+				notice: null,
+			};
+		}
+		const gen = this.generationService.getSnapshot();
+		const isCurrent = gen.taskKey === this.data.currentMaterialId;
+		const status: AudioPracticeDraftStatus = this.savingDraft
+			? "saving"
+			: !isCurrent
+				? "idle"
+				: gen.status;
+		return {
+			status,
+			cues: isCurrent ? gen.cues : [],
+			completedChunks: isCurrent ? gen.completedChunks : 0,
+			totalChunks: isCurrent ? gen.totalChunks : 0,
+			failure: isCurrent ? gen.failure : null,
+			error: this.draftError,
+			notice: isCurrent ? gen.notice : null,
+		};
+	}
+
 	private publish(): void {
 		this.snapshot = {
 			...this.data,
@@ -643,6 +877,7 @@ export class AudioPracticeRuntime {
 			loading: this.loading,
 			failure: this.error,
 			invalidatedMarks: this.invalidatedMarks,
+			draft: this.getDraftSnapshot(),
 		};
 		for (const listener of this.listeners) listener();
 	}
@@ -676,4 +911,24 @@ export class AudioPracticeRuntime {
 		)
 			void this.loadMaterial(true);
 	};
+}
+
+function fileName(path: string): string {
+	return path.split("/").pop() ?? path;
+}
+
+function transcriptionConfig(settings: AudioPracticeSettings): TranscriptionConfig {
+	return settings.provider === "bailian"
+		? {
+				provider: "bailian",
+				workspaceId: settings.bailianWorkspaceId.trim(),
+				secretId: settings.bailianSecretId,
+				model: settings.bailianModel.trim(),
+			}
+		: {
+				provider: "openai-compatible",
+				baseUrl: settings.openaiBaseUrl.trim(),
+				secretId: settings.openaiSecretId,
+				model: settings.openaiModel.trim(),
+			};
 }

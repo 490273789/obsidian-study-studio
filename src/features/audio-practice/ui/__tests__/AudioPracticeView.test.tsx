@@ -2,8 +2,7 @@ import React from "react";
 import { describe, expect, it } from "vite-plus/test";
 import { AudioPracticeRuntime } from "../../domain/audioPracticeRuntime";
 import { emptyAudioPracticeData } from "../../domain/repository";
-import type { AudioMaterial } from "../../domain/types";
-import type { GenerationSnapshot } from "../../generation/subtitleGeneration";
+import type { AudioMaterial, AudioPracticeDraftSnapshot } from "../../domain/types";
 import { audioPracticeStrings } from "../../strings/audioPractice";
 import { DraftReviewBody, PracticeSurface } from "../AudioPracticeView";
 
@@ -145,7 +144,7 @@ describe("subtitle draft review", () => {
 			subtitlePath: null,
 			originalText: "",
 		};
-		const draft: GenerationSnapshot = {
+		const draft: AudioPracticeDraftSnapshot = {
 			status: "review",
 			cues: [
 				{ id: "cue-1", text: "First sentence", start: 1, end: 2, needsReview: true },
@@ -153,10 +152,9 @@ describe("subtitle draft review", () => {
 			],
 			completedChunks: 1,
 			totalChunks: 1,
-			duration: 120,
 			failure: null,
+			error: null,
 			notice: null,
-			taskKey: material.id,
 		};
 		const edits: { id: string; patch: Record<string, unknown> }[] = [];
 		const previews: number[][] = [];
@@ -166,19 +164,17 @@ describe("subtitle draft review", () => {
 		const body = DraftReviewBody({
 			draft,
 			material,
-			generation: {
-				editCue: (id: string, patch: Record<string, unknown>) => {
-					edits.push({ id, patch });
-				},
-				addCue: () => "manual-cue",
-				removeCue: () => undefined,
-				confirmAllCues: () => {
-					confirms++;
-				},
-			} as unknown as Parameters<typeof DraftReviewBody>[0]["generation"],
 			runtime: {
 				preview: (start: number, end: number) => {
 					previews.push([start, end]);
+				},
+				editSubtitleDraftCue: (id: string, patch: Record<string, unknown>) => {
+					edits.push({ id, patch });
+				},
+				addSubtitleDraftCue: () => {},
+				removeSubtitleDraftCue: () => {},
+				confirmAllSubtitleDraftCues: () => {
+					confirms++;
 				},
 			} as unknown as Parameters<typeof DraftReviewBody>[0]["runtime"],
 			t,

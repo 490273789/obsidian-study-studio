@@ -1,12 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { AudioPracticeRuntime } from "../audioPracticeRuntime";
 import { emptyAudioPracticeData, normalizeAudioPracticeData } from "../repository";
+import { audioFailure } from "../failures";
+import { MAX_AUDIO_BYTES } from "../../generation/limits";
+import type { AudioSourceFiles, AudioSourceStat, GenerationInput } from "../../generation/types";
+import type { GenerationSnapshot, SubtitleGeneration } from "../../generation/subtitleGeneration";
+import type { AudioPracticeSettings } from "../../settings/slice";
 import type {
 	AudioFileChange,
 	AudioMediaPort,
 	AudioPracticeData,
 	AudioPracticeFiles,
 	AudioPracticeRepository,
+	SubtitleCue,
 } from "../types";
 
 class Media implements AudioMediaPort {
@@ -336,5 +342,320 @@ describe("audio practice runtime", () => {
 				playbackRate: Infinity,
 			}).materials,
 		).toEqual([]);
+	});
+});
+
+const defaultSettings: AudioPracticeSettings = {
+	enabled: true,
+	provider: "bailian",
+	bailianWorkspaceId: "workspace",
+	bailianSecretId: "secret",
+	bailianModel: "fun-asr-flash-2026-06-15",
+	openaiBaseUrl: "https://api.openai.com/v1",
+	openaiSecretId: "",
+	openaiModel: "whisper-1",
+};
+
+const savedCues: SubtitleCue[] = [{ id: "cue-1", text: "hello", start: 0, end: 1 }];
+
+function draftHarness(
+	options: {
+		materials?: {
+			id: string;
+			title: string;
+			audioPath: string;
+			subtitlePath: string | null;
+			originalText: string;
+		}[];
+		currentMaterialId?: string | null;
+		generationSnapshot?: Partial<GenerationSnapshot>;
+		sourceStat?: AudioSourceStat | null;
+		sourceStats?: (AudioSourceStat | null)[];
+		readBinary?: () => Promise<ArrayBuffer>;
+		matchesSource?: () => Promise<boolean>;
+		settingsPatch?: Partial<AudioPracticeSettings>;
+		secret?: string | null;
+	} = {},
+) {
+	const materials = options.materials ?? [
+		{ id: "a", title: "a", audioPath: "a.wav", subtitlePath: null, originalText: "hello" },
+	];
+	let data: AudioPracticeData = {
+		...emptyAudioPracticeData(),
+		materials,
+		currentMaterialId: options.currentMaterialId ?? materials[0]?.id ?? null,
+	};
+	const repo: AudioPracticeRepository = {
+		load: () => data,
+		save: vi.fn(async (next) => {
+			data = next;
+		}),
+		subscribeExternal: () => () => {},
+	};
+	let savedSubtitleText = "1\n00:00:00,000 --> 00:00:01,000\nhello";
+	const files: AudioPracticeFiles = {
+		exists: () => true,
+		mediaUrl: (p) => p,
+		readText: vi.fn(async () => savedSubtitleText),
+		writeSubtitle: vi.fn(async (_audioPath, content) => {
+			savedSubtitleText = content;
+			return "a.srt";
+		}),
+	};
+
+	let genSnapshot: GenerationSnapshot = {
+		status: "idle",
+		cues: [],
+		completedChunks: 0,
+		totalChunks: 0,
+		duration: 0,
+		failure: null,
+		notice: null,
+		taskKey: null,
+		...options.generationSnapshot,
+	};
+	const genListeners = new Set<() => void>();
+	const publishGen = (patch: Partial<GenerationSnapshot>) => {
+		genSnapshot = { ...genSnapshot, ...patch };
+		for (const listener of genListeners) listener();
+	};
+
+	const generation = {
+		getSnapshot: () => genSnapshot,
+		subscribe: (listener: () => void) => {
+			genListeners.add(listener);
+			return () => genListeners.delete(listener);
+		},
+		generate: vi.fn(async () => {}),
+		cancel: vi.fn(() => {
+			publishGen({ status: "cancelled", failure: null });
+		}),
+		restore: vi.fn(async () => true),
+		matchesSource: vi.fn(options.matchesSource ?? (async () => true)),
+		validatedCues: vi.fn(() => savedCues.map((c) => ({ ...c }))),
+		editCue: vi.fn((id, patch) => {
+			publishGen({
+				cues: genSnapshot.cues.map((c) => (c.id === id ? { ...c, ...patch } : c)),
+			});
+		}),
+		addCue: vi.fn(() => {
+			const cue = { id: "new-cue", start: null, end: null, text: "", needsReview: true };
+			publishGen({ cues: [...genSnapshot.cues, cue] });
+			return cue.id;
+		}),
+		removeCue: vi.fn((id) => {
+			publishGen({ cues: genSnapshot.cues.filter((c) => c.id !== id) });
+		}),
+		confirmAllCues: vi.fn(() => {
+			publishGen({ cues: genSnapshot.cues.map((c) => ({ ...c, needsReview: false })) });
+		}),
+	} as unknown as SubtitleGeneration;
+
+	const remainingStats = [...(options.sourceStats ?? [])];
+	const defaultStat: AudioSourceStat | null =
+		options.sourceStat === undefined ? { size: 1024, mtime: 10 } : options.sourceStat;
+	const source: AudioSourceFiles = {
+		stat: vi.fn(() => (remainingStats.length ? (remainingStats.shift() ?? null) : defaultStat)),
+		readBinary: vi.fn(options.readBinary ?? (async () => new ArrayBuffer(8))),
+	};
+	const settingsReader = {
+		read: () => ({ ...defaultSettings, ...options.settingsPatch }),
+		readSecret: vi.fn(() => (options.secret === undefined ? "secret" : options.secret)),
+	};
+
+	const runtime = new AudioPracticeRuntime({
+		repository: repo,
+		files,
+		source,
+		settings: settingsReader,
+		generation,
+	});
+
+	return {
+		runtime,
+		generation,
+		source,
+		settingsReader,
+		files,
+		publishGen,
+	};
+}
+
+describe("audio practice runtime subtitle generation admission", () => {
+	it("fails with missing when no material is selected", async () => {
+		const h = draftHarness({ materials: [], currentMaterialId: null });
+		const ok = await h.runtime.generateSubtitles();
+		expect(ok).toBe(false);
+		expect(h.runtime.getSnapshot().draft.error).toEqual({ kind: "missing-file" });
+		expect(h.generation.generate).not.toHaveBeenCalled();
+	});
+
+	it("fails with missing when the audio file is absent", async () => {
+		const h = draftHarness({ sourceStat: null });
+		const ok = await h.runtime.generateSubtitles();
+		expect(ok).toBe(false);
+		expect(h.runtime.getSnapshot().draft.error).toEqual({ kind: "missing-file" });
+		expect(h.source.readBinary).not.toHaveBeenCalled();
+	});
+
+	it("rejects oversized audio before reading it", async () => {
+		const h = draftHarness({ sourceStat: { size: MAX_AUDIO_BYTES + 1, mtime: 10 } });
+		const ok = await h.runtime.generateSubtitles();
+		expect(ok).toBe(false);
+		expect(h.runtime.getSnapshot().draft.error).toEqual({
+			kind: "audio-too-large",
+			maxBytes: MAX_AUDIO_BYTES,
+		});
+		expect(h.source.readBinary).not.toHaveBeenCalled();
+	});
+
+	it("fails before vault read when configured service is incomplete", async () => {
+		const h = draftHarness({ settingsPatch: { bailianWorkspaceId: "" } });
+		const ok = await h.runtime.generateSubtitles();
+		expect(ok).toBe(false);
+		expect(h.runtime.getSnapshot().draft.error).toEqual({
+			kind: "config-invalid",
+			field: "workspace",
+		});
+		expect(h.source.stat).not.toHaveBeenCalled();
+	});
+
+	it("fails when secret is not configured", async () => {
+		const h = draftHarness({ secret: null });
+		const ok = await h.runtime.generateSubtitles();
+		expect(ok).toBe(false);
+		expect(h.runtime.getSnapshot().draft.error).toEqual({
+			kind: "config-invalid",
+			field: "secret",
+		});
+	});
+
+	it("surfaces a vault read failure without starting generation", async () => {
+		const h = draftHarness({
+			readBinary: async () => {
+				throw new Error("read boom");
+			},
+		});
+		const ok = await h.runtime.generateSubtitles();
+		expect(ok).toBe(false);
+		expect(h.runtime.getSnapshot().draft.error?.kind).toBe("unknown");
+		expect(h.generation.generate).not.toHaveBeenCalled();
+	});
+
+	it("delegates the admitted input and force flag to generation", async () => {
+		const h = draftHarness();
+		const ok = await h.runtime.generateSubtitles(true);
+		expect(ok).toBe(true);
+		expect(h.generation.generate).toHaveBeenCalledTimes(1);
+		const [input, generateOptions] = (h.generation.generate as any).mock.calls[0] as [
+			GenerationInput,
+			{ force?: boolean },
+		];
+		expect(input).toMatchObject({
+			name: "a.wav",
+			taskKey: "a",
+			referenceText: "hello",
+		});
+		expect(input.config).toEqual({
+			provider: "bailian",
+			workspaceId: "workspace",
+			secretId: "secret",
+			model: "fun-asr-flash-2026-06-15",
+		});
+		expect(generateOptions).toEqual({ force: true });
+		expect(h.runtime.getSnapshot().draft.error).toBeNull();
+	});
+
+	it("cancels generation and clears failure on dismissFailure", async () => {
+		const h = draftHarness({ sourceStat: null });
+		await h.runtime.generateSubtitles();
+		expect(h.runtime.getSnapshot().draft.error?.kind).toBe("missing-file");
+		h.runtime.dismissFailure();
+		expect(h.runtime.getSnapshot().draft.error).toBeNull();
+
+		h.runtime.cancelSubtitleGeneration();
+		expect(h.generation.cancel).toHaveBeenCalled();
+	});
+});
+
+describe("audio practice runtime subtitle save adoption", () => {
+	it("refuses a draft that belongs to another material", async () => {
+		const h = draftHarness({ generationSnapshot: { taskKey: "other" } });
+		const ok = await h.runtime.saveSubtitleDraft();
+		expect(ok).toBe(false);
+		expect(h.runtime.getSnapshot().draft.error).toEqual({ kind: "stale-material" });
+	});
+
+	it("refuses when source fingerprint no longer matches", async () => {
+		const h = draftHarness({
+			generationSnapshot: { taskKey: "a" },
+			matchesSource: async () => false,
+		});
+		const ok = await h.runtime.saveSubtitleDraft();
+		expect(ok).toBe(false);
+		expect(h.runtime.getSnapshot().draft.error).toEqual({ kind: "source-changed" });
+	});
+
+	it("refuses when source changed while bytes were being read", async () => {
+		const h = draftHarness({
+			generationSnapshot: { taskKey: "a" },
+			sourceStats: [
+				{ size: 1024, mtime: 10 },
+				{ size: 1024, mtime: 11 },
+			],
+		});
+		const ok = await h.runtime.saveSubtitleDraft();
+		expect(ok).toBe(false);
+		expect(h.runtime.getSnapshot().draft.error).toEqual({ kind: "source-changed" });
+	});
+
+	it("turns validated-cue rejections into invalid-draft failures", async () => {
+		const h = draftHarness({ generationSnapshot: { taskKey: "a" } });
+		(h.generation.validatedCues as any).mockImplementationOnce(() => {
+			throw audioFailure({
+				kind: "subtitle-invalid",
+				problems: [{ kind: "needs-review", cueIndex: 0 }],
+			});
+		});
+		const ok = await h.runtime.saveSubtitleDraft();
+		expect(ok).toBe(false);
+		expect(h.runtime.getSnapshot().draft.error).toMatchObject({
+			kind: "subtitle-invalid",
+			problems: [{ kind: "needs-review", cueIndex: 0 }],
+		});
+	});
+
+	it("writes validated cues and publishes updated draft", async () => {
+		const h = draftHarness({ generationSnapshot: { taskKey: "a" } });
+		const ok = await h.runtime.saveSubtitleDraft();
+		expect(ok).toBe(true);
+		expect(h.generation.validatedCues).toHaveBeenCalledTimes(1);
+		expect(h.files.writeSubtitle).toHaveBeenCalled();
+		expect(h.runtime.getSnapshot().draft.error).toBeNull();
+	});
+});
+
+describe("audio practice runtime subtitle draft editing", () => {
+	it("edits, adds, removes, and confirms draft cues through runtime", () => {
+		const h = draftHarness({
+			generationSnapshot: {
+				taskKey: "a",
+				status: "review",
+				cues: [{ id: "cue-1", start: 0, end: 1, text: "original", needsReview: true }],
+			},
+		});
+		expect(h.runtime.getSnapshot().draft.cues).toHaveLength(1);
+
+		h.runtime.editSubtitleDraftCue("cue-1", { text: "updated" });
+		expect(h.runtime.getSnapshot().draft.cues[0]?.text).toBe("updated");
+
+		h.runtime.addSubtitleDraftCue();
+		expect(h.runtime.getSnapshot().draft.cues).toHaveLength(2);
+
+		h.runtime.confirmAllSubtitleDraftCues();
+		expect(h.runtime.getSnapshot().draft.cues.every((c) => !c.needsReview)).toBe(true);
+
+		h.runtime.removeSubtitleDraftCue("cue-1");
+		expect(h.runtime.getSnapshot().draft.cues).toHaveLength(1);
 	});
 });

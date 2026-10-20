@@ -33,11 +33,13 @@ import { PlaybackRateControl } from "../../../core/ui/primitives/PlaybackRate";
 import { FlashcardSelect } from "../../../core/ui/primitives/Select";
 import { FlashcardSlider } from "../../../core/ui/primitives/Slider";
 import { type AudioPracticeFailure, toAudioFailure } from "../domain/failures";
-import type { AudioMaterial, AudioPracticeSnapshot } from "../domain/types";
+import type {
+	AudioMaterial,
+	AudioPracticeDraftSnapshot,
+	AudioPracticeSnapshot,
+} from "../domain/types";
 import { AUDIO_PLAYBACK_RATES } from "../domain/types";
 import type { AudioPracticeRuntime } from "../domain/audioPracticeRuntime";
-import type { GenerationSnapshot, SubtitleGeneration } from "../generation/subtitleGeneration";
-import type { SubtitleWorkflow } from "../generation/subtitleWorkflow";
 import { audioFailureCopy } from "../strings/failures";
 import { audioPracticeStrings } from "../strings/audioPractice";
 import type { AudioPracticeStrings } from "../strings/audioPractice";
@@ -45,12 +47,10 @@ import styles from "./AudioPractice.module.scss";
 
 export interface AudioPracticeViewProps {
 	runtime: AudioPracticeRuntime;
-	generation: SubtitleGeneration;
 	language: Language;
 	audioPaths: readonly string[];
 	subtitlePaths: readonly string[];
 	textPaths: readonly string[];
-	workflow: SubtitleWorkflow;
 	onReadText: (path: string) => Promise<string>;
 	onOpenSettings: () => void;
 }
@@ -58,18 +58,10 @@ export interface AudioPracticeViewProps {
 type MaterialDialogMode = "add" | "edit";
 
 export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNode {
-	const { runtime, generation, workflow, language, onOpenSettings } = props;
+	const { runtime, language, onOpenSettings } = props;
 	const snapshot = useSyncExternalStore(
 		(listener) => runtime.subscribe(listener),
 		() => runtime.getSnapshot(),
-	);
-	const draft = useSyncExternalStore(
-		(listener) => generation.subscribe(listener),
-		() => generation.getSnapshot(),
-	);
-	const workflowSnapshot = useSyncExternalStore(
-		(listener) => workflow.subscribe(listener),
-		() => workflow.getSnapshot(),
 	);
 	const t = audioPracticeStrings(language);
 	const media = useRef<HTMLAudioElement>(null);
@@ -78,17 +70,20 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 	const [reviewOpen, setReviewOpen] = useState(false);
 	const [localFailure, setLocalFailure] = useState<AudioPracticeFailure | null>(null);
 	const [localBusy, setLocalBusy] = useState(false);
-	const busy = localBusy || workflowSnapshot.activity !== "idle";
-	const failure = localFailure ?? workflowSnapshot.failure ?? snapshot.failure ?? null;
+	const draft = snapshot.draft;
+	const busy =
+		localBusy ||
+		snapshot.loading ||
+		["preparing", "transcribing", "aligning", "saving"].includes(draft.status);
+	const failure = localFailure ?? draft.error ?? snapshot.failure ?? null;
 	const error = failure ? audioFailureCopy(language, failure).message : null;
 	const material = snapshot.currentMaterial;
 	const generating = ["preparing", "transcribing", "aligning"].includes(draft.status);
-	const draftForMaterial = material !== null && draft.taskKey === material.id;
-	const reviewReady = draftForMaterial && draft.status === "review";
+	const reviewReady = draft.status === "review";
 	const pendingCues = reviewReady ? draft.cues.filter((cue) => cue.needsReview).length : 0;
 	const openMaterialDialog = (mode: MaterialDialogMode) => {
 		setLocalFailure(null);
-		workflow.dismissFailure();
+		runtime.dismissFailure();
 		setMaterialDialog(mode);
 	};
 	const run = async (action: () => void | Promise<unknown>) => {
@@ -257,7 +252,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 											title={t.reviewHint}
 											onClick={() => {
 												setLocalFailure(null);
-												workflow.dismissFailure();
+												runtime.dismissFailure();
 												setReviewOpen(true);
 											}}
 										>
@@ -280,16 +275,15 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 									<Button
 										icon={Sparkles}
 										disabled={busy || generating}
-										onClick={() => void workflow.generate(material.id, true)}
+										onClick={() => void runtime.generateSubtitles(true)}
 									>
 										{snapshot.cues.length ? t.regenerate : t.generate}
 									</Button>
 								</div>
 							</section>
 							{(generating ||
-								(draftForMaterial &&
-									(draft.status === "error" ||
-										draft.status === "cancelled"))) && (
+								draft.status === "error" ||
+								draft.status === "cancelled") && (
 								<output
 									className={styles.statusStrip}
 									data-tone={
@@ -318,12 +312,14 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 												: t.cancelled}
 									</span>
 									{generating && (
-										<Button size="sm" onClick={() => workflow.cancel()}>
+										<Button
+											size="sm"
+											onClick={() => runtime.cancelSubtitleGeneration()}
+										>
 											{t.cancel}
 										</Button>
 									)}
-									{draftForMaterial &&
-										!generating &&
+									{!generating &&
 										(draft.status === "error" ||
 											draft.status === "cancelled") && (
 											<Button
@@ -331,7 +327,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 												icon={RotateCcw}
 												disabled={busy}
 												onClick={() =>
-													void workflow.generate(material.id, false)
+													void runtime.generateSubtitles(false)
 												}
 											>
 												{t.retry}
@@ -339,11 +335,9 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 										)}
 								</output>
 							)}
-							{draftForMaterial &&
-								draft.status === "review" &&
-								draft.notice === "no-word-timestamps" && (
-									<p className={styles.notice}>{t.noWordTimestamps}</p>
-								)}
+							{draft.status === "review" && draft.notice === "no-word-timestamps" && (
+								<p className={styles.notice}>{t.noWordTimestamps}</p>
+							)}
 							{error && (
 								<p role="alert" className={styles.alert}>
 									{error}
@@ -382,7 +376,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 					error={error}
 					onCancel={() => {
 						setLocalFailure(null);
-						workflow.dismissFailure();
+						runtime.dismissFailure();
 						setMaterialDialog(null);
 					}}
 					onSubmit={(value) =>
@@ -410,19 +404,18 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 				<DraftReviewDialog
 					draft={draft}
 					material={material}
-					generation={generation}
 					runtime={runtime}
 					t={t}
 					busy={busy}
-					error={error}
+					error={draft.error ? audioFailureCopy(language, draft.error).message : null}
 					onRequestClose={() => {
 						setLocalFailure(null);
-						workflow.dismissFailure();
+						runtime.dismissFailure();
 						setReviewOpen(false);
 					}}
 					onSave={() =>
-						void workflow.saveDraft(material.id).then((outcome) => {
-							if (outcome.kind === "applied") setReviewOpen(false);
+						void runtime.saveSubtitleDraft().then((applied) => {
+							if (applied) setReviewOpen(false);
 						})
 					}
 				/>
@@ -645,10 +638,16 @@ function MaterialForm(props: MaterialFormProps): React.ReactNode {
 }
 
 interface DraftReviewBodyProps {
-	draft: GenerationSnapshot;
+	draft: AudioPracticeDraftSnapshot;
 	material: AudioMaterial;
-	generation: Pick<SubtitleGeneration, "editCue" | "addCue" | "removeCue" | "confirmAllCues">;
-	runtime: Pick<AudioPracticeRuntime, "preview">;
+	runtime: Pick<
+		AudioPracticeRuntime,
+		| "preview"
+		| "editSubtitleDraftCue"
+		| "addSubtitleDraftCue"
+		| "removeSubtitleDraftCue"
+		| "confirmAllSubtitleDraftCues"
+	>;
 	t: AudioPracticeStrings;
 	busy: boolean;
 	error: string | null;
@@ -688,7 +687,7 @@ function DraftReviewDialog(
 }
 
 export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
-	const { draft, material, generation, runtime, t, busy, error } = props;
+	const { draft, material, runtime, t, busy, error } = props;
 	const pending = draft.cues.filter((cue) => cue.needsReview).length;
 	return (
 		<>
@@ -718,7 +717,7 @@ export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
 						size="sm"
 						icon={ListChecks}
 						disabled={busy || pending === 0}
-						onClick={() => generation.confirmAllCues()}
+						onClick={() => runtime.confirmAllSubtitleDraftCues()}
 					>
 						{t.markAllReviewed}
 					</Button>
@@ -741,7 +740,7 @@ export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
 									<FlashcardCheckbox
 										checked={!cue.needsReview}
 										onChange={(event) =>
-											generation.editCue(cue.id, {
+											runtime.editSubtitleDraftCue(cue.id, {
 												needsReview: !event.target.checked,
 											})
 										}
@@ -759,13 +758,13 @@ export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
 										className={styles.draftDelete}
 										aria-label={`${t.deleteCue} ${index + 1}`}
 										title={t.deleteCue}
-										onClick={() => generation.removeCue(cue.id)}
+										onClick={() => runtime.removeSubtitleDraftCue(cue.id)}
 									/>
 								</div>
 								<FlashcardTextarea
 									value={cue.text}
 									onChange={(event) =>
-										generation.editCue(cue.id, {
+										runtime.editSubtitleDraftCue(cue.id, {
 											text: event.target.value,
 										})
 									}
@@ -784,7 +783,7 @@ export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
 											fullWidth={false}
 											value={cue.start ?? ""}
 											onChange={(event) =>
-												generation.editCue(cue.id, {
+												runtime.editSubtitleDraftCue(cue.id, {
 													start:
 														event.target.value === ""
 															? null
@@ -803,7 +802,7 @@ export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
 											fullWidth={false}
 											value={cue.end ?? ""}
 											onChange={(event) =>
-												generation.editCue(cue.id, {
+												runtime.editSubtitleDraftCue(cue.id, {
 													end:
 														event.target.value === ""
 															? null
@@ -830,7 +829,7 @@ export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
 				</ol>
 			</div>
 			<div className={cls("flashcard-modal-footer", styles.dialogFooter)}>
-				<Button icon={Plus} onClick={() => generation.addCue()} disabled={busy}>
+				<Button icon={Plus} onClick={() => runtime.addSubtitleDraftCue()} disabled={busy}>
 					{t.addCue}
 				</Button>
 				<span className={styles.footerSpacer} />

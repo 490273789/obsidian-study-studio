@@ -60,6 +60,28 @@ export interface AudioMediaPort {
 	addEventListener(event: string, listener: () => void): void;
 	removeEventListener(event: string, listener: () => void): void;
 }
+import type { DraftCue, GenerationNotice } from "../generation/types";
+
+export type AudioPracticeDraftStatus =
+	| "idle"
+	| "preparing"
+	| "transcribing"
+	| "aligning"
+	| "review"
+	| "saving"
+	| "error"
+	| "cancelled";
+
+export interface AudioPracticeDraftSnapshot {
+	readonly status: AudioPracticeDraftStatus;
+	readonly cues: readonly DraftCue[];
+	readonly completedChunks: number;
+	readonly totalChunks: number;
+	readonly failure: AudioFailure | null;
+	readonly error: AudioFailure | null;
+	readonly notice: GenerationNotice | null;
+}
+
 export interface AudioPracticeSnapshot extends AudioPracticeData {
 	readonly currentMaterial: AudioMaterial | null;
 	readonly cues: readonly SubtitleCue[];
@@ -71,4 +93,5 @@ export interface AudioPracticeSnapshot extends AudioPracticeData {
 	readonly loading: boolean;
 	readonly failure: AudioFailure | null;
 	readonly invalidatedMarks: number;
+	readonly draft: AudioPracticeDraftSnapshot;
 }
