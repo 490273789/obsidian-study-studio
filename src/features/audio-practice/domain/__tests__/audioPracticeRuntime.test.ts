@@ -60,6 +60,7 @@ async function setup() {
 	};
 	const files: AudioPracticeFiles = {
 		exists: () => true,
+		stat: () => ({ size: 1024, mtime: 10 }),
 		mediaUrl: (path) => path,
 		readText: async () => subtitle,
 		writeSubtitle: async () => "generated.srt",
@@ -151,7 +152,7 @@ describe("audio practice runtime", () => {
 		expect(media.currentTime).toBe(3);
 		runtime.dispose();
 	});
-	it("rejects a superseded subtitle read instead of rebinding old subtitles", async () => {
+	it("rejects a second material edit while the first is reading subtitles", async () => {
 		const { runtime, files } = await setup();
 		const id = runtime.getSnapshot().currentMaterialId!;
 		const originalRead = files.readText.bind(files);
@@ -162,14 +163,16 @@ describe("audio practice runtime", () => {
 						finish = resolve;
 					})
 				: originalRead(path);
-		const slow = runtime.setSubtitle(id, "slow.srt");
-		const rejected = expect(slow).rejects.toMatchObject({
+		const current = runtime.getSnapshot().currentMaterial!;
+		const slow = runtime.editMaterial(id, { ...current, subtitlePath: "slow.srt" });
+		await expect(
+			runtime.editMaterial(id, { ...current, subtitlePath: "new.srt" }),
+		).rejects.toMatchObject({
 			failure: { kind: "stale-material" },
 		});
-		await runtime.setSubtitle(id, "new.srt");
 		finish(await originalRead("test.srt"));
-		await rejected;
-		expect(runtime.getSnapshot().currentMaterial!.subtitlePath).toBe("new.srt");
+		await slow;
+		expect(runtime.getSnapshot().currentMaterial!.subtitlePath).toBe("slow.srt");
 		runtime.dispose();
 	});
 	it("rejects subtitle reads invalidated by synchronized data", async () => {
@@ -182,7 +185,8 @@ describe("audio practice runtime", () => {
 						finish = resolve;
 					})
 				: originalRead(path);
-		const pending = runtime.setSubtitle(runtime.getSnapshot().currentMaterialId!, "slow.srt");
+		const current = runtime.getSnapshot().currentMaterial!;
+		const pending = runtime.editMaterial(current.id, { ...current, subtitlePath: "slow.srt" });
 		const rejected = expect(pending).rejects.toMatchObject({
 			failure: { kind: "stale-material" },
 		});
@@ -345,6 +349,285 @@ describe("audio practice runtime", () => {
 	});
 });
 
+async function materialEditHarness() {
+	const initialSubtitle =
+		"1\n00:00:01,000 --> 00:00:02,000\nOne\n\n2\n00:00:03,000 --> 00:00:04,000\nTwo";
+	const subtitles: Record<string, string> = {
+		"old.srt": initialSubtitle,
+		"new.srt":
+			"1\n00:00:01,000 --> 00:00:02,000\nOne\n\n2\n00:00:03,000 --> 00:00:04,000\nChanged",
+	};
+	let saved: AudioPracticeData = {
+		...emptyAudioPracticeData(),
+		materials: [
+			{
+				id: "material",
+				title: "Original",
+				audioPath: "old.mp3",
+				subtitlePath: "old.srt",
+				originalText: "Original text",
+			},
+		],
+		currentMaterialId: "material",
+	};
+	let external = () => {};
+	let fileChange = (_change: AudioFileChange) => {};
+	const repo: AudioPracticeRepository = {
+		load: () => saved,
+		save: vi.fn(async (data) => {
+			saved = data;
+		}),
+		subscribeExternal: (listener) => {
+			external = listener;
+			return () => {};
+		},
+	};
+	const stats = new Map<string, { size: number; mtime: number }>([
+		["old.mp3", { size: 100, mtime: 1 }],
+		["new.mp3", { size: 100, mtime: 1 }],
+		["old.srt", { size: 100, mtime: 1 }],
+		["new.srt", { size: 100, mtime: 1 }],
+	]);
+	const files: AudioPracticeFiles = {
+		exists: (path) => stats.has(path),
+		stat: (path) => stats.get(path) ?? null,
+		mediaUrl: (path) => path,
+		readText: vi.fn(async (path) => subtitles[path] ?? ""),
+		writeSubtitle: async () => "generated.srt",
+		subscribe: (listener) => {
+			fileChange = listener;
+			return () => {};
+		},
+	};
+	const runtime = new AudioPracticeRuntime(repo, files);
+	await new Promise<void>((resolve) => setTimeout(resolve, 0));
+	const input = () => ({ ...runtime.getSnapshot().currentMaterial! });
+	return {
+		runtime,
+		repo,
+		files,
+		stats,
+		input,
+		getSaved: () => saved,
+		setSaved: (data: AudioPracticeData) => {
+			saved = data;
+		},
+		sync: (data: AudioPracticeData) => {
+			saved = data;
+			external();
+		},
+		fileChange: (change: AudioFileChange) => fileChange(change),
+	};
+}
+
+describe("listening material edit", () => {
+	it("commits material fields and matched subtitle progress together", async () => {
+		const h = await materialEditHarness();
+		const [first, second] = h.runtime.getSnapshot().cues;
+		h.runtime.toggleDifficult(first!.id);
+		h.runtime.toggleDifficult(second!.id);
+		h.runtime.seekTo(3.2);
+		await h.runtime.editMaterial("material", {
+			...h.input(),
+			title: " Revised ",
+			subtitlePath: "new.srt",
+		});
+		const snapshot = h.runtime.getSnapshot();
+		expect(snapshot.currentMaterial).toMatchObject({
+			title: "Revised",
+			subtitlePath: "new.srt",
+		});
+		expect(snapshot.progress.material).toMatchObject({
+			time: 3.2,
+			difficultCueIds: [first!.id],
+		});
+		expect(snapshot.invalidatedMarks).toBe(1);
+		expect(h.getSaved().materials[0]).toEqual(snapshot.currentMaterial);
+		expect(h.getSaved().progress.material).toEqual(snapshot.progress.material);
+		h.runtime.dispose();
+	});
+
+	it("keeps the old material when subtitle reading fails", async () => {
+		const h = await materialEditHarness();
+		const before = h.runtime.getSnapshot().currentMaterial;
+		const savedBefore = h.getSaved();
+		vi.mocked(h.files.readText).mockRejectedValueOnce(new Error("read failed"));
+		await expect(
+			h.runtime.editMaterial("material", {
+				...h.input(),
+				title: "Revised",
+				subtitlePath: "new.srt",
+			}),
+		).rejects.toThrow("read failed");
+		expect(h.runtime.getSnapshot().currentMaterial).toEqual(before);
+		expect(h.getSaved()).toBe(savedBefore);
+		h.runtime.dispose();
+	});
+
+	it("keeps the old material and independent playback progress when persistence fails", async () => {
+		const h = await materialEditHarness();
+		const before = h.runtime.getSnapshot().currentMaterial;
+		h.runtime.seekTo(2.5);
+		await new Promise<void>((resolve) => setTimeout(resolve, 0));
+		vi.mocked(h.repo.save).mockRejectedValueOnce(new Error("disk full"));
+		await expect(
+			h.runtime.editMaterial("material", {
+				...h.input(),
+				title: "Revised",
+			}),
+		).rejects.toMatchObject({ failure: { kind: "persist-failed" } });
+		expect(h.runtime.getSnapshot().currentMaterial).toEqual(before);
+		expect(h.runtime.getSnapshot().progress.material?.time).toBe(2.5);
+		h.runtime.dispose();
+	});
+
+	it("resets progress after an intentional audio replacement", async () => {
+		const h = await materialEditHarness();
+		const cue = h.runtime.getSnapshot().cues[0]!;
+		h.runtime.toggleDifficult(cue.id);
+		h.runtime.setOffset(0.5);
+		h.runtime.seekTo(1.5);
+		await h.runtime.editMaterial("material", {
+			...h.input(),
+			audioPath: "new.mp3",
+		});
+		expect(h.runtime.getSnapshot().currentMaterial?.id).toBe("material");
+		expect(h.runtime.getSnapshot().progress.material).toEqual({
+			time: 0,
+			cueId: null,
+			difficultCueIds: [],
+			offset: 0,
+		});
+		h.runtime.dispose();
+	});
+
+	it("preserves playback changes made while a title edit is saving", async () => {
+		const h = await materialEditHarness();
+		let finish!: () => void;
+		vi.mocked(h.repo.save).mockImplementationOnce(
+			() => new Promise((resolve) => (finish = resolve)),
+		);
+		const pending = h.runtime.editMaterial("material", {
+			...h.input(),
+			title: "Revised",
+		});
+		await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+		h.runtime.seekTo(3.2);
+		h.runtime.toggleDifficult(h.runtime.getSnapshot().cues[1]!.id);
+		finish();
+		await pending;
+		await vi.waitFor(() => expect(h.getSaved().progress.material?.time).toBe(3.2));
+		expect(h.runtime.getSnapshot().progress.material).toEqual(h.getSaved().progress.material);
+		expect(h.getSaved().materials[0]?.title).toBe("Revised");
+		h.runtime.dispose();
+	});
+
+	it("rolls back a saved edit when its audio changes during persistence", async () => {
+		const h = await materialEditHarness();
+		let finish!: () => void;
+		vi.mocked(h.repo.save).mockImplementationOnce(async (data) => {
+			await new Promise<void>((resolve) => (finish = resolve));
+			h.setSaved(data);
+		});
+		const pending = h.runtime.editMaterial("material", {
+			...h.input(),
+			title: "Revised",
+		});
+		const rejected = expect(pending).rejects.toMatchObject({
+			failure: { kind: "stale-material" },
+		});
+		await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+		h.fileChange({ kind: "change", path: "old.mp3" });
+		finish();
+		await rejected;
+		await vi.waitFor(() => expect(h.getSaved().materials[0]?.title).toBe("Original"));
+		expect(h.runtime.getSnapshot().currentMaterial?.title).toBe("Original");
+		h.runtime.dispose();
+	});
+
+	it("adopts the committed edit if a later rollback write fails", async () => {
+		const h = await materialEditHarness();
+		let finish!: () => void;
+		vi.mocked(h.repo.save)
+			.mockImplementationOnce(async (data) => {
+				await new Promise<void>((resolve) => (finish = resolve));
+				h.setSaved(data);
+			})
+			.mockRejectedValueOnce(new Error("rollback failed"));
+		const pending = h.runtime.editMaterial("material", {
+			...h.input(),
+			title: "Revised",
+		});
+		await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+		h.fileChange({ kind: "change", path: "old.mp3" });
+		finish();
+		await pending;
+		expect(h.runtime.getSnapshot().currentMaterial).toEqual(h.getSaved().materials[0]);
+		expect(h.runtime.getSnapshot().currentMaterial?.title).toBe("Revised");
+		h.runtime.dispose();
+	});
+
+	it("clears an old preview stop after replacing audio", async () => {
+		const h = await materialEditHarness();
+		const media = new Media();
+		h.runtime.bindMedia(media);
+		h.runtime.setMode("continuous");
+		h.runtime.preview(1, 2);
+		await h.runtime.editMaterial("material", { ...h.input(), audioPath: "new.mp3" });
+		media.currentTime = 2.1;
+		h.runtime.togglePlayback();
+		media.emit("timeupdate");
+		expect(media.paused).toBe(false);
+		h.runtime.dispose();
+	});
+
+	it("rejects an edit superseded by external synchronized data", async () => {
+		const h = await materialEditHarness();
+		let finish!: (value: string) => void;
+		vi.mocked(h.files.readText).mockImplementationOnce(
+			() => new Promise((resolve) => (finish = resolve)),
+		);
+		const pending = h.runtime.editMaterial("material", {
+			...h.input(),
+			title: "Old edit",
+			subtitlePath: "new.srt",
+		});
+		const rejected = expect(pending).rejects.toMatchObject({
+			failure: { kind: "stale-material" },
+		});
+		const synced = {
+			...h.getSaved(),
+			materials: [{ ...h.input(), title: "Other device" }],
+		};
+		h.sync(synced);
+		finish("1\n00:00:01,000 --> 00:00:02,000\nOne");
+		await rejected;
+		expect(h.runtime.getSnapshot().currentMaterial?.title).toBe("Other device");
+		expect(h.getSaved()).toBe(synced);
+		h.runtime.dispose();
+	});
+
+	it("rejects a subtitle modified while it is being read", async () => {
+		const h = await materialEditHarness();
+		let finish!: (value: string) => void;
+		vi.mocked(h.files.readText).mockImplementationOnce(
+			() => new Promise((resolve) => (finish = resolve)),
+		);
+		const pending = h.runtime.editMaterial("material", {
+			...h.input(),
+			subtitlePath: "new.srt",
+		});
+		const rejected = expect(pending).rejects.toMatchObject({
+			failure: { kind: "stale-material" },
+		});
+		h.stats.set("new.srt", { size: 101, mtime: 2 });
+		finish("1\n00:00:01,000 --> 00:00:02,000\nOne");
+		await rejected;
+		expect(h.runtime.getSnapshot().currentMaterial?.subtitlePath).toBe("old.srt");
+		h.runtime.dispose();
+	});
+});
+
 const defaultSettings: AudioPracticeSettings = {
 	enabled: true,
 	provider: "bailian",
@@ -385,22 +668,32 @@ function draftHarness(
 		materials,
 		currentMaterialId: options.currentMaterialId ?? materials[0]?.id ?? null,
 	};
+	let external = () => {};
+	let fileChange = (_change: AudioFileChange) => {};
 	const repo: AudioPracticeRepository = {
 		load: () => data,
 		save: vi.fn(async (next) => {
 			data = next;
 		}),
-		subscribeExternal: () => () => {},
+		subscribeExternal: (listener) => {
+			external = listener;
+			return () => {};
+		},
 	};
 	let savedSubtitleText = "1\n00:00:00,000 --> 00:00:01,000\nhello";
 	const files: AudioPracticeFiles = {
 		exists: () => true,
+		stat: () => ({ size: 1024, mtime: 10 }),
 		mediaUrl: (p) => p,
 		readText: vi.fn(async () => savedSubtitleText),
 		writeSubtitle: vi.fn(async (_audioPath, content) => {
 			savedSubtitleText = content;
 			return "a.srt";
 		}),
+		subscribe: (listener) => {
+			fileChange = listener;
+			return () => {};
+		},
 	};
 
 	let genSnapshot: GenerationSnapshot = {
@@ -478,6 +771,11 @@ function draftHarness(
 		settingsReader,
 		files,
 		publishGen,
+		sync: (next: AudioPracticeData) => {
+			data = next;
+			external();
+		},
+		fileChange: (change: AudioFileChange) => fileChange(change),
 	};
 }
 
@@ -579,6 +877,43 @@ describe("audio practice runtime subtitle generation admission", () => {
 });
 
 describe("audio practice runtime subtitle save adoption", () => {
+	it("hides an existing review draft when synchronized source text changes", async () => {
+		const h = draftHarness({
+			generationSnapshot: {
+				taskKey: "a",
+				status: "review",
+				cues: savedCues.map((cue) => ({ ...cue, needsReview: false })),
+			},
+			matchesSource: async () => false,
+		});
+		await vi.waitFor(() => expect(h.runtime.getSnapshot().loading).toBe(false));
+		expect(h.runtime.getSnapshot().draft.status).toBe("review");
+		h.sync({
+			...h.runtime.getSnapshot(),
+			materials: [{ ...h.runtime.getSnapshot().currentMaterial!, originalText: "changed" }],
+		});
+		await vi.waitFor(() => expect(h.generation.matchesSource).toHaveBeenCalled());
+		expect(h.runtime.getSnapshot().draft.status).toBe("idle");
+		expect(h.generation.restore).not.toHaveBeenCalled();
+		h.runtime.dispose();
+	});
+
+	it("revalidates an existing review draft after its audio file changes", async () => {
+		const h = draftHarness({
+			generationSnapshot: {
+				taskKey: "a",
+				status: "review",
+				cues: savedCues.map((cue) => ({ ...cue, needsReview: false })),
+			},
+			matchesSource: async () => false,
+		});
+		await vi.waitFor(() => expect(h.runtime.getSnapshot().loading).toBe(false));
+		h.fileChange({ kind: "change", path: "a.wav" });
+		await vi.waitFor(() => expect(h.generation.matchesSource).toHaveBeenCalled());
+		expect(h.runtime.getSnapshot().draft.status).toBe("idle");
+		h.runtime.dispose();
+	});
+
 	it("refuses a draft that belongs to another material", async () => {
 		const h = draftHarness({ generationSnapshot: { taskKey: "other" } });
 		const ok = await h.runtime.saveSubtitleDraft();

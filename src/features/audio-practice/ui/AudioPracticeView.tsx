@@ -382,16 +382,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 					onSubmit={(value) =>
 						void run(async () => {
 							if (materialDialog === "edit" && material) {
-								runtime.updateMaterial(material.id, {
-									title: value.title,
-									originalText: value.originalText,
-									audioPath: value.audioPath,
-								});
-								if (value.subtitlePath !== material.subtitlePath)
-									await runtime.setSubtitle(
-										material.id,
-										value.subtitlePath ?? null,
-									);
+								await runtime.editMaterial(material.id, value);
 							} else {
 								await runtime.addMaterial(value);
 							}

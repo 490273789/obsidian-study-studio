@@ -42,6 +42,7 @@ export type AudioFileChange =
 	| { kind: "change" | "delete"; path: string };
 export interface AudioPracticeFiles {
 	readText(path: string): Promise<string>;
+	stat(path: string): { readonly size: number; readonly mtime: number } | null;
 	mediaUrl(path: string): string;
 	exists(path: string): boolean;
 	/** Creates a new SRT file without replacing an existing source. */

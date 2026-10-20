@@ -11,6 +11,10 @@ export function createAudioPracticeFiles(app: App): AudioPracticeFiles {
 	};
 	return {
 		readText: (path) => app.vault.read(fileAt(path)),
+		stat: (path) => {
+			const file = app.vault.getAbstractFileByPath(normalizePath(path));
+			return file instanceof TFile ? { size: file.stat.size, mtime: file.stat.mtime } : null;
+		},
 		mediaUrl: (path) => app.vault.getResourcePath(fileAt(path)),
 		exists: (path) => app.vault.getAbstractFileByPath(normalizePath(path)) instanceof TFile,
 		async writeSubtitle(audioPath, contents) {

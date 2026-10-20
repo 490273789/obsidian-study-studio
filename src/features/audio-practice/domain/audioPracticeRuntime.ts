@@ -41,6 +41,14 @@ export interface AudioPracticeRuntimeOptions {
 	readonly generation?: SubtitleGeneration;
 }
 
+interface MaterialEdit {
+	readonly id: string;
+	readonly epoch: number;
+	readonly previous: AudioMaterial;
+	readonly watchedPaths: readonly string[];
+	invalidated: boolean;
+}
+
 /** Owns playback, synchronized learning metadata, and subtitle draft workflows. */
 export class AudioPracticeRuntime {
 	private readonly repository: AudioPracticeRepository;
@@ -72,6 +80,9 @@ export class AudioPracticeRuntime {
 	private boundaryToken = 0;
 	private mediaLease = 0;
 	private subtitleOperation = new Map<string, number>();
+	private materialEdit: MaterialEdit | null = null;
+	private draftSourceValidated = true;
+	private draftValidationToken = 0;
 
 	constructor(
 		repositoryOrOptions: AudioPracticeRepository | AudioPracticeRuntimeOptions,
@@ -99,11 +110,21 @@ export class AudioPracticeRuntime {
 		this.data = normalizeAudioPracticeData(this.repository.load());
 		this.releases.push(
 			this.repository.subscribeExternal(() => {
+				const previous = this.currentMaterial();
 				this.epoch++;
 				this.loadingMedia = true;
 				this.media?.pause();
 				this.loadingMedia = false;
 				this.data = normalizeAudioPracticeData(this.repository.load());
+				const current = this.currentMaterial();
+				if (
+					previous?.id === current?.id &&
+					(previous?.audioPath !== current?.audioPath ||
+						previous?.originalText !== current?.originalText)
+				) {
+					this.draftValidationToken++;
+					this.draftSourceValidated = false;
+				}
 				void this.loadMaterial();
 			}),
 		);
@@ -155,23 +176,166 @@ export class AudioPracticeRuntime {
 		await this.loadMaterial();
 		return material.id;
 	}
-	updateMaterial(
+	async editMaterial(
 		id: string,
-		patch: { title?: string; originalText?: string; audioPath?: string },
-	): void {
-		this.data = {
-			...this.data,
-			materials: this.data.materials.map((item) =>
-				item.id === id
-					? { ...item, ...patch, title: patch.title?.trim() || item.title }
-					: item,
-			),
+		input: {
+			readonly title: string;
+			readonly audioPath: string;
+			readonly subtitlePath: string | null;
+			readonly originalText: string;
+		},
+	): Promise<void> {
+		const previous = this.data.materials.find((item) => item.id === id);
+		if (!previous || this.disposed || this.materialEdit || this.data.currentMaterialId !== id)
+			throw audioFailure({ kind: "stale-material" });
+		const next: AudioMaterial = {
+			...previous,
+			title: input.title.trim() || previous.title,
+			audioPath: input.audioPath,
+			subtitlePath: input.subtitlePath,
+			originalText: input.originalText,
 		};
-		void this.persist();
-		this.publish();
-		if (patch.audioPath && id === this.data.currentMaterialId) void this.loadMaterial();
+		const audioChanged = next.audioPath !== previous.audioPath;
+		const subtitleChanged = next.subtitlePath !== previous.subtitlePath;
+		const draftSourceChanged = audioChanged || next.originalText !== previous.originalText;
+		const edit: MaterialEdit = {
+			id,
+			epoch: this.epoch,
+			previous,
+			watchedPaths: [
+				previous.audioPath,
+				previous.subtitlePath,
+				next.audioPath,
+				next.subtitlePath,
+			].filter((path): path is string => path !== null),
+			invalidated: false,
+		};
+		this.materialEdit = edit;
+		try {
+			let nextCues: readonly SubtitleCue[] | null = null;
+			let audioStat: ReturnType<AudioPracticeFiles["stat"]> = null;
+			let subtitleStat: ReturnType<AudioPracticeFiles["stat"]> = null;
+			if (audioChanged || subtitleChanged) {
+				audioStat = this.files.stat(next.audioPath);
+				if (!audioStat) throw audioFailure({ kind: "missing-file" });
+				subtitleStat = next.subtitlePath ? this.files.stat(next.subtitlePath) : null;
+				if (next.subtitlePath && !subtitleStat)
+					throw audioFailure({ kind: "missing-file" });
+				nextCues = next.subtitlePath
+					? parseSubtitles(await this.files.readText(next.subtitlePath))
+					: [];
+				this.assertMaterialEdit(edit);
+				if (
+					!sameFileStat(audioStat, this.files.stat(next.audioPath)) ||
+					(next.subtitlePath &&
+						!sameFileStat(subtitleStat, this.files.stat(next.subtitlePath)))
+				)
+					throw audioFailure({ kind: "stale-material" });
+			}
+			const commit = this.persistenceTail.then(async () => {
+				this.assertMaterialEdit(edit);
+				if (
+					(audioStat && !sameFileStat(audioStat, this.files.stat(next.audioPath))) ||
+					(subtitleStat &&
+						!sameFileStat(subtitleStat, this.files.stat(next.subtitlePath!)))
+				)
+					throw audioFailure({ kind: "stale-material" });
+				const dataBeforeSave = this.data;
+				const prepare = (data: AudioPracticeData) => {
+					const progress = data.progress[id] ?? emptyProgress();
+					const remapped =
+						!audioChanged && subtitleChanged
+							? remapCueProgress(this.cues, nextCues!, progress)
+							: null;
+					const prepared: AudioPracticeData = {
+						...data,
+						materials: data.materials.map((item) => (item.id === id ? next : item)),
+						progress:
+							audioChanged || remapped
+								? {
+										...data.progress,
+										[id]: audioChanged ? emptyProgress() : remapped!.progress,
+									}
+								: data.progress,
+					};
+					return { prepared, remapped };
+				};
+				try {
+					await this.repository.save(prepare(dataBeforeSave).prepared);
+				} catch {
+					if (edit.epoch !== this.epoch) throw audioFailure({ kind: "stale-material" });
+					throw audioFailure({ kind: "persist-failed" });
+				}
+				if (this.disposed || edit.epoch !== this.epoch)
+					throw audioFailure({ kind: "stale-material" });
+				try {
+					this.assertMaterialEdit(edit);
+					if (
+						(audioStat && !sameFileStat(audioStat, this.files.stat(next.audioPath))) ||
+						(subtitleStat &&
+							!sameFileStat(subtitleStat, this.files.stat(next.subtitlePath!)))
+					)
+						throw audioFailure({ kind: "stale-material" });
+				} catch {
+					// A file event can arrive while the save is pending. Restore the live state
+					// before the queued file-event persistence runs.
+					try {
+						await this.repository.save(this.data);
+					} catch {
+						if (edit.epoch !== this.epoch)
+							throw audioFailure({ kind: "stale-material" });
+						// The first save committed. If rollback cannot be persisted, adopt
+						// the authoritative document so callers never see a false failure.
+						this.data = normalizeAudioPracticeData(this.repository.load());
+						await this.loadMaterial(true);
+						return;
+					}
+					throw audioFailure({ kind: "stale-material" });
+				}
+				const changedDuringSave = this.data !== dataBeforeSave;
+				const { prepared, remapped } = prepare(this.data);
+				this.data = prepared;
+				if (changedDuringSave) void this.persist();
+				if (nextCues) {
+					this.cues = nextCues;
+					this.invalidatedMarks = remapped?.invalidatedMarks ?? 0;
+					this.revealed = false;
+					if (audioChanged) {
+						this.previewEnd = null;
+						this.loadMedia();
+					} else this.scheduleBoundary();
+				}
+				if (draftSourceChanged) {
+					this.draftValidationToken++;
+					this.draftSourceValidated = false;
+					this.generationService?.cancel();
+				}
+				this.publish();
+			});
+			this.persistenceTail = commit.catch(() => {});
+			await commit;
+		} finally {
+			if (this.materialEdit === edit) this.materialEdit = null;
+		}
+	}
+	private assertMaterialEdit(edit: MaterialEdit): void {
+		const current = this.data.materials.find((item) => item.id === edit.id);
+		if (
+			this.disposed ||
+			this.materialEdit !== edit ||
+			edit.invalidated ||
+			edit.epoch !== this.epoch ||
+			this.data.currentMaterialId !== edit.id ||
+			!current ||
+			current.title !== edit.previous.title ||
+			current.audioPath !== edit.previous.audioPath ||
+			current.subtitlePath !== edit.previous.subtitlePath ||
+			current.originalText !== edit.previous.originalText
+		)
+			throw audioFailure({ kind: "stale-material" });
 	}
 	async selectMaterial(id: string): Promise<void> {
+		if (this.materialEdit) throw audioFailure({ kind: "stale-material" });
 		if (!this.data.materials.some((item) => item.id === id)) return;
 		this.pause();
 		this.data = { ...this.data, currentMaterialId: id };
@@ -179,6 +343,7 @@ export class AudioPracticeRuntime {
 		await this.loadMaterial();
 	}
 	removeMaterial(id: string): void {
+		if (this.materialEdit) return;
 		this.pause();
 		if (this.generationService?.getSnapshot().taskKey === id) {
 			this.generationService.cancel();
@@ -196,10 +361,6 @@ export class AudioPracticeRuntime {
 		};
 		void this.persist();
 		void this.loadMaterial();
-	}
-	async setSubtitle(id: string, path: string | null): Promise<void> {
-		const operation = this.beginSubtitleOperation(id);
-		await this.bindSubtitle(id, path, operation);
 	}
 	private beginSubtitleOperation(id: string): {
 		token: number;
@@ -508,26 +669,9 @@ export class AudioPracticeRuntime {
 		this.reconcileRestore();
 	}
 	private reconcileCues(next: readonly SubtitleCue[], persist = true): void {
-		const identity = (cue: SubtitleCue) => JSON.stringify([cue.text, cue.start, cue.end]);
-		const byIdentity = new Map<string, SubtitleCue[]>();
-		for (const cue of next) {
-			const key = identity(cue);
-			byIdentity.set(key, [...(byIdentity.get(key) ?? []), cue]);
-		}
-		const match = (id: string) => {
-			const old = this.cues.find((cue) => cue.id === id);
-			if (!old) return null;
-			const candidates = byIdentity.get(identity(old));
-			return candidates?.length === 1 ? candidates[0]!.id : null;
-		};
-		const marks = this.progress()
-			.difficultCueIds.map(match)
-			.filter((id): id is string => id !== null);
-		this.invalidatedMarks = this.progress().difficultCueIds.length - marks.length;
-		this.patchProgress({
-			difficultCueIds: marks,
-			cueId: this.progress().cueId ? match(this.progress().cueId!) : null,
-		});
+		const remapped = remapCueProgress(this.cues, next, this.progress());
+		this.invalidatedMarks = remapped.invalidatedMarks;
+		this.patchProgress(remapped.progress);
 		this.cues = next;
 		if (persist) void this.persist();
 	}
@@ -673,14 +817,13 @@ export class AudioPracticeRuntime {
 			return required
 				? Promise.reject(audioFailure({ kind: "cancelled" }))
 				: Promise.resolve();
-		const value = this.data;
 		const epoch = this.epoch;
 		const pending = this.persistenceTail.then(async () => {
 			if (epoch !== this.epoch) {
 				if (required) throw audioFailure({ kind: "stale-material" });
 				return;
 			}
-			await this.repository.save(value);
+			await this.repository.save(this.data);
 		});
 		this.persistenceTail = pending.catch(() => this.fail({ kind: "persist-failed" }));
 		return pending;
@@ -743,7 +886,21 @@ export class AudioPracticeRuntime {
 				referenceText: current.originalText,
 				config,
 			};
+			const validationToken = ++this.draftValidationToken;
+			const epoch = this.epoch;
+			this.draftSourceValidated = false;
 			await this.generationService.generate(input, { force });
+			if (
+				validationToken === this.draftValidationToken &&
+				epoch === this.epoch &&
+				this.currentMaterial()?.id === current.id &&
+				this.currentMaterial()?.audioPath === current.audioPath &&
+				this.currentMaterial()?.originalText === current.originalText &&
+				sameFileStat(stat, this.source.stat(current.audioPath))
+			) {
+				this.draftSourceValidated = true;
+				this.publish();
+			}
 			return true;
 		} catch (error) {
 			this.draftError = toAudioFailure(error);
@@ -769,14 +926,20 @@ export class AudioPracticeRuntime {
 		if (["preparing", "transcribing", "aligning"].includes(genStatus)) return false;
 		const material = this.currentMaterial();
 		if (!material) return false;
+		if (this.generationService.getSnapshot().taskKey !== material.id) {
+			this.draftError = { kind: "stale-material" };
+			this.publish();
+			return false;
+		}
+		if (!this.draftSourceValidated) {
+			this.draftError = { kind: "source-changed" };
+			this.publish();
+			return false;
+		}
 		this.savingDraft = true;
 		this.draftError = null;
 		this.publish();
 		try {
-			const gen = this.generationService.getSnapshot();
-			if (gen.taskKey !== material.id) {
-				throw audioFailure({ kind: "stale-material" });
-			}
 			const stat = this.source.stat(material.audioPath);
 			if (!stat) throw audioFailure({ kind: "missing-file" });
 			const mtime = stat.mtime;
@@ -829,8 +992,49 @@ export class AudioPracticeRuntime {
 		const gen = this.generationService.getSnapshot();
 		if (["preparing", "transcribing", "aligning"].includes(gen.status)) return;
 		const currentMaterialId = this.data.currentMaterialId;
-		if (!currentMaterialId || gen.taskKey === currentMaterialId) return;
-		void this.generationService.restore(currentMaterialId).catch(() => {});
+		if (!currentMaterialId || (gen.taskKey === currentMaterialId && this.draftSourceValidated))
+			return;
+		const token = ++this.draftValidationToken;
+		const epoch = this.epoch;
+		this.draftSourceValidated = false;
+		this.publish();
+		void (async () => {
+			const restored =
+				gen.taskKey === currentMaterialId ||
+				(await this.generationService!.restore(currentMaterialId));
+			if (token !== this.draftValidationToken) return;
+			const restoredSnapshot = this.generationService!.getSnapshot();
+			if (
+				!restored ||
+				!this.source ||
+				restoredSnapshot.taskKey !== currentMaterialId ||
+				restoredSnapshot.status !== "review"
+			) {
+				this.draftSourceValidated = true;
+				this.publish();
+				return;
+			}
+			const material = this.currentMaterial();
+			if (!material || material.id !== currentMaterialId || epoch !== this.epoch) return;
+			const before = this.source.stat(material.audioPath);
+			if (!before) return;
+			const audio = await this.source.readBinary(material.audioPath);
+			const matches = await this.generationService!.matchesSource(
+				audio,
+				material.originalText,
+			);
+			if (
+				token === this.draftValidationToken &&
+				epoch === this.epoch &&
+				this.currentMaterial()?.id === material.id &&
+				this.currentMaterial()?.audioPath === material.audioPath &&
+				this.currentMaterial()?.originalText === material.originalText &&
+				sameFileStat(before, this.source.stat(material.audioPath))
+			) {
+				this.draftSourceValidated = matches;
+				this.publish();
+			}
+		})().catch(() => {});
 	}
 
 	private getDraftSnapshot(): AudioPracticeDraftSnapshot {
@@ -847,19 +1051,21 @@ export class AudioPracticeRuntime {
 		}
 		const gen = this.generationService.getSnapshot();
 		const isCurrent = gen.taskKey === this.data.currentMaterialId;
+		const sourceValid = this.draftSourceValidated;
 		const status: AudioPracticeDraftStatus = this.savingDraft
 			? "saving"
-			: !isCurrent
+			: !isCurrent ||
+				  (!sourceValid && !["preparing", "transcribing", "aligning"].includes(gen.status))
 				? "idle"
 				: gen.status;
 		return {
 			status,
-			cues: isCurrent ? gen.cues : [],
+			cues: isCurrent && sourceValid ? gen.cues : [],
 			completedChunks: isCurrent ? gen.completedChunks : 0,
 			totalChunks: isCurrent ? gen.totalChunks : 0,
-			failure: isCurrent ? gen.failure : null,
+			failure: isCurrent && sourceValid ? gen.failure : null,
 			error: this.draftError,
-			notice: isCurrent ? gen.notice : null,
+			notice: isCurrent && sourceValid ? gen.notice : null,
 		};
 	}
 
@@ -884,6 +1090,14 @@ export class AudioPracticeRuntime {
 	private handleFileChange = (change: AudioFileChange): void => {
 		const contains = (path: string | null, parent: string) =>
 			path !== null && (path === parent || path.startsWith(`${parent}/`));
+		if (
+			this.materialEdit?.watchedPaths.some(
+				(path) =>
+					contains(path, change.path) ||
+					(change.kind === "rename" && contains(path, change.nextPath)),
+			)
+		)
+			this.materialEdit.invalidated = true;
 		if (change.kind === "rename") {
 			const renamed = (path: string) =>
 				contains(path, change.path)
@@ -904,6 +1118,14 @@ export class AudioPracticeRuntime {
 		if (
 			material &&
 			(contains(material.audioPath, change.path) ||
+				(change.kind === "rename" && contains(material.audioPath, change.nextPath)))
+		) {
+			this.draftValidationToken++;
+			this.draftSourceValidated = false;
+		}
+		if (
+			material &&
+			(contains(material.audioPath, change.path) ||
 				contains(material.subtitlePath, change.path) ||
 				(change.kind === "rename" &&
 					(contains(material.audioPath, change.nextPath) ||
@@ -915,6 +1137,43 @@ export class AudioPracticeRuntime {
 
 function fileName(path: string): string {
 	return path.split("/").pop() ?? path;
+}
+
+function sameFileStat(
+	left: ReturnType<AudioPracticeFiles["stat"]>,
+	right: ReturnType<AudioPracticeFiles["stat"]>,
+): boolean {
+	return (
+		left !== null && right !== null && left.size === right.size && left.mtime === right.mtime
+	);
+}
+
+function remapCueProgress(
+	previous: readonly SubtitleCue[],
+	next: readonly SubtitleCue[],
+	progress: AudioPracticeProgress,
+): { progress: AudioPracticeProgress; invalidatedMarks: number } {
+	const identity = (cue: SubtitleCue) => JSON.stringify([cue.text, cue.start, cue.end]);
+	const byIdentity = new Map<string, SubtitleCue[]>();
+	for (const cue of next) {
+		const key = identity(cue);
+		byIdentity.set(key, [...(byIdentity.get(key) ?? []), cue]);
+	}
+	const match = (id: string): string | null => {
+		const old = previous.find((cue) => cue.id === id);
+		if (!old) return null;
+		const candidates = byIdentity.get(identity(old));
+		return candidates?.length === 1 ? candidates[0]!.id : null;
+	};
+	const marks = progress.difficultCueIds.map(match).filter((id): id is string => id !== null);
+	return {
+		progress: {
+			...progress,
+			difficultCueIds: marks,
+			cueId: progress.cueId ? match(progress.cueId) : null,
+		},
+		invalidatedMarks: progress.difficultCueIds.length - marks.length,
+	};
 }
 
 function transcriptionConfig(settings: AudioPracticeSettings): TranscriptionConfig {

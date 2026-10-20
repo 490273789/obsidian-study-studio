@@ -39,6 +39,7 @@ async function setup() {
 		{ load: emptyAudioPracticeData, save: async () => {}, subscribeExternal: () => () => {} },
 		{
 			exists: () => true,
+			stat: () => ({ size: 1024, mtime: 10 }),
 			mediaUrl: (path) => path,
 			readText: async () =>
 				"1\n00:00:01,000 --> 00:00:02,000\nFirst sentence\n\n2\n00:00:03,000 --> 00:00:04,000\nSecond sentence",
