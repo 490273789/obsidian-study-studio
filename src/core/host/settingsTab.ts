@@ -160,10 +160,7 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 
 	/** Keep the active section's tab visible when the strip overflows. */
 	private revealActiveTab(activeTabEl: HTMLElement | null): void {
-		if (!activeTabEl) return;
-		const scrollIntoView = activeTabEl.scrollIntoView;
-		if (typeof scrollIntoView !== "function") return;
-		scrollIntoView.call(activeTabEl, { block: "nearest", inline: "nearest" });
+		activeTabEl?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
 	}
 
 	private renderSettings(options: { preserveScroll?: boolean } = { preserveScroll: true }): void {

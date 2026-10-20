@@ -45,10 +45,10 @@ interface ElementProps {
 	role?: string;
 	"aria-label"?: string;
 	"aria-current"?: string;
-	onClick?(): void;
-	onCancel?(): void;
-	onSubmit?(value: typeof input): void;
-	onReadText?(path: string): Promise<string>;
+	onClick?: () => void;
+	onCancel?: () => void;
+	onSubmit?: (value: typeof input) => void;
+	onReadText?: (path: string) => Promise<string>;
 }
 const input = {
 	title: "Revised",

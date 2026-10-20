@@ -3,7 +3,7 @@ import { AudioPracticeRuntime } from "../audioPracticeRuntime";
 import { emptyAudioPracticeData, normalizeAudioPracticeData } from "../repository";
 import { audioFailure } from "../failures";
 import { MAX_AUDIO_BYTES } from "../../generation/limits";
-import type { AudioSourceFiles, AudioSourceStat, GenerationInput } from "../../generation/types";
+import type { AudioSourceStat, GenerationInput } from "../../generation/types";
 import type { GenerationSnapshot, SubtitleGeneration } from "../../generation/subtitleGeneration";
 import type { AudioPracticeSettings } from "../../settings/slice";
 import type {
@@ -372,12 +372,12 @@ async function materialEditHarness() {
 	};
 	let external = () => {};
 	let fileChange = (_change: AudioFileChange) => {};
-	const repo: AudioPracticeRepository = {
+	const repo = {
 		load: () => saved,
-		save: vi.fn(async (data) => {
+		save: vi.fn(async (data: AudioPracticeData) => {
 			saved = data;
 		}),
-		subscribeExternal: (listener) => {
+		subscribeExternal: (listener: () => void) => {
 			external = listener;
 			return () => {};
 		},
@@ -388,13 +388,13 @@ async function materialEditHarness() {
 		["old.srt", { size: 100, mtime: 1 }],
 		["new.srt", { size: 100, mtime: 1 }],
 	]);
-	const files: AudioPracticeFiles = {
-		exists: (path) => stats.has(path),
-		stat: (path) => stats.get(path) ?? null,
-		mediaUrl: (path) => path,
-		readText: vi.fn(async (path) => subtitles[path] ?? ""),
+	const files = {
+		exists: (path: string) => stats.has(path),
+		stat: (path: string) => stats.get(path) ?? null,
+		mediaUrl: (path: string) => path,
+		readText: vi.fn(async (path: string) => subtitles[path] ?? ""),
 		writeSubtitle: async () => "generated.srt",
-		subscribe: (listener) => {
+		subscribe: (listener: (change: AudioFileChange) => void) => {
 			fileChange = listener;
 			return () => {};
 		},
@@ -625,7 +625,7 @@ describe("listening material edit", () => {
 		const h = await materialEditHarness();
 		let finish!: () => void;
 		vi.mocked(h.repo.save).mockImplementationOnce(
-			() => new Promise((resolve) => (finish = resolve)),
+			() => new Promise<void>((resolve) => (finish = resolve)),
 		);
 		const pending = h.runtime.editMaterial("material", {
 			...h.input(),
@@ -806,27 +806,27 @@ function draftHarness(
 	};
 	let external = () => {};
 	let fileChange = (_change: AudioFileChange) => {};
-	const repo: AudioPracticeRepository = {
+	const repo = {
 		load: () => data,
-		save: vi.fn(async (next) => {
+		save: vi.fn(async (next: AudioPracticeData) => {
 			data = next;
 		}),
-		subscribeExternal: (listener) => {
+		subscribeExternal: (listener: () => void) => {
 			external = listener;
 			return () => {};
 		},
 	};
 	let savedSubtitleText = "1\n00:00:00,000 --> 00:00:01,000\nhello";
-	const files: AudioPracticeFiles = {
+	const files = {
 		exists: () => true,
 		stat: () => ({ size: 1024, mtime: 10 }),
-		mediaUrl: (p) => p,
+		mediaUrl: (p: string) => p,
 		readText: vi.fn(async () => savedSubtitleText),
-		writeSubtitle: vi.fn(async (_audioPath, content) => {
+		writeSubtitle: vi.fn(async (_audioPath: string, content: string) => {
 			savedSubtitleText = content;
 			return "a.srt";
 		}),
-		subscribe: (listener) => {
+		subscribe: (listener: (change: AudioFileChange) => void) => {
 			fileChange = listener;
 			return () => {};
 		},
@@ -868,7 +868,7 @@ function draftHarness(
 		restore: vi.fn(async () => true),
 		matchesSource: vi.fn(options.matchesSource ?? (async () => true)),
 		validatedCues: vi.fn(() => savedCues.map((c) => ({ ...c }))),
-		editCue: vi.fn((id, patch) => {
+		editCue: vi.fn((id: string, patch: Partial<SubtitleCue>) => {
 			publishGen({
 				cues: genSnapshot.cues.map((c) => (c.id === id ? { ...c, ...patch } : c)),
 			});
@@ -878,18 +878,18 @@ function draftHarness(
 			publishGen({ cues: [...genSnapshot.cues, cue] });
 			return cue.id;
 		}),
-		removeCue: vi.fn((id) => {
+		removeCue: vi.fn((id: string) => {
 			publishGen({ cues: genSnapshot.cues.filter((c) => c.id !== id) });
 		}),
 		confirmAllCues: vi.fn(() => {
 			publishGen({ cues: genSnapshot.cues.map((c) => ({ ...c, needsReview: false })) });
 		}),
-	} as unknown as SubtitleGeneration;
+	};
 
 	const remainingStats = [...(options.sourceStats ?? [])];
 	const defaultStat: AudioSourceStat | null =
 		options.sourceStat === undefined ? { size: 1024, mtime: 10 } : options.sourceStat;
-	const source: AudioSourceFiles = {
+	const source = {
 		stat: vi.fn(() => (remainingStats.length ? (remainingStats.shift() ?? null) : defaultStat)),
 		readBinary: vi.fn(options.readBinary ?? (async () => new ArrayBuffer(8))),
 	};
@@ -903,7 +903,7 @@ function draftHarness(
 		files,
 		source,
 		settings: settingsReader,
-		generation,
+		generation: generation as unknown as SubtitleGeneration,
 	});
 
 	return {
@@ -952,7 +952,7 @@ describe("audio practice runtime subtitle generation admission", () => {
 		});
 		let finish!: () => void;
 		vi.mocked(h.repo.save).mockImplementationOnce(
-			() => new Promise((resolve) => (finish = resolve)),
+			() => new Promise<void>((resolve) => (finish = resolve)),
 		);
 		const pending = h.runtime.removeMaterial("a");
 		await vi.waitFor(() => expect(finish).toBeTypeOf("function"));

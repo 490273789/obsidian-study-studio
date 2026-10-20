@@ -58,7 +58,6 @@ import {
 } from "../history/dailyLearningActivity";
 import type { DeckHomeRepository } from "../decks/deckHome";
 import {
-	FlashcardAuthorityConflictError,
 	FlashcardPersistenceError,
 	type FlashcardAuthority,
 	type FlashcardAuthorityChange,
