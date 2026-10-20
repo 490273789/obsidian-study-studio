@@ -168,7 +168,7 @@ describe("audio practice runtime", () => {
 		await expect(
 			runtime.editMaterial(id, { ...current, subtitlePath: "new.srt" }),
 		).rejects.toMatchObject({
-			failure: { kind: "stale-material" },
+			failure: { kind: "busy" },
 		});
 		finish(await originalRead("test.srt"));
 		await slow;
@@ -421,6 +421,126 @@ async function materialEditHarness() {
 }
 
 describe("listening material edit", () => {
+	it("publishes one shared operation result only after an add is durable", async () => {
+		const h = await materialEditHarness();
+		let finish!: () => void;
+		vi.mocked(h.repo.save).mockImplementationOnce(async (data) => {
+			await new Promise<void>((resolve) => (finish = resolve));
+			h.setSaved(data);
+		});
+		const pending = h.runtime.addMaterial({
+			title: "Another",
+			audioPath: "new.mp3",
+			subtitlePath: "new.srt",
+		});
+		await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+		expect(h.runtime.getSnapshot().materialOperation).toMatchObject({
+			kind: "add",
+			status: "pending",
+			failure: null,
+		});
+		expect(h.runtime.getSnapshot().materials).toHaveLength(1);
+		expect(h.getSaved().materials).toHaveLength(1);
+		await expect(h.runtime.selectMaterial("material")).rejects.toMatchObject({
+			failure: { kind: "busy" },
+		});
+		finish();
+		const id = await pending;
+		expect(h.runtime.getSnapshot().materialOperation).toMatchObject({
+			kind: "add",
+			materialId: id,
+			status: "succeeded",
+		});
+		expect(h.runtime.getSnapshot().currentMaterialId).toBe(id);
+		expect(h.getSaved().currentMaterialId).toBe(id);
+		expect(h.runtime.getSnapshot().currentCueId).toBe(h.runtime.getSnapshot().cues[0]?.id);
+		h.runtime.dispose();
+	});
+
+	it("keeps an add failure separate from media and draft failures", async () => {
+		const h = await materialEditHarness();
+		vi.mocked(h.repo.save).mockRejectedValueOnce(new Error("disk full"));
+		await expect(
+			h.runtime.addMaterial({ title: "Another", audioPath: "new.mp3" }),
+		).rejects.toMatchObject({ failure: { kind: "persist-failed" } });
+		expect(h.runtime.getSnapshot().materials).toHaveLength(1);
+		expect(h.getSaved().materials).toHaveLength(1);
+		expect(h.runtime.getSnapshot().materialOperation).toMatchObject({
+			kind: "add",
+			status: "failed",
+			failure: { kind: "persist-failed" },
+		});
+		expect(h.runtime.getSnapshot().failure).toBeNull();
+		expect(h.runtime.getSnapshot().draft.error).toBeNull();
+		h.runtime.dismissMaterialOperationFailure();
+		expect(h.runtime.getSnapshot().materialOperation.status).toBe("idle");
+		h.runtime.dispose();
+	});
+
+	it("keeps the old selection when the target subtitle cannot be read", async () => {
+		const h = await materialEditHarness();
+		const added = await h.runtime.addMaterial({
+			title: "Another",
+			audioPath: "new.mp3",
+			subtitlePath: "new.srt",
+		});
+		vi.mocked(h.files.readText).mockRejectedValueOnce(new Error("unreadable"));
+		await expect(h.runtime.selectMaterial("material")).rejects.toThrow("unreadable");
+		expect(h.runtime.getSnapshot().currentMaterialId).toBe(added);
+		expect(h.getSaved().currentMaterialId).toBe(added);
+		expect(h.runtime.getSnapshot().materialOperation).toMatchObject({
+			kind: "select",
+			materialId: "material",
+			status: "failed",
+		});
+		h.runtime.dispose();
+	});
+
+	it("waits for removal persistence before changing the visible list", async () => {
+		const h = await materialEditHarness();
+		let finish!: () => void;
+		vi.mocked(h.repo.save).mockImplementationOnce(async (data) => {
+			await new Promise<void>((resolve) => (finish = resolve));
+			h.setSaved(data);
+		});
+		const pending = h.runtime.removeMaterial("material");
+		await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+		expect(h.runtime.getSnapshot().materials).toHaveLength(1);
+		expect(h.runtime.getSnapshot().materialOperation.status).toBe("pending");
+		finish();
+		await pending;
+		expect(h.runtime.getSnapshot().materials).toHaveLength(0);
+		expect(h.getSaved().materials).toHaveLength(0);
+		expect(h.runtime.getSnapshot().materialOperation.status).toBe("succeeded");
+		h.runtime.dispose();
+	});
+
+	it("rejects an add superseded by external synchronized data", async () => {
+		const h = await materialEditHarness();
+		let finish!: (value: string) => void;
+		vi.mocked(h.files.readText).mockImplementationOnce(
+			() => new Promise((resolve) => (finish = resolve)),
+		);
+		const pending = h.runtime.addMaterial({
+			title: "Another",
+			audioPath: "new.mp3",
+			subtitlePath: "new.srt",
+		});
+		const rejected = expect(pending).rejects.toMatchObject({
+			failure: { kind: "stale-material" },
+		});
+		const synced = {
+			...h.getSaved(),
+			materials: [{ ...h.input(), title: "Other device" }],
+		};
+		h.sync(synced);
+		finish("1\n00:00:01,000 --> 00:00:02,000\nOne");
+		await rejected;
+		expect(h.runtime.getSnapshot().materials[0]?.title).toBe("Other device");
+		expect(h.getSaved()).toBe(synced);
+		h.runtime.dispose();
+	});
+
 	it("commits material fields and matched subtitle progress together", async () => {
 		const h = await materialEditHarness();
 		const [first, second] = h.runtime.getSnapshot().cues;
@@ -607,6 +727,22 @@ describe("listening material edit", () => {
 		h.runtime.dispose();
 	});
 
+	it("rejects retrying an edit form based on superseded material", async () => {
+		const h = await materialEditHarness();
+		const opened = h.input();
+		const synced = {
+			...h.getSaved(),
+			materials: [{ ...opened, title: "Other device" }],
+		};
+		h.sync(synced);
+		await expect(
+			h.runtime.editMaterial("material", { ...opened, originalText: "Local draft" }, opened),
+		).rejects.toMatchObject({ failure: { kind: "stale-material" } });
+		expect(h.getSaved()).toBe(synced);
+		expect(h.runtime.getSnapshot().currentMaterial?.title).toBe("Other device");
+		h.runtime.dispose();
+	});
+
 	it("rejects a subtitle modified while it is being read", async () => {
 		const h = await materialEditHarness();
 		let finish!: (value: string) => void;
@@ -723,6 +859,12 @@ function draftHarness(
 		cancel: vi.fn(() => {
 			publishGen({ status: "cancelled", failure: null });
 		}),
+		discard: vi.fn(async (taskKey: string) => {
+			if (genSnapshot.taskKey === taskKey) {
+				generation.cancel();
+				publishGen({ taskKey: null, status: "idle", cues: [] });
+			}
+		}),
 		restore: vi.fn(async () => true),
 		matchesSource: vi.fn(options.matchesSource ?? (async () => true)),
 		validatedCues: vi.fn(() => savedCues.map((c) => ({ ...c }))),
@@ -766,6 +908,7 @@ function draftHarness(
 
 	return {
 		runtime,
+		repo,
 		generation,
 		source,
 		settingsReader,
@@ -780,6 +923,67 @@ function draftHarness(
 }
 
 describe("audio practice runtime subtitle generation admission", () => {
+	it("keeps another material's generation running after an edit", async () => {
+		const h = draftHarness({
+			materials: [
+				{ id: "a", title: "a", audioPath: "a.wav", subtitlePath: null, originalText: "a" },
+				{ id: "b", title: "b", audioPath: "b.wav", subtitlePath: null, originalText: "b" },
+			],
+			currentMaterialId: "b",
+			generationSnapshot: { taskKey: "a", status: "transcribing" },
+		});
+		await h.runtime.editMaterial("b", {
+			title: "b",
+			audioPath: "b.wav",
+			subtitlePath: null,
+			originalText: "updated",
+		});
+		expect(h.generation.cancel).not.toHaveBeenCalled();
+		expect(h.generation.getSnapshot()).toMatchObject({ taskKey: "a", status: "transcribing" });
+		expect(
+			h.runtime.getSnapshot().materials.find((material) => material.id === "b"),
+		).toMatchObject({ originalText: "updated" });
+		h.runtime.dispose();
+	});
+
+	it("cancels generation only after its material removal is durable", async () => {
+		const h = draftHarness({
+			generationSnapshot: { taskKey: "a", status: "transcribing" },
+		});
+		let finish!: () => void;
+		vi.mocked(h.repo.save).mockImplementationOnce(
+			() => new Promise((resolve) => (finish = resolve)),
+		);
+		const pending = h.runtime.removeMaterial("a");
+		await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+		expect(h.generation.cancel).not.toHaveBeenCalled();
+		expect(h.runtime.getSnapshot().materials).toHaveLength(1);
+		finish();
+		await pending;
+		expect(h.generation.cancel).toHaveBeenCalledOnce();
+		expect(h.generation.discard).toHaveBeenCalledWith("a");
+		expect(h.runtime.getSnapshot().materials).toHaveLength(0);
+		h.runtime.dispose();
+	});
+
+	it("preserves generation and material when removal persistence fails", async () => {
+		const h = draftHarness({
+			generationSnapshot: { taskKey: "a", status: "transcribing" },
+		});
+		vi.mocked(h.repo.save).mockRejectedValueOnce(new Error("disk full"));
+		await expect(h.runtime.removeMaterial("a")).rejects.toMatchObject({
+			failure: { kind: "persist-failed" },
+		});
+		expect(h.runtime.getSnapshot().materials).toHaveLength(1);
+		expect(h.runtime.getSnapshot().materialOperation).toMatchObject({
+			kind: "remove",
+			status: "failed",
+		});
+		expect(h.generation.cancel).not.toHaveBeenCalled();
+		expect(h.generation.discard).not.toHaveBeenCalled();
+		h.runtime.dispose();
+	});
+
 	it("fails with missing when no material is selected", async () => {
 		const h = draftHarness({ materials: [], currentMaterialId: null });
 		const ok = await h.runtime.generateSubtitles();

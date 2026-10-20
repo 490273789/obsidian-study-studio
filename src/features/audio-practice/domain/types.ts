@@ -1,4 +1,12 @@
 import type { AudioFailure } from "./failures";
+export type MaterialOperationKind = "add" | "edit" | "select" | "remove";
+export interface MaterialOperationSnapshot {
+	readonly id: number;
+	readonly kind: MaterialOperationKind | null;
+	readonly materialId: string | null;
+	readonly status: "idle" | "pending" | "succeeded" | "failed";
+	readonly failure: AudioFailure | null;
+}
 export interface SubtitleCue {
 	readonly id: string;
 	readonly text: string;
@@ -84,6 +92,7 @@ export interface AudioPracticeDraftSnapshot {
 }
 
 export interface AudioPracticeSnapshot extends AudioPracticeData {
+	readonly materialOperation: MaterialOperationSnapshot;
 	readonly currentMaterial: AudioMaterial | null;
 	readonly cues: readonly SubtitleCue[];
 	readonly currentCueId: string | null;

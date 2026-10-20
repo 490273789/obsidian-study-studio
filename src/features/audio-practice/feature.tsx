@@ -45,6 +45,9 @@ export function createAudioPracticeFeature(deps: {
 						save: async (draft) => {
 							host.app.saveLocalStorage(DRAFT_PREFIX + draft.taskKey, draft);
 						},
+						remove: async (key) => {
+							host.app.saveLocalStorage(DRAFT_PREFIX + key, null);
+						},
 					},
 				}),
 			);

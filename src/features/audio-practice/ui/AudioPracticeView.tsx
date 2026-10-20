@@ -55,7 +55,7 @@ export interface AudioPracticeViewProps {
 	onOpenSettings: () => void;
 }
 
-type MaterialDialogMode = "add" | "edit";
+type MaterialDialogState = { mode: "add" } | { mode: "edit"; material: AudioMaterial };
 
 export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNode {
 	const { runtime, language, onOpenSettings } = props;
@@ -66,36 +66,31 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 	const t = audioPracticeStrings(language);
 	const media = useRef<HTMLAudioElement>(null);
 	const practiceRef = useRef<HTMLElement>(null);
-	const [materialDialog, setMaterialDialog] = useState<MaterialDialogMode | null>(null);
+	const [materialDialog, setMaterialDialog] = useState<MaterialDialogState | null>(null);
 	const [reviewOpen, setReviewOpen] = useState(false);
-	const [localFailure, setLocalFailure] = useState<AudioPracticeFailure | null>(null);
-	const [localBusy, setLocalBusy] = useState(false);
+	const [dialogOperationId, setDialogOperationId] = useState<number | null>(null);
 	const draft = snapshot.draft;
+	const operation = snapshot.materialOperation;
+	const materialBusy = operation.status === "pending" || snapshot.loading;
 	const busy =
-		localBusy ||
-		snapshot.loading ||
-		["preparing", "transcribing", "aligning", "saving"].includes(draft.status);
-	const failure = localFailure ?? draft.error ?? snapshot.failure ?? null;
-	const error = failure ? audioFailureCopy(language, failure).message : null;
+		materialBusy || ["preparing", "transcribing", "aligning", "saving"].includes(draft.status);
+	const dialogFailure =
+		materialDialog !== null &&
+		dialogOperationId === operation.id &&
+		operation.kind === materialDialog.mode &&
+		(materialDialog.mode === "add" || operation.materialId === materialDialog.material.id);
+	const operationError = operation.failure
+		? audioFailureCopy(language, operation.failure).message
+		: null;
 	const material = snapshot.currentMaterial;
 	const generating = ["preparing", "transcribing", "aligning"].includes(draft.status);
 	const reviewReady = draft.status === "review";
 	const pendingCues = reviewReady ? draft.cues.filter((cue) => cue.needsReview).length : 0;
-	const openMaterialDialog = (mode: MaterialDialogMode) => {
-		setLocalFailure(null);
-		runtime.dismissFailure();
-		setMaterialDialog(mode);
-	};
-	const run = async (action: () => void | Promise<unknown>) => {
-		setLocalFailure(null);
-		setLocalBusy(true);
-		try {
-			await action();
-		} catch (cause) {
-			setLocalFailure(toAudioFailure(cause));
-		} finally {
-			setLocalBusy(false);
-		}
+	const openMaterialDialog = (mode: "add" | "edit") => {
+		setDialogOperationId(null);
+		if (mode === "edit") {
+			if (material) setMaterialDialog({ mode, material });
+		} else setMaterialDialog({ mode });
 	};
 	useEffect(() => {
 		const audio = media.current;
@@ -155,6 +150,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 							icon={Plus}
 							aria-label={t.add}
 							title={t.add}
+							disabled={materialBusy}
 							onClick={() => openMaterialDialog("add")}
 						/>
 					</header>
@@ -175,9 +171,10 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 									<Button
 										variant="ghost"
 										className={styles.materialSelect}
+										disabled={materialBusy}
 										aria-current={active ? "true" : undefined}
 										onClick={() =>
-											void run(() => runtime.selectMaterial(item.id))
+											void runtime.selectMaterial(item.id).catch(() => {})
 										}
 									>
 										<span className={styles.materialName}>{item.title}</span>
@@ -192,9 +189,9 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 										className={styles.materialRemove}
 										aria-label={`${t.remove}: ${item.title}`}
 										title={t.remove}
-										disabled={busy}
+										disabled={materialBusy}
 										onClick={() =>
-											void run(() => runtime.removeMaterial(item.id))
+											void runtime.removeMaterial(item.id).catch(() => {})
 										}
 									/>
 								</div>
@@ -213,6 +210,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 							<Button
 								variant="primary"
 								icon={Plus}
+								disabled={materialBusy}
 								onClick={() => openMaterialDialog("add")}
 							>
 								{t.add}
@@ -251,8 +249,6 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 											icon={ListChecks}
 											title={t.reviewHint}
 											onClick={() => {
-												setLocalFailure(null);
-												runtime.dismissFailure();
 												setReviewOpen(true);
 											}}
 										>
@@ -338,11 +334,6 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 							{draft.status === "review" && draft.notice === "no-word-timestamps" && (
 								<p className={styles.notice}>{t.noWordTimestamps}</p>
 							)}
-							{error && (
-								<p role="alert" className={styles.alert}>
-									{error}
-								</p>
-							)}
 							{snapshot.invalidatedMarks > 0 && (
 								<p className={styles.notice}>
 									{t.marksInvalidated(snapshot.invalidatedMarks)}
@@ -356,39 +347,70 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 							/>
 						</>
 					)}
-					{!material && error && (
+					{operationError && !dialogFailure && (
+						<div role="alert" className={styles.alert}>
+							{operationError}
+							<Button
+								preset="icon"
+								icon={X}
+								aria-label={t.close}
+								onClick={() => runtime.dismissMaterialOperationFailure()}
+							/>
+						</div>
+					)}
+					{snapshot.failure && (
 						<p role="alert" className={styles.alert}>
-							{error}
+							{audioFailureCopy(language, snapshot.failure).message}
+						</p>
+					)}
+					{draft.error && !reviewOpen && (
+						<p role="alert" className={styles.alert}>
+							{audioFailureCopy(language, draft.error).message}
 						</p>
 					)}
 				</main>
 			</div>
 			{materialDialog !== null && (
 				<MaterialDialog
-					material={materialDialog === "edit" ? (material ?? undefined) : undefined}
+					material={materialDialog.mode === "edit" ? materialDialog.material : undefined}
 					audioPaths={props.audioPaths}
 					subtitlePaths={props.subtitlePaths}
 					textPaths={props.textPaths}
 					onReadText={props.onReadText}
 					t={t}
 					language={language}
-					busy={busy}
-					error={error}
+					busy={
+						materialBusy ||
+						(materialDialog.mode === "edit" &&
+							generating &&
+							materialDialog.material.id === material?.id)
+					}
+					error={dialogFailure ? operationError : null}
 					onCancel={() => {
-						setLocalFailure(null);
-						runtime.dismissFailure();
+						if (runtime.getSnapshot().materialOperation.status === "pending") return;
+						if (dialogFailure) runtime.dismissMaterialOperationFailure();
+						setDialogOperationId(null);
 						setMaterialDialog(null);
 					}}
-					onSubmit={(value) =>
-						void run(async () => {
-							if (materialDialog === "edit" && material) {
-								await runtime.editMaterial(material.id, value);
-							} else {
-								await runtime.addMaterial(value);
-							}
-							setMaterialDialog(null);
-						})
-					}
+					onSubmit={(value) => {
+						if (runtime.getSnapshot().materialOperation.status === "pending") return;
+						const completion =
+							materialDialog.mode === "edit"
+								? runtime.editMaterial(
+										materialDialog.material.id,
+										value,
+										materialDialog.material,
+									)
+								: runtime.addMaterial(value);
+						const operationId = runtime.getSnapshot().materialOperation.id;
+						setDialogOperationId(operationId);
+						void completion
+							.then(() => {
+								if (runtime.getSnapshot().materialOperation.id === operationId)
+									setMaterialDialog(null);
+							})
+							.catch(() => {});
+					}}
 				/>
 			)}
 			{reviewOpen && reviewReady && material && (
@@ -400,8 +422,6 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 					busy={busy}
 					error={draft.error ? audioFailureCopy(language, draft.error).message : null}
 					onRequestClose={() => {
-						setLocalFailure(null);
-						runtime.dismissFailure();
 						setReviewOpen(false);
 					}}
 					onSave={() =>
@@ -519,6 +539,7 @@ function MaterialForm(props: MaterialFormProps): React.ReactNode {
 				<label className={styles.field}>
 					<span>{t.name}</span>
 					<FlashcardInput
+						disabled={props.busy}
 						value={title}
 						onChange={(event) => setTitle(event.target.value)}
 						{...props.initialFocusProps}
@@ -527,6 +548,7 @@ function MaterialForm(props: MaterialFormProps): React.ReactNode {
 				<label className={styles.field}>
 					<span>{t.audio}</span>
 					<FlashcardSelect
+						disabled={props.busy}
 						value={audioPath}
 						onChange={(event) => setAudioPath(event.target.value)}
 						required
@@ -546,6 +568,7 @@ function MaterialForm(props: MaterialFormProps): React.ReactNode {
 					<label className={styles.field}>
 						<span>{t.subtitle}</span>
 						<FlashcardSelect
+							disabled={props.busy}
 							value={subtitlePath}
 							onChange={(event) => setSubtitlePath(event.target.value)}
 						>
@@ -563,6 +586,7 @@ function MaterialForm(props: MaterialFormProps): React.ReactNode {
 					<label className={styles.field}>
 						<span>{t.textFile}</span>
 						<FlashcardSelect
+							disabled={props.busy}
 							defaultValue=""
 							onChange={(event) => {
 								const path = event.target.value;
@@ -599,6 +623,7 @@ function MaterialForm(props: MaterialFormProps): React.ReactNode {
 				<label className={styles.field}>
 					<span>{t.text}</span>
 					<FlashcardTextarea
+						disabled={props.busy}
 						value={text}
 						onChange={(event) => {
 							readVersion.current++;
@@ -615,7 +640,9 @@ function MaterialForm(props: MaterialFormProps): React.ReactNode {
 				)}
 			</div>
 			<div className={cls("flashcard-modal-footer", styles.dialogFooter)}>
-				<Button onClick={() => props.onCancel()}>{t.cancel}</Button>
+				<Button disabled={props.busy} onClick={() => props.onCancel()}>
+					{t.cancel}
+				</Button>
 				<Button
 					type="submit"
 					variant="primary"

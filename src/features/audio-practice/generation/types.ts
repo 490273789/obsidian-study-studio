@@ -90,6 +90,7 @@ export interface GenerationDraft {
 export interface GenerationDraftStore {
 	load(key: string): Promise<GenerationDraft | null>;
 	save(draft: GenerationDraft): Promise<void>;
+	remove?(key: string): Promise<void>;
 }
 
 /** Size and modification time of an audio source, read through a vault adapter. */

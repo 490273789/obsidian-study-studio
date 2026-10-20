@@ -327,6 +327,39 @@ describe("subtitle generation", () => {
 		expect(controller.getSnapshot().status).toBe("cancelled");
 		expect(controller.getSnapshot().completedChunks).toBe(0);
 	});
+	it("removes a deleted material's draft after pending writes and ignores late results", async () => {
+		let finish: (value: Transcript) => void = () => {};
+		let saved: GenerationDraft | null = null;
+		const remove = vi.fn(async () => {
+			saved = null;
+		});
+		const transcribe = vi.fn(
+			() =>
+				new Promise<Transcript>((resolve) => {
+					finish = resolve;
+				}),
+		);
+		const controller = new SubtitleGeneration({
+			prepare: async () => ({ duration: 2, chunks: [chunk] }),
+			transcribe,
+			drafts: {
+				load: async () => saved,
+				save: async (draft) => {
+					saved = draft;
+				},
+				remove,
+			},
+		});
+		const running = controller.generate(input);
+		await vi.waitFor(() => expect(transcribe).toHaveBeenCalledOnce());
+		await controller.discard(input.taskKey);
+		finish(transcript);
+		await running;
+		expect(remove).toHaveBeenCalledWith(input.taskKey);
+		expect(saved).toBeNull();
+		expect(controller.getSnapshot()).toMatchObject({ status: "idle", taskKey: null, cues: [] });
+		expect(await controller.restore(input.taskKey)).toBe(false);
+	});
 	it("rejects null, out of bounds and invalid draft timestamps", async () => {
 		const controller = new SubtitleGeneration({
 			prepare: async () => ({ duration: 2, chunks: [chunk] }),

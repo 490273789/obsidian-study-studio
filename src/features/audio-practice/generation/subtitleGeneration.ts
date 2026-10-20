@@ -233,11 +233,12 @@ export class SubtitleGeneration {
 				failure: cues.length === 0 ? { kind: "no-speech" } : null,
 			});
 		} catch (error) {
-			this.publish({
-				status: signal.aborted ? "cancelled" : "error",
-				failure: signal.aborted ? null : toAudioFailure(error),
-				cues: this.draft?.taskKey === input.taskKey ? this.draft.cues : [],
-			});
+			if (this.snapshot.taskKey === input.taskKey)
+				this.publish({
+					status: signal.aborted ? "cancelled" : "error",
+					failure: signal.aborted ? null : toAudioFailure(error),
+					cues: this.draft?.taskKey === input.taskKey ? this.draft.cues : [],
+				});
 		} finally {
 			if (this.controller === controller) this.controller = null;
 		}
@@ -250,6 +251,29 @@ export class SubtitleGeneration {
 	cancel(): void {
 		this.controller?.abort();
 		if (this.controller) this.publish({ status: "cancelled", failure: null });
+	}
+	async discard(taskKey: string): Promise<void> {
+		if (this.snapshot.taskKey === taskKey) {
+			this.restoreRevision++;
+			this.cancel();
+			this.input = null;
+			this.draft = null;
+			this.publish({
+				status: "idle",
+				cues: [],
+				completedChunks: 0,
+				totalChunks: 0,
+				duration: 0,
+				failure: null,
+				notice: null,
+				taskKey: null,
+			});
+		}
+		const store = this.ports.drafts;
+		if (!store?.remove) return;
+		const write = this.writes.catch(() => {}).then(() => store.remove!(taskKey));
+		this.writes = write;
+		await write;
 	}
 	dispose(): void {
 		if (this.disposed) return;

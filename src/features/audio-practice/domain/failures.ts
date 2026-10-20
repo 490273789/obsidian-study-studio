@@ -36,6 +36,7 @@ export type AudioFailure =
 	| { readonly kind: "subtitle-invalid"; readonly problems: readonly SubtitleProblem[] }
 	| { readonly kind: "source-changed" }
 	| { readonly kind: "stale-material" }
+	| { readonly kind: "busy" }
 	| {
 			readonly kind: "config-invalid";
 			readonly field: "workspace" | "base-url" | "model" | "secret" | "security";
@@ -51,8 +52,7 @@ export type AudioFailure =
 	| { readonly kind: "cancelled" }
 	| { readonly kind: "unknown" };
 
-/** Workflow-level busy is not an audio failure but shares the copy surface. */
-export type AudioPracticeFailure = AudioFailure | { readonly kind: "busy" };
+export type AudioPracticeFailure = AudioFailure;
 
 export class AudioFailureError extends Error {
 	constructor(readonly failure: AudioFailure) {
