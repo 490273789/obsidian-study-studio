@@ -3,6 +3,7 @@ import {
 	AudioLines,
 	Captions,
 	CircleAlert,
+	ChevronDown,
 	EyeOff,
 	Headphones,
 	ListChecks,
@@ -15,6 +16,7 @@ import {
 	Plus,
 	RotateCcw,
 	Settings,
+	SlidersHorizontal,
 	SkipBack,
 	SkipForward,
 	Sparkles,
@@ -70,6 +72,11 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 	const [materialDialog, setMaterialDialog] = useState<MaterialDialogState | null>(null);
 	const [reviewOpen, setReviewOpen] = useState(false);
 	const [dialogOperationId, setDialogOperationId] = useState<number | null>(null);
+	const [materialToolsOpen, setMaterialToolsOpen] = useState(false);
+	const [playerOptionsOpen, setPlayerOptionsOpen] = useState(false);
+	const libraryId = useId();
+	const materialActionsId = useId();
+	const playerOptionsId = useId();
 	const draft = snapshot.draft;
 	const operation = snapshot.materialOperation;
 	const materialBusy = operation.status === "pending" || snapshot.loading;
@@ -139,8 +146,15 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 			{/* Captions are rendered as accessible, interactive sentence text below. */}
 			{/* oxlint-disable-next-line jsx-a11y/media-has-caption */}
 			<audio ref={media} preload="metadata" />
-			<div className={styles.workspace}>
-				<aside className={cls("fc-panel", styles.library)} aria-label={t.library}>
+			<div
+				className={styles.workspace}
+				data-mobile-tools-open={materialToolsOpen || !material}
+			>
+				<aside
+					id={libraryId}
+					className={cls("fc-panel", styles.library)}
+					aria-label={t.library}
+				>
 					<header className={styles.libraryHeader}>
 						<h2 className={styles.libraryTitle}>
 							{t.library}
@@ -175,7 +189,16 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 										disabled={materialBusy}
 										aria-current={active ? "true" : undefined}
 										onClick={() =>
-											void runtime.selectMaterial(item.id).catch(() => {})
+											void runtime.selectMaterial(item.id).then(
+												() => {
+													if (
+														runtime.getSnapshot().currentMaterialId ===
+														item.id
+													)
+														setMaterialToolsOpen(false);
+												},
+												() => {},
+											)
 										}
 									>
 										<span className={styles.materialName}>{item.title}</span>
@@ -243,7 +266,23 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 										) : null}
 									</div>
 								</div>
-								<div className={styles.materialActions}>
+								<Button
+									size="sm"
+									variant="ghost"
+									icon={ChevronDown}
+									active={materialToolsOpen}
+									className={styles.mobileToolsToggle}
+									aria-label={t.materialTools}
+									aria-expanded={materialToolsOpen}
+									aria-controls={`${libraryId} ${materialActionsId}`}
+									onClick={() => setMaterialToolsOpen((open) => !open)}
+								>
+									{t.manage}
+									{pendingCues > 0 && (
+										<span className={styles.countBadge}>{pendingCues}</span>
+									)}
+								</Button>
+								<div id={materialActionsId} className={styles.materialActions}>
 									{reviewReady && (
 										<Button
 											variant="secondary"
@@ -345,6 +384,9 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 								snapshot={snapshot}
 								t={t}
 								surfaceRef={practiceRef}
+								playerOptionsOpen={playerOptionsOpen}
+								playerOptionsId={playerOptionsId}
+								onTogglePlayerOptions={() => setPlayerOptionsOpen((open) => !open)}
 							/>
 						</>
 					)}
@@ -913,11 +955,17 @@ export function PracticeSurface({
 	snapshot,
 	t,
 	surfaceRef,
+	playerOptionsOpen = false,
+	playerOptionsId = "audio-practice-player-options",
+	onTogglePlayerOptions,
 }: {
 	runtime: AudioPracticeRuntime;
 	snapshot: AudioPracticeSnapshot;
 	t: AudioPracticeStrings;
 	surfaceRef?: React.Ref<HTMLElement>;
+	playerOptionsOpen?: boolean;
+	playerOptionsId?: string;
+	onTogglePlayerOptions?: () => void;
 }): React.ReactNode {
 	const marks = snapshot.currentMaterial
 		? (snapshot.progress[snapshot.currentMaterial.id]?.difficultCueIds ?? [])
@@ -1081,7 +1129,14 @@ export function PracticeSurface({
 					</ol>
 				)}
 			</div>
-			{renderPlayerDock(runtime, snapshot, t)}
+			{renderPlayerDock(
+				runtime,
+				snapshot,
+				t,
+				playerOptionsOpen,
+				playerOptionsId,
+				onTogglePlayerOptions,
+			)}
 		</section>
 	);
 }
@@ -1090,6 +1145,9 @@ function renderPlayerDock(
 	runtime: AudioPracticeRuntime,
 	snapshot: AudioPracticeSnapshot,
 	t: AudioPracticeStrings,
+	optionsOpen: boolean,
+	optionsId: string,
+	onToggleOptions?: () => void,
 ): React.ReactNode {
 	const duration = snapshot.duration ?? 0;
 	const position = snapshot.currentCueId
@@ -1166,33 +1224,49 @@ function renderPlayerDock(
 						onClick={() => runtime.next()}
 					/>
 				</fieldset>
-				<div className={styles.playerOptions}>
-					<PlaybackRateControl
-						className={styles.rateControl}
-						label={t.rate}
-						value={snapshot.playbackRate}
-						rates={AUDIO_PLAYBACK_RATES}
-						align="end"
-						onChange={(rate) =>
-							runtime.setPlaybackRate(rate as (typeof AUDIO_PLAYBACK_RATES)[number])
-						}
-					/>
-					<label className={styles.option}>
-						<span>{t.offset}</span>
-						<FlashcardInput
-							type="number"
-							step="0.1"
-							inputSize="sm"
-							fullWidth={false}
-							className={styles.offsetInput}
-							aria-label={t.offset}
-							value={offset}
-							onChange={(event) => {
-								if (Number.isFinite(event.target.valueAsNumber))
-									runtime.setOffset(event.target.valueAsNumber);
-							}}
+				<div className={styles.playerOptions} data-expanded={optionsOpen}>
+					<Button
+						size="sm"
+						variant="ghost"
+						icon={SlidersHorizontal}
+						active={optionsOpen}
+						className={styles.playerOptionsToggle}
+						aria-expanded={optionsOpen}
+						aria-controls={optionsId}
+						onClick={onToggleOptions}
+					>
+						{t.playbackOptions}
+					</Button>
+					<div id={optionsId} className={styles.playerOptionFields}>
+						<PlaybackRateControl
+							className={styles.rateControl}
+							label={t.rate}
+							value={snapshot.playbackRate}
+							rates={AUDIO_PLAYBACK_RATES}
+							align="end"
+							onChange={(rate) =>
+								runtime.setPlaybackRate(
+									rate as (typeof AUDIO_PLAYBACK_RATES)[number],
+								)
+							}
 						/>
-					</label>
+						<label className={styles.option}>
+							<span>{t.offset}</span>
+							<FlashcardInput
+								type="number"
+								step="0.1"
+								inputSize="sm"
+								fullWidth={false}
+								className={styles.offsetInput}
+								aria-label={t.offset}
+								value={offset}
+								onChange={(event) => {
+									if (Number.isFinite(event.target.valueAsNumber))
+										runtime.setOffset(event.target.valueAsNumber);
+								}}
+							/>
+						</label>
+					</div>
 				</div>
 			</div>
 		</footer>

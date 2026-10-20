@@ -11,6 +11,10 @@ interface ControlProps {
 	"data-spoken-word"?: string;
 	"aria-label"?: string;
 	"aria-pressed"?: boolean;
+	"aria-expanded"?: boolean;
+	"aria-controls"?: string;
+	"data-expanded"?: boolean;
+	id?: string;
 	disabled?: boolean;
 	onClick?: () => void;
 	onChange?: (event: {
@@ -139,6 +143,38 @@ describe("audio practice UI interaction", () => {
 		expect(
 			runtime.getSnapshot().progress[runtime.getSnapshot().currentMaterialId!]!.offset,
 		).toBe(-0.5);
+		runtime.dispose();
+	});
+	it("expands mobile playback options while keeping transport controls available", async () => {
+		const { runtime, t } = await setup();
+		let optionsOpen = false;
+		const render = () =>
+			elements(
+				PracticeSurface({
+					runtime,
+					snapshot: runtime.getSnapshot(),
+					t,
+					playerOptionsOpen: optionsOpen,
+					playerOptionsId: "test-player-options",
+					onTogglePlayerOptions: () => {
+						optionsOpen = !optionsOpen;
+					},
+				}),
+			);
+		const toggle = () =>
+			render().find((element) => text(element.props.children) === t.playbackOptions)!;
+		expect(toggle().props["aria-expanded"]).toBe(false);
+		expect(toggle().props["aria-controls"]).toBe("test-player-options");
+		expect(render().find((element) => element.props["data-expanded"] === false)).toBeDefined();
+		toggle().props.onClick!();
+		expect(toggle().props["aria-expanded"]).toBe(true);
+		expect(render().find((element) => element.props["data-expanded"] === true)).toBeDefined();
+		expect(
+			render().find((element) => element.props.id === "test-player-options")?.props,
+		).toBeDefined();
+		expect(
+			render().find((element) => element.props["aria-label"] === t.play)?.props.onClick,
+		).toBeDefined();
 		runtime.dispose();
 	});
 	it("handles sentence shortcuts only on the focused composite surface", async () => {

@@ -205,6 +205,10 @@
 	gap: var(--fc-space-2);
 }
 
+.mobileToolsToggle {
+	display: none;
+}
+
 .countBadge {
 	display: inline-flex;
 	align-items: center;
@@ -321,6 +325,9 @@
 }
 
 .practiceHeader {
+	// Keep wrapped controls in the header instead of letting the caption list
+	// shrink it and paint underneath the controls on short phone screens.
+	flex: 0 0 auto;
 	flex-wrap: wrap;
 }
 
@@ -681,6 +688,17 @@
 	gap: var(--fc-space-1);
 }
 
+.playerOptionsToggle {
+	display: none;
+}
+
+.playerOptionFields {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: var(--fc-space-1);
+}
+
 .option {
 	display: flex;
 	align-items: center;
@@ -887,16 +905,82 @@
 		padding: var(--fc-space-2);
 	}
 
+	.workspace[data-mobile-tools-open="false"] {
+		grid-template-rows: minmax(0, 1fr);
+
+		.library,
+		.materialActions {
+			display: none;
+		}
+	}
+
 	.library {
-		max-height: 112px;
+		max-height: 96px;
 	}
 
 	.materialTitle {
 		font-size: var(--fc-font-lg);
 	}
 
+	.materialBar {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: center;
+		gap: var(--fc-space-2);
+		padding: var(--fc-space-2) var(--fc-space-3);
+		border: 1px solid var(--fc-line);
+		border-radius: var(--fc-radius-md);
+		background: var(--fc-surface-section);
+	}
+
+	.materialIdentity {
+		grid-column: 1;
+	}
+
+	.mobileToolsToggle {
+		display: inline-flex;
+		grid-column: 2;
+		align-self: center;
+
+		svg {
+			transition: transform var(--fc-motion-quick) ease;
+		}
+
+		&[aria-expanded="true"] svg {
+			transform: rotate(180deg);
+		}
+	}
+
+	.materialActions {
+		grid-column: 1 / -1;
+		padding-top: var(--fc-space-2);
+		border-top: 1px solid var(--fc-line-soft);
+	}
+
+	.practice > .practiceHeader {
+		justify-content: flex-start;
+		gap: var(--fc-space-2);
+	}
+
+	.modeSwitch {
+		width: 100%;
+
+		:global(button.flashcard-btn) {
+			flex: 1 1 0;
+		}
+	}
+
 	.toolbarDivider {
 		display: none;
+	}
+
+	.toggleGroup {
+		flex: 1 1 auto;
+		gap: var(--fc-space-2);
+	}
+
+	.cueCount {
+		margin-inline-start: auto;
 	}
 
 	.cueSelect {
@@ -909,28 +993,56 @@
 	}
 
 	.playerRow {
-		grid-template-columns: minmax(0, 1fr);
-		justify-items: center;
-		gap: var(--fc-space-2);
+		grid-template-columns: minmax(0, 1fr) auto;
+		gap: var(--fc-space-1);
 	}
 
 	.nowPlaying {
-		align-items: center;
-		text-align: center;
+		grid-column: 1;
+		grid-row: 2;
+		align-items: flex-start;
+		text-align: start;
+	}
+
+	.nowPlayingTitle {
+		display: none;
 	}
 
 	.transport {
+		grid-column: 1 / -1;
+		grid-row: 1;
+		justify-self: center;
 		justify-content: space-between;
 		width: 100%;
 		max-width: 300px;
 	}
 
 	.playerOptions {
+		display: contents;
+	}
+
+	.playerOptionsToggle {
+		display: inline-flex;
+		grid-column: 2;
+		grid-row: 2;
+	}
+
+	.playerOptionFields {
+		display: none;
+		grid-column: 1 / -1;
+		grid-row: 3;
 		flex-direction: row;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: var(--fc-space-3);
+		justify-content: space-between;
+		gap: var(--fc-space-2);
 		width: 100%;
+		padding-top: var(--fc-space-2);
+		border-top: 1px solid var(--fc-line-soft);
+	}
+
+	.playerOptions[data-expanded="true"] .playerOptionFields {
+		display: flex;
 	}
 
 	.fieldGrid {
