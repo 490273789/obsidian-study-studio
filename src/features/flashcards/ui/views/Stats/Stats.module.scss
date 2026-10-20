@@ -1,20 +1,44 @@
-/* Stats */
+@use "../../../../../core/styles/breakpoints.scss";
+@use "../../../../../core/styles/mixins.scss" as *;
+
+/* Stats View Styles */
+
 .body {
 	width: 100%;
+	max-width: var(--fc-layout-max-width);
 	margin: 0 auto;
 	box-sizing: border-box;
-	padding: var(--fc-space-1) var(--fc-space-2) var(--fc-space-4);
-	border-top: 1px solid var(--fc-line-soft);
+	display: flex;
+	flex-direction: column;
+	gap: var(--fc-space-5);
+	padding: var(--fc-space-4) var(--fc-space-4) var(--fc-space-8);
 }
 
-.day {
-	padding: var(--fc-space-4);
-	border: 0;
-	border-bottom: 1px solid var(--fc-line);
-	border-radius: 0;
-	background: transparent;
-	box-shadow: none;
+/* ── Summary Section ─────────────────────────────────────────────────────── */
+
+.summarySection {
+	width: 100%;
+}
+
+/* ── Timeline Section ────────────────────────────────────────────────────── */
+
+.timelineSection {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fc-space-4);
+}
+
+.dayCard {
+	border: 1px solid var(--fc-line-soft);
+	border-radius: var(--fc-radius-lg);
+	background: var(--fc-surface-card);
+	overflow: hidden;
 	animation: var(--fc-motion-rise);
+	transition: border-color var(--fc-motion-quick) ease;
+
+	&:hover {
+		border-color: color-mix(in srgb, var(--fc-primary) 30%, var(--fc-line-soft));
+	}
 }
 
 .dayHeader {
@@ -22,81 +46,265 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: var(--fc-space-3);
-	margin-bottom: var(--fc-space-3);
+	padding: var(--fc-space-3) var(--fc-space-4);
+	background: color-mix(in srgb, var(--fc-surface-section) 70%, var(--fc-surface-card));
+	border-bottom: 1px solid var(--fc-line-soft);
 }
 
-.dayDate {
+.dayDateGroup {
+	display: flex;
+	align-items: center;
+	gap: var(--fc-space-2);
+	min-width: 0;
+}
+
+.dayCalendarIcon {
+	color: var(--fc-muted);
+	flex-shrink: 0;
+}
+
+.dayDateText {
 	color: var(--fc-text);
+	font-size: var(--fc-font-sm);
 	font-weight: var(--fc-weight-semibold);
+	white-space: nowrap;
+}
+
+.dayTag {
+	display: inline-flex;
+	align-items: center;
+	padding: 1px var(--fc-space-2);
+	border-radius: var(--fc-radius-pill);
+	font-size: var(--fc-font-2xs);
+	font-weight: var(--fc-weight-medium);
+	line-height: var(--fc-line-tight);
+	color: var(--fc-muted);
+	background: color-mix(in srgb, var(--fc-surface-section) 80%, var(--fc-text));
+	border: 1px solid var(--fc-line-soft);
+
+	&.isToday {
+		color: var(--fc-primary);
+		background: color-mix(in srgb, var(--fc-primary) 12%, transparent);
+		border-color: color-mix(in srgb, var(--fc-primary) 30%, transparent);
+	}
 }
 
 .dayMeta {
+	display: flex;
+	align-items: center;
 	color: var(--fc-muted);
 	font-size: var(--fc-font-xs);
+	white-space: nowrap;
 }
 
-.session {
-	display: grid;
-	grid-template-columns: auto minmax(0, 1fr) auto;
-	gap: var(--fc-space-3);
+/* ── Sessions List ───────────────────────────────────────────────────────── */
+
+.sessionList {
+	display: flex;
+	flex-direction: column;
+}
+
+.sessionItem {
+	display: flex;
 	align-items: center;
-	padding: var(--fc-space-3);
-	border: 0;
-	border-top: 1px solid var(--fc-line-soft);
-	border-left: 3px solid transparent;
-	border-radius: 0;
-	background: transparent;
-	animation: var(--fc-motion-rise);
+	justify-content: space-between;
+	gap: var(--fc-space-3);
+	padding: var(--fc-space-3) var(--fc-space-4);
+	border-bottom: 1px solid var(--fc-line-soft);
+	transition: background var(--fc-motion-quick) ease;
+
+	&:last-child {
+		border-bottom: 0;
+	}
+
+	&:hover {
+		background: color-mix(in srgb, var(--fc-text) 3%, transparent);
+	}
+}
+
+.sessionMain {
+	display: flex;
+	align-items: center;
+	gap: var(--fc-space-3);
+	min-width: 0;
+	flex: 1 1 auto;
+}
+
+.modeBadge {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--fc-space-1);
+	padding: 3px var(--fc-space-2);
+	border-radius: var(--fc-radius-sm);
+	font-size: var(--fc-font-xs);
+	font-weight: var(--fc-weight-medium);
+	line-height: var(--fc-line-tight);
+	white-space: nowrap;
+	flex-shrink: 0;
+
+	svg {
+		flex-shrink: 0;
+	}
 
 	&.modeStudy {
-		border-left-color: var(--fc-blue);
+		color: var(--fc-blue);
+		background: color-mix(in srgb, var(--fc-blue) 12%, transparent);
+		border: 1px solid color-mix(in srgb, var(--fc-blue) 24%, transparent);
 	}
 
 	&.modePractice {
-		border-left-color: var(--fc-orange);
+		color: var(--fc-orange);
+		background: color-mix(in srgb, var(--fc-orange) 12%, transparent);
+		border: 1px solid color-mix(in srgb, var(--fc-orange) 24%, transparent);
 	}
 
 	&.modeSpelling {
-		border-left-color: var(--fc-lime);
+		color: var(--fc-lime);
+		background: color-mix(in srgb, var(--fc-lime) 12%, transparent);
+		border: 1px solid color-mix(in srgb, var(--fc-lime) 24%, transparent);
+	}
+
+	&.modeChallenge {
+		color: var(--fc-violet);
+		background: color-mix(in srgb, var(--fc-violet) 12%, transparent);
+		border: 1px solid color-mix(in srgb, var(--fc-violet) 24%, transparent);
 	}
 
 	&.modeList {
-		border-left-color: var(--fc-cyan);
+		color: var(--fc-cyan);
+		background: color-mix(in srgb, var(--fc-cyan) 12%, transparent);
+		border: 1px solid color-mix(in srgb, var(--fc-cyan) 24%, transparent);
 	}
 }
 
-.sessionMode {
-	color: var(--fc-cyan);
-	font-family: var(--fc-font-data);
-	font-size: var(--fc-font-xs);
-	font-weight: var(--fc-weight-semibold);
-	white-space: nowrap;
+.sessionInfo {
+	display: flex;
+	align-items: baseline;
+	gap: var(--fc-space-2);
+	min-width: 0;
+	overflow: hidden;
 }
 
 .sessionDeck {
-	overflow: hidden;
 	color: var(--fc-text);
+	font-size: var(--fc-font-sm);
+	font-weight: var(--fc-weight-medium);
+	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.sessionTime {
+	color: var(--fc-faint);
+	font-size: var(--fc-font-2xs);
+	font-family: var(--fc-font-data);
+	white-space: nowrap;
+	flex-shrink: 0;
 }
 
 .sessionRight {
 	display: flex;
 	align-items: center;
 	gap: var(--fc-space-2);
+	flex-shrink: 0;
+}
+
+.sessionCards {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--fc-space-1);
+	padding: 2px var(--fc-space-2);
+	border-radius: var(--fc-radius-pill);
+	background: color-mix(in srgb, var(--fc-surface-section) 90%, var(--fc-surface-card));
+	border: 1px solid var(--fc-line-soft);
 	color: var(--fc-muted);
 	font-size: var(--fc-font-xs);
 	white-space: nowrap;
+
+	svg {
+		color: var(--fc-muted);
+	}
 }
 
-.sessionCards,
-.sessionDur {
+.sessionDuration {
 	display: inline-flex;
 	align-items: center;
-	min-height: 24px;
-	padding: var(--fc-space-1) var(--fc-space-2);
-	border: 1px solid color-mix(in srgb, var(--interactive-accent) 28%, var(--fc-line));
+	gap: var(--fc-space-1);
+	padding: 2px var(--fc-space-2);
 	border-radius: var(--fc-radius-pill);
-	background: color-mix(in srgb, var(--interactive-accent) 8%, var(--fc-surface-card));
-	color: var(--fc-cyan);
+	background: color-mix(in srgb, var(--fc-primary) 8%, var(--fc-surface-card));
+	border: 1px solid color-mix(in srgb, var(--fc-primary) 22%, transparent);
+	color: var(--fc-primary);
+	font-family: var(--fc-font-data);
+	font-size: var(--fc-font-xs);
+	font-weight: var(--fc-weight-medium);
+	white-space: nowrap;
+
+	svg {
+		color: var(--fc-primary);
+	}
+}
+
+/* ── Empty State ─────────────────────────────────────────────────────────── */
+
+.emptyState {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+	padding: var(--fc-space-8) var(--fc-space-4);
+	gap: var(--fc-space-2);
+}
+
+.emptyIcon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 56px;
+	height: 56px;
+	border-radius: var(--fc-radius-pill);
+	background: color-mix(in srgb, var(--fc-primary) 10%, var(--fc-surface-card));
+	color: var(--fc-primary);
+	margin-bottom: var(--fc-space-2);
+}
+
+.emptyTitle {
+	margin: 0;
+	color: var(--fc-text);
+	font-size: var(--fc-font-md);
+	font-weight: var(--fc-weight-semibold);
+}
+
+.emptyHint {
+	margin: 0;
+	color: var(--fc-muted);
+	font-size: var(--fc-font-xs);
+	max-width: 280px;
+}
+
+@media (max-width: #{breakpoints.$phone}) {
+	.body {
+		padding: var(--fc-space-3);
+	}
+
+	.dayHeader {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: var(--fc-space-2);
+	}
+
+	.sessionItem {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: var(--fc-space-2);
+	}
+
+	.sessionMain {
+		width: 100%;
+	}
+
+	.sessionRight {
+		align-self: flex-end;
+	}
 }
