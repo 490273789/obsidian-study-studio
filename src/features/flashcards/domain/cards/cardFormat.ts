@@ -18,7 +18,6 @@ const CARD_IDENTITY_MARKER_PATTERN = new RegExp(
 
 const FLASHCARD_FRONT_BACK_PATTERN = /(?:^|\n)\s*\?\?\s*(?:\n|$)/;
 const FLASHCARD_END_PATTERN = /(?:^|\n)\s*;;\s*(?:\n|$)/;
-const RESERVED_MARKER_LINE_PATTERN = /(?:^|\n)\s*(?:\?\?|::|;;)\s*(?:\n|$)/;
 
 const CARD_IDENTITY_EXACT_PATTERN = new RegExp(`^${CARD_IDENTITY_PATTERN}$`);
 
@@ -45,10 +44,6 @@ export function isMarkerLine(line: string, marker: string): boolean {
 
 export function hasFlashcardSyntax(content: string): boolean {
 	return FLASHCARD_FRONT_BACK_PATTERN.test(content) && FLASHCARD_END_PATTERN.test(content);
-}
-
-export function containsReservedMarkerLine(content: string): boolean {
-	return RESERVED_MARKER_LINE_PATTERN.test(content);
 }
 
 export function extractCardIdentityMarker(line: string): string | null {

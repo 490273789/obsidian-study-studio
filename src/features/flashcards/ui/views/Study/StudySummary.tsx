@@ -1,4 +1,4 @@
-import React, { memo, useMemo } from "react";
+import { memo, useMemo } from "react";
 import { BarChart3, GraduationCap, House, RotateCw } from "lucide-react";
 import { cls } from "../../../../../core/shared/classNames";
 import type { StudyRating } from "../../../../../core/shared/types";
@@ -8,7 +8,7 @@ import { useFlashcardI18n } from "../../../strings/context";
 import { formatCompactDuration, getLocalizedRatingButtons } from "../../../strings/index";
 import styles from "./StudySummary.module.scss";
 
-export interface StudySummaryProps {
+interface StudySummaryProps {
 	result: StudyResultSnapshot;
 	onHome: () => void;
 	onRestart?: () => void;

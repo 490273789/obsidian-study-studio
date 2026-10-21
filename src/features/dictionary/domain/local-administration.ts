@@ -18,7 +18,7 @@ import type {
 import { LocalDictionaryStorageError } from "./local-storage";
 import { commitLocalCatalogTransaction } from "./local-catalog-transaction";
 
-export interface LocalDictionaryListFile {
+interface LocalDictionaryListFile {
 	readonly name: string;
 	readonly size: number;
 }
@@ -48,12 +48,12 @@ export type LocalDictionaryAdministrationFailureCode =
 	| "corrupt"
 	| "limit-exceeded";
 
-export interface LocalDictionaryAdministrationFailure {
+interface LocalDictionaryAdministrationFailure {
 	readonly code: LocalDictionaryAdministrationFailureCode;
 	readonly recovery: "complete" | "incomplete";
 }
 
-export type LocalDictionaryImportPhase =
+type LocalDictionaryImportPhase =
 	| "validate"
 	| "parse"
 	| "index"
@@ -61,24 +61,22 @@ export type LocalDictionaryImportPhase =
 	| "resources"
 	| "verify";
 
-export interface LocalDictionaryImportProgress {
+interface LocalDictionaryImportProgress {
 	readonly completedBytes: number;
 	readonly fileName: string;
 	readonly phase: LocalDictionaryImportPhase;
 	readonly totalBytes: number;
 }
 
-export type LocalDictionaryImportProgressListener = (
-	progress: LocalDictionaryImportProgress,
-) => void;
+type LocalDictionaryImportProgressListener = (progress: LocalDictionaryImportProgress) => void;
 
-export interface LocalDictionaryAdministrationFailureResult {
+interface LocalDictionaryAdministrationFailureResult {
 	readonly error: LocalDictionaryAdministrationFailure;
 	readonly ok: false;
 	readonly snapshot: LocalDictionarySnapshot;
 }
 
-export type LocalDictionaryImportResult =
+type LocalDictionaryImportResult =
 	| {
 			readonly imported: LocalDictionarySnapshot;
 			readonly ok: true;
@@ -86,7 +84,7 @@ export type LocalDictionaryImportResult =
 	  }
 	| LocalDictionaryAdministrationFailureResult;
 
-export type LocalDictionaryRemoveResult =
+type LocalDictionaryRemoveResult =
 	| {
 			readonly ok: true;
 			readonly removed: LocalDictionaryListItem;
@@ -94,7 +92,7 @@ export type LocalDictionaryRemoveResult =
 	  }
 	| LocalDictionaryAdministrationFailureResult;
 
-export interface LocalDictionaryAdministration {
+interface LocalDictionaryAdministration {
 	importFiles(
 		files: readonly File[],
 		onProgress?: LocalDictionaryImportProgressListener,

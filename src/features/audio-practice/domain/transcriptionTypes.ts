@@ -31,7 +31,7 @@ export interface AudioChunk {
 	wav: ArrayBuffer;
 }
 
-export interface PreparedAudio {
+interface PreparedAudio {
 	duration: number;
 	chunks: AudioChunk[];
 }
@@ -119,5 +119,3 @@ export interface AudioSourceFiles {
 
 export const MAX_AUDIO_BYTES = 100 * 1024 * 1024;
 export const MAX_AUDIO_DURATION_SECONDS = 3 * 60 * 60;
-export const AUDIO_CHUNK_SECONDS = 60;
-export const AUDIO_CHUNK_OVERLAP_SECONDS = 1;

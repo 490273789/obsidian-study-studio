@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
-	containsReservedMarkerLine,
 	extractCardIdentityMarker,
 	extractFirstTag,
 	formatCardBlock,
@@ -25,11 +24,6 @@ back
 		).toBe(true);
 		expect(hasFlashcardSyntax("#单词\nfront ?? back ;;")).toBe(false);
 		expect(hasFlashcardSyntax("#单词\nfront\n??\nback")).toBe(false);
-	});
-
-	it("detects reserved marker lines without flagging inline marker text", () => {
-		expect(containsReservedMarkerLine("front text\n::\nexplanation")).toBe(true);
-		expect(containsReservedMarkerLine("front text with :: inline")).toBe(false);
 	});
 
 	it("round-trips a vault-wide card identity marker", () => {

@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useId, useRef } from "react";
+import { memo, useCallback, useEffect, useId, useRef } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
@@ -24,7 +24,7 @@ import { selectDeckCardMetrics } from "../../../homePresentation";
 import styles from "../DeckList.module.scss";
 import { formatDeckCount } from "../deckCountFormat";
 
-export interface DeckCardProps {
+interface DeckCardProps {
 	deck: DeckHomeDeckSnapshot;
 	isSettingsLocked: boolean;
 	isExporting: boolean;

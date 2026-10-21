@@ -34,8 +34,6 @@ const zh = {
 	empty: "添加音频，开始听力与跟读练习",
 	generate: "AI 生成字幕",
 	regenerate: "重新生成字幕",
-	generateHint:
-		"音频将发送至配置的语音服务，可能产生费用。支持 10 分钟以内、50 MiB 以内的英语音频。",
 	original: "编辑标题与原文",
 	save: "保存",
 	play: "播放",
@@ -118,8 +116,6 @@ const en: typeof zh = {
 	empty: "Add audio to practice listening and speaking",
 	generate: "Generate subtitles with AI",
 	regenerate: "Generate new subtitles",
-	generateHint:
-		"Audio is sent to your configured speech service and may incur charges. English audio up to 10 minutes and 50 MiB is supported.",
 	original: "Edit title and reference text",
 	save: "Save",
 	play: "Play",

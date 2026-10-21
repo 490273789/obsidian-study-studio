@@ -1,4 +1,3 @@
-import React from "react";
 import { Modal, type App } from "obsidian";
 import { createRoot, type Root } from "react-dom/client";
 import { ReactViewErrorBoundary } from "../../../core/host/reactItemView";

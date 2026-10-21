@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
-	applyDictionarySourceConfiguration,
 	DEFAULT_DICTIONARY_FAVORITE_PATH,
 	DEFAULT_DICTIONARY_SETTINGS,
 	DEFAULT_YOUDAO_DICTIONARIES,
@@ -503,45 +502,6 @@ describe("normalizeDictionarySettings source synthesis", () => {
 		]);
 		expect(sources.find((source) => source.id === "youdao")?.enabled).toBe(true);
 		expect(sources.find((source) => source.id === "ai")?.enabled).toBe(false);
-	});
-});
-
-describe("applyDictionarySourceConfiguration", () => {
-	const current = DEFAULT_DICTIONARY_SETTINGS.sources;
-
-	it("appends every catalog source when nothing was persisted", () => {
-		expect(applyDictionarySourceConfiguration(current, undefined)).toEqual([...current]);
-		expect(applyDictionarySourceConfiguration(current, "nope")).toEqual([...current]);
-	});
-
-	it("drops unknown ids and de-duplicates", () => {
-		expect(
-			applyDictionarySourceConfiguration(current, [
-				{ enabled: true, id: "ghost" },
-				{ enabled: true, id: "ai" },
-				{ enabled: false, id: "ai" },
-			]).map((source) => source.id),
-		).toEqual(["ai", "youdao", "cambridge", "hujiang"]);
-	});
-
-	it("applies enabled overrides and keeps the catalog label/kind", () => {
-		const [first] = applyDictionarySourceConfiguration(current, [
-			{ enabled: false, id: "youdao" },
-		]);
-		expect(first).toEqual({ enabled: false, id: "youdao", kind: "youdao", label: "有道词典" });
-	});
-
-	it("keeps the catalog default when enabled is not a boolean", () => {
-		const [first] = applyDictionarySourceConfiguration(current, [{ enabled: "yes", id: "ai" }]);
-		expect(first?.enabled).toBe(false);
-	});
-
-	it("appends sources missing from the persisted order", () => {
-		expect(
-			applyDictionarySourceConfiguration(current, [{ enabled: true, id: "hujiang" }]).map(
-				(source) => source.id,
-			),
-		).toEqual(["hujiang", "youdao", "cambridge", "ai"]);
 	});
 });
 

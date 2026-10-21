@@ -20,20 +20,20 @@ import { defineFeatureLifetime } from "../../core/host/featureLifetime";
 import type { SelectionTranslationAdapter } from "../../core/selectionHelper/domain/types";
 
 /** Settings section id this feature contributes. */
-export const TRANSLATION_SECTION_ID = "translation";
+const TRANSLATION_SECTION_ID = "translation";
 
 /** Obsidian view type of the translator view. */
-export const VIEW_TYPE_TRANSLATOR = "flashcard-translator-view";
+const VIEW_TYPE_TRANSLATOR = "flashcard-translator-view";
 
 const OPEN_COMMAND_ID = "open-ai-translator";
 const SELECTION_COMMAND_ID = "translate-selection";
 
-export interface TranslationFeatureDeps {
+interface TranslationFeatureDeps {
 	ai: AiService;
 	net: OutboundPort;
 }
 
-export interface TranslationFeature extends WorkbenchModule<"translation"> {
+interface TranslationFeature extends WorkbenchModule<"translation"> {
 	readonly selectionAdapter: SelectionTranslationAdapter;
 }
 
@@ -77,10 +77,7 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 		},
 	};
 
-	const section = (
-		translation: TranslationRuntime,
-		editor: TranslationSettingsEditor,
-	): WorkbenchSettingsSection => {
+	const section = (editor: TranslationSettingsEditor): WorkbenchSettingsSection => {
 		return {
 			id: TRANSLATION_SECTION_ID,
 			order: 2,
@@ -165,7 +162,7 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 				},
 			});
 
-			host.settingsSection(section(translation, editor));
+			host.settingsSection(section(editor));
 
 			return () => {
 				const strings = translationStrings(host.settings.read().language);

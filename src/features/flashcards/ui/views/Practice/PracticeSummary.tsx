@@ -1,4 +1,4 @@
-import React, { memo, useState } from "react";
+import { memo, useState } from "react";
 import { CircleCheck, CircleX, House, RotateCw } from "lucide-react";
 import type {
 	PracticeResultSnapshot,

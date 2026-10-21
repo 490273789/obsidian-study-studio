@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useId, useMemo, useState } from "react";
+import { memo, useCallback, useId, useMemo, useState } from "react";
 import { FilePlus2, Pencil, X } from "lucide-react";
 import { cls } from "../../../../../core/shared/classNames";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
@@ -9,15 +9,13 @@ import { ModalSurface } from "../../../../../core/ui/primitives/Modal";
 import styles from "./CardEditorModal.module.scss";
 import type { CardEditorDraft } from "../../cardEditingInteraction";
 
-export type CardEditorMode = "create" | "edit";
+type CardEditorMode = "create" | "edit";
 
-export interface CardEditorDeckOption {
+interface CardEditorDeckOption {
 	readonly id: string;
 	readonly name: string;
 	readonly tag: string;
 }
-
-export type CardEditorSavePayload = CardEditorDraft;
 
 interface CardEditorModalProps {
 	mode: CardEditorMode;
@@ -28,7 +26,7 @@ interface CardEditorModalProps {
 	initialExplanation: string;
 	isSaving: boolean;
 	error: string | null;
-	onSave: (payload: CardEditorSavePayload) => Promise<void>;
+	onSave: (payload: CardEditorDraft) => Promise<void>;
 	onClose: () => void;
 }
 

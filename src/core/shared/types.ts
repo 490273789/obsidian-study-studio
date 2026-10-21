@@ -333,7 +333,7 @@ export interface SpellingCardProgress {
 
 export type SpellingProgressSnapshot = Readonly<Record<string, Readonly<SpellingCardProgress>>>;
 
-export type SpellingSessionPhase = "retrieval" | "correction";
+type SpellingSessionPhase = "retrieval" | "correction";
 
 export interface SpellingFirstAttempt {
 	input: string;
@@ -341,7 +341,7 @@ export interface SpellingFirstAttempt {
 	answeredAt: number;
 }
 
-export interface SpellingAttemptEvent {
+interface SpellingAttemptEvent {
 	cardId: string;
 	input: string;
 	correct: boolean;
@@ -376,12 +376,4 @@ export interface SpellingResult {
 	incorrectCardIds: string[];
 	firstInputs: Record<string, string>;
 	timeSpent: number;
-}
-
-/**
- * Card state after rating
- */
-export interface CardRatingResult {
-	card: FlashCard;
-	repeatInSession: boolean;
 }

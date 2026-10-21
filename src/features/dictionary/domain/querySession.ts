@@ -14,11 +14,9 @@ import {
 	type DictionaryViewState,
 } from "./types";
 
-export type DictionarySourceResolver = (
-	settings: Readonly<DictionarySourceSettings>,
-) => DictionarySource;
+type DictionarySourceResolver = (settings: Readonly<DictionarySourceSettings>) => DictionarySource;
 
-export type DictionaryQueryIntent =
+type DictionaryQueryIntent =
 	| { readonly type: "change-input"; readonly value: string }
 	| { readonly type: "lookup"; readonly query?: string }
 	| { readonly type: "retry-source"; readonly sourceId: string }
@@ -40,7 +38,7 @@ export interface DictionaryQuerySession {
 	dispose(): void;
 }
 
-export interface DictionaryQuerySessionOptions {
+interface DictionaryQuerySessionOptions {
 	readonly settings: DictionarySettingsStore;
 	readonly resolveSource: DictionarySourceResolver;
 	readonly notify: (message: string) => void;
@@ -51,7 +49,7 @@ export interface DictionaryQuerySessionOptions {
 }
 
 /** Prepends `query` to the recent-search history, deduplicating case-insensitively. */
-export function recordDictionarySearchHistory(history: readonly string[], query: string): string[] {
+function recordDictionarySearchHistory(history: readonly string[], query: string): string[] {
 	const normalized = normalizeDictionaryQuery(query);
 	if (!normalized) return [...history];
 	const key = normalized.toLocaleLowerCase();

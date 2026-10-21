@@ -11,27 +11,13 @@ export const DEFAULT_VIDEO_PLAYER_SHORTCUTS: VideoPlayerShortcuts = {
 };
 
 const MODIFIER_ORDER = ["Ctrl", "Alt", "Shift", "Meta"] as const;
-const MODIFIER_KEYS = new Set(["Control", "Alt", "Shift", "Meta"]);
 
-export interface KeyboardShortcutEvent {
+interface KeyboardShortcutEvent {
 	readonly key: string;
 	readonly ctrlKey: boolean;
 	readonly altKey: boolean;
 	readonly shiftKey: boolean;
 	readonly metaKey: boolean;
-}
-
-export function keyboardShortcutFromEvent(event: KeyboardShortcutEvent): string | null {
-	if (MODIFIER_KEYS.has(event.key)) return null;
-	const key = normalizeEventKey(event.key);
-	if (!key) return null;
-	const modifiers = [
-		event.ctrlKey ? "Ctrl" : null,
-		event.altKey ? "Alt" : null,
-		event.shiftKey ? "Shift" : null,
-		event.metaKey ? "Meta" : null,
-	].filter((value): value is (typeof MODIFIER_ORDER)[number] => value !== null);
-	return [...modifiers, key].join("+");
 }
 
 export function matchesKeyboardShortcut(event: KeyboardShortcutEvent, shortcut: string): boolean {

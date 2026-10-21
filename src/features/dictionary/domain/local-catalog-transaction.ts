@@ -1,11 +1,8 @@
 import type { DictionarySettingsStore, LocalDictionaryAdministrationState } from "./types";
 
-export type LocalCatalogFailureCode =
-	| "persistence-failed"
-	| "storage-failed"
-	| "recovery-incomplete";
+type LocalCatalogFailureCode = "persistence-failed" | "storage-failed" | "recovery-incomplete";
 
-export type LocalCatalogTransactionOutcome =
+type LocalCatalogTransactionOutcome =
 	| { readonly kind: "applied" }
 	| {
 			readonly kind: "failed";

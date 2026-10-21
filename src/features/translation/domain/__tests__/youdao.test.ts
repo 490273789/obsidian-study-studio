@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { TransportError } from "../../../../core/net/types";
-import { translateYoudao, youdaoV3SignInput } from "../youdao";
+import { youdaoV3SignInput } from "../../../../core/shared/youdaoSign";
+import { translateYoudao } from "../youdao";
 
 const connection = {
 	baseUrl: "https://openapi.youdao.com/api",

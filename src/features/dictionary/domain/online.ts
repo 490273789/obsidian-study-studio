@@ -26,20 +26,11 @@ export function cleanOnlineText(value: string, limit = 1_000): string {
 	return value.replace(/\s+/g, " ").trim().slice(0, limit);
 }
 
-export function escapeDictionaryHtml(value: string): string {
-	return value
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/"/g, "&quot;")
-		.replace(/'/g, "&#39;");
-}
-
-export function parseOnlineDocument(value: string): Document {
+function parseOnlineDocument(value: string): Document {
 	return new DOMParser().parseFromString(value, "text/html");
 }
 
-export async function prepareOnlineDictionaryDocument(
+async function prepareOnlineDictionaryDocument(
 	html: string,
 	stylesheet: string,
 ): Promise<SandboxDocument> {

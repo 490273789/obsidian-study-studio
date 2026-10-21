@@ -3,7 +3,6 @@ import { TransportError, type OutboundResponse } from "../../../../core/net/type
 import {
 	cleanOnlineText,
 	dictionaryErrorCodeForTransport,
-	escapeDictionaryHtml,
 	MAX_ONLINE_DICTIONARY_RESPONSE_BYTES,
 	ONLINE_DICTIONARY_TIMEOUT_MS,
 	requestOnlineResponse,
@@ -43,24 +42,6 @@ describe("cleanOnlineText", () => {
 		expect(cleanOnlineText("x".repeat(1_500))).toHaveLength(1_000);
 		expect(cleanOnlineText("abcdef", 3)).toBe("abc");
 		expect(cleanOnlineText("", 3)).toBe("");
-	});
-});
-
-describe("escapeDictionaryHtml", () => {
-	it("escapes all five HTML metacharacters", () => {
-		expect(escapeDictionaryHtml(`&<>"'`)).toBe("&amp;&lt;&gt;&quot;&#39;");
-	});
-
-	it("escapes ampersands before the other entities", () => {
-		expect(escapeDictionaryHtml("&amp;")).toBe("&amp;amp;");
-		expect(escapeDictionaryHtml("&lt;")).toBe("&amp;lt;");
-	});
-
-	it("leaves plain text untouched and escapes a mixed string", () => {
-		expect(escapeDictionaryHtml("plain 文本")).toBe("plain 文本");
-		expect(escapeDictionaryHtml(`<a href="x">it's & more</a>`)).toBe(
-			"&lt;a href=&quot;x&quot;&gt;it&#39;s &amp; more&lt;/a&gt;",
-		);
 	});
 });
 

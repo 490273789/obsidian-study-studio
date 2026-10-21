@@ -1,7 +1,5 @@
 import type { Language } from "../shared/types";
 
-export const SUPPORTED_LANGUAGES: readonly Language[] = ["zh", "en"];
-
 export const DEFAULT_LANGUAGE: Language = "zh";
 
 export type TranslationVars = Record<string, string | number>;

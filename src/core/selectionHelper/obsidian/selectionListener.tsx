@@ -1,4 +1,3 @@
-import React from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { Language } from "../../shared/types";
 import { isEnglishWordOrPhrase, type SelectionHelper } from "../domain/selectionHelper";
@@ -13,7 +12,7 @@ import {
 	toHostCoordinates,
 } from "./selectionCapture";
 
-export interface SelectionListenerDeps {
+interface SelectionListenerDeps {
 	helper: SelectionHelper;
 	getLanguage: () => Language;
 	getTheme: () => "light" | "dark";

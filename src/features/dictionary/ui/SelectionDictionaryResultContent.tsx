@@ -1,4 +1,4 @@
-import React, { memo } from "react";
+import { memo } from "react";
 import { cls } from "../../../core/shared/classNames";
 import type { SelectionResultContentProps } from "../../../core/selectionHelper/ui/types";
 import type { DictionarySelectionResultHandle } from "../selectionAdapter";

@@ -109,7 +109,7 @@ export interface DictionarySource {
 	lookup(query: DictionaryQuery): Promise<DictionaryResult>;
 }
 
-export type DictionarySourceStatus = "idle" | "loading" | "success" | "empty" | "error";
+type DictionarySourceStatus = "idle" | "loading" | "success" | "empty" | "error";
 
 /* -------------------------------------------------------------------------- */
 /* Persisted settings                                                          */
@@ -123,11 +123,6 @@ export interface DictionarySourceSettings {
 	id: string;
 	kind: DictionarySourceKind;
 	label: string;
-}
-
-export interface DictionarySourceConfiguration {
-	enabled: boolean;
-	id: string;
 }
 
 export interface LocalDictionaryFileSettings {
@@ -261,17 +256,4 @@ export interface DictionaryFavoriteViewState {
 	savedPath: string;
 	status: "idle" | "generating" | "saving" | "success" | "error";
 	word: string;
-}
-
-export interface DictionaryFavoriteViewModel {
-	generateAi(): Promise<void>;
-	clear(): void;
-	getSnapshot(): DictionaryFavoriteViewState;
-	openSavedFile(): Promise<void>;
-	save(): Promise<void>;
-	setMeaning(value: string): void;
-	setNote(value: string): void;
-	setPath(value: string): void;
-	setWord(value: string): void;
-	subscribe(listener: () => void): () => void;
 }

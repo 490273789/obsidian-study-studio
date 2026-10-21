@@ -3,7 +3,7 @@ import React, { useMemo } from "react";
 import { PartyPopper, RotateCcw } from "lucide-react";
 import { cls } from "../../../../../core/shared/classNames";
 import type { StudyRating } from "../../../../../core/shared/types";
-import { getRatingButtons } from "../../../domain/sessions/scheduler";
+import { getLocalizedRatingButtons } from "../../../strings";
 import type { ActiveStudySnapshot } from "../../../domain/sessions/sessionLifecycle";
 import type {
 	AnswerPresentationTransition,
@@ -82,7 +82,7 @@ export const CardView = React.memo(function CardView({
 	};
 
 	const currentCard = session.currentCard;
-	const ratingButtons = useMemo(() => getRatingButtons(language), [language]);
+	const ratingButtons = useMemo(() => getLocalizedRatingButtons(language), [language]);
 
 	const shortcutRootRef = useCardPresentationShortcuts(
 		{

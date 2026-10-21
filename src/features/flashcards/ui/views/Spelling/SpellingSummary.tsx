@@ -1,4 +1,4 @@
-import React, { memo } from "react";
+import { memo } from "react";
 import { CircleX, House, Keyboard, RotateCw } from "lucide-react";
 import type {
 	SpellingIncorrectCardSnapshot,

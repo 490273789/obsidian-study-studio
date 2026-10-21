@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 
 function getElapsedSeconds(startTime: number): number {
 	return Math.floor((Date.now() - startTime) / 1000);

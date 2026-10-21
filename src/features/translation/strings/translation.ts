@@ -70,8 +70,6 @@ const en: typeof zh = {
 	failedProfiles: "All translation profiles failed.",
 };
 
-export type TranslationStringKey = keyof typeof zh;
-
 export function translationStrings(language: Language): typeof zh {
 	return language === "en" ? en : zh;
 }

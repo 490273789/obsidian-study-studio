@@ -3,7 +3,6 @@ import { isRecord } from "../../../core/shared/isRecord";
 import {
 	type CompiledDictionarySettings,
 	type DictionarySettings,
-	type DictionarySourceConfiguration,
 	type DictionarySourceKind,
 	type DictionarySourceSettings,
 	type LocalDictionaryFileSettings,
@@ -247,36 +246,6 @@ function normalizeDictionarySources(
 	return sources;
 }
 
-/**
- * Applies a persisted source order/toggle list to the authoritative source
- * catalog without letting the settings surface invent or drop sources.
- */
-export function applyDictionarySourceConfiguration(
-	current: readonly DictionarySourceSettings[],
-	value: unknown,
-): DictionarySourceSettings[] {
-	const available = new Map(current.map((source) => [source.id, source]));
-	const configured = new Set<string>();
-	const ordered = Array.isArray(value)
-		? value.flatMap((candidate): DictionarySourceSettings[] => {
-				if (!isRecord(candidate) || typeof candidate.id !== "string") return [];
-				const source = available.get(candidate.id);
-				if (!source || configured.has(source.id)) return [];
-				configured.add(source.id);
-				return [
-					{
-						...source,
-						enabled:
-							typeof candidate.enabled === "boolean"
-								? candidate.enabled
-								: source.enabled,
-					},
-				];
-			})
-		: [];
-	return [...ordered, ...current.filter((source) => !configured.has(source.id))];
-}
-
 function normalizeYoudao(value: unknown): PersistedYoudaoDictionarySettings {
 	const youdao = isRecord(value) ? value : {};
 	const dictionaries = Array.isArray(youdao.dictionaries)
@@ -325,10 +294,6 @@ export const DEFAULT_DICTIONARY_SETTINGS: DictionarySettings = {
 	},
 };
 
-export function cloneDictionarySettings(settings: DictionarySettings): DictionarySettings {
-	return structuredClone(settings);
-}
-
 /**
  * Validates and fills a persisted dictionary settings slice. Unknown or invalid
  * catalog entries are dropped rather than silently repaired, matching the
@@ -360,12 +325,6 @@ export function normalizeDictionarySettings(value: unknown): DictionarySettings 
 		sources: normalizeDictionarySources(candidate.sources, localDictionaries),
 		youdao: normalizeYoudao(candidate.youdao),
 	};
-}
-
-export function toSourceConfigurations(
-	sources: readonly DictionarySourceSettings[],
-): DictionarySourceConfiguration[] {
-	return sources.map((source) => ({ enabled: source.enabled, id: source.id }));
 }
 
 /**

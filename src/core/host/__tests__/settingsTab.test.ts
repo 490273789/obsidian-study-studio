@@ -63,7 +63,7 @@ class MockElement {
 		return div;
 	}
 
-	createEl(tag: string, options?: { type?: string; text?: string; cls?: string }) {
+	createEl(_tag: string, options?: { type?: string; text?: string; cls?: string }) {
 		const el = new MockElement();
 		if (options?.cls) {
 			for (const c of options.cls.split(" ")) {

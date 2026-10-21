@@ -1,4 +1,4 @@
-import type { Deck, FlashCard } from "../../../../core/shared/types";
+import type { Deck } from "../../../../core/shared/types";
 
 const LATIN_PHRASE_PATTERN =
 	/^\p{Script=Latin}+(?:['’‘ʼ\-\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]\p{Script=Latin}+)*(?:[ \t]+\p{Script=Latin}+(?:['’‘ʼ\-\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]\p{Script=Latin}+)*)*$/u;
@@ -12,13 +12,13 @@ const EMPHASIS_WRAPPERS: ReadonlyArray<readonly [string, string]> = [
 	["_", "_"],
 ];
 
-export interface InvalidSpellingCard {
+interface InvalidSpellingCard {
 	cardId: string;
 	indexInFile: number;
 	front: string;
 }
 
-export interface SpellingDeckValidation {
+interface SpellingDeckValidation {
 	/** Every card is eligible for spelling. */
 	valid: boolean;
 	/** At least one card is eligible, so spelling mode can start. */
@@ -27,7 +27,7 @@ export interface SpellingDeckValidation {
 	invalidCards: InvalidSpellingCard[];
 }
 
-export type SpellingDiffKind = "correct" | "incorrect" | "missing" | "extra";
+type SpellingDiffKind = "correct" | "incorrect" | "missing" | "extra";
 
 export interface SpellingDiffSegment {
 	kind: SpellingDiffKind;
@@ -57,7 +57,7 @@ export function extractSpellingWord(front: string): string | null {
 	return LATIN_PHRASE_PATTERN.test(value) ? value.normalize("NFC").replace(/[ \t]+/g, " ") : null;
 }
 
-export function normalizeSpellingAnswer(value: string): string {
+function normalizeSpellingAnswer(value: string): string {
 	return value
 		.normalize("NFC")
 		.trim()
@@ -91,14 +91,6 @@ export function validateSpellingDeck(deck: Pick<Deck, "cards">): SpellingDeckVal
 		eligibleCardIds,
 		invalidCards,
 	};
-}
-
-export function getSpellingWord(card: Pick<FlashCard, "front">): string {
-	const word = extractSpellingWord(card.front);
-	if (!word) {
-		throw new Error("Card front is not a spellable Latin word or phrase");
-	}
-	return word;
 }
 
 /**

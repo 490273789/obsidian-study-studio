@@ -1,4 +1,3 @@
-import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { BookOpen } from "lucide-react";
 import { describe, expect, it, vi } from "vite-plus/test";

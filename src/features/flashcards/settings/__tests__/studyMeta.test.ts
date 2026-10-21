@@ -4,10 +4,6 @@ import {
 	STUDY_ORDER_OPTIONS,
 	calculateEstimatedDays,
 	calculateDailyNewCardsFromDays,
-	clampDailyNewCards,
-	clampDailyReviewCards,
-	clampRequestRetention,
-	clampMaximumInterval,
 	parseMaximumInterval,
 	parseStudyOrder,
 } from "../studyMeta";
@@ -19,19 +15,16 @@ describe("studySettingsMeta", () => {
 				min: 1,
 				max: 200,
 				step: 1,
-				default: 20,
 			});
 			expect(STUDY_SETTINGS_LIMITS.dailyReviewCards).toEqual({
 				min: 1,
 				max: 500,
 				step: 10,
-				default: 50,
 			});
 			expect(STUDY_SETTINGS_LIMITS.requestRetention).toEqual({
 				min: 0.7,
 				max: 0.99,
 				step: 0.01,
-				default: 0.9,
 			});
 			expect(STUDY_SETTINGS_LIMITS.maximumInterval).toEqual({
 				min: 30,
@@ -80,36 +73,7 @@ describe("studySettingsMeta", () => {
 		});
 	});
 
-	describe("clamping helpers", () => {
-		it("clamps daily new cards", () => {
-			expect(clampDailyNewCards(10)).toBe(10);
-			expect(clampDailyNewCards(0)).toBe(1);
-			expect(clampDailyNewCards(300)).toBe(200);
-			expect(clampDailyNewCards(15.6)).toBe(16);
-			expect(clampDailyNewCards(Number.NaN)).toBe(20);
-		});
-
-		it("clamps daily review cards", () => {
-			expect(clampDailyReviewCards(50)).toBe(50);
-			expect(clampDailyReviewCards(0)).toBe(1);
-			expect(clampDailyReviewCards(600)).toBe(500);
-			expect(clampDailyReviewCards(Number.NaN)).toBe(50);
-		});
-
-		it("clamps request retention", () => {
-			expect(clampRequestRetention(0.85)).toBe(0.85);
-			expect(clampRequestRetention(0.5)).toBe(0.7);
-			expect(clampRequestRetention(1.2)).toBe(0.99);
-			expect(clampRequestRetention(Number.NaN)).toBe(0.9);
-		});
-
-		it("clamps maximum interval", () => {
-			expect(clampMaximumInterval(180)).toBe(180);
-			expect(clampMaximumInterval(10, 365)).toBe(365);
-			expect(clampMaximumInterval(5000)).toBe(3650);
-			expect(clampMaximumInterval(Number.NaN, 365)).toBe(365);
-		});
-
+	describe("maximum interval parsing", () => {
 		it("parses maximum interval string", () => {
 			expect(parseMaximumInterval("180")).toBe(180);
 			expect(parseMaximumInterval("20", 365)).toBe(365);

@@ -26,10 +26,7 @@ export function describeCardChangeOutcome(
 	}
 }
 
-export function describeCardValidationError(
-	error: CardValidationError,
-	language: Language,
-): string {
+function describeCardValidationError(error: CardValidationError, language: Language): string {
 	switch (error.type) {
 		case "missing-front":
 			return translate(language, "cardEditor.frontRequired");

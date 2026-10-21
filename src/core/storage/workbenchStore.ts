@@ -12,15 +12,10 @@ export interface StorageBackend {
 	saveData(data: unknown): Promise<void>;
 }
 
-export interface StoredWorkbenchDocument {
+interface StoredWorkbenchDocument {
 	schemaVersion: number;
 	settings: FlashcardSettings;
 	[partitionKey: string]: unknown;
-}
-
-export interface WorkbenchStoreOptions {
-	backend: StorageBackend;
-	initialSettings?: FlashcardSettings;
 }
 
 type WorkbenchStoreChangeInput =
@@ -37,7 +32,7 @@ export type WorkbenchStoreChange = WorkbenchStoreChangeInput & {
 	readonly revision: number;
 };
 
-export interface WorkbenchStoreMutationOptions {
+interface WorkbenchStoreMutationOptions {
 	/** Reject inside the write queue if another durable transition committed first. */
 	readonly expectedRevision?: number;
 	/** Opaque in-process identity used by adapters to absorb their own revision echo. */

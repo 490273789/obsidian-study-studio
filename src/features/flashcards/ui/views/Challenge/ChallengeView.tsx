@@ -1,5 +1,5 @@
 import type { CardMotion } from "../../answerPresentationTransition";
-import React, { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import { Check, CornerDownLeft, Lightbulb, X } from "lucide-react";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardInput } from "../../../../../core/ui/primitives/Input";

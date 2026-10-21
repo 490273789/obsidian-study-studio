@@ -1,15 +1,5 @@
-import {
-	createEmptyCard,
-	fsrs,
-	generatorParameters,
-	Rating,
-	Card,
-	State,
-	RecordLogItem,
-	IPreview,
-} from "ts-fsrs";
-import { Language, RatingButton, StudySettings } from "../../../../core/shared/types";
-import { formatReviewInterval, getLocalizedRatingButtons } from "../../strings/index";
+import { fsrs, generatorParameters, Rating, Card, State, RecordLogItem } from "ts-fsrs";
+import { StudySettings } from "../../../../core/shared/types";
 
 /**
  * FSRS Scheduler - handles spaced repetition scheduling using FSRS algorithm
@@ -23,13 +13,6 @@ export class FSRSScheduler {
 			maximum_interval: settings.fsrsParameters.maximumInterval,
 		});
 		this.f = fsrs(params);
-	}
-
-	/**
-	 * Create a new empty FSRS card
-	 */
-	createNewCard(): Card {
-		return createEmptyCard();
 	}
 
 	/**
@@ -73,76 +56,6 @@ export class FSRSScheduler {
 	}
 
 	/**
-	 * Get all scheduling options for a card
-	 */
-	getSchedulingOptions(card: Card): IPreview {
-		const now = new Date();
-		return this.f.repeat(card, now);
-	}
-
-	/**
-	 * Check if a card is due for review
-	 */
-	isDue(card: Card): boolean {
-		const now = new Date();
-		return card.due <= now;
-	}
-
-	/**
-	 * Check if a card is new (never studied)
-	 */
-	isNew(card: Card): boolean {
-		return card.state === State.New;
-	}
-
-	/**
-	 * Get the state of a card
-	 */
-	getState(card: Card): State {
-		return card.state;
-	}
-
-	/**
-	 * Calculate next review interval description
-	 */
-	getIntervalDescription(card: Card, rating: Rating, language: Language = "zh"): string {
-		const options = this.getSchedulingOptions(card);
-
-		let result: RecordLogItem | undefined;
-		switch (rating) {
-			case Rating.Again:
-				result = options[Rating.Again];
-				break;
-			case Rating.Hard:
-				result = options[Rating.Hard];
-				break;
-			case Rating.Good:
-				result = options[Rating.Good];
-				break;
-			case Rating.Easy:
-				result = options[Rating.Easy];
-				break;
-			default:
-				result = undefined;
-		}
-
-		if (!result) return "";
-
-		const interval = result.card.scheduled_days;
-		if (interval === 0) {
-			// Calculate minutes
-			const diffMs = result.card.due.getTime() - new Date().getTime();
-			const minutes = Math.round(diffMs / (1000 * 60));
-			if (minutes < 60) {
-				return formatReviewInterval(language, "minute", minutes);
-			}
-			const hours = Math.round(minutes / 60);
-			return formatReviewInterval(language, "hour", hours);
-		}
-		return formatReviewInterval(language, "day", interval);
-	}
-
-	/**
 	 * Custom rating for "garbage" - sets card to 21 days later
 	 */
 	rateAsGarbage(card: Card): Card {
@@ -179,11 +92,4 @@ export function toFSRSRating(rating: 1 | 2 | 3 | 4): Rating {
 		case 4:
 			return Rating.Easy;
 	}
-}
-
-/**
- * Get rating buttons configuration
- */
-export function getRatingButtons(language: Language = "zh"): RatingButton[] {
-	return getLocalizedRatingButtons(language);
 }

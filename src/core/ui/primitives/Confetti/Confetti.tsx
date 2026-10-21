@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import { cls } from "../../../shared/classNames";
 import {
 	createCannonBurst,

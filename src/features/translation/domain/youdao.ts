@@ -5,15 +5,12 @@ import {
 	resolveYoudaoConnection,
 	YoudaoTransportError,
 } from "../../../core/net/youdaoTransport";
-import { youdaoV3SignInput } from "../../../core/shared/youdaoSign";
 
-export interface YoudaoConnection {
+interface YoudaoConnection {
 	baseUrl: string;
 	appKeySecretId: string;
 	appSecretSecretId: string;
 }
-
-export { youdaoV3SignInput };
 
 function parseTranslationPayload(payload: unknown): { text: string; usage: null } {
 	const result = payload as Record<string, unknown>;

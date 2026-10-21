@@ -8,19 +8,16 @@ export const STUDY_SETTINGS_LIMITS = {
 		min: 1,
 		max: 200,
 		step: 1,
-		default: 20,
 	},
 	dailyReviewCards: {
 		min: 1,
 		max: 500,
 		step: 10,
-		default: 50,
 	},
 	requestRetention: {
 		min: 0.7,
 		max: 0.99,
 		step: 0.01,
-		default: 0.9,
 	},
 	maximumInterval: {
 		min: 30,
@@ -56,52 +53,6 @@ export function calculateDailyNewCardsFromDays(totalCards: number, daysToComplet
 }
 
 /**
- * Clamps daily new cards to supported range [1, 200].
- */
-export function clampDailyNewCards(value: number): number {
-	if (!Number.isFinite(value)) return STUDY_SETTINGS_LIMITS.dailyNewCards.default;
-	return Math.max(
-		STUDY_SETTINGS_LIMITS.dailyNewCards.min,
-		Math.min(STUDY_SETTINGS_LIMITS.dailyNewCards.max, Math.round(value)),
-	);
-}
-
-/**
- * Clamps daily review cards to supported range [1, 500].
- */
-export function clampDailyReviewCards(value: number): number {
-	if (!Number.isFinite(value)) return STUDY_SETTINGS_LIMITS.dailyReviewCards.default;
-	return Math.max(
-		STUDY_SETTINGS_LIMITS.dailyReviewCards.min,
-		Math.min(STUDY_SETTINGS_LIMITS.dailyReviewCards.max, Math.round(value)),
-	);
-}
-
-/**
- * Clamps request retention to supported range [0.70, 0.99].
- */
-export function clampRequestRetention(value: number): number {
-	if (!Number.isFinite(value)) return STUDY_SETTINGS_LIMITS.requestRetention.default;
-	return Math.max(
-		STUDY_SETTINGS_LIMITS.requestRetention.min,
-		Math.min(STUDY_SETTINGS_LIMITS.requestRetention.max, value),
-	);
-}
-
-/**
- * Validates and clamps maximum interval to [30, 3650], falling back to fallback if invalid.
- */
-export function clampMaximumInterval(
-	value: number,
-	fallback: number = STUDY_SETTINGS_LIMITS.maximumInterval.default,
-): number {
-	if (!Number.isFinite(value) || value < STUDY_SETTINGS_LIMITS.maximumInterval.min) {
-		return fallback;
-	}
-	return Math.min(STUDY_SETTINGS_LIMITS.maximumInterval.max, Math.round(value));
-}
-
-/**
  * Parses raw input string into valid maximum interval integer, falling back if invalid.
  */
 export function parseMaximumInterval(
@@ -109,7 +60,10 @@ export function parseMaximumInterval(
 	fallback: number = STUDY_SETTINGS_LIMITS.maximumInterval.default,
 ): number {
 	const parsed = Number.parseInt(raw, 10);
-	return clampMaximumInterval(parsed, fallback);
+	if (!Number.isFinite(parsed) || parsed < STUDY_SETTINGS_LIMITS.maximumInterval.min) {
+		return fallback;
+	}
+	return Math.min(STUDY_SETTINGS_LIMITS.maximumInterval.max, Math.round(parsed));
 }
 
 /**

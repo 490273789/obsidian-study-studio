@@ -1,4 +1,4 @@
-import React, { memo, useId } from "react";
+import { memo, useId } from "react";
 import { AlertTriangle, Check, Sparkles, X } from "lucide-react";
 import { FlashcardButton } from "../Button";
 import { ModalSurface } from "../Modal";

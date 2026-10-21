@@ -32,20 +32,20 @@ const OPEN_COMMAND_ID = "open-dictionary";
 const LOOKUP_SELECTION_COMMAND_ID = "dictionary-lookup-selection";
 
 /** Settings section id this feature contributes. */
-export const DICTIONARY_SECTION_ID = "dictionary";
+const DICTIONARY_SECTION_ID = "dictionary";
 
 /** Obsidian view types of the dictionary lookup view and the favorites sidebar. */
-export const VIEW_TYPE_DICTIONARY = "flashcard-dictionary-view";
+const VIEW_TYPE_DICTIONARY = "flashcard-dictionary-view";
 export const VIEW_TYPE_DICTIONARY_FAVORITE = "flashcard-dictionary-favorite-view";
 
-export interface DictionaryFeatureDeps {
+interface DictionaryFeatureDeps {
 	sourceEdits?: CardSourceMutation;
 	ai: AiService;
 	net: OutboundPort;
 	plugin: Plugin;
 }
 
-export interface DictionaryFeature extends WorkbenchModule<"dictionary"> {
+interface DictionaryFeature extends WorkbenchModule<"dictionary"> {
 	readonly selectionAdapter: SelectionDictionaryAdapter;
 }
 
@@ -148,11 +148,7 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 		);
 	};
 
-	const section = (
-		host: DictionaryWorkbenchHost,
-		dictionary: DictionaryRuntime,
-		editor: DictionarySettingsEditor,
-	): WorkbenchSettingsSection => {
+	const section = (editor: DictionarySettingsEditor): WorkbenchSettingsSection => {
 		return {
 			id: DICTIONARY_SECTION_ID,
 			order: 3,
@@ -316,7 +312,7 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 				available: () => host.settings.read().dictionary.enabled,
 				open: () => openPage(host),
 			});
-			host.settingsSection(section(host, dictionary, editor));
+			host.settingsSection(section(editor));
 
 			return () => {
 				dictionary.applySettings();

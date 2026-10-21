@@ -1,4 +1,3 @@
-import React from "react";
 import { Notice } from "obsidian";
 import { CirclePlay } from "lucide-react";
 import { FlashcardButton } from "../../core/ui/primitives/Button";

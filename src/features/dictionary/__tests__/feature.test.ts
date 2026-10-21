@@ -78,13 +78,6 @@ vi.mock("../domain/dictionaryRuntime", () => ({
 	},
 }));
 
-vi.mock("../obsidian/modals", () => ({
-	DictionaryLookupModal: class {
-		open() {}
-		close() {}
-	},
-}));
-
 vi.mock("../obsidian/settingsEditor", () => ({
 	DictionarySettingsEditor: class {
 		readonly activate = vi.fn();

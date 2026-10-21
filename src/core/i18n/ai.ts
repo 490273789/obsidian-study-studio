@@ -4,7 +4,6 @@ import type { AiFailureCode } from "../ai";
 const zh = {
 	heading: "AI 引擎",
 	configuration: "引擎配置",
-	newConfig: "新增配置",
 	newDraft: "新配置（未保存）",
 	none: "未设置",
 	defaultConfig: "默认引擎",
@@ -31,8 +30,6 @@ const zh = {
 	test: "测试连接",
 	testing: "测试中…",
 	testHelp: "测试当前连接配置，会发送简短文本请求，可能产生费用；成功不代表支持图片。",
-	draftHelp:
-		"编辑后点击保存。切换配置或新增配置会放弃未保存的修改。删除配置不会删除密钥存储中的密钥。",
 	saved: "AI 引擎配置已保存",
 	deleted: "AI 引擎配置已删除",
 	success: "AI 文本连接测试成功",
@@ -59,7 +56,6 @@ const zh = {
 const en: typeof zh = {
 	heading: "AI engines",
 	configuration: "Engine configuration",
-	newConfig: "Add configuration",
 	newDraft: "New configuration (unsaved)",
 	none: "Not set",
 	defaultConfig: "Default engine",
@@ -90,8 +86,6 @@ const en: typeof zh = {
 	testing: "Testing…",
 	testHelp:
 		"Tests the current connection configuration with a short text request. Charges may apply. Success does not verify image support.",
-	draftHelp:
-		"Click Save after editing. Switching or adding configurations discards unsaved edits. Deleting a configuration keeps its stored secret.",
 	saved: "AI engine configuration saved",
 	deleted: "AI engine configuration deleted",
 	success: "AI text connection test succeeded",

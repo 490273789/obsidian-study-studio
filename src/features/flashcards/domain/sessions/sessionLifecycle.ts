@@ -1,3 +1,4 @@
+import { errorMessage } from "../../../../core/shared/utils";
 import {
 	buildSpellingDiff,
 	extractSpellingWord,
@@ -70,7 +71,7 @@ export interface SessionCardSnapshot {
 	readonly indexInFile: number;
 }
 
-export interface SessionProgressSnapshot {
+interface SessionProgressSnapshot {
 	readonly current: number;
 	readonly completed: number;
 	readonly total: number;
@@ -83,7 +84,7 @@ interface ReferenceBase {
 	readonly key: string;
 }
 
-export interface IdleLifecycleReference extends ReferenceBase {
+interface IdleLifecycleReference extends ReferenceBase {
 	readonly kind: "idle";
 }
 
@@ -107,22 +108,22 @@ export interface ActiveChallengeReference extends ReferenceBase {
 	readonly mode: "challenge";
 }
 
-export interface StudyResultReference extends ReferenceBase {
+interface StudyResultReference extends ReferenceBase {
 	readonly kind: "result";
 	readonly mode: "study";
 }
 
-export interface PracticeResultReference extends ReferenceBase {
+interface PracticeResultReference extends ReferenceBase {
 	readonly kind: "result";
 	readonly mode: "practice";
 }
 
-export interface SpellingResultReference extends ReferenceBase {
+interface SpellingResultReference extends ReferenceBase {
 	readonly kind: "result";
 	readonly mode: "spelling";
 }
 
-export interface ChallengeResultReference extends ReferenceBase {
+interface ChallengeResultReference extends ReferenceBase {
 	readonly kind: "result";
 	readonly mode: "challenge";
 }
@@ -138,7 +139,7 @@ export type LifecycleReference =
 	| SpellingResultReference
 	| ChallengeResultReference;
 
-export interface SourceChangeEndSnapshot {
+interface SourceChangeEndSnapshot {
 	readonly id: string;
 	readonly reason: "source-change";
 	readonly mode: "study" | "practice" | "spelling" | "challenge";
@@ -146,7 +147,7 @@ export interface SourceChangeEndSnapshot {
 	readonly answerEventCount: number;
 }
 
-export interface IdleLifecycleSnapshot {
+interface IdleLifecycleSnapshot {
 	readonly kind: "idle";
 	readonly revision: number;
 	readonly reference: IdleLifecycleReference;
@@ -183,7 +184,7 @@ export interface ActiveSpellingSnapshot extends ActiveSnapshotBase {
 	readonly phase: "retrieval" | "correction";
 }
 
-export interface ChallengeRoundProgressSnapshot {
+interface ChallengeRoundProgressSnapshot {
 	readonly level: number;
 	readonly totalLevels: number;
 	readonly passedInLevel: number;
@@ -209,7 +210,7 @@ export interface ActiveChallengeSnapshot {
 	readonly removedCardCount: number;
 }
 
-export type ActiveLifecycleSnapshot =
+type ActiveLifecycleSnapshot =
 	| ActiveStudySnapshot
 	| ActivePracticeSnapshot
 	| ActiveSpellingSnapshot
@@ -316,7 +317,7 @@ export interface SpellingResultSnapshot {
 	readonly restartOrigin: Readonly<Extract<SessionRestartOrigin, { mode: "spelling" }>>;
 }
 
-export interface ChallengeRoundSummarySnapshot {
+interface ChallengeRoundSummarySnapshot {
 	readonly completedLevels: number;
 	readonly totalLevels: number;
 	readonly totalQuestions: number;
@@ -340,7 +341,7 @@ export interface ChallengeResultSnapshot {
 	readonly restartOrigin: Readonly<Extract<SessionRestartOrigin, { mode: "challenge" }>>;
 }
 
-export type ResultLifecycleSnapshot =
+type ResultLifecycleSnapshot =
 	| StudyResultSnapshot
 	| PracticeResultSnapshot
 	| SpellingResultSnapshot
@@ -351,17 +352,17 @@ export type SessionLifecycleSnapshot =
 	| ActiveLifecycleSnapshot
 	| ResultLifecycleSnapshot;
 
-export type StudyLifecycleAction =
+type StudyLifecycleAction =
 	| { readonly kind: "answer"; readonly rating: StudyRating }
 	| { readonly kind: "previous" }
 	| { readonly kind: "exit" };
 
-export type PracticeLifecycleAction =
+type PracticeLifecycleAction =
 	| { readonly kind: "answer"; readonly correct: boolean }
 	| { readonly kind: "previous" }
 	| { readonly kind: "exit" };
 
-export type SpellingLifecycleAction =
+type SpellingLifecycleAction =
 	| { readonly kind: "answer"; readonly input: string }
 	| { readonly kind: "exit" };
 
@@ -372,13 +373,13 @@ export type ChallengeLifecycleAction =
 	| { readonly kind: "continue" }
 	| { readonly kind: "exit" };
 
-export type ResultLifecycleAction =
+type ResultLifecycleAction =
 	| { readonly kind: "retry-incorrect" }
 	| { readonly kind: "next-level" }
 	| { readonly kind: "restart-challenge" }
 	| { readonly kind: "dismiss" };
 
-export type IdleLifecycleAction = {
+type IdleLifecycleAction = {
 	readonly kind: "acknowledge-end";
 	readonly noticeId: string;
 };
@@ -484,12 +485,12 @@ export interface SessionLifecycle {
 	): Promise<LifecycleOutcome>;
 }
 
-export interface SessionLifecycleWiring {
+interface SessionLifecycleWiring {
 	readonly lifecycle: SessionLifecycle;
 	readonly continuitySessions: ContinuitySessionAdapter;
 }
 
-export interface CreateSessionLifecycleOptions {
+interface CreateSessionLifecycleOptions {
 	now?: () => number;
 	shuffle?: (identities: string[]) => string[];
 	random?: () => number;
@@ -1899,10 +1900,6 @@ function toRestartOrigin(request: SessionStartRequest): SessionRestartOrigin {
 			selection: { ...request.selection },
 		};
 	return { mode: "challenge", challengeMode: request.challengeMode };
-}
-
-function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
 }
 
 function reconcileActiveState(

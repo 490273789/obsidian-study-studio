@@ -1,4 +1,3 @@
-import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Keyboard } from "lucide-react";
 import { describe, expect, it } from "vite-plus/test";

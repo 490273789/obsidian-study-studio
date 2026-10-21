@@ -1,4 +1,4 @@
-import React, { memo } from "react";
+import { memo } from "react";
 import { CircleCheck, House, RotateCw } from "lucide-react";
 import { cls } from "../../../../../core/shared/classNames";
 import { SessionSummary } from "../../primitives/SessionSummary/SessionSummary";

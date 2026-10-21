@@ -16,7 +16,6 @@ export const sharedTranslations = {
 		"sort.dropped": "已放到第 {position} 项。",
 		"sort.cancelled": "已取消排序。",
 		"main.ribbonOpenFlashcards": "打开闪卡",
-		"main.commandOpenFlashcards": "打开闪卡学习",
 		"main.commandSyncDecks": "同步闪卡题库",
 		"main.commandMigrateCardIdentities": "迁移旧题库卡片身份",
 		"main.commandRepairCardIdentities": "修复卡片身份冲突",
@@ -41,7 +40,6 @@ export const sharedTranslations = {
 		"notice.pdfExportRendering": "正在准备 PDF：{completed}/{total}，仍可继续使用 Obsidian",
 		"notice.pdfExportGenerating": "正在后台生成 PDF，可继续使用 Obsidian",
 		"notice.pdfExportFailed": "导出 PDF 失败：{message}",
-		"notice.pdfExportUnknownError": "未知错误",
 		"notice.viewRenderFailed": "界面渲染失败，请重新打开该视图；若仍失败请重载插件。",
 		"notice.copied": "已复制到剪贴板",
 		"notice.copyFailed": "复制失败",
@@ -50,14 +48,12 @@ export const sharedTranslations = {
 		"common.copy": "复制",
 		"common.copySection": "复制此内容",
 		"common.copyAllCard": "复制整张卡片",
-		"common.copyCardContent": "复制卡片内容",
 		"common.save": "保存",
 		"common.confirm": "确认",
 		"common.confirmAction": "请确认操作",
 		"common.cancel": "取消",
 		"common.all": "全部",
 		"common.cards": "张卡片",
-		"common.questions": "题",
 		"common.space": "空格",
 		"common.question": "问题",
 		"common.answer": "答案",
@@ -87,7 +83,6 @@ export const sharedTranslations = {
 		"sort.dropped": "Dropped at position {position}.",
 		"sort.cancelled": "Reordering cancelled.",
 		"main.ribbonOpenFlashcards": "Open flashcards",
-		"main.commandOpenFlashcards": "Open flashcard study",
 		"main.commandSyncDecks": "Sync flashcard decks",
 		"main.commandMigrateCardIdentities": "Migrate legacy card identities",
 		"main.commandRepairCardIdentities": "Repair card identity conflicts",
@@ -116,7 +111,6 @@ export const sharedTranslations = {
 		"notice.pdfExportGenerating":
 			"Generating PDF in the background. You can keep using Obsidian.",
 		"notice.pdfExportFailed": "PDF export failed: {message}",
-		"notice.pdfExportUnknownError": "Unknown error",
 		"notice.viewRenderFailed":
 			"This view failed to render. Reopen it, and reload the plugin if it still fails.",
 		"notice.copied": "Copied to clipboard",
@@ -126,14 +120,12 @@ export const sharedTranslations = {
 		"common.copy": "Copy",
 		"common.copySection": "Copy this section",
 		"common.copyAllCard": "Copy entire card",
-		"common.copyCardContent": "Copy card content",
 		"common.save": "Save",
 		"common.confirm": "Confirm",
 		"common.confirmAction": "Confirm action",
 		"common.cancel": "Cancel",
 		"common.all": "All",
 		"common.cards": "cards",
-		"common.questions": "questions",
 		"common.space": "Space",
 		"common.question": "Question",
 		"common.answer": "Answer",
@@ -157,15 +149,7 @@ export const sharedTranslations = {
 	},
 } satisfies TranslationDictionary;
 
-export type SharedTranslationKey = keyof typeof sharedTranslations.zh;
-
 const factory = createTranslatorFactory(sharedTranslations);
-
-export const translateShared = factory.translate as (
-	language: Language,
-	key: SharedTranslationKey,
-	vars?: Record<string, string | number>,
-) => string;
 
 /** Default translator for host-owned UI and for views without their own dictionary. */
 export const createSharedTranslator = (language: Language): Translator =>
