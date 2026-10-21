@@ -52,7 +52,7 @@ const source = (id: string) => ({ id, path: `/videos/${id}.mp4`, name: `${id}.mp
 describe("VideoPlayerRuntime", () => {
 	it("deduplicates paths and selects the first source", () => {
 		const runtime = new VideoPlayerRuntime({
-			state: new MemoryStore(),
+			store: new MemoryStore(),
 			toMediaUrl: (path) => path,
 		});
 		runtime.addSources([
@@ -68,7 +68,7 @@ describe("VideoPlayerRuntime", () => {
 		let now = 0;
 		const store = new MemoryStore();
 		const runtime = new VideoPlayerRuntime({
-			state: store,
+			store,
 			toMediaUrl: (path) => path,
 			now: () => now,
 		});
@@ -92,7 +92,7 @@ describe("VideoPlayerRuntime", () => {
 
 	it("does not wrap queue navigation and auto-plays the next item after completion", async () => {
 		const runtime = new VideoPlayerRuntime({
-			state: new MemoryStore(),
+			store: new MemoryStore(),
 			toMediaUrl: (path) => path,
 		});
 		const media = new Media();
@@ -111,7 +111,7 @@ describe("VideoPlayerRuntime", () => {
 
 	it("marks completed videos and restarts them when selected again", () => {
 		const runtime = new VideoPlayerRuntime({
-			state: new MemoryStore(),
+			store: new MemoryStore(),
 			toMediaUrl: (path) => path,
 		});
 		const media = new Media();
@@ -135,7 +135,7 @@ describe("VideoPlayerRuntime", () => {
 			progressBySource: { one: 100 },
 			completedSourceIds: ["one"],
 		};
-		const runtime = new VideoPlayerRuntime({ state: store, toMediaUrl: (path) => path });
+		const runtime = new VideoPlayerRuntime({ store, toMediaUrl: (path) => path });
 		const media = new Media();
 		runtime.bindMedia(media);
 		media.emit("loadedmetadata");
@@ -146,7 +146,7 @@ describe("VideoPlayerRuntime", () => {
 
 	it("selects the next source after deleting current, otherwise previous", () => {
 		const runtime = new VideoPlayerRuntime({
-			state: new MemoryStore(),
+			store: new MemoryStore(),
 			toMediaUrl: (path) => path,
 		});
 		runtime.addSources([source("one"), source("two"), source("three")]);

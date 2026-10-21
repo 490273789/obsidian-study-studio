@@ -74,5 +74,3 @@ export interface VideoPlayerDocumentStore {
 	save(state: DeviceVideoPlayerStateV1): void;
 	clear(): void;
 }
-
-export type VideoPlayerStateStore = VideoPlayerDocumentStore;

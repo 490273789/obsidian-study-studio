@@ -10,8 +10,7 @@ import {
 } from "./types";
 
 export interface VideoPlayerRuntimeOptions {
-	readonly store?: VideoPlayerDocumentStore;
-	readonly state?: VideoPlayerDocumentStore;
+	readonly store: VideoPlayerDocumentStore;
 	readonly toMediaUrl: (path: string) => string;
 	readonly now?: () => number;
 	readonly reportError?: (error: unknown) => void;
@@ -34,8 +33,7 @@ export class VideoPlayerRuntime {
 	private disposed = false;
 
 	constructor(private readonly options: VideoPlayerRuntimeOptions) {
-		const store = options.store ?? options.state;
-		this.state = store ? store.load() : emptyState();
+		this.state = options.store.load();
 		this.publish();
 	}
 
@@ -231,8 +229,7 @@ export class VideoPlayerRuntime {
 	clearLocalData(): void {
 		this.pause();
 		this.state = emptyState();
-		const store = this.options.store ?? this.options.state;
-		store?.clear();
+		this.options.store.clear();
 		this.loadCurrentMedia();
 		this.publish();
 	}
@@ -339,10 +336,8 @@ export class VideoPlayerRuntime {
 		this.saveProgress(true);
 	}
 	private persist(): void {
-		const store = this.options.store ?? this.options.state;
-		if (!store) return;
 		try {
-			store.save(this.state);
+			this.options.store.save(this.state);
 		} catch (error) {
 			this.options.reportError?.(error);
 		}
@@ -393,10 +388,6 @@ export function emptyState(): DeviceVideoPlayerStateV1 {
 		floatingRect: null,
 		queueExpanded: true,
 	};
-}
-
-export function emptyPlaybackState(): DeviceVideoPlayerStateV1 {
-	return emptyState();
 }
 
 function clamp(value: number, min: number, max: number): number {
