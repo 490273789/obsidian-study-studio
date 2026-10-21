@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
 	containsReservedMarkerLine,
 	extractCardIdentityMarker,
+	extractFirstTag,
 	formatCardBlock,
 	formatCardIdentityMarker,
 	hasFlashcardSyntax,
@@ -38,6 +39,16 @@ back
 		expect(marker).toBe(`<!-- wsr-card-id: ${cardIdentity} -->`);
 		expect(extractCardIdentityMarker(marker)).toBe(cardIdentity);
 		expect(extractCardIdentityMarker("front text")).toBeNull();
+	});
+});
+
+describe("extractFirstTag", () => {
+	it("extracts the first flashcard tag including Chinese characters", () => {
+		expect(extractFirstTag("\n  #单词\n#other\ncontent")).toBe("#单词");
+	});
+
+	it("ignores inline hash text that is not a line tag", () => {
+		expect(extractFirstTag("front text #单词\n内容")).toBeNull();
 	});
 });
 

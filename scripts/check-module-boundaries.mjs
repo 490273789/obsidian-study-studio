@@ -11,6 +11,13 @@ const storageCommitFormat = path.join(
 	"sessionCommitFormat",
 );
 const storageRoot = path.join(sourceRoot, "features", "flashcards", "domain", "storage");
+const flashcardsDomainRoot = path.join(sourceRoot, "features", "flashcards", "domain");
+/** PDF export documents this Obsidian exception; every other flashcards domain file stays pure. */
+const flashcardsDomainObsidianException = path.join(
+	flashcardsDomainRoot,
+	"decks",
+	"deckPdfExporter.ts",
+);
 const files = (await readdir(sourceRoot, { recursive: true }))
 	.filter((file) => /\.(?:ts|tsx)$/.test(file))
 	.map((file) => path.join(sourceRoot, file));
@@ -20,6 +27,14 @@ for (const file of files) {
 	const source = await readFile(file, "utf8");
 	for (const match of source.matchAll(/from\s+["']([^"']+)["']/g)) {
 		const specifier = match[1];
+		if (
+			specifier === "obsidian" &&
+			isFlashcardsDomain(file) &&
+			!isTestFile(file) &&
+			file !== flashcardsDomainObsidianException
+		) {
+			violations.push(`${relative(file)} imports obsidian from the pure flashcards domain`);
+		}
 		if (!specifier?.startsWith(".")) continue;
 		const target = path.normalize(path.resolve(path.dirname(file), specifier));
 		const sourceFeature = featureId(file);
@@ -62,6 +77,14 @@ function featureId(file) {
 
 function isCore(file) {
 	return file.split(path.sep).includes("core");
+}
+
+function isFlashcardsDomain(file) {
+	return file.startsWith(flashcardsDomainRoot + path.sep);
+}
+
+function isTestFile(file) {
+	return file.split(path.sep).includes("__tests__");
 }
 
 function relative(file) {

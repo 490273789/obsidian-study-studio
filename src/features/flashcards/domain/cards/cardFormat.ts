@@ -1,12 +1,14 @@
 export const FRONT_BACK_SEPARATOR = "??";
 export const EXPLANATION_SEPARATOR = "::";
 export const CARD_END_SEPARATOR = ";;";
-export const FIRST_TAG_LINE_PATTERN = /(?:^|\n)\s*#[\w\u4e00-\u9fa5]+\s*\n?/;
+const TAG_NAME = "#[\\w\\u4e00-\\u9fa5]+";
+
+export const FIRST_TAG_LINE_PATTERN = new RegExp(`(?:^|\\n)\\s*${TAG_NAME}\\s*\\n?`);
+const TAG_LINE_PATTERN = new RegExp(`^\\s*${TAG_NAME}\\s*$`);
+const FIRST_TAG_CAPTURE_PATTERN = new RegExp(`(?:^|\\n)\\s*(${TAG_NAME})`);
 
 /** The physical line ending a card source uses; source edits never normalize it. */
 export type CardSourceNewline = "\n" | "\r\n";
-
-const TAG_LINE_PATTERN = /^\s*#[\w\u4e00-\u9fa5]+\s*$/;
 
 const CARD_IDENTITY_PATTERN =
 	"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
@@ -63,6 +65,11 @@ export function formatCardIdentityMarker(cardIdentity: string): string {
 /** A source tag line (`#单词`) is the document prefix of a card file, not card content. */
 export function isTagLine(line: string): boolean {
 	return TAG_LINE_PATTERN.test(line);
+}
+
+/** The first tag line of a Markdown source, or null when the note is not tagged. */
+export function extractFirstTag(content: string): string | null {
+	return content.match(FIRST_TAG_CAPTURE_PATTERN)?.[1] ?? null;
 }
 
 /** One parsed card block: the content and identity a source scanner and a reader both need. */

@@ -1,6 +1,6 @@
 import type { Deck, FlashCard } from "../../../../core/shared/types";
-import { extractCardIdentityMarker } from "../cards/cardFormat";
-import { extractFirstTag, parseFlashcards } from "../cards/parser";
+import { extractCardIdentityMarker, extractFirstTag } from "../cards/cardFormat";
+import { parseFlashcards } from "../cards/parser";
 import type {
 	ContinuitySourceDocument,
 	ContinuitySourceStore,

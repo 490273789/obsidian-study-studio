@@ -1,4 +1,4 @@
-import { hasFlashcardSyntax } from "../cards/cardFormat";
+import { extractFirstTag, hasFlashcardSyntax } from "../cards/cardFormat";
 import {
 	DeckSourceEditException,
 	editCards,
@@ -12,7 +12,7 @@ import type {
 	CardSourceOperation,
 } from "../../../../core/shared/cardSourceMutation";
 import { createEmptyCard } from "ts-fsrs";
-import { extractFirstTag, parseFlashcards } from "../cards/parser";
+import { parseFlashcards } from "../cards/parser";
 import {
 	guardSourceForEdit,
 	isLegacyIdentity,
