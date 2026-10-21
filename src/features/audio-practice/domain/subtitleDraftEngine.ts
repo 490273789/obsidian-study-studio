@@ -58,8 +58,7 @@ export function alignTimedWords(
 	const tokens = tokenizeUnicodeWords(text);
 	if (tokens.length === 0 || words.length === 0) return null;
 
-	const result: TimedTextWord[] = [];
-	let previousEnd = cueStart;
+	const recognized: { word: TimedWord; token: string }[] = [];
 	for (const word of words) {
 		if (
 			!Number.isFinite(word.start) ||
@@ -76,19 +75,47 @@ export function alignTimedWords(
 		) {
 			return null;
 		}
-		const recognizedTokens = tokenizeUnicodeWords(word.text);
+		const recognizedTokens = tokenizeUnicodeWords(word.text.replace(/\s*['’‘ʼ]\s*/g, "'"));
 		if (recognizedTokens.length === 0) continue;
-		const token = tokens[result.length];
-		if (recognizedTokens.length !== 1 || !token || recognizedTokens[0]!.text !== token.text) {
-			return null;
-		}
-		const start = Math.max(cueStart, word.start);
-		const end = Math.min(cueEnd, word.end);
-		if (start < previousEnd) return null;
-		result.push({ startOffset: token.start, endOffset: token.end, start, end });
-		previousEnd = end;
+		if (recognizedTokens.length !== 1) return null;
+		recognized.push({ word, token: recognizedTokens[0]!.text });
 	}
-	return result.length === tokens.length ? result : null;
+
+	const result: TimedTextWord[] = [];
+	let sourceIndex = 0;
+	let previousEnd = cueStart;
+	for (const token of tokens) {
+		const source = recognized[sourceIndex];
+		if (!source) return null;
+		let count = 1;
+		if (source.token !== token.text) {
+			// ASR may timestamp a contraction as separate lexical pieces around an apostrophe.
+			const parts = token.text.split("'");
+			if (
+				parts.length < 2 ||
+				parts.some((part) => !part) ||
+				parts.some((part, index) => recognized[sourceIndex + index]?.token !== part)
+			)
+				return null;
+			count = parts.length;
+		}
+		let end = previousEnd;
+		for (let index = sourceIndex; index < sourceIndex + count; index++) {
+			const word = recognized[index]!.word;
+			const start = Math.max(cueStart, word.start);
+			if (start < end) return null;
+			end = Math.min(cueEnd, word.end);
+		}
+		result.push({
+			startOffset: token.start,
+			endOffset: token.end,
+			start: Math.max(cueStart, source.word.start),
+			end,
+		});
+		previousEnd = end;
+		sourceIndex += count;
+	}
+	return sourceIndex === recognized.length ? result : null;
 }
 
 /** Deduplicate only matching words actually observed in overlapping chunks. */

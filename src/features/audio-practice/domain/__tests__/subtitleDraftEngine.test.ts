@@ -58,6 +58,31 @@ describe("subtitleDraftEngine - Unicode tokenization & alignment", () => {
 		]);
 	});
 
+	it("aligns contractions when recognition splits the apostrophe into timed words", () => {
+		const text = "It's easy. But I've heard it.";
+		expect(
+			alignTimedWords(text, 1, 4.2, [
+				{ text: "It", start: 1, end: 1.2 },
+				{ text: "'", start: 1.2, end: 1.22 },
+				{ text: "s", start: 1.22, end: 1.3 },
+				{ text: "easy", start: 1.3, end: 1.8 },
+				{ text: "But", start: 2, end: 2.3 },
+				{ text: "I", start: 2.3, end: 2.5 },
+				{ text: "'", start: 2.5, end: 2.55 },
+				{ text: "ve", start: 2.55, end: 2.7 },
+				{ text: "heard", start: 2.7, end: 3.3 },
+				{ text: "it", start: 3.3, end: 4.2 },
+			]),
+		).toEqual([
+			{ startOffset: 0, endOffset: 4, start: 1, end: 1.3 },
+			{ startOffset: 5, endOffset: 9, start: 1.3, end: 1.8 },
+			{ startOffset: 11, endOffset: 14, start: 2, end: 2.3 },
+			{ startOffset: 15, endOffset: 19, start: 2.3, end: 2.7 },
+			{ startOffset: 20, endOffset: 25, start: 2.7, end: 3.3 },
+			{ startOffset: 26, endOffset: 28, start: 3.3, end: 4.2 },
+		]);
+	});
+
 	it("matches repeated words individually in their original order", () => {
 		expect(
 			alignTimedWords("Go, go!", 0, 1, [
