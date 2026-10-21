@@ -1,19 +1,17 @@
 import { hasFlashcardSyntax } from "../cards/cardFormat";
-import { editSourceCardBatch } from "../cards/sourceCardBatch";
+import {
+	DeckSourceEditException,
+	editCards,
+	maintainIdentities,
+	type DeckSourceEditError,
+} from "../cards/cardSourceText";
 import type {
 	CardSourceMutation,
 	CardSourcePreparation,
 	CardSourceChangeOutcome,
+	CardSourceOperation,
 } from "../../../../core/shared/cardSourceMutation";
 import { createEmptyCard } from "ts-fsrs";
-import {
-	editDeckSource,
-	registerMissingCardIdentities,
-	rewriteCardIdentityMarkers,
-	DeckSourceEditException,
-	type DeckSourceEditError,
-	type DeckSourceEditResult,
-} from "../cards/deckSourceEditor";
 import { extractFirstTag, parseFlashcards } from "../cards/parser";
 import {
 	guardSourceForEdit,
@@ -323,11 +321,11 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 			) {
 				return { kind: "validation-failed", error: { type: "card-not-found" } };
 			}
-			const nextContent = editSourceCardBatch(
+			const nextContent = editCards(
 				request.expectedContent,
 				request.changes,
 				this.options.createIdentity,
-			);
+			).nextContent;
 			return await applySourceEditTransaction({
 				path: request.path,
 				expectedContent: request.expectedContent,
@@ -429,11 +427,12 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 					continue;
 				}
 				if (!existingDeck) {
-					const registration = registerMissingCardIdentities(
+					const registration = maintainIdentities(
 						sourceContent,
+						{ kind: "register-missing" },
 						this.options.createIdentity,
 					);
-					if (registration.registeredIdentities.length > 0) {
+					if (registration.identities.length > 0) {
 						const writeResult = await this.options.sources.replaceIfUnchanged(
 							document.path,
 							document.content,
@@ -494,8 +493,9 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 					continue;
 				}
 
-				const registration = registerMissingCardIdentities(
+				const registration = maintainIdentities(
 					source.sourceContent,
+					{ kind: "register-missing" },
 					this.options.createIdentity,
 				);
 				const writeResult = await this.options.sources.replaceIfUnchanged(
@@ -804,35 +804,39 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 			}
 
 			const document = guard.document;
-			const newIdentity = change.kind === "add" ? this.options.createIdentity() : undefined;
-			let editResult: DeckSourceEditResult;
-			try {
-				if (change.kind === "add") {
-					editResult = editDeckSource(document.content, deck, {
-						type: "add",
-						cardId: newIdentity,
+			const operations: CardSourceOperation[] = [];
+			if (change.kind === "add") {
+				operations.push({
+					kind: "add",
+					content: {
 						...change.content,
-					});
-				} else {
-					const targetCardIdentity =
-						(
-							deck.cards.find((c) => c.id === change.cardIdentity) ??
-							(Number.isInteger(Number(change.cardIdentity))
-								? deck.cards[Number(change.cardIdentity)]
-								: undefined)
-						)?.id ?? change.cardIdentity;
-					editResult = editDeckSource(
-						document.content,
-						deck,
-						change.kind === "edit"
-							? {
-									type: "update",
-									cardId: targetCardIdentity,
+						explanation: singleCardExplanation(change.content.explanation),
+					},
+				});
+			} else {
+				const targetCardIdentity =
+					(
+						deck.cards.find((c) => c.id === change.cardIdentity) ??
+						(Number.isInteger(Number(change.cardIdentity))
+							? deck.cards[Number(change.cardIdentity)]
+							: undefined)
+					)?.id ?? change.cardIdentity;
+				operations.push(
+					change.kind === "edit"
+						? {
+								kind: "edit",
+								identity: targetCardIdentity,
+								content: {
 									...change.content,
-								}
-							: { type: "delete", cardId: targetCardIdentity },
-					);
-				}
+									explanation: singleCardExplanation(change.content.explanation),
+								},
+							}
+						: { kind: "delete", identity: targetCardIdentity },
+				);
+			}
+			let editResult: ReturnType<typeof editCards>;
+			try {
+				editResult = editCards(document.content, operations, this.options.createIdentity);
 			} catch (error) {
 				if (error instanceof DeckSourceEditException) {
 					return { kind: "validation-failed", error: error.editError };
@@ -850,6 +854,7 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 				return { kind: "source-changing", deckId: deck.id };
 			}
 			if (transaction.kind === "failed") return transaction;
+			const newIdentity = editResult.createdIdentities[0];
 			return newIdentity
 				? { kind: "applied", cardIdentity: newIdentity }
 				: { kind: "applied" };
@@ -898,8 +903,9 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 				const deck = currentState.decks.get(source.deckId);
 				if (!document || !deck) continue;
 
-				const registration = registerMissingCardIdentities(
+				const registration = maintainIdentities(
 					document.content,
+					{ kind: "register-missing" },
 					this.options.createIdentity,
 				);
 				const migratedCards = parseFlashcards(registration.nextContent, document.path);
@@ -1027,7 +1033,11 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 				plans.push({
 					path,
 					expectedContent: document.content,
-					nextContent: rewriteCardIdentityMarkers(document.content, desiredIdentities),
+					nextContent: maintainIdentities(
+						document.content,
+						{ kind: "replace-markers", identities: desiredIdentities },
+						this.options.createIdentity,
+					).nextContent,
 					identityMap: Object.fromEntries(
 						resolution.successors.map((successor) => [
 							successor.cardIdentity,
@@ -1465,4 +1475,12 @@ function toSourcePreparation(guard: SourceEditGuardOutcome): CardSourcePreparati
 		case "failed":
 			return { kind: "failed", retryable: true, message: guard.message };
 	}
+}
+
+/**
+ * Single-card edits treat an empty explanation as absent. Dictionary favorites
+ * pass an explicit empty string instead, preserving their `::` section.
+ */
+function singleCardExplanation(explanation: string | undefined): string | undefined {
+	return explanation?.trim() ? explanation : undefined;
 }

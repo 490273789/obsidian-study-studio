@@ -43,16 +43,30 @@ back
 
 describe("formatCardBlock", () => {
 	it("trims card fields and includes explanation only when present", () => {
-		expect(formatCardBlock(" front ", " back ", " explanation ")).toBe(
+		expect(formatCardBlock(" front ", " back ", "\n", " explanation ")).toBe(
 			"front\n??\nback\n::\nexplanation",
 		);
-		expect(formatCardBlock(" front ", " back ", "   ")).toBe("front\n??\nback");
-		expect(formatCardBlock(" front ", " back ")).toBe("front\n??\nback");
+		expect(formatCardBlock(" front ", " back ", "\n", "   ")).toBe("front\n??\nback");
+		expect(formatCardBlock(" front ", " back ", "\n")).toBe("front\n??\nback");
+	});
+
+	it("formats every line ending from the required newline argument", () => {
+		expect(formatCardBlock("front", "back", "\r\n", "note")).toBe(
+			"front\r\n??\r\nback\r\n::\r\nnote",
+		);
+		expect(formatCardBlock("front\nline", "back", "\r\n")).toBe("front\r\nline\r\n??\r\nback");
 	});
 
 	it("places the card identity marker before the front content", () => {
-		expect(formatCardBlock("front", "back", undefined, "550e8400-e29b-41d4-a716-446655440000"))
-			.toBe(`<!-- wsr-card-id: 550e8400-e29b-41d4-a716-446655440000 -->
+		expect(
+			formatCardBlock(
+				"front",
+				"back",
+				"\n",
+				undefined,
+				"550e8400-e29b-41d4-a716-446655440000",
+			),
+		).toBe(`<!-- wsr-card-id: 550e8400-e29b-41d4-a716-446655440000 -->
 front
 ??
 back`);

@@ -13,7 +13,7 @@ Read this guide before changing Markdown card syntax, parsing, indexing, card so
 
 ## Card format and indexing
 
-`src/features/flashcards/domain/cards/parser.ts` and `src/features/flashcards/domain/cards/cardFormat.ts` define the format:
+`src/features/flashcards/domain/cards/parser.ts` and `src/features/flashcards/domain/cards/cardFormat.ts` define the format; `src/features/flashcards/domain/cards/cardSourceText.ts` is the byte-level editing authority:
 
 - The first hashtag in a Markdown file identifies its deck tag; matching supports Chinese characters and is case-insensitive against configured tags.
 - `??` on its own line separates front and back.
@@ -29,7 +29,10 @@ Synchronization reports a truthful `DeckContentChange` (`changedDeckIds`, `remov
 ## Stable identity and source edits
 
 - A vault-wide UUID carries card identity and learning state across content edits, reorder, and moves between decks.
-- Never copy marker syntax into feature code. Use `src/features/flashcards/domain/cards/cardFormat.ts` and `src/features/flashcards/domain/cards/deckSourceEditor.ts`.
+- Never copy marker syntax into feature code. Use `src/features/flashcards/domain/cards/cardFormat.ts` and `src/features/flashcards/domain/cards/cardSourceText.ts`.
+- `cardSourceText.ts` owns every card-source write: card add/edit/delete, identity registration during synchronization/migration, and marker repair. It is a pure text transform: no I/O, no state, identity generation injected by the caller. Its contract is byte fidelity — everything outside the edited block (line endings, tag prefix, blank lines, prose after the last card, BOM) is preserved; the edited block is canonical and uses that block's own line ending. `formatCardBlock` requires an explicit newline so no caller can silently normalize a source.
+- Delete removes the block plus one adjacent blank separator (following for the first block, preceding otherwise); additions insert after the last `;;` and before trailing prose. A semantically identical edit returns the original string, so saving an unchanged card does not rewrite the file or trigger Sync.
+- Malformed targets fail atomically with the existing `DeckSourceEditException` vocabulary; untouched invalid regions and a trailing unterminated region are preserved.
 - Route plugin-initiated card add/edit/delete actions through `CardIdentityContinuity.change()` and pre-check editability via `CardIdentityContinuity.prepareEdit()`; card syntax and reserved-marker validations belong authoritatively to the domain layer. Do not mutate Markdown and then patch persisted cards separately.
 - `domain/identity/sourceEditGuard.ts` owns the single source-editability decision. Both `sourceEdits.prepare` (cross-feature whole-source edits) and `prepareEdit` (card-identity edits) cross it, so journal, managed tag, legacy, last-known-good, duplicate identity and fresh-source rules cannot drift. A pending identity journal blocks both prepares; `prepareEdit` reads the fresh source and only resolves cards that still exist there.
 - `domain/identity/sourceEditTransaction.ts` owns the single write transaction: fresh-content `replaceIfUnchanged`, then one synchronization with the edited path authoritative. The path must be passed because the configured-tag list can miss a source whose metadata is stale; the sync still scans every configured source. Both `sourceEdits.change` and `change()` recover a pending journal first and then commit through this transaction.
@@ -45,7 +48,7 @@ Treat these files as compatibility boundaries:
 - `src/core/storage/dataStore.ts`
 - `src/features/flashcards/domain/cards/parser.ts`
 - `src/features/flashcards/domain/cards/cardFormat.ts`
-- `src/features/flashcards/domain/cards/deckSourceEditor.ts`
+- `src/features/flashcards/domain/cards/cardSourceText.ts`
 - `src/features/flashcards/domain/identity/cardIdentityContinuity.ts`
 - `src/features/flashcards/obsidian/continuityAdapters.ts`
 

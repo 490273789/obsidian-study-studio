@@ -3,6 +3,11 @@ export const EXPLANATION_SEPARATOR = "::";
 export const CARD_END_SEPARATOR = ";;";
 export const FIRST_TAG_LINE_PATTERN = /(?:^|\n)\s*#[\w\u4e00-\u9fa5]+\s*\n?/;
 
+/** The physical line ending a card source uses; source edits never normalize it. */
+export type CardSourceNewline = "\n" | "\r\n";
+
+const TAG_LINE_PATTERN = /^\s*#[\w\u4e00-\u9fa5]+\s*$/;
+
 const CARD_IDENTITY_PATTERN =
 	"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 const CARD_IDENTITY_MARKER_PATTERN = new RegExp(
@@ -55,9 +60,74 @@ export function formatCardIdentityMarker(cardIdentity: string): string {
 	return `<!-- wsr-card-id: ${cardIdentity.toLowerCase()} -->`;
 }
 
+/** A source tag line (`#单词`) is the document prefix of a card file, not card content. */
+export function isTagLine(line: string): boolean {
+	return TAG_LINE_PATTERN.test(line);
+}
+
+/** One parsed card block: the content and identity a source scanner and a reader both need. */
+export interface ParsedCardBlock {
+	readonly front: string;
+	readonly back: string;
+	readonly explanation: string | undefined;
+	readonly identity: string | null;
+}
+
+/**
+ * Parse one terminated card block (the lines before its `;;` terminator).
+ * The single semantic authority shared by file reads and source edits.
+ */
+export function parseCardBlock(blockLines: readonly string[]): ParsedCardBlock | null {
+	const frontBackIndex = blockLines.findIndex((line) => isMarkerLine(line, FRONT_BACK_SEPARATOR));
+	if (frontBackIndex === -1) return null;
+
+	const explanationIndex = blockLines.findIndex(
+		(line, index) => index > frontBackIndex && isMarkerLine(line, EXPLANATION_SEPARATOR),
+	);
+
+	let identity: string | null = null;
+	const contentFrontLines: string[] = [];
+	for (let i = 0; i < frontBackIndex; i++) {
+		const line = blockLines[i]!;
+		const marker = extractCardIdentityMarker(line);
+		if (marker !== null) {
+			if (identity === null) identity = marker;
+		} else {
+			contentFrontLines.push(line);
+		}
+	}
+	const front = contentFrontLines.join("\n").trim();
+	const backLines =
+		explanationIndex === -1
+			? blockLines.slice(frontBackIndex + 1)
+			: blockLines.slice(frontBackIndex + 1, explanationIndex);
+	const back = backLines.join("\n").trim();
+	const explanation =
+		explanationIndex === -1
+			? ""
+			: blockLines
+					.slice(explanationIndex + 1)
+					.join("\n")
+					.trim();
+
+	if (!front || !back) return null;
+
+	return {
+		identity,
+		front,
+		back,
+		explanation: explanation || undefined,
+	};
+}
+
+/**
+ * Format one card block without its terminator. `newline` is required so no
+ * caller can silently normalize a source that uses a different line ending.
+ */
 export function formatCardBlock(
 	front: string,
 	back: string,
+	newline: CardSourceNewline,
 	explanation?: string,
 	cardIdentity?: string,
 ): string {
@@ -71,5 +141,5 @@ export function formatCardBlock(
 		parts.push(EXPLANATION_SEPARATOR, trimmedExplanation);
 	}
 
-	return parts.join("\n");
+	return parts.join("\n").replaceAll("\r\n", "\n").replaceAll("\n", newline);
 }

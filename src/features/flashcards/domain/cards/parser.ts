@@ -2,13 +2,11 @@ import type { TFile, Vault } from "obsidian";
 import { createEmptyCard } from "ts-fsrs";
 import { FlashCard, Deck } from "../../../../core/shared/types";
 import {
-	EXPLANATION_SEPARATOR,
 	FIRST_TAG_LINE_PATTERN,
-	FRONT_BACK_SEPARATOR,
 	CARD_END_SEPARATOR,
-	extractCardIdentityMarker,
 	hasFlashcardSyntax,
 	isMarkerLine,
+	parseCardBlock,
 } from "./cardFormat";
 
 /**
@@ -56,7 +54,7 @@ export function parseFlashcards(
 		currentBlock = [];
 		if (!parsed) continue;
 
-		const cardId = parsed.cardIdentity ?? generateCardId(filePath, cards.length);
+		const cardId = parsed.identity ?? generateCardId(filePath, cards.length);
 
 		// Preserve existing FSRS state if card exists
 		const existingCard = existingCards?.get(cardId);
@@ -73,53 +71,6 @@ export function parseFlashcards(
 	}
 
 	return cards;
-}
-
-function parseCardBlock(
-	blockLines: string[],
-): (Pick<FlashCard, "front" | "back" | "explanation"> & { cardIdentity: string | null }) | null {
-	const frontBackIndex = blockLines.findIndex((line) => isMarkerLine(line, FRONT_BACK_SEPARATOR));
-	if (frontBackIndex === -1) return null;
-
-	const explanationIndex = blockLines.findIndex(
-		(line, index) => index > frontBackIndex && isMarkerLine(line, EXPLANATION_SEPARATOR),
-	);
-
-	let cardIdentity: string | null = null;
-	const contentFrontLines: string[] = [];
-	for (let i = 0; i < frontBackIndex; i++) {
-		const line = blockLines[i]!;
-		const marker = extractCardIdentityMarker(line);
-		if (marker !== null) {
-			if (cardIdentity === null) {
-				cardIdentity = marker;
-			}
-		} else {
-			contentFrontLines.push(line);
-		}
-	}
-	const front = contentFrontLines.join("\n").trim();
-	const backLines =
-		explanationIndex === -1
-			? blockLines.slice(frontBackIndex + 1)
-			: blockLines.slice(frontBackIndex + 1, explanationIndex);
-	const back = backLines.join("\n").trim();
-	const explanation =
-		explanationIndex === -1
-			? ""
-			: blockLines
-					.slice(explanationIndex + 1)
-					.join("\n")
-					.trim();
-
-	if (!front || !back) return null;
-
-	return {
-		cardIdentity,
-		front,
-		back,
-		explanation: explanation || undefined,
-	};
 }
 
 /**
