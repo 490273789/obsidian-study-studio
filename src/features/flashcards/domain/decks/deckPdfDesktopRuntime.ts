@@ -1,9 +1,9 @@
-export interface ElectronSaveDialogResult {
+interface ElectronSaveDialogResult {
 	canceled: boolean;
 	filePath?: string;
 }
 
-export interface ElectronDialog {
+interface ElectronDialog {
 	showSaveDialog(
 		browserWindow: ElectronBrowserWindow,
 		options: {
@@ -15,7 +15,7 @@ export interface ElectronDialog {
 	): Promise<ElectronSaveDialogResult>;
 }
 
-export interface ElectronWebContents {
+interface ElectronWebContents {
 	executeJavaScript(code: string): Promise<unknown>;
 	setBackgroundThrottling(allowed: boolean): void;
 	printToPDF(options: {
@@ -34,7 +34,7 @@ export interface ElectronBrowserWindow {
 	destroy(): void;
 }
 
-export interface ElectronBrowserWindowConstructor {
+interface ElectronBrowserWindowConstructor {
 	new (options: {
 		show: boolean;
 		width: number;
@@ -46,7 +46,7 @@ export interface ElectronBrowserWindowConstructor {
 	}): ElectronBrowserWindow;
 }
 
-export interface ObsidianDesktopWindow extends Window {
+interface ObsidianDesktopWindow extends Window {
 	electron?: {
 		remote?: {
 			BrowserWindow?: ElectronBrowserWindowConstructor;
@@ -68,26 +68,36 @@ export interface DesktopPdfRuntime {
 	writeFile: (filePath: string, data: string | Uint8Array) => Promise<void>;
 }
 
-export function isDesktopPdfExportSupported(document: Document = activeDocument): boolean {
+interface DesktopPdfGlobals {
+	readonly browserWindow: ElectronBrowserWindow;
+	readonly dialog: ElectronDialog;
+	readonly BrowserWindow: ElectronBrowserWindowConstructor;
+	readonly requireModule: (id: string) => unknown;
+}
+
+/** Resolves the Electron handles the desktop PDF export needs, or null outside the desktop app. */
+function resolveDesktopPdfGlobals(document: Document): DesktopPdfGlobals | null {
 	const desktopWindow = document.defaultView as ObsidianDesktopWindow | null;
 	const remote = desktopWindow?.electron?.remote;
 	const browserWindow = desktopWindow?.electronWindow ?? remote?.getCurrentWindow?.();
 	const dialog = remote?.dialog;
 	const BrowserWindow = remote?.BrowserWindow;
 	const requireModule = desktopWindow?.require;
-	return Boolean(browserWindow && dialog && BrowserWindow && requireModule);
+	return browserWindow && dialog && BrowserWindow && requireModule
+		? { browserWindow, dialog, BrowserWindow, requireModule }
+		: null;
+}
+
+export function isDesktopPdfExportSupported(document: Document = activeDocument): boolean {
+	return resolveDesktopPdfGlobals(document) !== null;
 }
 
 export function getDesktopPdfRuntime(document: Document = activeDocument): DesktopPdfRuntime {
-	const desktopWindow = document.defaultView as ObsidianDesktopWindow | null;
-	const remote = desktopWindow?.electron?.remote;
-	const browserWindow = desktopWindow?.electronWindow ?? remote?.getCurrentWindow?.();
-	const dialog = remote?.dialog;
-	const BrowserWindow = remote?.BrowserWindow;
-	const requireModule = desktopWindow?.require;
-	if (!browserWindow || !dialog || !BrowserWindow || !requireModule) {
+	const globals = resolveDesktopPdfGlobals(document);
+	if (!globals) {
 		throw new Error("The Obsidian desktop PDF runtime is unavailable");
 	}
+	const { browserWindow, dialog, BrowserWindow, requireModule } = globals;
 
 	const fileSystem = requireModule("node:fs/promises") as {
 		mkdtemp: (prefix: string) => Promise<string>;

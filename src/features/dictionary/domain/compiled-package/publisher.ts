@@ -5,6 +5,7 @@
 /// <reference types="node" />
 import type { CompiledDictionarySettings } from "../types";
 import { MAX_EUDIC_DICTIONARY_BYTES } from "../eudic-image";
+import { pathExists } from "../fs-errors";
 import { DictionaryCompiler } from "./compiler";
 import {
 	COMPILED_DICTIONARY_DIRECTORY,
@@ -31,13 +32,13 @@ import { CompiledPackageError } from "./types";
 const MAX_DICTIONARY_CSS_BYTES = 8 * 1_048_576;
 const MAX_DICTIONARY_JAVASCRIPT_BYTES = 8 * 1_048_576;
 
-export type InternalCompiledPackageCompiler = Pick<DictionaryCompiler, "close" | "compile">;
+type InternalCompiledPackageCompiler = Pick<DictionaryCompiler, "close" | "compile">;
 
 export function createCompiledPackagePublisher(): CompiledPackagePublisher {
 	return new CompiledPackagePublisherModule();
 }
 
-export class CompiledPackagePublisherModule implements CompiledPackagePublisher {
+class CompiledPackagePublisherModule implements CompiledPackagePublisher {
 	constructor(
 		private readonly compiler: InternalCompiledPackageCompiler = new DictionaryCompiler(),
 	) {}
@@ -59,7 +60,10 @@ export class CompiledPackagePublisherModule implements CompiledPackagePublisher 
 		const published = `${request.dictionaryDirectory}/${COMPILED_DICTIONARY_DIRECTORY}`;
 		const { lstat, mkdir, readFile, rename, rm, statfs, writeFile } =
 			await import("node:fs/promises");
-		if ((await pathExists(lstat, staging)) || (await pathExists(lstat, published))) {
+		if (
+			(await pathExists(lstat, staging, storageError)) ||
+			(await pathExists(lstat, published, storageError))
+		) {
 			throw new CompiledPackageError("collision");
 		}
 		const filesystem = await statfs(request.dictionaryDirectory).catch((error: unknown) => {
@@ -250,19 +254,6 @@ async function verifyPublishedCandidate(
 	return metadata;
 }
 
-async function pathExists(
-	lstat: (path: string) => Promise<unknown>,
-	path: string,
-): Promise<boolean> {
-	try {
-		await lstat(path);
-		return true;
-	} catch (error) {
-		if (hasErrorCode(error, "ENOENT")) return false;
-		throw storageError(error);
-	}
-}
-
 async function cleanupStaging(
 	directory: string,
 	rm: (path: string, options: { force: boolean; recursive: boolean }) => Promise<void>,
@@ -272,15 +263,6 @@ async function cleanupStaging(
 	} catch {
 		throw new CompiledPackageError("recovery-incomplete");
 	}
-}
-
-function hasErrorCode(error: unknown, code: string): boolean {
-	return (
-		typeof error === "object" &&
-		error !== null &&
-		"code" in error &&
-		(error as { code?: unknown }).code === code
-	);
 }
 
 function storageError(error: unknown): CompiledPackageError {

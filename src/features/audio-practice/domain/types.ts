@@ -1,4 +1,5 @@
 import type { AudioFailure } from "./failures";
+import type { TimedTextWord } from "./transcriptionTypes";
 export type MaterialOperationKind = "add" | "edit" | "select" | "remove";
 export interface MaterialOperationSnapshot {
 	readonly id: number;
@@ -26,12 +27,7 @@ export interface AudioMaterial {
 	/** Generated word timings keyed by the parsed SRT cue ID. Imported subtitles have none. */
 	readonly wordTimings?: Readonly<Record<string, readonly TimedTextWord[]>>;
 }
-export interface TimedTextWord {
-	readonly startOffset: number;
-	readonly endOffset: number;
-	readonly start: number;
-	readonly end: number;
-}
+export type { TimedTextWord } from "./transcriptionTypes";
 export interface AudioPracticeProgress {
 	readonly time: number;
 	readonly cueId: string | null;

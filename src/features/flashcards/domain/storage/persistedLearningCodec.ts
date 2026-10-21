@@ -1,3 +1,5 @@
+import { isRecord } from "../../../../core/shared/isRecord";
+import { finiteNumberOrNull as finiteNumber } from "../../../../core/shared/utils";
 import type { State } from "ts-fsrs";
 import type {
 	LearningStateDocument,
@@ -23,7 +25,7 @@ export const PERSISTED_LEARNING_CARDS_FORMAT = 1;
  * be present, so a null placeholder is written when the review date is unset.
  * `sourceFile` only appears for legacy entries that still carry it.
  */
-export type CompactCardTuple = [
+type CompactCardTuple = [
 	due: string,
 	stability: number,
 	difficulty: number,
@@ -38,7 +40,7 @@ export type CompactCardTuple = [
 ];
 
 /** Persisted representation of the learning document; in-memory shape is unchanged. */
-export interface PersistedLearningState extends Omit<LearningStateDocument, "cards"> {
+interface PersistedLearningState extends Omit<LearningStateDocument, "cards"> {
 	readonly cards: Record<string, CompactCardTuple>;
 	readonly cardsFormat: typeof PERSISTED_LEARNING_CARDS_FORMAT;
 }
@@ -200,14 +202,6 @@ function decodeObjectCard(value: unknown): PersistedCardLearningState | null {
 	return typeof value.sourceFile === "string"
 		? { fsrsCard, sourceFile: value.sourceFile }
 		: { fsrsCard };
-}
-
-function finiteNumber(value: unknown): number | null {
-	return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function emptyContinuity(): LearningStateDocument["continuity"] {

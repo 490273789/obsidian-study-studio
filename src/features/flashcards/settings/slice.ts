@@ -1,3 +1,4 @@
+import { stringArrayEquals } from "../../../core/shared/utils";
 import { normalizeLanguage } from "../../../core/i18n";
 import { DEFAULT_PRACTICE_MESSAGES, getDefaultPracticeMessages } from "../strings/index";
 import { settingsRecord, type SettingsSlice } from "../../../core/settings/slice";
@@ -145,14 +146,9 @@ function hasCustomPracticeMessages(settings: Partial<FlashcardStudySettings>): b
 
 	const defaultZh = DEFAULT_PRACTICE_MESSAGES.zh;
 	return (
-		!areStringArraysEqual(
+		!stringArrayEquals(
 			settings.practicePerfectMessages ?? defaultZh.perfect,
 			defaultZh.perfect,
-		) ||
-		!areStringArraysEqual(settings.practiceErrorMessages ?? defaultZh.error, defaultZh.error)
+		) || !stringArrayEquals(settings.practiceErrorMessages ?? defaultZh.error, defaultZh.error)
 	);
-}
-
-function areStringArraysEqual(left: string[], right: string[]): boolean {
-	return left.length === right.length && left.every((value, index) => value === right[index]);
 }

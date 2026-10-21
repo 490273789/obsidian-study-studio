@@ -1,16 +1,17 @@
+import { normalizeStringArray } from "../../../../core/shared/utils";
 import type {
 	SpellingFirstAttempt,
 	SpellingResult,
 	SpellingSession,
 } from "../../../../core/shared/types";
 
-export type SpellingAnswerFeedback =
+type SpellingAnswerFeedback =
 	| "retrieval-correct"
 	| "retrieval-incorrect"
 	| "correction-correct"
 	| "correction-incorrect";
 
-export type SpellingSessionStep =
+type SpellingSessionStep =
 	| {
 			type: "continue";
 			session: SpellingSession;
@@ -128,10 +129,7 @@ export function answerSpellingCard(params: {
 	};
 }
 
-export function buildSpellingResult(
-	session: SpellingSession,
-	now: number = Date.now(),
-): SpellingResult {
+function buildSpellingResult(session: SpellingSession, now: number = Date.now()): SpellingResult {
 	const firstEntries = Object.entries(session.firstAttempts);
 	const firstTryCorrectCount = firstEntries.filter(([, attempt]) => attempt.correct).length;
 	const incorrectCardIds = firstEntries
@@ -169,12 +167,6 @@ function normalizeSpellingSession(session: SpellingSession): SpellingSession {
 		completedCardIds: normalizeStringArray(session.completedCardIds),
 		unavailableCardIds: normalizeStringArray(session.unavailableCardIds),
 	};
-}
-
-function normalizeStringArray(value: unknown): string[] {
-	return Array.isArray(value)
-		? value.filter((item): item is string => typeof item === "string")
-		: [];
 }
 
 function normalizeFirstAttempts(value: unknown): Record<string, SpellingFirstAttempt> {

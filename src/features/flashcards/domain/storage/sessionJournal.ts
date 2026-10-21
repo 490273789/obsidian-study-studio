@@ -1,3 +1,5 @@
+import { isRecord } from "../../../../core/shared/isRecord";
+import { finiteNumberOrNull as finiteNumber } from "../../../../core/shared/utils";
 import type { SerializedFSRSCard } from "./persistenceTypes";
 
 /**
@@ -5,14 +7,14 @@ import type { SerializedFSRSCard } from "./persistenceTypes";
  * stores the same serialized FSRS shape as `data.json` so a merge is a direct
  * record replacement.
  */
-export interface SessionJournalCardUpdate {
+interface SessionJournalCardUpdate {
 	readonly deckId: string;
 	readonly cardId: string;
 	readonly fsrsCard: SerializedFSRSCard;
 }
 
 /** One counted spelling attempt; replay must count it exactly once. */
-export interface SessionJournalSpellingAttempt {
+interface SessionJournalSpellingAttempt {
 	readonly cardId: string;
 	readonly correct: boolean;
 	readonly attemptedAt: number;
@@ -150,12 +152,4 @@ function isSerializedFSRSCard(value: unknown): value is SerializedFSRSCard {
 
 function positiveInteger(value: unknown): number | null {
 	return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
-}
-
-function finiteNumber(value: unknown): number | null {
-	return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }

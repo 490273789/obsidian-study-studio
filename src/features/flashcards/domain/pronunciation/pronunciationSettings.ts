@@ -11,7 +11,7 @@ import type {
  * aggregate: reading the aggregate from here would make the normalizer depend on
  * the document it feeds.
  */
-export const DEFAULT_PRONUNCIATION_SETTINGS: PronunciationSettings = {
+const DEFAULT_PRONUNCIATION_SETTINGS: PronunciationSettings = {
 	spellingAutoPlay: false,
 	accent: "system",
 	rate: "normal",
@@ -25,7 +25,7 @@ export const DEFAULT_PRONUNCIATION_SETTINGS: PronunciationSettings = {
 const PRONUNCIATION_ACCENTS = new Set<PronunciationAccent>(["system", "en-US", "en-GB"]);
 const PRONUNCIATION_RATES = new Set<PronunciationRate>(["normal", "slow"]);
 const ONLINE_PROVIDERS = new Set<OnlinePronunciationProvider>(["none", "azure", "openai"]);
-const AZURE_CHINA_REGIONS = new Set(["chinaeast2", "chinanorth2", "chinanorth3"]);
+export const AZURE_CHINA_REGIONS = new Set(["chinaeast2", "chinanorth2", "chinanorth3"]);
 
 /** Normalizes persisted pronunciation preferences; the argument is untrusted. */
 export function normalizePronunciationSettings(value: unknown): PronunciationSettings {

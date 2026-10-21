@@ -1,3 +1,4 @@
+import { normalizeStringArray } from "../../../../core/shared/utils";
 import type { Card } from "ts-fsrs";
 import type {
 	CardDirection,
@@ -18,15 +19,15 @@ export interface StudyCardScheduler {
 	rateStudyCard(card: Card, rating: StudyRating): StudyCardSchedule;
 }
 
-export interface StudyCardUpdateIntent {
+interface StudyCardUpdateIntent {
 	deckId: string;
 	cardId: string;
 	fsrsCard: Card;
 }
 
-export type StudySessionFinishReason = "completed" | "abandoned";
+type StudySessionFinishReason = "completed" | "abandoned";
 
-export interface StudySessionFinishIntent {
+interface StudySessionFinishIntent {
 	reason: StudySessionFinishReason;
 	deckId: string;
 	mode: "study";
@@ -35,7 +36,7 @@ export interface StudySessionFinishIntent {
 	incrementStudyCount: boolean;
 }
 
-export type StudySessionAnswerStep =
+type StudySessionAnswerStep =
 	| {
 			type: "continue";
 			session: StudySession;
@@ -48,7 +49,7 @@ export type StudySessionAnswerStep =
 			finishIntent: StudySessionFinishIntent;
 	  };
 
-export interface StudySessionUndoStep {
+interface StudySessionUndoStep {
 	session: StudySession;
 	cardUpdate: StudyCardUpdateIntent;
 }
@@ -223,10 +224,4 @@ function normalizeStudySession(session: StudySession): StudySession {
 		attemptCount: Math.max(0, session.attemptCount ?? session.answerEvents.length),
 		unavailableCardIds: normalizeStringArray(session.unavailableCardIds),
 	};
-}
-
-function normalizeStringArray(value: unknown): string[] {
-	return Array.isArray(value)
-		? value.filter((item): item is string => typeof item === "string")
-		: [];
 }

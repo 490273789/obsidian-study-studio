@@ -1,29 +1,40 @@
-import React, { memo, useId, useState } from "react";
+import { memo, useId, useState } from "react";
 import { Target, X } from "lucide-react";
 import { cls } from "../../../../../core/shared/classNames";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { ModalSurface } from "../../../../../core/ui/primitives/Modal";
 import type { ChallengeMode } from "../../../domain/sessions/challengeSessionEngine";
+import type { ChallengeReadiness } from "../../../domain/decks/deckHome";
 import { useFlashcardI18n } from "../../../strings/context";
 import styles from "./ChallengeSetup.module.scss";
 
-const MODES: readonly ChallengeMode[] = ["normal", "reversed", "spelling", "random"];
+const MODE_COPY: Record<
+	ChallengeMode,
+	{
+		label:
+			| "challenge.modeNormal"
+			| "challenge.modeReversed"
+			| "challenge.modeSpelling"
+			| "challenge.modeRandom";
+		note:
+			| "challenge.modeNormalNote"
+			| "challenge.modeReversedNote"
+			| "challenge.modeSpellingNote"
+			| "challenge.modeRandomNote";
+	}
+> = {
+	normal: { label: "challenge.modeNormal", note: "challenge.modeNormalNote" },
+	reversed: { label: "challenge.modeReversed", note: "challenge.modeReversedNote" },
+	spelling: { label: "challenge.modeSpelling", note: "challenge.modeSpellingNote" },
+	random: { label: "challenge.modeRandom", note: "challenge.modeRandomNote" },
+};
 
-export interface ChallengeReadiness {
-	readonly eligibleCount: number;
-	readonly lastMode: ChallengeMode;
-	readonly round: {
-		readonly id: string;
-		readonly mode: ChallengeMode;
-		readonly completedLevelCount: number;
-		readonly totalLevels: number;
-		readonly completedCardCount: number;
-		readonly totalCards: number;
-	} | null;
-}
+const MODES = Object.keys(MODE_COPY) as readonly ChallengeMode[];
+
+type ChallengeSetupReadiness = Omit<ChallengeReadiness, "savedRoundId">;
 
 interface ChallengeSetupModalProps {
-	readiness: ChallengeReadiness;
+	readiness: ChallengeSetupReadiness;
 	isStarting: boolean;
 	onStart: (mode: ChallengeMode, intent: "new" | "continue") => void;
 	onClose: () => void;
@@ -105,8 +116,8 @@ export const ChallengeSetupModal = memo(function ChallengeSetupModal({
 														: {})}
 												/>
 												<span>
-													<strong>{t(MODE_LABELS[candidate])}</strong>
-													<small>{t(MODE_NOTES[candidate])}</small>
+													<strong>{t(MODE_COPY[candidate].label)}</strong>
+													<small>{t(MODE_COPY[candidate].note)}</small>
 												</span>
 											</label>
 										))}
@@ -169,29 +180,3 @@ export const ChallengeSetupModal = memo(function ChallengeSetupModal({
 		</ModalSurface>
 	);
 });
-
-const MODE_LABELS: Record<
-	ChallengeMode,
-	| "challenge.modeNormal"
-	| "challenge.modeReversed"
-	| "challenge.modeSpelling"
-	| "challenge.modeRandom"
-> = {
-	normal: "challenge.modeNormal",
-	reversed: "challenge.modeReversed",
-	spelling: "challenge.modeSpelling",
-	random: "challenge.modeRandom",
-};
-
-const MODE_NOTES: Record<
-	ChallengeMode,
-	| "challenge.modeNormalNote"
-	| "challenge.modeReversedNote"
-	| "challenge.modeSpellingNote"
-	| "challenge.modeRandomNote"
-> = {
-	normal: "challenge.modeNormalNote",
-	reversed: "challenge.modeReversedNote",
-	spelling: "challenge.modeSpellingNote",
-	random: "challenge.modeRandomNote",
-};

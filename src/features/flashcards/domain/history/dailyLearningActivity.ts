@@ -1,7 +1,7 @@
 import { formatLocalDateKey } from "./studyHistory";
 
-export type LearningActivityMode = "study" | "practice" | "spelling" | "challenge";
-export type TimedLearningActivityMode = LearningActivityMode | "word-list";
+type LearningActivityMode = "study" | "practice" | "spelling" | "challenge";
+type TimedLearningActivityMode = LearningActivityMode | "word-list";
 
 export interface DailyLearningActivityDay {
 	readonly date: string;
@@ -63,13 +63,7 @@ const SESSION_MODES: readonly LearningActivityMode[] = [
 	"spelling",
 	"challenge",
 ];
-const TIMED_MODES: readonly TimedLearningActivityMode[] = [
-	"study",
-	"practice",
-	"spelling",
-	"challenge",
-	"word-list",
-];
+const TIMED_MODES: readonly TimedLearningActivityMode[] = [...SESSION_MODES, "word-list"];
 const HEATMAP_WEEK_COUNT = 53;
 
 function createEmptyDailyLearningActivity(date: string): DailyLearningActivityDay {

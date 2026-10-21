@@ -1,7 +1,8 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
-import { ChallengeSetupModal, type ChallengeReadiness } from "../Challenge/ChallengeSetupModal";
+import type { ChallengeReadiness } from "../../../domain/decks/deckHome";
+import { ChallengeSetupModal } from "../Challenge/ChallengeSetupModal";
 
 const hooks = vi.hoisted(() => ({ mode: undefined as string | undefined }));
 vi.mock("react", async (original) => ({
@@ -13,7 +14,7 @@ vi.mock("../../../strings/context", () => ({
 	useFlashcardI18n: () => ({ t: (key: string) => key }),
 }));
 
-const readiness: ChallengeReadiness = {
+const readiness: Omit<ChallengeReadiness, "savedRoundId"> = {
 	eligibleCount: 20,
 	lastMode: "normal",
 	round: {

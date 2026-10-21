@@ -10,3 +10,25 @@ export function shuffleArray<T>(arr: readonly T[]): T[] {
 	}
 	return result;
 }
+
+/** Keeps only string entries from an untrusted array-shaped value. */
+export function normalizeStringArray(value: unknown): string[] {
+	return Array.isArray(value)
+		? value.filter((item): item is string => typeof item === "string")
+		: [];
+}
+
+/** Positional equality for string arrays; order matters. */
+export function stringArrayEquals(left: readonly string[], right: readonly string[]): boolean {
+	return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+/** Readable message for an unknown thrown value. */
+export function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+/** Narrows an untrusted JSON number, rejecting non-finite values. */
+export function finiteNumberOrNull(value: unknown): number | null {
+	return typeof value === "number" && Number.isFinite(value) ? value : null;
+}

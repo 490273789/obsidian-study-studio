@@ -1,3 +1,4 @@
+import { errorMessage, stringArrayEquals } from "../../../../core/shared/utils";
 import {
 	countEligibleChallengeCards,
 	type ChallengeMode,
@@ -36,7 +37,7 @@ import {
 import type { DeckPdfExportProgress, DeckPdfExportResult } from "./deckPdfExporter";
 import { type LearningFootprintSnapshot } from "../history/dailyLearningActivity";
 
-export interface DeckHomeTotals {
+interface DeckHomeTotals {
 	readonly deckCount: number;
 	readonly totalCards: number;
 	readonly newCards: number;
@@ -44,7 +45,7 @@ export interface DeckHomeTotals {
 	readonly studyCount: number;
 }
 
-export interface DeckSpellingSnapshot {
+interface DeckSpellingSnapshot {
 	readonly enabled: boolean;
 	readonly ready: boolean;
 	readonly valid: boolean;
@@ -91,11 +92,11 @@ export interface DeckHomeSettingsDraft {
 	};
 }
 
-export type DeckHomeMigrationScope =
+type DeckHomeMigrationScope =
 	| { readonly kind: "all" }
 	| { readonly kind: "deck"; readonly deckId: string };
 
-export type DeckHomeMutationActivity =
+type DeckHomeMutationActivity =
 	| { readonly kind: "idle" }
 	| { readonly kind: "refreshing" }
 	| {
@@ -109,7 +110,7 @@ export type DeckHomeMutationActivity =
 	| { readonly kind: "migrating"; readonly scope: DeckHomeMigrationScope }
 	| { readonly kind: "saving-settings"; readonly deckId: string };
 
-export type DeckHomeExportActivity =
+type DeckHomeExportActivity =
 	| { readonly kind: "idle" }
 	| {
 			readonly kind: "exporting";
@@ -204,7 +205,7 @@ export type DeckHomeAction =
 			readonly endTimeMs: number;
 	  };
 
-export type DeckHomeRejectionReason =
+type DeckHomeRejectionReason =
 	| "busy"
 	| "deck-missing"
 	| "deck-empty"
@@ -534,7 +535,7 @@ class DefaultDeckHome implements DeckHome {
 				? { kind: "failed", message: outcome.message }
 				: { kind: "applied" };
 		} catch (error) {
-			const message = getErrorMessage(error);
+			const message = errorMessage(error);
 			this.options.report({
 				kind: "refresh-completed",
 				outcome: { kind: "failed", retryable: true, message },
@@ -590,7 +591,7 @@ class DefaultDeckHome implements DeckHome {
 				deckName: sources.length === 1 ? sources[0]?.deckName : undefined,
 			};
 		} catch (error) {
-			const message = getErrorMessage(error);
+			const message = errorMessage(error);
 			this.mutation = { kind: "idle" };
 			this.publish();
 			return { kind: "failed", message };
@@ -629,7 +630,7 @@ class DefaultDeckHome implements DeckHome {
 					? { kind: "applied" }
 					: { kind: "rejected", reason: "migration-unavailable" };
 		} catch (error) {
-			const message = getErrorMessage(error);
+			const message = errorMessage(error);
 			this.options.report({
 				kind: "migration-completed",
 				outcome: { kind: "failed", retryable: true, message },
@@ -752,7 +753,7 @@ class DefaultDeckHome implements DeckHome {
 			this.settingsDraft = null;
 			return { kind: "applied" };
 		} catch (error) {
-			const message = getErrorMessage(error);
+			const message = errorMessage(error);
 			this.options.report({ kind: "settings-save-failed", message });
 			return { kind: "failed", message };
 		} finally {
@@ -796,7 +797,7 @@ class DefaultDeckHome implements DeckHome {
 		const currentOrder = orderDecks(decks, this.options.repository.getSettings().deckOrder).map(
 			(deck) => deck.id,
 		);
-		if (areStringArraysEqual(nextOrder, currentOrder)) {
+		if (stringArrayEquals(nextOrder, currentOrder)) {
 			return { kind: "applied" };
 		}
 
@@ -807,7 +808,7 @@ class DefaultDeckHome implements DeckHome {
 			await this.options.saveDeckOrder(nextOrder);
 			return { kind: "applied" };
 		} catch (error) {
-			const message = getErrorMessage(error);
+			const message = errorMessage(error);
 			this.options.report({ kind: "settings-save-failed", message });
 			return { kind: "failed", message };
 		}
@@ -847,7 +848,7 @@ class DefaultDeckHome implements DeckHome {
 			this.options.report({ kind: "export-completed", deckId, result });
 			return result.kind === "cancelled" ? { kind: "cancelled" } : { kind: "applied" };
 		} catch (error) {
-			const message = getErrorMessage(error);
+			const message = errorMessage(error);
 			this.options.report({ kind: "export-failed", deckId, message });
 			return { kind: "failed", message };
 		} finally {
@@ -895,7 +896,7 @@ class DefaultDeckHome implements DeckHome {
 			);
 			return { kind: "applied" };
 		} catch (error) {
-			return { kind: "failed", message: getErrorMessage(error) };
+			return { kind: "failed", message: errorMessage(error) };
 		}
 	}
 
@@ -1216,10 +1217,6 @@ function cloneDeck(deck: Deck): Deck {
 	};
 }
 
-function getErrorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
-
 function orderDecks(decks: readonly Deck[], preferredOrder: readonly string[]): Deck[] {
 	const decksById = new Map(decks.map((deck) => [deck.id, deck]));
 	const orderedDecks: Deck[] = [];
@@ -1237,10 +1234,6 @@ function orderDecks(decks: readonly Deck[], preferredOrder: readonly string[]): 
 		seen.add(deck.id);
 	}
 	return orderedDecks;
-}
-
-function areStringArraysEqual(left: readonly string[], right: readonly string[]): boolean {
-	return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 /** Cache key for eligibility that keeps the row and settings-draft enabled flags apart. */

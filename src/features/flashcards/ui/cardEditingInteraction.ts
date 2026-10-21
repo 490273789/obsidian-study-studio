@@ -1,3 +1,4 @@
+import { errorMessage } from "../../../core/shared/utils";
 import type { Language } from "../../../core/shared/types";
 import type {
 	CardIdentityContinuity,
@@ -24,10 +25,10 @@ interface CardEditorSnapshotBase {
 	readonly error: string | null;
 }
 
-export type CardEditorSnapshot = CardEditorSnapshotBase &
+type CardEditorSnapshot = CardEditorSnapshotBase &
 	({ readonly mode: "create" } | { readonly mode: "edit"; readonly cardId: string });
 
-export interface CardEditingSnapshot {
+interface CardEditingSnapshot {
 	readonly editor: CardEditorSnapshot | null;
 	readonly preparing: boolean;
 }
@@ -150,7 +151,7 @@ export class CardEditingInteraction {
 		} catch (error) {
 			if (this.isCurrent(interaction)) {
 				this.options.notify(
-					this.t("cardEditor.prepareFailed", { message: this.errorMessage(error) }),
+					this.t("cardEditor.prepareFailed", { message: errorMessage(error) }),
 				);
 			}
 		} finally {
@@ -228,7 +229,7 @@ export class CardEditingInteraction {
 				interaction.controller.signal,
 			);
 		} catch (error) {
-			this.fail(interaction, "delete", this.errorMessage(error));
+			this.fail(interaction, "delete", errorMessage(error));
 		}
 	};
 
@@ -263,7 +264,7 @@ export class CardEditingInteraction {
 			);
 			return true;
 		} catch (error) {
-			this.fail(interaction, change.kind, this.errorMessage(error));
+			this.fail(interaction, change.kind, errorMessage(error));
 			return false;
 		}
 	}
@@ -277,10 +278,6 @@ export class CardEditingInteraction {
 				message,
 			}),
 		);
-	}
-
-	private errorMessage(error: unknown): string {
-		return error instanceof Error ? error.message : String(error);
 	}
 
 	private begin(): Interaction | null {

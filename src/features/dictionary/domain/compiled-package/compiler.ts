@@ -4,6 +4,7 @@ import {
 	COMPILED_DICTIONARY_DIRECTORY,
 	COMPILED_DICTIONARY_FORMAT_VERSION,
 	DictionaryCompileError,
+	digestSha256Hex,
 	sourceFingerprint,
 	type CompiledDictionaryMetadata,
 	type DictionaryCompileErrorCode,
@@ -11,11 +12,11 @@ import {
 	type DictionaryCompileRequest,
 } from "./internal";
 
-export interface DictionaryPackageSink {
+interface DictionaryPackageSink {
 	write(path: string, data: Uint8Array): Promise<void>;
 }
 
-export interface DictionaryCompilerOptions {
+interface DictionaryCompilerOptions {
 	readonly onProgress?: (progress: DictionaryCompileProgress) => void;
 	readonly signal?: AbortSignal;
 }
@@ -75,7 +76,7 @@ export class DictionaryCompiler {
 						.write(message.path, data)
 						.then(async () => {
 							if (message.path === "manifest.json")
-								manifestSha256 = await digestHex(data);
+								manifestSha256 = await digestSha256Hex(data);
 							worker.postMessage({ path: message.path, type: "acknowledge" });
 							return undefined;
 						})
@@ -133,9 +134,4 @@ export class DictionaryCompiler {
 			this.workers.delete(worker);
 		}
 	}
-}
-
-async function digestHex(data: Uint8Array): Promise<string> {
-	const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", data.slice().buffer));
-	return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }

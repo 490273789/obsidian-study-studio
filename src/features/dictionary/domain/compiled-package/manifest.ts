@@ -4,6 +4,7 @@ import {
 	COMPILED_DICTIONARY_FORMAT_VERSION,
 	COMPILED_DICTIONARY_MANIFEST,
 	DICTIONARY_ENGINE_VERSION,
+	digestSha256Hex,
 	sourceFingerprint,
 	type CompiledDictionaryManifest,
 	type CompiledFileDescriptor,
@@ -22,7 +23,7 @@ export const SAFE_COMPILED_PACKAGE_FILE =
 export const SAFE_COMPILED_OUTPUT_FILE =
 	/^(?:blocks|indexes)\/[a-z\d][a-z\d.-]*\.(?:bin|fst|json)$|^(?:manifest\.json|script\.js|style\.css)$/i;
 
-export interface CompiledPackageFacts extends CompiledDictionarySettings {
+interface CompiledPackageFacts extends CompiledDictionarySettings {
 	readonly manifest: CompiledDictionaryManifest;
 }
 
@@ -122,7 +123,7 @@ export async function describeCompiledPackage(
 		formatVersion: COMPILED_DICTIONARY_FORMAT_VERSION,
 		manifest,
 		manifestPath: `${COMPILED_DICTIONARY_DIRECTORY}/${COMPILED_DICTIONARY_MANIFEST}`,
-		manifestSha256: await digestCompiledPackageBytes(manifestBytes),
+		manifestSha256: await digestSha256Hex(manifestBytes),
 		sourceFingerprint: await sourceFingerprint(manifest.sources),
 		totalBytes: files.reduce(
 			(total, descriptor) => total + descriptor.size,
@@ -170,15 +171,10 @@ export async function validateCompiledPackageFile(
 ): Promise<void> {
 	if (
 		data.byteLength !== descriptor.size ||
-		(await digestCompiledPackageBytes(data)) !== descriptor.sha256
+		(await digestSha256Hex(data)) !== descriptor.sha256
 	) {
 		throw corrupt();
 	}
-}
-
-export async function digestCompiledPackageBytes(data: Uint8Array): Promise<string> {
-	const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", data.slice().buffer));
-	return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function validFile(path: string, value: unknown): boolean {

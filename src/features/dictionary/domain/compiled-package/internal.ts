@@ -4,15 +4,9 @@ export const COMPILED_DICTIONARY_FORMAT_VERSION = 2 as const;
 export const COMPILED_DICTIONARY_MANIFEST = "manifest.json";
 export const DICTIONARY_ENGINE_VERSION = "2.0.6";
 
-export type DictionaryCompileFormat = "eudic" | "mdict";
+type DictionaryCompileFormat = "eudic" | "mdict";
 
-export type DictionaryCompilePhase =
-	| "validate"
-	| "parse"
-	| "index"
-	| "records"
-	| "resources"
-	| "verify";
+type DictionaryCompilePhase = "validate" | "parse" | "index" | "records" | "resources" | "verify";
 
 export type DictionaryCompileErrorCode =
 	| "unsupported-format"
@@ -112,6 +106,11 @@ export function normalizeCompiledLookupKey(value: string): string {
 
 export function normalizeCompiledResourceKey(value: string): string {
 	return value.normalize("NFKC").replaceAll("\\", "/").replace(/^\/+/, "").toLowerCase();
+}
+
+export async function digestSha256Hex(data: Uint8Array): Promise<string> {
+	const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", data.slice().buffer));
+	return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export function isCompiledResourceMime(value: string): boolean {

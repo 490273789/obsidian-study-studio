@@ -1,6 +1,7 @@
+import { normalizeStringArray } from "../../../../core/shared/utils";
 import type { CardDirection, PracticeResult, PracticeSession } from "../../../../core/shared/types";
 
-export type PracticeSessionStep =
+type PracticeSessionStep =
 	| {
 			type: "continue";
 			session: PracticeSession;
@@ -115,12 +116,6 @@ function normalizePracticeSession(session: PracticeSession): PracticeSession {
 		attemptCount: Math.max(0, session.attemptCount ?? session.history.length),
 		unavailableCardIds: normalizeStringArray(session.unavailableCardIds),
 	};
-}
-
-function normalizeStringArray(value: unknown): string[] {
-	return Array.isArray(value)
-		? value.filter((item): item is string => typeof item === "string")
-		: [];
 }
 
 function normalizeAnswerMap(value: unknown): Record<string, boolean> {

@@ -1,3 +1,4 @@
+import { base64FromBytes } from "./resource-url";
 import { TransportError, type OutboundPort } from "../../../core/net/types";
 import { dictionaryText } from "./messages";
 import { DictionaryError } from "./types";
@@ -21,14 +22,6 @@ function eudicResourceUrl(path: string): string | null {
 	return url.origin === EUDIC_REMOTE_ORIGIN && url.pathname.startsWith(EUDIC_REMOTE_PATH)
 		? url.href
 		: null;
-}
-
-function toBase64(data: Uint8Array): string {
-	let binary = "";
-	for (let offset = 0; offset < data.byteLength; offset += 0x8000) {
-		binary += String.fromCharCode(...data.subarray(offset, offset + 0x8000));
-	}
-	return btoa(binary);
 }
 
 export class EudicImageResourceLoader {
@@ -59,7 +52,7 @@ export class EudicImageResourceLoader {
 			if (data.byteLength === 0) {
 				throw new DictionaryError("empty-response", dictionaryText().errors.emptyResponse);
 			}
-			return `data:image/jpeg;base64,${toBase64(data)}`;
+			return `data:image/jpeg;base64,${base64FromBytes(data)}`;
 		} catch (error) {
 			if (error instanceof DictionaryError) throw error;
 			if (error instanceof TransportError) {

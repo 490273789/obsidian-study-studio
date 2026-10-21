@@ -1,3 +1,4 @@
+import { isCompiledResourceMime } from "./compiled-package/internal";
 import { dictionaryText } from "./messages";
 import { DictionaryError } from "./types";
 import { createDictionaryResourceUrl, revokeDictionaryResourceUrl } from "./resource-url";
@@ -52,7 +53,7 @@ export class CompiledDictionaryResources {
 				// Remote results are in-flight only, never retained or persisted.
 				return remote;
 			}
-			if (!result || !safeMime(result.mime)) return null;
+			if (!result || !isCompiledResourceMime(result.mime)) return null;
 			// A blob URL must remain owned until eviction or close. Do not create
 			// one that exceeds the budget and would immediately be revoked.
 			if (
@@ -185,10 +186,4 @@ export class CompiledDictionaryResources {
 	private closedError(): DictionaryError {
 		return new DictionaryError("request", dictionaryText().errors.request);
 	}
-}
-
-function safeMime(value: string): boolean {
-	return /^(?:text\/(?:css|html|javascript|plain|vtt)|application\/(?:json|manifest\+json|octet-stream|vnd\.ms-fontobject|wasm|xml)|image\/(?:apng|avif|bmp|gif|jpeg|png|svg\+xml|webp|x-icon)|audio\/(?:aac|flac|mp4|mpeg|ogg|opus|wav|webm)|video\/(?:mp4|ogg|quicktime|webm)|font\/(?:otf|ttf|woff|woff2))$/.test(
-		value,
-	);
 }

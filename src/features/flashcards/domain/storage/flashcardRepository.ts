@@ -1,3 +1,4 @@
+import { stringArrayEquals } from "../../../../core/shared/utils";
 import { Card, State } from "ts-fsrs";
 import type {
 	Deck,
@@ -86,7 +87,7 @@ const LEARNING_PLACEHOLDER_DECK_ID = "__markdown-rebuild__";
 
 export type { SessionJournalTimer } from "./sessionJournal";
 
-export interface FlashcardRepositoryOptions {
+interface FlashcardRepositoryOptions {
 	authority: FlashcardAuthority;
 	deckIndexCache?: DeckIndexCacheStore<SerializedDeck> | null;
 	initialSettings?: FlashcardStudySettings;
@@ -744,7 +745,7 @@ export class FlashcardRepository
 								const tagsChanged = change
 									? change.tagsChanged
 									: !hadTagsSnapshot ||
-										!sameStringValues(previousTags, nextAvailableTags);
+										!stringArrayEquals(previousTags, nextAvailableTags);
 								this.decks = nextDecks;
 								this.spellingProgress = nextSpellingProgress;
 								this.availableTags = nextAvailableTags;
@@ -1291,10 +1292,6 @@ function sameDeckObjects(
 		if (left.get(deckId) !== deck) return false;
 	}
 	return true;
-}
-
-function sameStringValues(left: readonly string[], right: readonly string[]): boolean {
-	return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function cloneContinuityState(

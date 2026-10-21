@@ -1,3 +1,4 @@
+import { isRecord } from "../../../core/shared/isRecord";
 import type { App } from "obsidian";
 import type { VideoPlayerDocumentStore } from "../domain/types";
 import { emptyState } from "../domain/videoPlayerRuntime";
@@ -8,7 +9,7 @@ import {
 	type LocalVideoSource,
 } from "../domain/types";
 
-export const LOCAL_VIDEO_PLAYER_STORAGE_KEY = "study-studio.local-video-player.v1";
+const LOCAL_VIDEO_PLAYER_STORAGE_KEY = "study-studio.local-video-player.v1";
 
 /** Vault-scoped, device-local storage. Paths never reach plugin data.json. */
 export class ObsidianVideoPlayerStateStore implements VideoPlayerDocumentStore {
@@ -88,9 +89,6 @@ function parseRect(value: unknown): FloatingRect | null {
 	)
 		return null;
 	return { x: value.x, y: value.y, width: value.width, height: value.height };
-}
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
 }
 function isNonNegativeNumber(value: unknown): value is number {
 	return typeof value === "number" && Number.isFinite(value) && value >= 0;

@@ -1,3 +1,4 @@
+import { base64FromBytes } from "../resource-url";
 import { dictionaryText } from "../messages";
 import type { SandboxDocument } from "./document";
 import { defineSandboxDocument, type DictionarySandboxStorageUpdater } from "./document";
@@ -47,7 +48,7 @@ const AUDIO_LINK_ATTRIBUTE = "data-obsidian-tools-dictionary-audio";
 const ENTRY_LINK_ATTRIBUTE = "data-obsidian-tools-dictionary-entry";
 const THEME_ATTRIBUTE = "data-obsidian-tools-dictionary-theme";
 
-export type DictionaryResourceResolver = (path: string) => Promise<string | null>;
+type DictionaryResourceResolver = (path: string) => Promise<string | null>;
 
 export interface DictionarySandboxOptions {
 	readonly localCompatibility?: boolean;
@@ -57,13 +58,13 @@ export interface DictionarySandboxOptions {
 	readonly storage?: DictionarySandboxStorage;
 }
 
-export interface DictionarySandboxStorage {
+interface DictionarySandboxStorage {
 	readonly values: Readonly<Record<string, string>>;
 	readonly update: DictionarySandboxStorageUpdater;
 }
 
-export type DictionaryScriptResolver = (path: string) => Promise<string | null>;
-export type DictionaryStylesheetResolver = (path: string) => Promise<string | null>;
+type DictionaryScriptResolver = (path: string) => Promise<string | null>;
+type DictionaryStylesheetResolver = (path: string) => Promise<string | null>;
 
 function base64DataMime(value: string): string | null {
 	if (!value.toLowerCase().startsWith("data:")) return null;
@@ -246,13 +247,9 @@ async function safeStylesheet(
 				nextImportedPaths,
 			);
 			const bytes = new TextEncoder().encode(prepared);
-			let binary = "";
-			for (let offset = 0; offset < bytes.byteLength; offset += 32_768) {
-				binary += String.fromCharCode(...bytes.subarray(offset, offset + 32_768));
-			}
 			const condition = match[6]?.trim() ?? "";
 			importReplacements[index] =
-				`@import url("data:text/css;base64,${btoa(binary)}")${condition ? ` ${condition}` : ""};`;
+				`@import url("data:text/css;base64,${base64FromBytes(bytes)}")${condition ? ` ${condition}` : ""};`;
 		}),
 	);
 	let importIndex = 0;

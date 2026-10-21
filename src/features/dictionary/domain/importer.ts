@@ -16,6 +16,7 @@ import type {
 	LocalDictionaryStorageRemoval,
 } from "./local-storage";
 import { LocalDictionaryStorageError } from "./local-storage";
+import { hasErrorCode, pathExists } from "./fs-errors";
 import { DictionaryImportRecovery } from "./import-recovery";
 
 function dictionaryStorageRoot(app: App, plugin: Plugin): string {
@@ -30,15 +31,6 @@ function validateDictionaryId(dictionaryId: string): void {
 	if (!/^[a-z\d][a-z\d-]{2,80}$/i.test(dictionaryId)) {
 		throw new LocalDictionaryStorageError("storage-failed");
 	}
-}
-
-function hasErrorCode(error: unknown, code: string): boolean {
-	return (
-		typeof error === "object" &&
-		error !== null &&
-		"code" in error &&
-		(error as { code?: unknown }).code === code
-	);
 }
 
 function storageError(error: unknown): LocalDictionaryStorageError {
@@ -87,8 +79,8 @@ export class LocalDictionaryImporter implements LocalDictionaryStorageAdapter {
 		const collisions = await Promise.all(
 			imports.map(async (item) =>
 				Boolean(
-					(await pathExists(lstat, `${root}/${item.id}`)) ||
-					(await pathExists(lstat, `${root}/.import-${item.id}`)),
+					(await pathExists(lstat, `${root}/${item.id}`, storageError)) ||
+					(await pathExists(lstat, `${root}/.import-${item.id}`, storageError)),
 				),
 			),
 		);
@@ -199,18 +191,5 @@ function validateImports(imports: readonly LocalDictionaryStorageImport[]): void
 		})
 	) {
 		throw new LocalDictionaryStorageError("storage-failed");
-	}
-}
-
-async function pathExists(
-	lstat: (path: string) => Promise<unknown>,
-	path: string,
-): Promise<boolean> {
-	try {
-		await lstat(path);
-		return true;
-	} catch (error) {
-		if (hasErrorCode(error, "ENOENT")) return false;
-		throw storageError(error);
 	}
 }

@@ -1,10 +1,11 @@
 import { TransportError, type OutboundPort } from "../../../../core/net/types";
 import type { PronunciationSettings } from "../../../../core/shared/types";
+import { AZURE_CHINA_REGIONS } from "./pronunciationSettings";
 import type { PronunciationRequestDescriptor, SynthesizedAudio } from "./types";
 
 export type PronunciationRequester = OutboundPort["request"];
 
-export interface PronunciationRequestOptions {
+interface PronunciationRequestOptions {
 	signal?: AbortSignal;
 	timeoutMs?: number;
 }
@@ -23,10 +24,8 @@ const AZURE_VOICES = {
 	"en-US": "en-US-JennyNeural",
 	"en-GB": "en-GB-SoniaNeural",
 } as const;
-const AZURE_CHINA_REGIONS = new Set(["chinaeast2", "chinanorth2", "chinanorth3"]);
-
-export const OPENAI_TTS_MODEL = "gpt-4o-mini-tts";
-export const OPENAI_TTS_VOICE = "marin";
+const OPENAI_TTS_MODEL = "gpt-4o-mini-tts";
+const OPENAI_TTS_VOICE = "marin";
 
 export function createPronunciationRequestDescriptor(
 	text: string,
@@ -139,7 +138,7 @@ export function normalizePronunciationText(text: string): string {
 	return text.normalize("NFC").trim().replace(/\s+/gu, " ");
 }
 
-export function escapeXml(value: string): string {
+function escapeXml(value: string): string {
 	return value.replace(/[<>&'"]/g, (character) => {
 		switch (character) {
 			case "<":

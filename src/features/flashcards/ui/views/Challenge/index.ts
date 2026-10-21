@@ -1,3 +1,3 @@
-export { ChallengeSetupModal, type ChallengeReadiness } from "./ChallengeSetupModal";
+export { ChallengeSetupModal } from "./ChallengeSetupModal";
 export { ChallengeView } from "./ChallengeView";
 export { ChallengeSummary } from "./ChallengeSummary";
