@@ -2,7 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 import type { StudyHistoryEntry } from "../../../../../core/shared/types";
 import {
 	appendStudyHistory,
-	createWordListHistoryEntry,
 	formatLocalDateKey,
 	MAX_STUDY_HISTORY_DAYS,
 	pruneStudyHistory,
@@ -101,27 +100,6 @@ describe("studyHistory", () => {
 			pruneStudyHistory(entries, 2);
 
 			expect(entries).toEqual(originalCopy);
-		});
-	});
-
-	describe("createWordListHistoryEntry", () => {
-		it("returns null when duration is under 5 seconds", () => {
-			const entry = createWordListHistoryEntry("deck-1", "Deck 1", 1000, 5000); // 4 seconds
-			expect(entry).toBeNull();
-		});
-
-		it("returns entry when duration is at least 5 seconds", () => {
-			const now = new Date("2026-08-02T12:00:00.000Z");
-			const entry = createWordListHistoryEntry("deck-1", "Deck 1", 1000, 6500, now); // 5 seconds
-			expect(entry).toEqual({
-				date: "2026-08-02",
-				deckId: "deck-1",
-				deckName: "Deck 1",
-				mode: "word-list",
-				cardCount: 0,
-				duration: 5,
-				timestamp: now.getTime(),
-			});
 		});
 	});
 

@@ -52,7 +52,8 @@ import {
 	LearningDocumentStore,
 	type AuthorityCandidate,
 } from "./learningDocumentStore";
-import { appendStudyHistory, createWordListHistoryEntry } from "../history/studyHistory";
+import { formatWordListVisit, type LearningRecordWriteSet } from "../history/learningRecords";
+import { appendStudyHistory } from "../history/studyHistory";
 import {
 	type DailyLearningActivity,
 	type LearningFootprintSnapshot,
@@ -462,35 +463,19 @@ export class FlashcardRepository
 		endTimeMs: number,
 	): Promise<void> {
 		await this.loadDeckIndex();
-		const entry = createWordListHistoryEntry(deckId, deckName, startTimeMs, endTimeMs);
-		if (!entry) return;
+		const records = formatWordListVisit(deckId, deckName, startTimeMs, endTimeMs);
+		if (!records) return;
+		await this.commitLearningWriteSet(records);
+	}
 
+	private async commitLearningWriteSet(records: LearningRecordWriteSet): Promise<void> {
 		await this.documents.enqueueOperation(async () => {
 			await this.flushJournalBeforeWrite();
-			await this.commitAuthority(() => {
-				const nextHistory = appendStudyHistory(this.studyHistory, [entry]);
-				const nextActivity = this.dailyLearningActivity.record({
-					kind: "word-list",
-					durationSeconds: entry.duration,
-					occurredAt: entry.timestamp,
-				});
-				return {
-					learning: this.buildLearningState(
-						this.decks,
-						nextHistory,
-						this.spellingProgress,
-						this.continuity,
-						nextActivity,
-						this.challengeProgress,
-						this.getCommittedCardStates(),
-					),
-					install: () => {
-						this.studyHistory = nextHistory;
-						this.dailyLearningActivity = nextActivity;
-					},
-				};
+			await this.commitWriteSetAsDocument({
+				cardUpdates: [],
+				spellingAttempts: [],
+				...records,
 			});
-			this.publishRevision();
 		});
 	}
 

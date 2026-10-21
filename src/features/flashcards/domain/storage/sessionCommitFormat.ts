@@ -1,6 +1,5 @@
 import type { Card } from "ts-fsrs";
-import type { LearningActivityRecord } from "../history/dailyLearningActivity";
-import type { PendingStudyHistoryEntry } from "../history/studyHistory";
+import { formatLearningRecords, type LearningRecordWriteSet } from "../history/learningRecords";
 import type { ChallengeProgress } from "../sessions/challengeSessionEngine";
 import type { SessionCommit } from "../sessions/sessionPersistence";
 
@@ -9,7 +8,7 @@ import type { SessionCommit } from "../sessions/sessionPersistence";
  * `domain/storage/` may import this module, and the module-boundary check
  * enforces that callers never name it.
  */
-export interface SessionWriteSet {
+export interface SessionWriteSet extends LearningRecordWriteSet {
 	readonly cardUpdates: readonly {
 		deckId: string;
 		cardId: string;
@@ -20,9 +19,6 @@ export interface SessionWriteSet {
 		correct: boolean;
 		attemptedAt: number;
 	}[];
-	readonly incrementStudyCountFor: readonly string[];
-	readonly historyEntries: readonly PendingStudyHistoryEntry[];
-	readonly learningActivity?: LearningActivityRecord;
 	readonly challengeProgress?: ChallengeProgress;
 	readonly expectedChallengeProgress?: ChallengeProgress | null;
 }
@@ -57,43 +53,22 @@ export function formatSessionCommit(commit: SessionCommit): SessionWriteSet {
 		correct: attempt.correct,
 		attemptedAt: attempt.attemptedAt,
 	}));
-	const incrementStudyCountFor: string[] = [];
-	const historyEntries: PendingStudyHistoryEntry[] = [];
-	let learningActivity: LearningActivityRecord | undefined;
-
-	for (const record of commit.records ?? []) {
-		if (record.history) {
-			historyEntries.push({
-				deckId: record.deckId,
-				deckName: record.deckName,
-				mode: record.mode,
-				cardCount: record.history.cardCount,
-				duration: record.history.durationSeconds,
-				occurredAt: record.occurredAt,
-			});
-		}
-		learningActivity = {
-			kind: "session",
+	const learning = formatLearningRecords(
+		(commit.records ?? []).map((record) => ({
+			kind: "session" as const,
+			deckId: record.deckId,
+			deckName: record.deckName,
 			mode: record.mode,
-			completion: record.activity.completion,
-			answerCount: record.activity.answerCount,
-			...(record.activity.completedAnswerCount === undefined
-				? {}
-				: { completedAnswerCount: record.activity.completedAnswerCount }),
-			durationSeconds: record.activity.durationSeconds,
 			occurredAt: record.occurredAt,
-		};
-		if (record.mode === "study" && record.activity.completion === "completed") {
-			incrementStudyCountFor.push(record.deckId);
-		}
-	}
+			history: record.history,
+			activity: record.activity,
+		})),
+	);
 
 	return {
+		...learning,
 		cardUpdates,
 		spellingAttempts,
-		incrementStudyCountFor,
-		historyEntries,
-		...(learningActivity === undefined ? {} : { learningActivity }),
 		...(commit.challenge === undefined
 			? {}
 			: {

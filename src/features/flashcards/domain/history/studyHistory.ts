@@ -2,14 +2,13 @@ import type { StudyHistoryEntry } from "../../../../core/shared/types";
 export interface PendingStudyHistoryEntry {
 	readonly deckId: string;
 	readonly deckName: string;
-	readonly mode: "study" | "practice" | "spelling" | "challenge";
+	readonly mode: StudyHistoryEntry["mode"];
 	readonly cardCount: number;
 	readonly duration: number;
 	readonly occurredAt: number;
 }
 
 export const MAX_STUDY_HISTORY_DAYS = 20;
-export const MIN_WORD_LIST_VISIT_DURATION_SECONDS = 5;
 
 /**
  * Format a Date into local calendar key "YYYY-MM-DD".
@@ -36,31 +35,6 @@ export function pruneStudyHistory(
 	}
 	const keep = new Set(days.slice(0, maxDays));
 	return history.filter((entry) => keep.has(entry.date));
-}
-
-/**
- * Create a word list study history entry if visit duration is at least 5 seconds.
- */
-export function createWordListHistoryEntry(
-	deckId: string,
-	deckName: string,
-	startTimeMs: number,
-	endTimeMs: number,
-	now: Date = new Date(endTimeMs),
-): StudyHistoryEntry | null {
-	const duration = Math.max(0, Math.floor((endTimeMs - startTimeMs) / 1000));
-	if (duration < MIN_WORD_LIST_VISIT_DURATION_SECONDS) {
-		return null;
-	}
-	return {
-		date: formatLocalDateKey(now),
-		deckId,
-		deckName,
-		mode: "word-list",
-		cardCount: 0,
-		duration,
-		timestamp: now.getTime(),
-	};
 }
 
 export type AppendableStudyHistoryEntry =
