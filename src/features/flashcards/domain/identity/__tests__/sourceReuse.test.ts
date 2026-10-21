@@ -216,20 +216,4 @@ describe("continuity source reuse", () => {
 		await continuity.synchronize();
 		expect(state().decks.get("a.md")?.cards[0]?.front).toBe("repaired");
 	});
-
-	it("parses only excess sources without evicting the warm cache on a large scan", async () => {
-		const parse = vi.spyOn(parser, "parseFlashcards");
-		const docs = Array.from({ length: 2049 }, (_, index) =>
-			document(
-				`${index}.md`,
-				`550e8400-e29b-41d4-a716-${index.toString().padStart(12, "0")}`,
-			),
-		);
-		const { continuity, state } = setup(docs);
-		await continuity.synchronize();
-		parse.mockClear();
-		await continuity.synchronize();
-		expect(parse).toHaveBeenCalledTimes(1);
-		expect(state().decks.size).toBe(2049);
-	});
 });

@@ -19,6 +19,7 @@ import {
 	type SourceEditGuardOutcome,
 } from "./sourceEditGuard";
 import { applySourceEditTransaction } from "./sourceEditTransaction";
+import { SourceSyntaxCache, type CachedSourceSyntax } from "./sourceSyntaxCache";
 import { extractSpellingWord } from "../cards/spellingWord";
 import type { Deck, FlashCard } from "../../../../core/shared/types";
 
@@ -248,17 +249,6 @@ interface PreparedSource {
 	sourceContent: string;
 }
 
-interface CachedSourceSyntax {
-	content: string;
-	tag: string | null;
-	hasCards: boolean;
-	cards?: Omit<FlashCard, "fsrsCard">[];
-	bytes: number;
-}
-
-const SOURCE_SYNTAX_CACHE_BYTES = 32 * 1_048_576;
-const SOURCE_SYNTAX_CACHE_ENTRIES = 2048;
-
 export function createCardIdentityContinuity(
 	options: CreateCardIdentityContinuityOptions,
 ): CardIdentityContinuity {
@@ -352,8 +342,7 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 	private operationTail: Promise<void> = Promise.resolve();
 	// Only source-derived syntax is reusable. Learning state always comes from
 	// the state loaded for this operation, including after external Sync reloads.
-	private readonly sourceSyntax = new Map<string, CachedSourceSyntax>();
-	private sourceSyntaxBytes = 0;
+	private readonly sourceSyntax = new SourceSyntaxCache();
 
 	constructor(private readonly options: CreateCardIdentityContinuityOptions) {}
 
@@ -390,12 +379,7 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 				currentState.configuredTags.map((tag) => tag.toLowerCase()),
 			);
 			const sourcePaths = new Set(documents.map((document) => document.path));
-			for (const [path, cached] of this.sourceSyntax) {
-				if (!sourcePaths.has(path)) {
-					this.sourceSyntax.delete(path);
-					this.sourceSyntaxBytes -= cached.bytes;
-				}
-			}
+			this.sourceSyntax.retain(sourcePaths);
 			const existingCards = buildExistingCardMap(currentState.decks);
 			const nextDecks = new Map<string, Deck>();
 			const nextSources: Record<string, ContinuitySourceCondition> = {};
@@ -617,17 +601,15 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 	}
 
 	private inspectSource(path: string, content: string): CachedSourceSyntax {
-		const cached = this.sourceSyntax.get(path);
-		if (cached?.content === content) {
-			return cached;
-		}
+		const cached = this.sourceSyntax.get(path, content);
+		if (cached) return cached;
 		const next: CachedSourceSyntax = {
 			content,
 			tag: extractFirstTag(content),
 			hasCards: hasFlashcardSyntax(content),
 			bytes: 2 * (path.length + content.length),
 		};
-		this.cacheSource(path, next);
+		this.sourceSyntax.set(path, next);
 		return next;
 	}
 
@@ -654,7 +636,7 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 			sourceFile: card.sourceFile,
 			indexInFile: card.indexInFile,
 		}));
-		this.cacheSource(path, {
+		this.sourceSyntax.set(path, {
 			...syntax,
 			cards: templates,
 			// Bound retained strings plus an allowance for each template object.
@@ -674,21 +656,6 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 				),
 		});
 		return cards;
-	}
-
-	private cacheSource(path: string, syntax: CachedSourceSyntax): void {
-		const previous = this.sourceSyntax.get(path);
-		if (previous) this.sourceSyntaxBytes -= previous.bytes;
-		this.sourceSyntax.delete(path);
-		// Full scans revisit sources in order. Reject excess admissions instead
-		// of evicting useful entries and thrashing the entire cache every scan.
-		if (
-			this.sourceSyntaxBytes + syntax.bytes > SOURCE_SYNTAX_CACHE_BYTES ||
-			this.sourceSyntax.size >= SOURCE_SYNTAX_CACHE_ENTRIES
-		)
-			return;
-		this.sourceSyntax.set(path, syntax);
-		this.sourceSyntaxBytes += syntax.bytes;
 	}
 
 	/** Both edit doors recover one pending identity journal before touching a source. */
