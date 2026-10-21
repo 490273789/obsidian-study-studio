@@ -6,7 +6,7 @@ export const DICTIONARY_FAVORITE_NOTE_MAX_LENGTH = 16_000;
 export const DICTIONARY_FAVORITE_PATH_MAX_LENGTH = 500;
 export const DICTIONARY_FAVORITE_SUGGESTION_LIMIT = 300;
 
-export type FavoriteSaveFailure =
+type FavoriteSaveFailure =
 	| "migration-required"
 	| "source-needs-repair"
 	| "source-changing"
@@ -42,7 +42,7 @@ export interface DictionaryFavoriteStore {
 }
 
 /** Matches one `## word / ?? / meaning / :: / note / ;;` favorite block. */
-export const DICTIONARY_FAVORITE_BLOCK_PATTERN =
+const DICTIONARY_FAVORITE_BLOCK_PATTERN =
 	/^##[ \t]+(.+?)[ \t]*(?:\r\n|\r|\n)[ \t]*\?\?[ \t]*(?:\r\n|\r|\n)((?:(?!^[ \t]*(?:\?\?|;;)[ \t]*(?=\r|\n|$))[\s\S])*?)(?:\r\n|\r|\n)[ \t]*::[ \t]*(?:\r\n|\r|\n)((?:(?!^[ \t]*(?:\?\?|;;)[ \t]*(?=\r|\n|$))[\s\S])*?)(?:\r\n|\r|\n)[ \t]*;;[ \t]*(?=\r|\n|$)/gmu;
 
 function normalizeBody(value: string, limit: number): string {

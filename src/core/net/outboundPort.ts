@@ -12,7 +12,7 @@ import {
 /** The deadline every outbound call gets unless it asks for another one. */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
 
-export interface OutboundPortOptions {
+interface OutboundPortOptions {
 	app: App;
 	/** Overrides the default deadline; `0` disables the port-level deadline. */
 	defaultTimeoutMs?: number;
@@ -22,7 +22,7 @@ export interface OutboundPortOptions {
  * Classifies a completed HTTP response. Returns `null` for a success, so the
  * single status-to-code rule lives here instead of in every feature.
  */
-export function transportCodeForStatus(status: number): TransportErrorCode | null {
+function transportCodeForStatus(status: number): TransportErrorCode | null {
 	if (status >= 200 && status < 400) return null;
 	if (status === 401 || status === 403) return "unauthorized";
 	if (status === 404) return "not-found";

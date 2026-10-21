@@ -13,7 +13,7 @@ import { useFlashcardI18n } from "../../../strings/context";
 import { formatStudyOrder } from "../../../strings/index";
 import styles from "./DeckSettingsModal.module.scss";
 
-export interface DeckSettingsModalProps {
+interface DeckSettingsModalProps {
 	draft: DeckHomeSettingsDraft;
 	isSaving: boolean;
 	isMigratingIdentity: boolean;

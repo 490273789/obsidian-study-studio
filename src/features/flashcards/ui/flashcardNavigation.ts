@@ -25,7 +25,7 @@ export interface FlashcardNavigationSnapshot {
 	readonly confirmation: (FlashcardConfirmation & { readonly id: number }) | null;
 }
 
-export interface FlashcardNavigationOptions {
+interface FlashcardNavigationOptions {
 	readonly lifecycle: SessionLifecycle;
 	readonly home: Pick<DeckHome, "act">;
 	readonly ownerId: string;

@@ -5,12 +5,12 @@ import { selectionHelperStrings } from "../strings/selectionPopup";
 import { orderSelectionDictionaries } from "../domain/dictionaryOrder";
 import { DEFAULT_OPEN_MAIN_SHORTCUT } from "./openMainShortcut";
 
-export interface AvailableDictionaryItem {
+interface AvailableDictionaryItem {
 	id: string;
 	label: string;
 }
 
-export interface SelectionHelperSettingsActions {
+interface SelectionHelperSettingsActions {
 	setEnabled: (enabled: boolean) => Promise<void>;
 	setModifier: (modifier: SelectionHelperModifier) => Promise<void>;
 	setOpenMainShortcut: (shortcut: string) => Promise<void>;

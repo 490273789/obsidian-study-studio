@@ -187,7 +187,7 @@ export interface FlashcardPageContext {
 }
 
 /** A resolved page: identity, depth, and the node the shell should render. */
-export interface ResolvedPage {
+interface ResolvedPage {
 	readonly key: string;
 	readonly depth: number;
 	render(context: FlashcardPageContext): React.ReactNode;
@@ -205,7 +205,7 @@ function page(key: string, depth: number, render: ResolvedPage["render"]): Resol
 	return Object.freeze({ key, depth, render });
 }
 
-export interface ResolvePageInput {
+interface ResolvePageInput {
 	readonly viewState: Readonly<ViewState>;
 	readonly lifecycle: SessionLifecycleSnapshot;
 	readonly presentedCard: PresentedCard | null;

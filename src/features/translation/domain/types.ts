@@ -1,6 +1,6 @@
 import type { AiFailureCode } from "../../../core/ai";
 
-export type TranslationDirection = "zh-en" | "en-zh";
+type TranslationDirection = "zh-en" | "en-zh";
 export interface TranslationProfile {
 	id: string;
 	name: string;

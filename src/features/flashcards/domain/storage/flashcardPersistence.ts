@@ -8,7 +8,7 @@ import type { SessionJournalStore } from "./sessionJournal";
 import type { FlashcardAuthority, SerializedDeck } from "./persistenceTypes";
 
 /** Read-only tag projection consumed by the flashcards settings section. */
-export interface FlashcardTagRead {
+interface FlashcardTagRead {
 	hasSnapshot(): boolean;
 	read(): string[];
 }
@@ -29,14 +29,14 @@ export interface FlashcardLearningActivityPort {
  * entries merge back into `data.json` on threshold, idle, session end,
  * recovery, or disposal.
  */
-export interface FlashcardJournalOptions {
+interface FlashcardJournalOptions {
 	store: SessionJournalStore;
 	flushThreshold?: number;
 	idleFlushMilliseconds?: number;
 	timer?: SessionJournalTimer;
 }
 
-export interface CreateFlashcardPersistenceOptions {
+interface CreateFlashcardPersistenceOptions {
 	authority: FlashcardAuthority;
 	/** Rebuildable source index; missing or corrupt data is rebuilt from Markdown. */
 	deckIndex?: DeckIndexCacheStore<SerializedDeck> | null;

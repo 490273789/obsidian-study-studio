@@ -3,7 +3,7 @@ import type { PronunciationRuntime } from "../../../domain/pronunciation";
 import { MarkdownContent } from "./MarkdownContent";
 import { PronunciationButton } from "../PronunciationButton";
 
-export interface PronounceableMarkdownProps {
+interface PronounceableMarkdownProps {
 	content: string;
 	word: string | null;
 	runtime: PronunciationRuntime;

@@ -4,7 +4,7 @@ import { cls } from "../../shared/classNames";
 import type { SelectionHelperStrings } from "../strings/selectionPopup";
 import styles from "./SelectionPopup.module.scss";
 
-export interface SelectionBubbleProps {
+interface SelectionBubbleProps {
 	canLookup: boolean;
 	canTranslate: boolean;
 	strings: SelectionHelperStrings;

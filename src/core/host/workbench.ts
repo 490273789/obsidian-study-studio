@@ -138,7 +138,7 @@ interface BaseWorkbenchSettings<TOwner extends FeatureSettingsOwner> {
 	update(patch: Readonly<Partial<OwnedSettings<TOwner>>>): Promise<void>;
 }
 
-export type WorkbenchSettings<TOwner extends FeatureSettingsOwner> = BaseWorkbenchSettings<TOwner> &
+type WorkbenchSettings<TOwner extends FeatureSettingsOwner> = BaseWorkbenchSettings<TOwner> &
 	(TOwner extends "flashcards"
 		? { setLanguage(language: Language): Promise<void> }
 		: Record<never, never>);
@@ -184,7 +184,7 @@ export interface Workbench {
 	dispose(): void;
 }
 
-export interface WorkbenchOptions {
+interface WorkbenchOptions {
 	app: App;
 	plugin: Plugin;
 	readSettings(): FlashcardSettings;

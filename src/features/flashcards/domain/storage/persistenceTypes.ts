@@ -71,7 +71,7 @@ export interface LegacyFlashcardDocument {
 	availableTags?: string[];
 }
 
-export type FlashcardAuthorityContent =
+type FlashcardAuthorityContent =
 	| { readonly kind: "current"; readonly learning?: LearningStateDocument }
 	| { readonly kind: "legacy"; readonly document: LegacyFlashcardDocument };
 

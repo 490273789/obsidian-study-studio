@@ -4,7 +4,7 @@ import type {
 	LocalDictionaryAdministrationState,
 } from "../domain/types";
 
-export interface DictionarySettingsStoreOptions {
+interface DictionarySettingsStoreOptions {
 	/** Currently committed dictionary settings. */
 	readDictionarySettings(): Readonly<DictionarySettings>;
 	/** Persists the supplied dictionary settings slice; rejects when the write failed. */

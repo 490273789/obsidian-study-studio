@@ -37,7 +37,7 @@ export interface SetupSelectorOption<T extends string> {
 	icon: LucideIcon;
 }
 
-export interface SetupSelectorProps<T extends string> {
+interface SetupSelectorProps<T extends string> {
 	value: T;
 	options: SetupSelectorOption<T>[];
 	ariaLabel: string;

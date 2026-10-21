@@ -11,7 +11,7 @@ import type { WorkbenchItemView } from "./workbench";
  * the React root, the owner-scoped committed settings, and the theme, so a view
  * definition only describes what it renders.
  */
-export interface ReactViewAcquireContext<TSettings extends { readonly language: Language }> {
+interface ReactViewAcquireContext<TSettings extends { readonly language: Language }> {
 	readonly app: App;
 	/** The owner-scoped committed settings snapshot, read at render time. */
 	readonly settings: Readonly<TSettings>;
@@ -21,7 +21,7 @@ export interface ReactViewAcquireContext<TSettings extends { readonly language: 
 	readonly rootEl: HTMLElement;
 }
 
-export interface ReactViewContext<
+interface ReactViewContext<
 	TSettings extends { readonly language: Language },
 	TResource = undefined,
 > extends ReactViewAcquireContext<TSettings> {
@@ -29,7 +29,7 @@ export interface ReactViewContext<
 	readonly resource: TResource;
 }
 
-export interface AcquiredReactView<TResource> {
+interface AcquiredReactView<TResource> {
 	readonly resource: TResource;
 	dispose(): void;
 }

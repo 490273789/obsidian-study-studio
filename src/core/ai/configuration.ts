@@ -3,7 +3,7 @@ import { isRecord } from "../shared/isRecord";
 import { settingsRecord, type SettingsSlice } from "../settings/slice";
 import { AiError, type AiEngineConfig, type AiProvider, type AiSettings } from "./types";
 
-export const AI_PROVIDERS: readonly AiProvider[] = ["deepseek", "bailian", "youdao"];
+const AI_PROVIDERS: readonly AiProvider[] = ["deepseek", "bailian", "youdao"];
 export const AI_PRESETS: Record<AiProvider, { baseUrl: string; model: string }> = {
 	deepseek: { baseUrl: "https://api.deepseek.com", model: "deepseek-v4-flash" },
 	// Workspace and region must be supplied by the user; no guessed endpoint.

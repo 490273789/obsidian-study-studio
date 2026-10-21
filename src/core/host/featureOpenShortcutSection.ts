@@ -13,7 +13,7 @@ import type { WorkbenchSettingsSection } from "./workbench";
 
 export const FEATURE_OPEN_SHORTCUT_SECTION_ID = "feature-open-shortcuts";
 
-export interface FeatureOpenShortcutSectionOptions {
+interface FeatureOpenShortcutSectionOptions {
 	read(): FeatureOpenShortcuts;
 	update(shortcuts: FeatureOpenShortcuts): Promise<void>;
 	refresh(): void;

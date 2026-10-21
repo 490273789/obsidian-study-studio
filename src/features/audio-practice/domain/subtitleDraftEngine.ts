@@ -17,7 +17,7 @@ import {
 } from "./transcriptionTypes";
 import { transcriptionConfigFingerprint } from "./transcription/transcriptionConfig";
 
-export interface TextToken {
+interface TextToken {
 	readonly text: string;
 	readonly start: number;
 	readonly end: number;
@@ -324,7 +324,7 @@ export interface SubtitleDraftSnapshot {
 	readonly hasReviewWordTimings: boolean;
 }
 
-export interface SubtitleDraftEngineOptions {
+interface SubtitleDraftEngineOptions {
 	readonly prepare: PrepareAudio;
 	readonly transcribe: TranscribeAudio;
 	readonly drafts?: GenerationDraftStore;

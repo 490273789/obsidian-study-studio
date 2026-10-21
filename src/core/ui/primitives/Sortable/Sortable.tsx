@@ -29,7 +29,7 @@ import { SortableInteraction, type SortableInput } from "./sortableInteraction";
 const NO_SENSORS: SensorDescriptor<SensorOptions>[] = [];
 
 /** Keep all reorder surfaces consistent with the deck home interaction. */
-export function useSortableSensors() {
+function useSortableSensors() {
 	return useSensors(
 		useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
 		useSensor(TouchSensor, { activationConstraint: { delay: 1000, tolerance: 5 } }),
@@ -110,7 +110,7 @@ export function ReorderableList({
 	);
 }
 
-export interface SortableItemOptions {
+interface SortableItemOptions {
 	id: string;
 	disabled?: boolean;
 	handleLabel: string;

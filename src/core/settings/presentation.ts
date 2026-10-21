@@ -2,12 +2,12 @@
 
 export type SettingsActionResult = void | Promise<void>;
 
-export type SettingsTone = "neutral" | "primary" | "warning" | "danger";
-export type SettingsLayout = "standard" | "wide";
+type SettingsTone = "neutral" | "primary" | "warning" | "danger";
+type SettingsLayout = "standard" | "wide";
 
 export type SettingsContent = string | readonly SettingsContentBlock[];
 
-export type SettingsContentBlock =
+type SettingsContentBlock =
 	| { kind: "paragraph"; text: string }
 	| { kind: "code"; text: string }
 	| { kind: "list"; items: readonly string[] };
@@ -18,7 +18,7 @@ export interface SettingsActionRef<T = void> {
 	readonly __payload?: T;
 }
 
-export interface SettingsRowCopy {
+interface SettingsRowCopy {
 	name: string;
 	description?: SettingsContent;
 	layout?: SettingsLayout;
@@ -46,7 +46,7 @@ export interface SettingsToggleSnapshot extends SettingsControlState {
 	tooltip?: string;
 }
 
-export interface SettingsSelectOption {
+interface SettingsSelectOption {
 	value: string;
 	label: string;
 }
@@ -109,7 +109,7 @@ export interface SettingsChoiceButtonsSnapshot extends SettingsControlState {
 	action: SettingsActionRef<string>;
 }
 
-export interface SettingsReorderableItemSnapshot {
+interface SettingsReorderableItemSnapshot {
 	id: string;
 	label: string;
 	description?: string;
@@ -128,14 +128,14 @@ export interface SettingsReorderableSnapshot extends SettingsControlState {
 	tooltips: { drag: string; moveDown: string; moveUp: string; remove?: string };
 }
 
-export interface SettingsCardFieldSnapshot {
+interface SettingsCardFieldSnapshot {
 	key: string;
 	name: string;
 	description?: SettingsContent;
 	controls: readonly SettingsPrimitiveControlSnapshot[];
 }
 
-export interface SettingsCardSnapshot {
+interface SettingsCardSnapshot {
 	key: string;
 	badge: string;
 	enabled: boolean;
@@ -151,7 +151,7 @@ export interface SettingsCardsSnapshot extends SettingsControlState {
 	items: readonly SettingsCardSnapshot[];
 }
 
-export type SettingsPrimitiveControlSnapshot =
+type SettingsPrimitiveControlSnapshot =
 	| SettingsButtonSnapshot
 	| SettingsToggleSnapshot
 	| SettingsSelectSnapshot
@@ -176,7 +176,7 @@ export interface SettingsRowSnapshot {
 	controls: readonly SettingsControlSnapshot[];
 }
 
-export interface SettingsGroupSnapshot {
+interface SettingsGroupSnapshot {
 	key: string;
 	heading: string;
 	rows: readonly SettingsRowSnapshot[];
@@ -198,7 +198,7 @@ export type SettingsDispatchResult =
 	| { status: "ignored"; reason: "disabled" | "stale" }
 	| { status: "failed"; error: SettingsPresentationError };
 
-export type SettingsPresentationErrorCode =
+type SettingsPresentationErrorCode =
 	| "duplicate-key"
 	| "invalid-definition"
 	| "invalid-interaction"
@@ -228,17 +228,17 @@ interface ActionEntry {
 	run(value: unknown): SettingsActionResult;
 }
 
-export interface SettingsValueSpec<T> {
+interface SettingsValueSpec<T> {
 	value: T;
 	disabled?: boolean;
 	onChange(value: T): SettingsActionResult;
 }
 
-export interface SettingsTextSpec extends SettingsValueSpec<string> {
+interface SettingsTextSpec extends SettingsValueSpec<string> {
 	placeholder?: string;
 }
 
-export interface SettingsKeybindingSpec extends SettingsValueSpec<string> {
+interface SettingsKeybindingSpec extends SettingsValueSpec<string> {
 	emptyLabel: string;
 	recordingLabel: string;
 	conflictMessage: string;
@@ -246,18 +246,18 @@ export interface SettingsKeybindingSpec extends SettingsValueSpec<string> {
 	conflictMessages?: Readonly<Record<string, string>>;
 }
 
-export interface SettingsSelectSpec<T extends string = string> extends SettingsValueSpec<T> {
+interface SettingsSelectSpec<T extends string = string> extends SettingsValueSpec<T> {
 	options: readonly { value: T; label: string }[];
 	missingValueLabel?: string;
 }
 
-export interface SettingsNumberSpec extends SettingsValueSpec<number> {
+interface SettingsNumberSpec extends SettingsValueSpec<number> {
 	min: number;
 	max: number;
 	step: number;
 }
 
-export interface SettingsButtonSpec {
+interface SettingsButtonSpec {
 	label: string;
 	disabled?: boolean;
 	tone?: SettingsTone;
@@ -265,7 +265,7 @@ export interface SettingsButtonSpec {
 	onPress(): SettingsActionResult;
 }
 
-export interface SettingsEditableListSpec {
+interface SettingsEditableListSpec {
 	values: readonly string[];
 	placeholder: string;
 	addLabel: string;
@@ -276,14 +276,14 @@ export interface SettingsEditableListSpec {
 	onRemove(index: number): SettingsActionResult;
 }
 
-export interface SettingsChoiceButtonsSpec {
+interface SettingsChoiceButtonsSpec {
 	choices: readonly { id: string; label: string }[];
 	emptyText: string;
 	disabled?: boolean;
 	onChoose(id: string): SettingsActionResult;
 }
 
-export interface SettingsReorderableSpec {
+interface SettingsReorderableSpec {
 	allowDrag: boolean;
 	emptyText?: string;
 	disabled?: boolean;
@@ -300,20 +300,20 @@ export interface SettingsReorderableSpec {
 	tooltips: { drag: string; moveDown: string; moveUp: string; remove?: string };
 }
 
-export interface SettingsCardSpec {
+interface SettingsCardSpec {
 	key: string;
 	badge: string;
 	enabled: boolean;
 	build(card: SettingsCardBuilder): void;
 }
 
-export interface SettingsCardsSpec {
+interface SettingsCardsSpec {
 	emptyText?: string;
 	disabled?: boolean;
 	items: readonly SettingsCardSpec[];
 }
 
-export interface SettingsPageBuilder {
+interface SettingsPageBuilder {
 	group(
 		key: string,
 		heading: string,
@@ -322,7 +322,7 @@ export interface SettingsPageBuilder {
 	): void;
 }
 
-export interface SettingsGroupBuilder {
+interface SettingsGroupBuilder {
 	row(key: string, copy: SettingsRowCopy, build?: (row: SettingsRowBuilder) => void): void;
 	button(key: string, copy: SettingsRowCopy, spec: SettingsButtonSpec): void;
 	toggle(key: string, copy: SettingsRowCopy, spec: SettingsValueSpec<boolean>): void;
@@ -355,7 +355,7 @@ export interface SettingsRowBuilder {
 	choiceButtons(key: string, spec: SettingsChoiceButtonsSpec): void;
 }
 
-export interface SettingsCardBuilder {
+interface SettingsCardBuilder {
 	title(key: string, spec: SettingsTextSpec): void;
 	toggle(key: string, spec: SettingsValueSpec<boolean> & { tooltip?: string }): void;
 	action(key: string, spec: SettingsButtonSpec): void;

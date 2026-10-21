@@ -1,12 +1,12 @@
 const CRLF = "\r\n";
 const encoder = new TextEncoder();
 
-export interface MultipartField {
+interface MultipartField {
 	name: string;
 	value: string;
 }
 
-export interface MultipartFile {
+interface MultipartFile {
 	name: string;
 	filename: string;
 	contentType: string;

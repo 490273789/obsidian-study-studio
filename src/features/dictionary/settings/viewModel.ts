@@ -58,7 +58,7 @@ function sourceKindLabel(kind: DictionarySourceKind, t: DictionaryStrings): stri
 }
 
 /** Compiled status line for one catalog entry, preferring a probe result. */
-export function localDictionaryStatusText(
+function localDictionaryStatusText(
 	local: LocalDictionaryListItem,
 	compiledStatus: Readonly<Record<string, string>>,
 	t: DictionaryStrings,

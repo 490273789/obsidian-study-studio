@@ -7,7 +7,7 @@ import type {
 } from "../domain/types";
 import { toAudioFailure, type AudioFailure } from "../domain/failures";
 
-export interface MaterialEditFields {
+interface MaterialEditFields {
 	readonly title: string;
 	readonly audioPath: string;
 	readonly subtitlePath: string | null;
@@ -28,7 +28,7 @@ export interface MaterialEditSessionSnapshot {
 	readonly canSubmit: boolean;
 }
 
-export interface MaterialEditSessionOptions {
+interface MaterialEditSessionOptions {
 	readonly runtime: Pick<AudioPracticeRuntime, "addMaterial" | "editMaterial">;
 	readonly files: Pick<AudioPracticeFiles, "readText">;
 	readonly catalog: AudioPracticeCatalog;

@@ -8,7 +8,7 @@ import { FlashcardInput, FlashcardTextarea } from "../../../core/ui/primitives/I
 import { cls } from "../../../core/shared/classNames";
 import styles from "./Dictionary.module.scss";
 
-export interface DictionaryFavoriteViewProps {
+interface DictionaryFavoriteViewProps {
 	controller: DictionaryFavoriteController;
 	language: Language;
 }

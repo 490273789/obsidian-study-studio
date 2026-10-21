@@ -5,7 +5,7 @@ import { FlashcardMenu, type FlashcardMenuItem } from "../../../../../core/ui/pr
 import { SessionTimer } from "../../../../../core/ui/primitives/SessionTimer";
 import { useFlashcardI18n } from "../../../strings/context";
 
-export interface SessionToolbarProps {
+interface SessionToolbarProps {
 	mode: string;
 	deckName: string;
 	progress: string;

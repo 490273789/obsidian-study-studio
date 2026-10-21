@@ -11,7 +11,7 @@ export interface SortableInput {
 	readonly onMove: (move: SortableMove) => void | Promise<void>;
 }
 
-export interface SortableSnapshot {
+interface SortableSnapshot {
 	readonly items: readonly string[];
 	readonly busy: boolean;
 	readonly disabled: boolean;

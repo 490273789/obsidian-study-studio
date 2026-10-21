@@ -35,7 +35,7 @@ export interface LocalDictionaryStorageRemoval {
 	rollback(): Promise<void>;
 }
 
-export type LocalDictionaryStorageFailureCode =
+type LocalDictionaryStorageFailureCode =
 	| "cancelled"
 	| "collision"
 	| "corrupt"

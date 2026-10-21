@@ -10,11 +10,11 @@ import { normalizePronunciationText } from "../../../domain/pronunciation";
 import { useFlashcardI18n } from "../../../strings/context";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 
-export interface PronunciationButtonProps {
+interface PronunciationButtonProps {
 	text: string;
 }
 
-export interface PronunciationButtonRuntimeProps extends PronunciationButtonProps {
+interface PronunciationButtonRuntimeProps extends PronunciationButtonProps {
 	runtime: PronunciationRuntime;
 }
 

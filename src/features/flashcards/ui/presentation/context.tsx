@@ -3,7 +3,7 @@ import type { MarkdownRendererFn } from "../primitives/Markdown";
 import type { PronunciationRuntime } from "../../domain/pronunciation";
 
 /** Renderer and pronunciation dependencies injected once at the flashcard app root. */
-export interface CardPresentationDependencies {
+interface CardPresentationDependencies {
 	readonly markdownRenderer: MarkdownRendererFn;
 	readonly pronunciationRuntime: PronunciationRuntime;
 }

@@ -1,6 +1,6 @@
 import type { ContinuitySourceStore, SynchronizeOutcome } from "./cardIdentityContinuity";
 
-export type SourceEditTransactionResult =
+type SourceEditTransactionResult =
 	| { readonly kind: "applied" }
 	| { readonly kind: "source-changing" }
 	| { readonly kind: "failed"; readonly retryable: boolean; readonly message: string };

@@ -30,12 +30,12 @@ import {
 	type SubtitleCue,
 } from "./types";
 
-export interface AudioPracticeSettingsReader {
+interface AudioPracticeSettingsReader {
 	read(): AudioPracticeSettings;
 	readSecret(id: string): string | null;
 }
 
-export interface AudioPracticeRuntimeOptions {
+interface AudioPracticeRuntimeOptions {
 	readonly repository: AudioPracticeRepository;
 	readonly files: AudioPracticeFiles;
 	readonly source?: AudioSourceFiles;

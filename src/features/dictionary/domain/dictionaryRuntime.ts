@@ -25,7 +25,7 @@ import {
 } from "./types";
 import { YoudaoDictionarySource } from "./youdao";
 
-export interface DictionaryRuntimeOptions {
+interface DictionaryRuntimeOptions {
 	sourceEdits?: CardSourceMutation;
 	ai: AiService;
 	app: App;

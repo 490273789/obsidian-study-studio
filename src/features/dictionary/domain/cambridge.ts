@@ -31,7 +31,7 @@ function pronunciationUrl(value: string | null): string | null {
 	}
 }
 
-export function parseCambridgeDocument(
+function parseCambridgeDocument(
 	documentNode: Document,
 	query: string,
 ): {

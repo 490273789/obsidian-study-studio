@@ -9,7 +9,7 @@ import {
 	type VideoPlayerSnapshot,
 } from "./types";
 
-export interface VideoPlayerRuntimeOptions {
+interface VideoPlayerRuntimeOptions {
 	readonly store: VideoPlayerDocumentStore;
 	readonly toMediaUrl: (path: string) => string;
 	readonly now?: () => number;

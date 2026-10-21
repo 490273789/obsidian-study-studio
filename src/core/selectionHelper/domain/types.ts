@@ -60,14 +60,14 @@ export interface SelectionDictionarySource {
 	kind: "ai" | "dictionary";
 }
 
-export type SelectionLookupSourceStatus = "idle" | "loading" | "success" | "empty" | "error";
+type SelectionLookupSourceStatus = "idle" | "loading" | "success" | "empty" | "error";
 
-export interface SelectionLookupPronunciation {
+interface SelectionLookupPronunciation {
 	label: string;
 	phonetic: string;
 }
 
-export interface SelectionLookupSourceSnapshot {
+interface SelectionLookupSourceSnapshot {
 	id: string;
 	label: string;
 	kind: "ai" | "dictionary";

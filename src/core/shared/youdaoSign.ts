@@ -20,7 +20,7 @@ async function sha256(value: string): Promise<string> {
 	return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export interface YoudaoV3BodyOptions {
+interface YoudaoV3BodyOptions {
 	appKey: string;
 	appSecret: string;
 	curtime?: string;

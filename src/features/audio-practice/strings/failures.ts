@@ -5,9 +5,9 @@ import type {
 	SubtitleProblem,
 } from "../domain/failures";
 
-export type FailureAction = "retry" | "open-settings" | "regenerate" | "choose-file";
+type FailureAction = "retry" | "open-settings" | "regenerate" | "choose-file";
 
-export interface FailureCopy {
+interface FailureCopy {
 	readonly message: string;
 	readonly action: FailureAction | null;
 }

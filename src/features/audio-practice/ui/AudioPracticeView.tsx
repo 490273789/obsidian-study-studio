@@ -50,7 +50,7 @@ import type { AudioPracticeStrings } from "../strings/audioPractice";
 import { MaterialEditSession, type MaterialEditSessionSnapshot } from "./materialEditSession";
 import styles from "./AudioPractice.module.scss";
 
-export interface AudioPracticeViewProps {
+interface AudioPracticeViewProps {
 	runtime: AudioPracticeRuntime;
 	files: AudioPracticeFiles;
 	catalog: AudioPracticeCatalog;

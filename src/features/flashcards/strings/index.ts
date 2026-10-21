@@ -117,7 +117,7 @@ export function formatCompactDuration(language: Language, seconds: number): stri
 		: t("time.hours", { count: hours });
 }
 
-export function formatReviewInterval(
+function formatReviewInterval(
 	language: Language,
 	unit: "minute" | "hour" | "day",
 	count: number,

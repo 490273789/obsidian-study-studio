@@ -6,7 +6,7 @@ import type { SessionActivityFacts } from "../sessions/sessionPersistence";
 export const MIN_WORD_LIST_VISIT_DURATION_SECONDS = 5;
 
 /** One semantic learning event before it becomes history, activity, and counts. */
-export type LearningRecordFacts =
+type LearningRecordFacts =
 	| {
 			readonly kind: "session";
 			readonly deckId: string;

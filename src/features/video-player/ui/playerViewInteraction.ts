@@ -12,19 +12,19 @@ export type PlayerViewPresentation =
 			readonly rect: FloatingRect;
 	  };
 
-export interface PlayerViewSnapshot {
+interface PlayerViewSnapshot {
 	readonly role: "presenter" | "waiting";
 	readonly presentation: PlayerViewPresentation;
 	readonly queueExpanded: boolean;
 }
 
-export type PlayerViewAction =
+type PlayerViewAction =
 	| { readonly type: "enter-floating" }
 	| { readonly type: "dock-and-pause" }
 	| { readonly type: "toggle-maximized" }
 	| { readonly type: "set-queue-expanded"; readonly expanded: boolean };
 
-export type PlayerViewActionResult =
+type PlayerViewActionResult =
 	| { readonly kind: "applied" }
 	| {
 			readonly kind: "rejected";
@@ -47,12 +47,12 @@ export interface PlayerViewMount {
 	dispose(): void;
 }
 
-export interface PointerPoint {
+interface PointerPoint {
 	readonly x: number;
 	readonly y: number;
 }
 
-export interface PlayerViewInteractionOptions {
+interface PlayerViewInteractionOptions {
 	readonly runtime: VideoPlayerRuntime;
 	/** Read the current playback shortcuts on each key event; settings changes need no remount. */
 	readonly readSettings: () => VideoPlayerSettings;

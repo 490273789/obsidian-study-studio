@@ -52,7 +52,7 @@ export type AnswerPresentationAction =
 			readonly input: string;
 	  };
 
-export type AnswerPresentationActionKind = AnswerPresentationAction["kind"];
+type AnswerPresentationActionKind = AnswerPresentationAction["kind"];
 
 export interface CardPresentationSnapshot {
 	readonly answerVisible: boolean;
@@ -83,7 +83,7 @@ export interface PresentedCard {
 	readonly presentationKey: string;
 }
 
-export interface AnswerPresentationSnapshot {
+interface AnswerPresentationSnapshot {
 	readonly cardMotion: CardMotion;
 	readonly lifecycle: SessionLifecycleSnapshot;
 	readonly presentedCard: PresentedCard | null;
@@ -94,7 +94,7 @@ export interface AnswerPresentationSnapshot {
 	readonly spellingFeedback: Readonly<SpellingLifecycleFeedback> | null;
 }
 
-export type AnswerPresentationOutcome =
+type AnswerPresentationOutcome =
 	| {
 			readonly kind: "applied";
 			readonly studyCompleted: boolean;
@@ -109,7 +109,7 @@ export interface AnswerPresentationClock {
 	clearTimeout(handle: unknown): void;
 }
 
-export interface CreateAnswerPresentationTransitionOptions {
+interface CreateAnswerPresentationTransitionOptions {
 	lifecycle: SessionLifecycle;
 	clock?: AnswerPresentationClock;
 	pronunciationRuntime?: PronunciationRuntime;

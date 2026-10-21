@@ -1,4 +1,4 @@
-export type ClassValue =
+type ClassValue =
 	| string
 	| number
 	| boolean

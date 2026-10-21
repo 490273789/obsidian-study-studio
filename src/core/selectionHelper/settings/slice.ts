@@ -2,7 +2,7 @@ import type { SelectionHelperModifier, SelectionHelperSettings } from "../domain
 import { settingsRecord, type SettingsSlice } from "../../settings/slice";
 import { DEFAULT_OPEN_MAIN_SHORTCUT, normalizeOpenMainShortcut } from "./openMainShortcut";
 
-export interface SelectionPopupSliceSettings {
+interface SelectionPopupSliceSettings {
 	selectionPopup: SelectionHelperSettings;
 }
 

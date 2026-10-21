@@ -12,7 +12,7 @@ import type {
 } from "./types";
 import { orderSelectionDictionaries } from "./dictionaryOrder";
 
-export interface SelectionHelperOptions {
+interface SelectionHelperOptions {
 	settings(): SelectionHelperSettings;
 	dictionary: SelectionDictionaryAdapter;
 	translation: SelectionTranslationAdapter;

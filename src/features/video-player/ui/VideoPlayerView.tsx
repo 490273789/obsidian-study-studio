@@ -41,7 +41,7 @@ import type {
 	PlayerViewRefs,
 } from "./playerViewInteraction";
 
-export interface VideoPlayerViewProps {
+interface VideoPlayerViewProps {
 	runtime: VideoPlayerRuntime;
 	view: PlayerViewMount;
 	language: Language;
@@ -581,7 +581,7 @@ function ProgressSlider({
 	);
 }
 
-export function FloatingPlayer({
+function FloatingPlayer({
 	presentation,
 	floatingHeaderRef,
 	resizeLeftRef,

@@ -14,7 +14,7 @@ export interface DictionarySelectionResultHandle {
 	readonly word: string;
 }
 
-export interface DictionarySelectionRuntime {
+interface DictionarySelectionRuntime {
 	readonly settings: { getDictionarySettings(): Readonly<DictionarySettings> };
 	createSelectionLookupSession(
 		query: string,
@@ -22,7 +22,7 @@ export interface DictionarySelectionRuntime {
 	): DictionaryQuerySession | null;
 }
 
-export interface DictionarySelectionAdapterOptions {
+interface DictionarySelectionAdapterOptions {
 	runtime(): DictionarySelectionRuntime | null;
 	openInMainTab(query: string): Promise<void>;
 	openFavorite?(word: string): Promise<void>;

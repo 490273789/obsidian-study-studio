@@ -1,6 +1,6 @@
 export type ModalId = string;
 
-export type ModalFocusDestination = "container" | "first" | "last" | null;
+type ModalFocusDestination = "container" | "first" | "last" | null;
 
 export function registerModal(stack: readonly ModalId[], modalId: ModalId): readonly ModalId[] {
 	if (stack.includes(modalId)) return stack;

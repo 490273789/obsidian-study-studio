@@ -1,16 +1,16 @@
 import { Platform } from "obsidian";
 import type { LocalVideoSource } from "../domain/types";
 
-export interface DesktopVideoFileSystem {
+interface DesktopVideoFileSystem {
 	realpath(path: string): Promise<string>;
 	access(path: string, mode?: number): Promise<void>;
 }
 
-export interface ElectronWebUtils {
+interface ElectronWebUtils {
 	getPathForFile(file: File): string;
 }
 
-export interface LocalVideoFilePickerDependencies {
+interface LocalVideoFilePickerDependencies {
 	document?: Document;
 	webUtils?: ElectronWebUtils | null;
 	fileSystem?: DesktopVideoFileSystem | null;

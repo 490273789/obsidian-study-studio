@@ -1,4 +1,4 @@
-export type LocalDictionaryPickerKind = "files" | "folder";
+type LocalDictionaryPickerKind = "files" | "folder";
 
 /**
  * Open the browser-backed picker in Obsidian's currently active document.

@@ -14,25 +14,25 @@ export interface PopupPositionSnapshot {
 	maxHeight: number;
 }
 
-export interface ElementSize {
+interface ElementSize {
 	width: number;
 	height: number;
 }
 
-export type PlacementReason = "initial" | "content" | "viewport" | "drag";
+type PlacementReason = "initial" | "content" | "viewport" | "drag";
 
-export interface DragPoint {
+interface DragPoint {
 	x: number;
 	y: number;
 }
 
-export interface PopupTargetPoint {
+interface PopupTargetPoint {
 	x: number;
 	y: number;
 	trigger?: string;
 }
 
-export interface PopupPlacementControllerOptions {
+interface PopupPlacementControllerOptions {
 	element?: HTMLElement | null;
 	ownerWindow?:
 		| (Window & {

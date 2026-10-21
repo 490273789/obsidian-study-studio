@@ -4,7 +4,7 @@ import { videoPlayerStrings } from "../strings/videoPlayer";
 import { DEFAULT_VIDEO_PLAYER_SHORTCUTS, type VideoPlayerShortcuts } from "./keyboardShortcut";
 import { VIDEO_SKIP_INTERVALS, type VideoPlayerSettings, type VideoSkipInterval } from "./slice";
 
-export interface VideoPlayerSettingsActions {
+interface VideoPlayerSettingsActions {
 	setEnabled: (enabled: boolean) => void | Promise<void>;
 	setSkipInterval: (seconds: VideoSkipInterval) => void | Promise<void>;
 	setShortcut: (key: keyof VideoPlayerShortcuts, shortcut: string) => void | Promise<void>;

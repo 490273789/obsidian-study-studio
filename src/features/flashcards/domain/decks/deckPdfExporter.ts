@@ -27,7 +27,7 @@ export interface DeckPdfExportProgress {
 	total: number;
 }
 
-export interface DeckPdfExportOptions {
+interface DeckPdfExportOptions {
 	onProgress?: (progress: DeckPdfExportProgress) => void;
 	runtime?: DesktopPdfRuntime;
 }

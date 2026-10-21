@@ -47,7 +47,7 @@ function highlightedSentence(sentence: string, word: string): React.ReactNode[] 
 	);
 }
 
-export interface AiSenseProps {
+interface AiSenseProps {
 	definition: AiDictionaryDefinition;
 	number: number;
 	word: string;

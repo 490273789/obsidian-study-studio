@@ -11,7 +11,7 @@ const DEFAULT_FLUSH_THRESHOLD = 128;
 const DEFAULT_IDLE_FLUSH_MILLISECONDS = 3_000;
 
 /** Side of the coordinator that only the repository can provide. */
-export interface SessionJournalMergeHost {
+interface SessionJournalMergeHost {
 	/** Build and durably commit the learning document that records `watermark`. */
 	merge(watermark: number): Promise<void>;
 	/** Apply entries to in-memory decks and spelling progress. */
@@ -22,14 +22,14 @@ export interface SessionJournalMergeHost {
 	requestMerge(): void;
 }
 
-export interface SessionJournalCoordinatorOptions extends SessionJournalMergeHost {
+interface SessionJournalCoordinatorOptions extends SessionJournalMergeHost {
 	journal: SessionJournalStore | null;
 	flushThreshold?: number;
 	idleFlushMilliseconds?: number;
 	timer: SessionJournalTimer;
 }
 
-export type SessionJournalAppendResult =
+type SessionJournalAppendResult =
 	| { readonly kind: "appended" }
 	| { readonly kind: "unavailable" }
 	/** Settling the on-disk journal before allocating new sequences failed. */

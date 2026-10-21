@@ -1,8 +1,8 @@
 /** Which side of the current page the next page sits on. */
-export type PageTransitionDirection = "forward" | "backward" | "replace";
+type PageTransitionDirection = "forward" | "backward" | "replace";
 
 /** The page identity and entrance direction handed to the rendering shell. */
-export interface PageTransition {
+interface PageTransition {
 	/** Stable identity of the page on screen; changing it replays the entrance. */
 	readonly key: string;
 	/** How deep the page sits in the route hierarchy; drives the direction. */

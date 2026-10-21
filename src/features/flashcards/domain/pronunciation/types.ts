@@ -5,7 +5,7 @@ import type {
 	PronunciationSettings,
 } from "../../../../core/shared/types";
 
-export type PronunciationSource = "local" | "cache" | "azure" | "openai";
+type PronunciationSource = "local" | "cache" | "azure" | "openai";
 
 export type PronunciationFailureReason =
 	| "offline"

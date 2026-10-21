@@ -8,7 +8,7 @@ import type {
 } from "./cardIdentityContinuity";
 
 /** The persisted facts one editability decision needs. */
-export interface SourceEditState {
+interface SourceEditState {
 	readonly configuredTags: readonly string[];
 	readonly decks: ReadonlyMap<string, Deck>;
 	readonly continuity: PersistedCardIdentityContinuityState;

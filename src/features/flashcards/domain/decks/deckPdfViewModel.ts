@@ -1,6 +1,6 @@
 import type { Deck } from "../../../../core/shared/types";
 
-export interface DeckPdfRow {
+interface DeckPdfRow {
 	front: string;
 	back: string;
 }
@@ -12,7 +12,7 @@ export interface DeckPdfExportLabels {
 	saveDialogTitle: string;
 }
 
-export interface PrintableDeck {
+interface PrintableDeck {
 	root: HTMLElement;
 	tableBody: HTMLTableSectionElement;
 }

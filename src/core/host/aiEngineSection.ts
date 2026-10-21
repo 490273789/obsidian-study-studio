@@ -7,7 +7,7 @@ import type { WorkbenchSettingsSection } from "./workbench";
 /** Settings section id; also the section features target when opening AI settings. */
 export const AI_ENGINE_SECTION_ID = "ai";
 
-export interface AiEngineSectionOptions {
+interface AiEngineSectionOptions {
 	ai: AiService;
 	/** Re-renders the settings tab; the editor calls it on every committed change. */
 	refresh(): void;

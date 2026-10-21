@@ -3,7 +3,7 @@ import { EndpointValidationError, validateHttpEndpoint } from "./endpoint";
 import type { OutboundPort } from "./types";
 
 /** Provider-neutral Youdao failure categories; features map them to their own errors. */
-export type YoudaoFailureKind =
+type YoudaoFailureKind =
 	| "invalid-config"
 	| "missing-key"
 	| "unauthorized"
@@ -26,7 +26,7 @@ export class YoudaoTransportError extends Error {
 	}
 }
 
-export interface YoudaoResolvedConnection {
+interface YoudaoResolvedConnection {
 	readonly endpoint: string;
 	readonly appKey: string;
 	readonly appSecret: string;

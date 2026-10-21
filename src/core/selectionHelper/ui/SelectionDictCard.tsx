@@ -8,7 +8,7 @@ import type { SelectionResultContentRenderer } from "./types";
 import { matchesOpenMainShortcut } from "../settings/openMainShortcut";
 import styles from "./SelectionPopup.module.scss";
 
-export interface SelectionDictCardProps {
+interface SelectionDictCardProps {
 	query: string;
 	lookup: SelectionLookupSnapshot;
 	onLookup?: (query: string) => void;
@@ -27,7 +27,7 @@ export interface SelectionDictCardProps {
 	onHeaderPointerDown?: React.PointerEventHandler<HTMLElement>;
 }
 
-export class SelectionContentBoundary extends React.Component<
+class SelectionContentBoundary extends React.Component<
 	{ children: React.ReactNode; fallback: React.ReactNode },
 	{ failed: boolean }
 > {

@@ -7,12 +7,12 @@ import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { Confetti } from "../../../../../core/ui/primitives/Confetti";
 import styles from "./SessionSummary.module.scss";
 
-export interface SummaryMetric {
+interface SummaryMetric {
 	label: string;
 	value: React.ReactNode;
 }
 
-export interface SummaryAction {
+interface SummaryAction {
 	label: string;
 	onClick: () => void;
 	icon?: LucideIcon;

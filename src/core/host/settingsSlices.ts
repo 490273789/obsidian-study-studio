@@ -27,7 +27,7 @@ import { audioPracticeSettingsSlice } from "../../features/audio-practice/settin
 export const SHARED_SETTINGS_SLICES = [hostSettingsSlice] as const;
 
 /** The canonical ownership map used for both static projections and runtime authorization. */
-export const SETTINGS_SLICES_BY_OWNER = {
+const SETTINGS_SLICES_BY_OWNER = {
 	workbench: [aiSettingsSlice, featureOpenShortcutsSlice],
 	flashcards: [flashcardSettingsSlice, pronunciationSettingsSlice],
 	translation: [translationSettingsSlice],
@@ -48,7 +48,7 @@ export const SETTINGS_SLICES = [
 	...SETTINGS_SLICES_BY_OWNER.audioPractice,
 ] as const;
 
-export type SettingsOwner = keyof typeof SETTINGS_SLICES_BY_OWNER;
+type SettingsOwner = keyof typeof SETTINGS_SLICES_BY_OWNER;
 export type FeatureSettingsOwner = Exclude<SettingsOwner, "workbench">;
 
 type SliceDocument<TSlice> = TSlice extends SettingsSlice<infer TDocument> ? TDocument : never;
@@ -61,7 +61,7 @@ type UnionToIntersection<T> = (T extends unknown ? (value: T) => void : never) e
 export type OwnedSettings<TOwner extends SettingsOwner> = UnionToIntersection<
 	SliceDocument<(typeof SETTINGS_SLICES_BY_OWNER)[TOwner][number]>
 >;
-export type SharedWorkbenchSettings = HostSettings;
+type SharedWorkbenchSettings = HostSettings;
 export type ScopedWorkbenchSettings<TOwner extends SettingsOwner> = Readonly<
 	SharedWorkbenchSettings & OwnedSettings<TOwner>
 >;

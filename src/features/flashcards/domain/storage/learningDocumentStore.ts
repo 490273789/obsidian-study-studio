@@ -43,7 +43,7 @@ export interface AuthorityCandidate {
 	install(): void;
 }
 
-export interface LearningDocumentStoreOptions {
+interface LearningDocumentStoreOptions {
 	authority: FlashcardAuthority;
 	onAuthorityChange: (change: FlashcardAuthorityChange) => void | Promise<void>;
 	/** Restores the owner's memory from the authority after a version race. */

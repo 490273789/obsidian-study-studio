@@ -16,7 +16,7 @@ export interface WordListViewportRow {
 	readonly height: number;
 }
 
-export interface WordListViewportSnapshot {
+interface WordListViewportSnapshot {
 	readonly rows: readonly WordListViewportRow[];
 	readonly totalHeight: number;
 }

@@ -10,7 +10,7 @@ export interface WordListItem {
 	index: number;
 }
 
-export interface WordColumnPresentation {
+interface WordColumnPresentation {
 	key: VisibleWordColumnKey;
 	className: string;
 	textClassName: string;

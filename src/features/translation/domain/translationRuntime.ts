@@ -13,7 +13,7 @@ import type {
 	TranslationSnapshot,
 } from "./types";
 
-export interface TranslationDependencies {
+interface TranslationDependencies {
 	persist(settings: TranslationSettings): Promise<void>;
 	youdao(
 		settings: TranslationSettings["youdao"],

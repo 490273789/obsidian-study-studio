@@ -1,6 +1,6 @@
 import type { CardDirection, FlashCard } from "../../../../core/shared/types";
 
-export interface DisplayCardContent {
+interface DisplayCardContent {
 	prompt: string;
 	answer: string;
 	explanation: string;

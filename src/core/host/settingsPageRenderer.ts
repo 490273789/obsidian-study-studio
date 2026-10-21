@@ -4,13 +4,13 @@ import type { SettingsPresentation } from "../settings/presentation";
 import type { WorkbenchSettingsSection } from "./workbench";
 import { renderSettingsControls } from "./settingsControlRenderer";
 
-export interface SettingsPageRendererOptions {
+interface SettingsPageRendererOptions {
 	readonly app: App;
 	readonly containerEl: HTMLElement;
 	readonly onSelectSection: (sectionId: string) => void;
 }
 
-export interface SettingsPageRenderInput {
+interface SettingsPageRenderInput {
 	readonly sections: readonly WorkbenchSettingsSection[];
 	readonly activeSection: WorkbenchSettingsSection | undefined;
 	readonly language: Language;

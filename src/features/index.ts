@@ -11,7 +11,7 @@ import { createSelectionHelperModule } from "../core/selectionHelper/module";
 import { createVideoPlayerFeature } from "./video-player/feature";
 import { createAudioPracticeFeature } from "./audio-practice/feature";
 
-export interface WorkbenchModuleDeps {
+interface WorkbenchModuleDeps {
 	ai: AiService;
 	store: WorkbenchStore;
 	plugin: Plugin;

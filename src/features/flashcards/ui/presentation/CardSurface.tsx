@@ -5,7 +5,7 @@ import { CardAnswerSection, CardQuestionPanel } from "./CardPanels";
 import { CardPresentationStack } from "./CardPresentationStack";
 import { deriveCardPresentation } from "./cardPresentation";
 
-export interface CardSurfaceProps {
+interface CardSurfaceProps {
 	/** The encounter resolved by `AnswerPresentationTransition`. */
 	readonly presented: PresentedCard;
 	/** Answer visibility is owned per mode: transition for study/practice, view for challenge/spelling. */

@@ -14,13 +14,13 @@ export type CardSourceOperation =
 	| { kind: "edit"; identity: string; content: CardSourceContent }
 	| { kind: "delete"; identity: string };
 
-export type CardSourceBlocked = {
+type CardSourceBlocked = {
 	kind: "blocked";
 	reason: "migration-required" | "source-needs-repair";
 	issueId?: string;
 };
 
-export type CardSourceFailure = { kind: "failed"; retryable: boolean; message: string };
+type CardSourceFailure = { kind: "failed"; retryable: boolean; message: string };
 
 export type CardSourcePreparation =
 	| { kind: "unmanaged" }

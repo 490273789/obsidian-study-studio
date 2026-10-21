@@ -1,7 +1,7 @@
 import type { DictionaryFavoriteController } from "../domain/favorite-controller";
 import type { DictionaryFavoriteOpenMode, DictionaryFavoriteViewState } from "../domain/types";
 
-export interface DictionaryFavoriteModalHandle {
+interface DictionaryFavoriteModalHandle {
 	open(): void;
 	close(): void;
 	updateSettings(): void;

@@ -1,7 +1,7 @@
 import type { FeatureSettingsOwner } from "./settingsSlices";
 import type { WorkbenchHost, WorkbenchModule } from "./workbench";
 
-export type FeatureLifetimeErrorCode =
+type FeatureLifetimeErrorCode =
 	| "invalid-phase"
 	| "host-changed"
 	| "start-failed"
@@ -33,7 +33,7 @@ export interface FeatureLifetimeScope {
 	defer(release: () => void): void;
 }
 
-export interface FeatureLifetimeDefinition<TOwner extends FeatureSettingsOwner> {
+interface FeatureLifetimeDefinition<TOwner extends FeatureSettingsOwner> {
 	readonly id: TOwner;
 	/**
 	 * Acquires resources and publishes one-time declarations. Its optional return

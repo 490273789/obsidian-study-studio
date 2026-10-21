@@ -6,10 +6,10 @@ import type { DeckHomeDeckSnapshot } from "../domain/decks/deckHome";
  * - `fresh`  — untouched, so progress is not worth rendering as a bar.
  * - `active` — partly learned; the row leads with progress.
  */
-export type DeckCardVisualState = "active" | "fresh" | "done";
+type DeckCardVisualState = "active" | "fresh" | "done";
 
 /** The progress values one deck row renders from its stable snapshot row. */
-export interface DeckCardMetrics {
+interface DeckCardMetrics {
 	readonly state: DeckCardVisualState;
 	readonly learnedCards: number;
 	readonly progressPercent: number;

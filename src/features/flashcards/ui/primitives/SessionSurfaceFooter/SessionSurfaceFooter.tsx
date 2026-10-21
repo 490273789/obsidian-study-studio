@@ -1,7 +1,7 @@
 import React from "react";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 
-export interface SessionSurfaceFooterProps {
+interface SessionSurfaceFooterProps {
 	busy: boolean;
 	answerVisible: boolean;
 	onReveal: () => void;

@@ -37,7 +37,7 @@ export function pruneStudyHistory(
 	return history.filter((entry) => keep.has(entry.date));
 }
 
-export type AppendableStudyHistoryEntry =
+type AppendableStudyHistoryEntry =
 	| PendingStudyHistoryEntry
 	| StudyHistoryEntry
 	| {

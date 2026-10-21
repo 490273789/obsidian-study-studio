@@ -27,7 +27,7 @@ const LEGACY_FLASHCARD_KEYS = [
 	"availableTags",
 ] as const;
 
-export interface WorkbenchFlashcardAuthorityOptions {
+interface WorkbenchFlashcardAuthorityOptions {
 	store: WorkbenchStore;
 	adapter?: DataAdapter;
 	pluginDirectory?: string;

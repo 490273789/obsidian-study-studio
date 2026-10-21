@@ -47,7 +47,7 @@ export interface ContinuitySourceStore {
 	): Promise<"written" | "stale">;
 }
 
-export type ContinuitySourceCondition =
+type ContinuitySourceCondition =
 	| { type: "current" }
 	| { type: "legacy"; cardCount: number }
 	| {
@@ -73,14 +73,14 @@ export type CardIdentityIssue =
 			candidates: CardIdentityCandidate[];
 	  };
 
-export interface CardIdentityCandidate {
+interface CardIdentityCandidate {
 	token: string;
 	sourcePath: string;
 	front: string;
 	back: string;
 }
 
-export interface ContinuityJournal {
+interface ContinuityJournal {
 	id: string;
 	type: "migration" | "repair";
 	issueId?: string;
@@ -89,7 +89,7 @@ export interface ContinuityJournal {
 	sources: ContinuityJournalSource[];
 }
 
-export interface ContinuityJournalSource {
+interface ContinuityJournalSource {
 	path: string;
 	expectedContent: string;
 	nextContent: string;
@@ -142,7 +142,7 @@ export interface MigrationPreview {
 }
 
 /** What a synchronization changed; the repository's cache-invalidation contract. */
-export interface DeckContentChange {
+interface DeckContentChange {
 	/** New or content-changed decks: card set/text/order, deck name/tag, or derived metadata. */
 	readonly changedDeckIds: readonly string[];
 	/** Decks that disappeared from the index. */
@@ -192,7 +192,7 @@ export type ResolutionOutcome =
 	  }
 	| { kind: "failed"; retryable: boolean; message: string };
 
-export interface CardContentChange {
+interface CardContentChange {
 	front: string;
 	back: string;
 	explanation?: string;
@@ -234,7 +234,7 @@ export interface CardIdentityContinuity {
 	resolve(resolution: ContinuityResolution): Promise<ResolutionOutcome>;
 }
 
-export interface CreateCardIdentityContinuityOptions {
+interface CreateCardIdentityContinuityOptions {
 	sources: ContinuitySourceStore;
 	state: ContinuityStateStore;
 	sessions?: ContinuitySessionAdapter;

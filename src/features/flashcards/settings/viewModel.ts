@@ -15,7 +15,7 @@ import type { PronunciationCacheUsage, PronunciationSnapshot } from "../domain/p
 import { createTranslator } from "../strings/index";
 import { STUDY_ORDER_OPTIONS, STUDY_SETTINGS_LIMITS, parseStudyOrder } from "./studyMeta";
 
-export interface SettingsViewModelState {
+interface SettingsViewModelState {
 	settings: ScopedWorkbenchSettings<"flashcards">;
 	availableTags: string[];
 	isLoadingTags: boolean;
@@ -382,7 +382,7 @@ export function buildSettingsViewModel(
 	});
 }
 
-export function getUnusedTags(availableTags: string[], configuredTags: string[]): string[] {
+function getUnusedTags(availableTags: string[], configuredTags: string[]): string[] {
 	return availableTags.filter((tag) => !configuredTags.includes(tag));
 }
 
@@ -398,7 +398,7 @@ function parseOnlinePronunciationProvider(value: string): OnlinePronunciationPro
 	return value === "azure" || value === "openai" ? value : "none";
 }
 
-export function formatBytes(bytes: number): string {
+function formatBytes(bytes: number): string {
 	if (bytes < 1024) return `${bytes} B`;
 	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
 	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;

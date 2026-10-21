@@ -10,13 +10,13 @@ export interface CachedSourceSyntax {
 	readonly bytes: number;
 }
 
-export interface SourceSyntaxCacheLimits {
+interface SourceSyntaxCacheLimits {
 	readonly maxBytes?: number;
 	readonly maxEntries?: number;
 }
 
-export const SOURCE_SYNTAX_CACHE_BYTES = 32 * 1_048_576;
-export const SOURCE_SYNTAX_CACHE_ENTRIES = 2048;
+const SOURCE_SYNTAX_CACHE_BYTES = 32 * 1_048_576;
+const SOURCE_SYNTAX_CACHE_ENTRIES = 2048;
 
 /**
  * Bounded source-syntax cache for repeated full scans. Admissions are rejected

@@ -16,7 +16,7 @@ export type TransportErrorCode =
 	| "cancelled"
 	| "invalid-response";
 
-export interface TransportErrorOptions {
+interface TransportErrorOptions {
 	/** HTTP status when the failure came from a completed response. */
 	httpStatus?: number | null;
 	/** Response body, when a caller needs the provider's own error payload. */

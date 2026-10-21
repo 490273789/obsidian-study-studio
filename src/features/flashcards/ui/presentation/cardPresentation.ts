@@ -8,7 +8,7 @@ import type { CardPresentationSnapshot } from "../answerPresentationTransition";
  * deliberately mode-agnostic: each view supplies its card, direction, visibility
  * and labels, and keeps its mode-specific controls outside this module.
  */
-export interface CardPresentationInput {
+interface CardPresentationInput {
 	readonly card: Pick<FlashCard, "front" | "back" | "explanation"> | null;
 	readonly direction: CardDirection;
 	readonly answerVisible: boolean;
@@ -24,7 +24,7 @@ export interface CardPresentationBlock {
 	readonly pronunciationWord: string | null;
 }
 
-export interface CardPresentationModel {
+interface CardPresentationModel {
 	readonly question: CardPresentationBlock;
 	readonly answer: CardPresentationBlock | null;
 	readonly explanation: CardPresentationBlock | null;

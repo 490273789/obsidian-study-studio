@@ -36,7 +36,7 @@ export function extractCleanCardText(cardElement: HTMLElement): string {
 
 import type { TranslationKey } from "../../strings";
 
-export interface CardContextMenuContext {
+interface CardContextMenuContext {
 	t: (key: TranslationKey) => string;
 	copyText?: (text: string) => Promise<boolean>;
 }

@@ -1,5 +1,5 @@
 /** DOM objects and coordinate conversion stay at the Obsidian boundary. */
-export interface CapturedSelection {
+interface CapturedSelection {
 	text: string;
 	x: number;
 	y: number;

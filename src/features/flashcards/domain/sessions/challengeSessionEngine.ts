@@ -2,12 +2,12 @@ export type ChallengeMode = "normal" | "reversed" | "spelling" | "random";
 
 export type ChallengeQuestionMode = Exclude<ChallengeMode, "random">;
 
-export interface ChallengeCardRef {
+interface ChallengeCardRef {
 	readonly identity: string;
 	readonly originDeckId: string;
 }
 
-export interface ChallengePersistedQuestion extends ChallengeCardRef {
+interface ChallengePersistedQuestion extends ChallengeCardRef {
 	readonly questionMode: ChallengeQuestionMode;
 }
 
@@ -24,7 +24,7 @@ export interface ChallengeLevelResult {
 	readonly removedCardCount: number;
 }
 
-export interface ChallengeRoundProgress {
+interface ChallengeRoundProgress {
 	readonly id: string;
 	readonly mode: ChallengeMode;
 	readonly startedAt: number;
@@ -74,7 +74,7 @@ export interface ChallengeFeedback {
 	readonly expectedAnswer?: string;
 }
 
-export interface ChallengeAttempt {
+interface ChallengeAttempt {
 	readonly identity: string;
 	readonly correct: boolean;
 	readonly answeredAt: number;
@@ -103,7 +103,7 @@ type ChallengeSessionStep =
 	  };
 
 /** The paired pure facts of one real submission, ready for an atomic commit. */
-export type ChallengeAnswerUpdate = ChallengeSessionStep & {
+type ChallengeAnswerUpdate = ChallengeSessionStep & {
 	readonly progress: ChallengeProgress;
 	readonly record: SessionRecord;
 };

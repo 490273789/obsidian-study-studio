@@ -62,7 +62,7 @@ export function createAudioPracticeCatalog(app: App): AudioPracticeCatalog {
 	};
 }
 
-export function listAudioPracticeFiles(app: App): AudioPracticeFileCatalog {
+function listAudioPracticeFiles(app: App): AudioPracticeFileCatalog {
 	const files = app.vault.getFiles();
 	const paths = (extensions: string[]) =>
 		files

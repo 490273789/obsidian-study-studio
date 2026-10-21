@@ -15,9 +15,9 @@ import { parseOpenMainShortcut } from "./settings/openMainShortcut";
 import { selectionHelperStrings } from "./strings/selectionPopup";
 import type { SelectionResultContentRenderer } from "./ui/types";
 
-export const SELECTION_HELPER_SECTION_ID = "selectionPopup";
+const SELECTION_HELPER_SECTION_ID = "selectionPopup";
 
-export interface SelectionHelperModuleDeps {
+interface SelectionHelperModuleDeps {
 	dictionary: SelectionDictionaryAdapter;
 	translation: SelectionTranslationAdapter;
 	renderResultContent?: SelectionResultContentRenderer;

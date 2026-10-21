@@ -39,18 +39,18 @@ export class DeckSourceEditException extends Error {
 	}
 }
 
-export interface CardSourceEditResult {
+interface CardSourceEditResult {
 	/** The new Markdown source; bytes outside the edited blocks are unchanged. */
 	readonly nextContent: string;
 	/** Identities created for `add` operations, in operation order. */
 	readonly createdIdentities: readonly string[];
 }
 
-export type IdentityMaintenanceAction =
+type IdentityMaintenanceAction =
 	| { readonly kind: "register-missing" }
 	| { readonly kind: "replace-markers"; readonly identities: readonly string[] };
 
-export interface CardSourceIdentityResult {
+interface CardSourceIdentityResult {
 	readonly nextContent: string;
 	/** Registered identities for `register-missing`, or the supplied list for `replace-markers`. */
 	readonly identities: readonly string[];

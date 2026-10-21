@@ -48,7 +48,7 @@ export interface SpellingSetupPlan {
 
 type PracticeSessionPlanSource = "study-day" | "random" | "range";
 
-export type ShuffleCardIds = (cardIds: string[]) => string[];
+type ShuffleCardIds = (cardIds: string[]) => string[];
 
 interface PracticeSessionPlan {
 	source: PracticeSessionPlanSource;
@@ -71,7 +71,7 @@ interface SpellingSessionPlan {
 	cardIds: string[];
 }
 
-export interface SpellingDeckProgressStats {
+interface SpellingDeckProgressStats {
 	total: number;
 	unpracticed: number;
 }
@@ -89,7 +89,7 @@ export interface SpellingDeckEligibility {
 
 type SpellingShuffle = (cardIds: string[]) => string[];
 
-export interface SessionPlanningContext {
+interface SessionPlanningContext {
 	readonly settings: Pick<StudySettings, "dailyNewCards" | "dailyReviewCards" | "studyOrder">;
 	readonly isSpellingEnabled?: boolean;
 	readonly spellingProgress?: SpellingProgressSnapshot;
@@ -97,7 +97,7 @@ export interface SessionPlanningContext {
 	readonly now?: Date;
 }
 
-export type SessionQueuePlanResult =
+type SessionQueuePlanResult =
 	| {
 			readonly kind: "success";
 			readonly cardIds: string[];
@@ -433,7 +433,7 @@ function planRangeSpellingSession(params: {
 	};
 }
 
-export type RetryIncorrectSessionPlanResult =
+type RetryIncorrectSessionPlanResult =
 	| {
 			readonly kind: "success";
 			readonly cardIds: string[];

@@ -39,17 +39,17 @@ import { defineFeatureLifetime } from "../../core/host/featureLifetime";
 import type { WorkbenchHost, WorkbenchSettingsSection } from "../../core/host/workbench";
 
 /** Settings section id this feature contributes. */
-export const FLASHCARD_SECTION_ID = "flashcards";
+const FLASHCARD_SECTION_ID = "flashcards";
 
 /** Obsidian view type of the 闪卡 workbench view. */
-export const VIEW_TYPE_FLASHCARD = "flashcard-view";
+const VIEW_TYPE_FLASHCARD = "flashcard-view";
 
 const OPEN_COMMAND_ID = "open-flashcard-view";
 const SYNC_COMMAND_ID = "sync-flashcard-decks";
 const MIGRATE_IDENTITIES_COMMAND_ID = "migrate-card-identities";
 const REPAIR_IDENTITIES_COMMAND_ID = "repair-card-identities";
 
-export interface FlashcardFeatureDeps {
+interface FlashcardFeatureDeps {
 	store: WorkbenchStore;
 	net: OutboundPort;
 	plugin?: Plugin;

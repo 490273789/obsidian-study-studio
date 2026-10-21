@@ -16,7 +16,7 @@ const HUJIANG_STYLES = `
 body{padding:4px 6px 18px;font-size:15px}h2{font-size:1.35em;border-bottom:1px solid color-mix(in srgb,CanvasText 22%,transparent);padding-bottom:6px}h3{font-size:1.1em}.word-details-pane{padding-bottom:16px}.word-details-pane+.word-details-pane{border-top:1px solid color-mix(in srgb,CanvasText 16%,transparent);padding-top:16px}.detail-groups{margin-top:12px}.detail-groups dt{font-weight:750;margin:10px 0}.detail-groups dd{margin:0 0 12px 22px}.detail-tags-en{display:flex;flex-wrap:wrap;gap:6px;padding:0;list-style:none}.detail-tags-en li{padding:2px 6px;border-radius:4px;background:color-mix(in srgb,#22a6b3 15%,Canvas);color:#168596}.detail-source{color:GrayText}.word-audio{display:none}
 `;
 
-export function createHujiangRequestHeaders(
+function createHujiangRequestHeaders(
 	now = Date.now(),
 	createId: () => string = () => crypto.randomUUID(),
 ): Record<string, string> {
@@ -42,7 +42,7 @@ export function createHujiangRequestHeaders(
 	};
 }
 
-export function parseHujiangDocument(documentNode: Document): {
+function parseHujiangDocument(documentNode: Document): {
 	html: string;
 	suggestions: string[];
 } {

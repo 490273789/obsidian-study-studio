@@ -38,7 +38,7 @@ interface InFlightSpeak {
 	promise: Promise<PronunciationOutcome>;
 }
 
-export interface PronunciationRuntimeDependencies {
+interface PronunciationRuntimeDependencies {
 	speechSynthesis?: SpeechSynthesis | null;
 	createUtterance?: ((text: string) => SpeechSynthesisUtterance) | null;
 	createAudio?: ((url: string) => HTMLAudioElement) | null;

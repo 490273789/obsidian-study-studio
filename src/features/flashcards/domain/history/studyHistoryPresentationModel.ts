@@ -3,12 +3,12 @@ import { type TranslationKey } from "../../strings/index";
 import { formatCompactDuration } from "../../strings/index";
 import { formatLocalDateKey } from "./studyHistory";
 
-export type StudyHistoryTranslator = (
+type StudyHistoryTranslator = (
 	key: TranslationKey,
 	vars?: Record<string, string | number>,
 ) => string;
 
-export interface StudyHistoryModePresentation {
+interface StudyHistoryModePresentation {
 	labelKey:
 		| "stats.modeStudy"
 		| "stats.modePractice"
@@ -18,7 +18,7 @@ export interface StudyHistoryModePresentation {
 	cls: string;
 }
 
-export interface StudyHistoryDayGroup {
+interface StudyHistoryDayGroup {
 	date: string;
 	displayDate: string;
 	entries: ReadonlyArray<StudyHistoryEntry>;
@@ -27,18 +27,18 @@ export interface StudyHistoryDayGroup {
 	totalCards: number;
 }
 
-export interface StudyHistoryTotalsPresentation {
+interface StudyHistoryTotalsPresentation {
 	duration: number;
 	durationLabel: string;
 	cards: number;
 }
 
-export interface StudyHistoryPresentationModel {
+interface StudyHistoryPresentationModel {
 	dayGroups: StudyHistoryDayGroup[];
 	totals: StudyHistoryTotalsPresentation;
 }
 
-export interface BuildStudyHistoryPresentationModelOptions {
+interface BuildStudyHistoryPresentationModelOptions {
 	language: Language;
 	t: StudyHistoryTranslator;
 	now?: Date;
