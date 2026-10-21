@@ -1,6 +1,7 @@
 import type {
 	SelectionDictionaryAdapter,
-	SelectionLookupSession,
+	SelectionLookupHandle,
+	SelectionLookupIntent,
 	SelectionLookupSnapshot,
 } from "../../core/selectionHelper/domain/types";
 import type { DictionaryResult, DictionarySettings, DictionaryViewState } from "./domain/types";
@@ -45,7 +46,7 @@ export function createDictionarySelectionAdapter(
 
 		startLookup: (query, sourceIds) => {
 			const session = options.runtime()?.createSelectionLookupSession(query, sourceIds);
-			return session ? new DictionarySelectionLookupSession(session) : null;
+			return session ? new DictionarySelectionLookupHandle(session) : null;
 		},
 
 		openInMainTab: (query) => options.openInMainTab(query),
@@ -53,7 +54,7 @@ export function createDictionarySelectionAdapter(
 	};
 }
 
-class DictionarySelectionLookupSession implements SelectionLookupSession {
+class DictionarySelectionLookupHandle implements SelectionLookupHandle {
 	constructor(private readonly session: DictionaryQuerySession) {}
 
 	getSnapshot(): SelectionLookupSnapshot {
@@ -64,24 +65,23 @@ class DictionarySelectionLookupSession implements SelectionLookupSession {
 		return this.session.subscribe(listener);
 	}
 
-	selectSource(sourceId: string): void {
-		void this.session.send({ type: "select-source", sourceId });
-	}
-
-	selectSection(sourceId: string, sectionIndex: number): void {
-		void this.session.send({ type: "select-section", sourceId, sectionIndex });
-	}
-
-	lookup(query: string): Promise<void> {
-		return this.session.send({ type: "lookup", query });
-	}
-
-	retry(sourceId: string): Promise<void> {
-		return this.session.send({ type: "retry-source", sourceId });
-	}
-
-	generateAi(): Promise<void> {
-		return this.session.send({ type: "generate-ai" });
+	send(intent: SelectionLookupIntent): Promise<void> {
+		switch (intent.type) {
+			case "lookup":
+				return this.session.send({ type: "lookup", query: intent.query });
+			case "select-source":
+				return this.session.send({ type: "select-source", sourceId: intent.sourceId });
+			case "select-section":
+				return this.session.send({
+					type: "select-section",
+					sourceId: intent.sourceId,
+					sectionIndex: intent.sectionIndex,
+				});
+			case "retry-source":
+				return this.session.send({ type: "retry-source", sourceId: intent.sourceId });
+			case "generate-ai":
+				return this.session.send({ type: "generate-ai" });
+		}
 	}
 
 	dispose(): void {

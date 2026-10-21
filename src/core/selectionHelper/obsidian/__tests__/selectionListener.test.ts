@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { SelectionHelper } from "../../domain/selectionHelper";
-import type { SelectionLookupSession } from "../../domain/types";
+import type { SelectionLookupHandle } from "../../domain/types";
 import { SelectionListener } from "../selectionListener";
 
 const roots = vi.hoisted(() => ({ create: vi.fn() }));
@@ -76,7 +76,7 @@ function helper(modifier: "none" | "alt" = "none") {
 	});
 }
 function dictionaryHelper() {
-	const session: SelectionLookupSession = {
+	const session: SelectionLookupHandle = {
 		getSnapshot: () => ({
 			query: "hello",
 			activeSourceId: "dictionary",
@@ -85,11 +85,7 @@ function dictionaryHelper() {
 			sources: [],
 		}),
 		subscribe: () => () => {},
-		selectSource: () => {},
-		selectSection: () => {},
-		lookup: async () => {},
-		retry: async () => {},
-		generateAi: async () => {},
+		send: async () => {},
 		dispose: () => {},
 	};
 	return new SelectionHelper({

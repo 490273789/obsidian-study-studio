@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { allowsMainTabShortcut, SelectionDictCard } from "../SelectionDictCard";
 import type { SelectionResultContentProps } from "../types";
 import { selectionHelperStrings } from "../../strings/selectionPopup";
-import type { SelectionLookupSession, SelectionLookupSnapshot } from "../../domain/types";
+import type { SelectionLookupSnapshot } from "../../domain/types";
 
 const reactHooks = vi.hoisted(() => ({
 	refs: [] as { current: unknown }[],
@@ -53,15 +53,12 @@ describe("SelectionDictCard", () => {
 		],
 	};
 
-	const mockSession: SelectionLookupSession = {
-		getSnapshot: () => mockLookup,
-		subscribe: vi.fn(() => () => {}),
-		selectSource: vi.fn(),
-		selectSection: vi.fn(),
-		lookup: vi.fn().mockResolvedValue(undefined),
-		retry: vi.fn().mockResolvedValue(undefined),
-		generateAi: vi.fn().mockResolvedValue(undefined),
-		dispose: vi.fn(),
+	const callbacks = {
+		onLookup: vi.fn(),
+		onSelectSource: vi.fn(),
+		onSelectSection: vi.fn(),
+		onRetry: vi.fn(),
+		onGenerateAi: vi.fn(),
 	};
 
 	it("renders favorite button when onFavorite is provided", () => {
@@ -71,7 +68,7 @@ describe("SelectionDictCard", () => {
 			<SelectionDictCard
 				query="commercial"
 				lookup={mockLookup}
-				session={mockSession}
+				{...callbacks}
 				strings={strings}
 				language="zh"
 				theme="dark"
@@ -88,16 +85,11 @@ describe("SelectionDictCard", () => {
 	});
 
 	it("delegates the success body to the injected dictionary renderer", () => {
-		const session = {
-			...mockSession,
-			selectSection: vi.fn(),
-			lookup: vi.fn().mockResolvedValue(undefined),
-		};
 		const ResultContent = (_props: SelectionResultContentProps) => null;
 		const props: React.ComponentProps<typeof SelectionDictCard> = {
 			query: "commercial",
 			lookup: mockLookup,
-			session,
+			...callbacks,
 			strings: selectionHelperStrings("zh"),
 			language: "zh",
 			theme: "dark",
@@ -121,9 +113,9 @@ describe("SelectionDictCard", () => {
 		expect(props.onOpenInMainTab).toHaveBeenCalledWith("commercial");
 
 		(content.props.onSelectSection as (index: number) => void)(2);
-		expect(session.selectSection).toHaveBeenCalledWith("youdao", 2);
+		expect(callbacks.onSelectSection).toHaveBeenCalledWith("youdao", 2);
 		(content.props.onLookup as (word: string) => void)("science");
-		expect(session.lookup).toHaveBeenCalledWith("science");
+		expect(callbacks.onLookup).toHaveBeenCalledWith("science");
 	});
 
 	it("keeps the query input and phonetics in the drag handle with source tabs outside it", () => {
@@ -142,7 +134,7 @@ describe("SelectionDictCard", () => {
 		).type({
 			query: "commercial",
 			lookup,
-			session: mockSession,
+			...callbacks,
 			strings: selectionHelperStrings("zh"),
 			language: "zh",
 			theme: "dark",
@@ -171,7 +163,7 @@ describe("SelectionDictCard", () => {
 		expect(findElement(tree, (element) => element.props.role === "tablist")).toBeDefined();
 	});
 
-	it("renders a focused blank input and submits through the helper before a session exists", () => {
+	it("renders a focused blank input and submits through onLookup when no sources exist", () => {
 		const onLookup = vi.fn();
 		const inputRef = { value: "", focus: vi.fn(), select: vi.fn() };
 		reactHooks.refs = [{ current: null }, { current: inputRef }];
@@ -189,7 +181,7 @@ describe("SelectionDictCard", () => {
 				activeSourceId: null,
 				aiEngineName: "",
 			},
-			session: null,
+			...callbacks,
 			onLookup,
 			strings: selectionHelperStrings("zh"),
 			language: "zh",
@@ -217,7 +209,6 @@ describe("SelectionDictCard", () => {
 	});
 
 	it("queries a trimmed draft on plain Enter and keeps handoffs on the displayed word", () => {
-		const session = { ...mockSession, lookup: vi.fn().mockResolvedValue(undefined) };
 		const onFavorite = vi.fn();
 		const onOpenInMainTab = vi.fn();
 		const tree = (
@@ -227,7 +218,7 @@ describe("SelectionDictCard", () => {
 		).type({
 			query: "commercial",
 			lookup: mockLookup,
-			session,
+			...callbacks,
 			strings: selectionHelperStrings("zh"),
 			language: "zh",
 			theme: "dark",
@@ -252,11 +243,11 @@ describe("SelectionDictCard", () => {
 			stopPropagation: vi.fn(),
 		};
 		onKeyDown(event);
-		expect(session.lookup).toHaveBeenCalledExactlyOnceWith("new word");
+		expect(callbacks.onLookup).toHaveBeenCalledExactlyOnceWith("new word");
 		expect(event.currentTarget.value).toBe("new word");
 		expect(event.preventDefault).toHaveBeenCalledOnce();
 		onKeyDown({ ...event, ctrlKey: true });
-		expect(session.lookup).toHaveBeenCalledTimes(1);
+		expect(callbacks.onLookup).toHaveBeenCalledTimes(1);
 		const favorite = findElement(tree, (element) => element.props["aria-label"] === "收藏");
 		if (!favorite) throw new Error("Expected favorite button");
 		(favorite.props.onClick as () => void)();
@@ -276,7 +267,7 @@ describe("SelectionDictCard", () => {
 		const props: React.ComponentProps<typeof SelectionDictCard> = {
 			query: "commercial",
 			lookup: mockLookup,
-			session: mockSession,
+			...callbacks,
 			strings: selectionHelperStrings("zh"),
 			language: "zh",
 			theme: "dark",

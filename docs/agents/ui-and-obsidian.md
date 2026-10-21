@@ -37,10 +37,17 @@ learner. Test these sequences through the interaction interface.
 ## Selection helper sources
 
 `SelectionHelper` in `src/core/selectionHelper/domain/selectionHelper.ts` owns
-source registration, window ownership, capture validity, and the single visible
-assistant/query lifetime. DOM and webview adapters acquire one source lease per
-document or page through `openSource(owner)`; navigation replaces the lease.
+source registration, window ownership, capture validity, the single visible
+assistant/query lifetime, and every lookup action. DOM and webview adapters acquire
+one source lease per document or page through `openSource(owner)`; navigation
+replaces the lease.
 
+- `SelectionHelperSnapshot` is a pure read model: it carries `lookup` but never a
+  live lookup session. Actions (`lookup`, `selectSource`, `selectSection`,
+  `retryActiveSource`, `generateAi`) are helper methods; they translate into
+  `SelectionLookupIntent`s and the dictionary adapter owns the single translation
+  to `DictionaryQueryIntent`. `SelectionDictCard` renders the snapshot and forwards
+  callbacks only; do not hand it a session or reimplement the AI-retry rule there.
 - Capture a read token before starting asynchronous work or a touch delay. A token
   submits once and is rejected after its source closes, another selection wins,
   or a user interaction fences pending captures. Never capture a fresh token after

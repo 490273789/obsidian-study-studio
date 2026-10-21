@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { Bookmark, RotateCcw, Sparkles } from "lucide-react";
 import { cls } from "../../shared/classNames";
-import type { SelectionLookupSession, SelectionLookupSnapshot } from "../domain/types";
+import type { SelectionLookupSnapshot } from "../domain/types";
 import type { SelectionHelperStrings } from "../strings/selectionPopup";
 import type { Language } from "../../shared/types";
 import type { SelectionResultContentRenderer } from "./types";
@@ -11,8 +11,11 @@ import styles from "./SelectionPopup.module.scss";
 export interface SelectionDictCardProps {
 	query: string;
 	lookup: SelectionLookupSnapshot;
-	session: SelectionLookupSession | null;
 	onLookup?: (query: string) => void;
+	onSelectSource: (sourceId: string) => void;
+	onSelectSection: (sourceId: string, sectionIndex: number) => void;
+	onRetry: () => void;
+	onGenerateAi: () => void;
 	strings: SelectionHelperStrings;
 	language: Language;
 	theme: "dark" | "light";
@@ -57,16 +60,14 @@ export function allowsMainTabShortcut(
 export const SelectionDictCard = React.memo(function SelectionDictCard(
 	props: SelectionDictCardProps,
 ) {
-	const { query, lookup, session, strings, onOpenInMainTab, onFavorite, onClose } = props;
+	const { query, lookup, strings, onOpenInMainTab, onFavorite, onClose } = props;
 	const cardRef = useRef<HTMLDialogElement | null>(null);
 	const inputRef = useRef<HTMLInputElement | null>(null);
 	const activeWord = lookup.query || query;
 	const activeSource =
 		lookup.sources.find((source) => source.id === lookup.activeSourceId) ?? lookup.sources[0];
 	const ResultContent = props.renderResultContent;
-	const retry = () =>
-		activeSource &&
-		void (activeSource.kind === "ai" ? session?.generateAi() : session?.retry(activeSource.id));
+	const retry = () => activeSource && props.onRetry();
 
 	useEffect(() => {
 		inputRef.current?.focus();
@@ -110,8 +111,7 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 		const normalized = event.currentTarget.value.trim().replace(/\s+/g, " ");
 		if (!normalized) return;
 		event.currentTarget.value = normalized;
-		if (props.onLookup) props.onLookup(normalized);
-		else void session?.lookup(normalized);
+		props.onLookup?.(normalized);
 	};
 
 	const failure = (
@@ -192,7 +192,7 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 									styles.tab,
 									source.id === activeSource?.id && styles.tabActive,
 								)}
-								onClick={() => session?.selectSource(source.id)}
+								onClick={() => props.onSelectSource(source.id)}
 							>
 								{source.label}
 							</button>
@@ -204,18 +204,14 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 				key={`${activeWord}-${activeSource?.id}`}
 				className={cls(styles.body, activeSource?.result && styles.resultBody)}
 			>
-				{!session ? (
-					<output className={styles.status}>
-						{lookup.sources.length
-							? strings.lookupPrompt
-							: strings.noDictionariesAvailable}
-					</output>
+				{lookup.sources.length === 0 ? (
+					<output className={styles.status}>{strings.noDictionariesAvailable}</output>
 				) : activeSource?.kind === "ai" && activeSource.status === "idle" ? (
 					<div className={styles.aiAction}>
 						<button
 							type="button"
 							className={styles.aiGenerateBtn}
-							onClick={() => void session?.generateAi()}
+							onClick={() => props.onGenerateAi()}
 						>
 							<Sparkles size={14} aria-hidden="true" />
 							<span>{strings.aiGenerate}</span>
@@ -246,10 +242,9 @@ export const SelectionDictCard = React.memo(function SelectionDictCard(
 								handle={activeSource.result}
 								language={props.language}
 								theme={props.theme}
-								onLookup={(word) => void session?.lookup(word)}
+								onLookup={(word) => props.onLookup?.(word)}
 								onSelectSection={(sectionIndex) =>
-									activeSource &&
-									session?.selectSection(activeSource.id, sectionIndex)
+									props.onSelectSection(activeSource.id, sectionIndex)
 								}
 								onClose={onClose}
 								mainTabShortcut={props.openMainShortcut}

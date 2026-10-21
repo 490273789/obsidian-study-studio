@@ -4,7 +4,8 @@ import type {
 	SelectionCandidate,
 	SelectionDictionaryAdapter,
 	SelectionHelperSettings,
-	SelectionLookupSession,
+	SelectionLookupHandle,
+	SelectionLookupIntent,
 	SelectionLookupSnapshot,
 	SelectionTranslationAdapter,
 } from "../types";
@@ -18,7 +19,7 @@ describe("SelectionHelper", () => {
 			dictionaryOrder: [],
 			selectedDictionaries: [],
 		};
-		const startLookup = vi.fn(() => fakeSession().session);
+		const startLookup = vi.fn(() => fakeHandle().handle);
 		const { helper } = setup({ settings, startLookup });
 		const source = helper.openSource({});
 		const pending = source.capture();
@@ -27,7 +28,6 @@ describe("SelectionHelper", () => {
 			visible: true,
 			mode: "dictionary",
 			target: { text: "", trigger: "manual" },
-			session: null,
 		});
 		expect(startLookup).not.toHaveBeenCalled();
 		expect(pending.submit(candidate("late"))).toBe(false);
@@ -40,8 +40,8 @@ describe("SelectionHelper", () => {
 	});
 
 	it("preserves the open card without a new valid selection and replaces its session for new words", () => {
-		const first = fakeSession();
-		const startLookup = vi.fn(() => first.session);
+		const first = fakeHandle();
+		const startLookup = vi.fn(() => first.handle);
 		const { helper } = setup({ startLookup });
 		const source = helper.openSource({});
 		helper.openDictionary(source.reference, { text: "first", x: 4, y: 8 });
@@ -66,7 +66,6 @@ describe("SelectionHelper", () => {
 			visible: true,
 			mode: "dictionary",
 			lookup: { query: "hello", sources: [] },
-			session: null,
 		});
 		helper.lookup("world");
 		expect(start).not.toHaveBeenCalled();
@@ -84,7 +83,7 @@ describe("SelectionHelper", () => {
 		{ selectedDictionaries: ["a"] },
 		{ selectedDictionaries: ["a", "b"] },
 	])("looks up selected dictionaries in popup order (%j)", ({ selectedDictionaries }) => {
-		const startLookup = vi.fn(() => fakeSession().session);
+		const startLookup = vi.fn(() => fakeHandle().handle);
 		const { helper } = setup({
 			settings: {
 				enabled: true,
@@ -129,7 +128,7 @@ describe("SelectionHelper", () => {
 	});
 
 	it("filters selected sources in catalog order and owns the lookup lifetime", () => {
-		const { session, dispose } = fakeSession();
+		const { handle: session, dispose } = fakeHandle();
 		const startLookup = vi.fn(() => session);
 		const { helper } = setup({
 			settings: {
@@ -180,7 +179,7 @@ describe("SelectionHelper", () => {
 	});
 
 	it("replaces the previous selection session and discards later updates", () => {
-		const { session, dispose } = fakeSession();
+		const { handle: session, dispose } = fakeHandle();
 		const { helper } = setup({ startLookup: () => session });
 		select(helper, candidate("first"));
 		helper.beginLookup();
@@ -192,7 +191,7 @@ describe("SelectionHelper", () => {
 		expect(helper.getSnapshot().lookup).toBeNull();
 	});
 	it("preserves an open lookup when its source reports the same selection again", () => {
-		const { session, dispose } = fakeSession();
+		const { handle: session, dispose } = fakeHandle();
 		const { helper } = setup({ startLookup: () => session });
 		const source = helper.openSource({});
 		source.capture().submit(candidate("hello"));
@@ -240,39 +239,55 @@ describe("SelectionHelper", () => {
 		expect(helper.getSnapshot().visible).toBe(true);
 	});
 
-	it("exposes the active lookup session in dictionary mode and clears it upon dismissal", async () => {
-		const { session, actions, dispose } = fakeSession();
-		const startLookup = vi.fn(() => session);
+	it("owns lookup actions and clears the handle upon dismissal", async () => {
+		const fake = fakeHandle();
+		const startLookup = vi.fn(() => fake.handle);
 		const { helper } = setup({ startLookup });
 		select(helper, candidate("hello"));
-		expect(helper.getSnapshot().session).toBeNull();
+		expect("session" in helper.getSnapshot()).toBe(false);
 
 		helper.beginLookup();
-		const activeSession = helper.getSnapshot().session;
-		expect(activeSession).toBe(session);
-
-		activeSession?.selectSource("b");
-		activeSession?.selectSection("b", 2);
-		await activeSession?.lookup("world");
 		expect(startLookup).toHaveBeenCalledTimes(1);
-		expect(actions.selectSource).toHaveBeenCalledWith("b");
-		expect(actions.selectSection).toHaveBeenCalledWith("b", 2);
-		expect(actions.lookup).toHaveBeenCalledWith("world");
+		helper.selectSource("b");
+		helper.selectSection("b", 2);
+		helper.lookup("world");
+		expect(fake.intents).toEqual([
+			{ type: "select-source", sourceId: "b" },
+			{ type: "select-section", sourceId: "b", sectionIndex: 2 },
+			{ type: "lookup", query: "world" },
+		]);
 		expect(helper.getSnapshot()).toMatchObject({ visible: true, mode: "dictionary" });
 
 		helper.dismiss();
-		expect(dispose).toHaveBeenCalledOnce();
-		expect(helper.getSnapshot().session).toBeNull();
+		expect(fake.dispose).toHaveBeenCalledOnce();
+		expect(helper.getSnapshot().lookup).toBeNull();
 	});
 
-	it("ignores late session notifications after dismissal", () => {
-		const { session } = fakeSession();
+	it("routes retry by the active source kind", async () => {
+		const fake = fakeHandle();
+		const { helper } = setup({ startLookup: () => fake.handle });
+		select(helper, candidate("hello"));
+		helper.beginLookup();
+
+		await helper.retryActiveSource();
+		expect(fake.intents[fake.intents.length - 1]).toEqual({
+			type: "retry-source",
+			sourceId: "dictionary",
+		});
+
+		fake.setSnapshot({ activeSourceId: "ai" });
+		await helper.retryActiveSource();
+		expect(fake.intents[fake.intents.length - 1]).toEqual({ type: "generate-ai" });
+	});
+
+	it("ignores late handle notifications after dismissal", () => {
+		const fake = fakeHandle();
 		let notify!: () => void;
-		session.subscribe = (listener) => {
+		fake.handle.subscribe = (listener) => {
 			notify = listener;
 			return vi.fn();
 		};
-		const { helper } = setup({ startLookup: () => session });
+		const { helper } = setup({ startLookup: () => fake.handle });
 		select(helper, candidate("hello"));
 		helper.beginLookup();
 		helper.dismiss();
@@ -325,7 +340,7 @@ describe("SelectionHelper", () => {
 	});
 
 	it("host interaction fences old reads without releasing the visible lookup", () => {
-		const { session, dispose } = fakeSession();
+		const { handle: session, dispose } = fakeHandle();
 		const { helper } = setup({ startLookup: () => session });
 		const source = helper.openSource({});
 		source.capture().submit(candidate("hello"));
@@ -378,7 +393,7 @@ describe("SelectionHelper", () => {
 	});
 
 	it("releases a disappearing selection's query but accepts a fresh selection from the same source", () => {
-		const { session, dispose } = fakeSession();
+		const { handle: session, dispose } = fakeHandle();
 		const { helper } = setup({ startLookup: () => session });
 		const source = helper.openSource({});
 		source.capture().submit(candidate("hello"));
@@ -466,7 +481,7 @@ function setup(
 			{ id: "a", label: "A", kind: "dictionary" },
 			{ id: "b", label: "B", kind: "ai" },
 		],
-		startLookup: overrides.startLookup ?? (() => fakeSession().session),
+		startLookup: overrides.startLookup ?? (() => fakeHandle().handle),
 		openInMainTab: vi.fn().mockResolvedValue(undefined),
 		openFavorite:
 			"openFavorite" in overrides
@@ -497,38 +512,58 @@ function candidate(text: string, overrides: Partial<SelectionCandidate> = {}) {
 	};
 }
 
-function fakeSession(): {
-	session: SelectionLookupSession;
+function fakeHandle(): {
+	handle: SelectionLookupHandle;
 	dispose: ReturnType<typeof vi.fn>;
-	actions: {
-		selectSource: ReturnType<typeof vi.fn>;
-		selectSection: ReturnType<typeof vi.fn>;
-		lookup: ReturnType<typeof vi.fn>;
-	};
+	intents: SelectionLookupIntent[];
+	setSnapshot(next: Partial<SelectionLookupSnapshot>): void;
 } {
-	const snapshot: SelectionLookupSnapshot = {
+	let snapshot: SelectionLookupSnapshot = {
 		query: "hello",
-		activeSourceId: "a",
+		activeSourceId: "dictionary",
 		aiEngineName: "",
 		status: "loading",
-		sources: [],
+		sources: [
+			{
+				id: "dictionary",
+				label: "Dictionary",
+				kind: "dictionary",
+				status: "loading",
+				error: "",
+				pronunciations: [],
+				result: null,
+			},
+			{
+				id: "ai",
+				label: "AI",
+				kind: "ai",
+				status: "idle",
+				error: "",
+				pronunciations: [],
+				result: null,
+			},
+		],
 	};
+	const listeners = new Set<() => void>();
+	const intents: SelectionLookupIntent[] = [];
 	const dispose = vi.fn();
-	const actions = {
-		selectSource: vi.fn(),
-		selectSection: vi.fn(),
-		lookup: vi.fn().mockResolvedValue(undefined),
-	};
 	return {
-		actions,
+		intents,
 		dispose,
-		session: {
+		handle: {
 			getSnapshot: () => snapshot,
-			subscribe: () => () => {},
-			...actions,
-			retry: vi.fn().mockResolvedValue(undefined),
-			generateAi: vi.fn().mockResolvedValue(undefined),
+			subscribe: (listener) => {
+				listeners.add(listener);
+				return () => listeners.delete(listener);
+			},
+			send: vi.fn(async (intent: SelectionLookupIntent) => {
+				intents.push(intent);
+			}),
 			dispose,
+		},
+		setSnapshot(next) {
+			snapshot = { ...snapshot, ...next };
+			for (const listener of listeners) listener();
 		},
 	};
 }

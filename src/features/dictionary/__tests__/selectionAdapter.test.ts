@@ -80,11 +80,11 @@ describe("dictionary selection adapter", () => {
 		const { adapter, spies } = setup(emptyDictionarySnapshot());
 		const session = adapter.startLookup("science", ["youdao"])!;
 
-		session.selectSource("youdao");
-		await session.retry("youdao");
-		await session.generateAi();
-		session.selectSection("youdao", 2);
-		await session.lookup("world");
+		await session.send({ type: "select-source", sourceId: "youdao" });
+		await session.send({ type: "retry-source", sourceId: "youdao" });
+		await session.send({ type: "generate-ai" });
+		await session.send({ type: "select-section", sourceId: "youdao", sectionIndex: 2 });
+		await session.send({ type: "lookup", query: "world" });
 		session.dispose();
 
 		expect(spies.send).toHaveBeenNthCalledWith(1, {

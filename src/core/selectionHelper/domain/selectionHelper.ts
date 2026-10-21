@@ -4,7 +4,7 @@ import type {
 	SelectionDictionarySource,
 	SelectionHelperSettings,
 	SelectionHelperSnapshot,
-	SelectionLookupSession,
+	SelectionLookupHandle,
 	SelectionSource,
 	SelectionSourceLease,
 	SelectionTarget,
@@ -29,7 +29,7 @@ interface SourceState {
 export class SelectionHelper {
 	private readonly listeners = new Set<() => void>();
 	private snapshot: SelectionHelperSnapshot = EMPTY_SNAPSHOT;
-	private lookupSession: SelectionLookupSession | null = null;
+	private lookupHandle: SelectionLookupHandle | null = null;
 	private lookupUnsubscribe: (() => void) | null = null;
 	private disposed = false;
 	private readonly sources = new Map<SelectionSource, SourceState>();
@@ -165,7 +165,6 @@ export class SelectionHelper {
 			canLookup,
 			canTranslate,
 			lookup: null,
-			session: null,
 		});
 		return true;
 	}
@@ -214,8 +213,8 @@ export class SelectionHelper {
 		if (this.disposed || !this.snapshot.target) return;
 		const normalized = query.trim().replace(/\s+/g, " ");
 		if (!normalized) return;
-		if (this.lookupSession) {
-			void this.lookupSession.lookup(normalized);
+		if (this.lookupHandle) {
+			void this.lookupHandle.send({ type: "lookup", query: normalized });
 			return;
 		}
 		this.startLookup(normalized);
@@ -258,8 +257,8 @@ export class SelectionHelper {
 			return;
 		}
 		this.releaseLookup();
-		const session = this.options.dictionary.startLookup(query, sourceIds);
-		if (!session) {
+		const handle = this.options.dictionary.startLookup(query, sourceIds);
+		if (!handle) {
 			this.publish({
 				...this.snapshot,
 				mode: "dictionary",
@@ -271,16 +270,44 @@ export class SelectionHelper {
 			});
 			return;
 		}
-		this.lookupSession = session;
-		this.lookupUnsubscribe = session.subscribe(() => {
-			if (this.lookupSession === session) this.publishLookup();
+		this.lookupHandle = handle;
+		this.lookupUnsubscribe = handle.subscribe(() => {
+			if (this.lookupHandle === handle) this.publishLookup();
 		});
 		this.publish({
 			...this.snapshot,
 			mode: "dictionary",
-			lookup: session.getSnapshot(),
-			session,
+			lookup: handle.getSnapshot(),
 		});
+	}
+
+	selectSource(sourceId: string): void {
+		if (this.disposed || !this.snapshot.lookup) return;
+		void this.lookupHandle?.send({ type: "select-source", sourceId });
+	}
+
+	selectSection(sourceId: string, sectionIndex: number): void {
+		if (this.disposed || !this.snapshot.lookup) return;
+		void this.lookupHandle?.send({ type: "select-section", sourceId, sectionIndex });
+	}
+
+	async retryActiveSource(): Promise<void> {
+		const lookup = this.snapshot.lookup;
+		if (!lookup) return;
+		const active =
+			lookup.sources.find((source) => source.id === lookup.activeSourceId) ??
+			lookup.sources[0];
+		if (!active) return;
+		await this.lookupHandle?.send(
+			active.kind === "ai"
+				? { type: "generate-ai" }
+				: { type: "retry-source", sourceId: active.id },
+		);
+	}
+
+	async generateAi(): Promise<void> {
+		if (this.disposed || !this.snapshot.lookup) return;
+		await this.lookupHandle?.send({ type: "generate-ai" });
 	}
 
 	async translate(): Promise<void> {
@@ -339,15 +366,15 @@ export class SelectionHelper {
 	}
 
 	private publishLookup(): void {
-		if (!this.lookupSession || !this.snapshot.visible) return;
-		this.publish({ ...this.snapshot, lookup: this.lookupSession.getSnapshot() });
+		if (!this.lookupHandle || !this.snapshot.visible) return;
+		this.publish({ ...this.snapshot, lookup: this.lookupHandle.getSnapshot() });
 	}
 
 	private releaseLookup(): void {
 		this.lookupUnsubscribe?.();
 		this.lookupUnsubscribe = null;
-		this.lookupSession?.dispose();
-		this.lookupSession = null;
+		this.lookupHandle?.dispose();
+		this.lookupHandle = null;
 	}
 
 	private publish(snapshot: SelectionHelperSnapshot): void {
@@ -363,7 +390,6 @@ const EMPTY_SNAPSHOT: SelectionHelperSnapshot = Object.freeze({
 	canLookup: false,
 	canTranslate: false,
 	lookup: null,
-	session: null,
 });
 
 function modifierMatches(

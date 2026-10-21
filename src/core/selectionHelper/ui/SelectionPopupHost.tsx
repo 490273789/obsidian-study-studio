@@ -101,8 +101,13 @@ export const SelectionPopupHost: React.FC<SelectionPopupHostProps> = ({
 				<SelectionDictCard
 					query={state.lookup.query}
 					lookup={state.lookup}
-					session={state.session}
 					onLookup={(query) => helper.lookup(query)}
+					onSelectSource={(sourceId) => helper.selectSource(sourceId)}
+					onSelectSection={(sourceId, sectionIndex) =>
+						helper.selectSection(sourceId, sectionIndex)
+					}
+					onRetry={() => void helper.retryActiveSource()}
+					onGenerateAi={() => void helper.generateAi()}
 					theme={theme}
 					language={language}
 					renderResultContent={renderResultContent}

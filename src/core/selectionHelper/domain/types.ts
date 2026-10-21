@@ -86,20 +86,24 @@ export interface SelectionLookupSnapshot {
 	sources: readonly SelectionLookupSourceSnapshot[];
 }
 
-export interface SelectionLookupSession {
+/** Actions the helper may send to one lookup session; the adapter translates them. */
+export type SelectionLookupIntent =
+	| { readonly type: "lookup"; readonly query: string }
+	| { readonly type: "select-source"; readonly sourceId: string }
+	| { readonly type: "select-section"; readonly sourceId: string; readonly sectionIndex: number }
+	| { readonly type: "retry-source"; readonly sourceId: string }
+	| { readonly type: "generate-ai" };
+
+export interface SelectionLookupHandle {
 	getSnapshot(): SelectionLookupSnapshot;
 	subscribe(listener: () => void): () => void;
-	selectSource(sourceId: string): void;
-	selectSection(sourceId: string, sectionIndex: number): void;
-	lookup(query: string): Promise<void>;
-	retry(sourceId: string): Promise<void>;
-	generateAi(): Promise<void>;
+	send(intent: SelectionLookupIntent): Promise<void>;
 	dispose(): void;
 }
 
 export interface SelectionDictionaryAdapter {
 	sources(): readonly SelectionDictionarySource[];
-	startLookup(query: string, sourceIds: readonly string[]): SelectionLookupSession | null;
+	startLookup(query: string, sourceIds: readonly string[]): SelectionLookupHandle | null;
 	openInMainTab(query: string): Promise<void>;
 	openFavorite?(word: string): Promise<void>;
 }
@@ -116,5 +120,4 @@ export interface SelectionHelperSnapshot {
 	canLookup: boolean;
 	canTranslate: boolean;
 	lookup: SelectionLookupSnapshot | null;
-	session: SelectionLookupSession | null;
 }
