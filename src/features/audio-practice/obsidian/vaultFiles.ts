@@ -1,6 +1,11 @@
 import { TFile, normalizePath, type App } from "obsidian";
 import { audioFailure } from "../domain/failures";
-import type { AudioPracticeFiles, AudioFileChange } from "../domain/types";
+import type {
+	AudioPracticeCatalog,
+	AudioPracticeFileCatalog,
+	AudioPracticeFiles,
+	AudioFileChange,
+} from "../domain/types";
 
 /** Vault APIs work on mobile as well as desktop; absolute OS paths never escape here. */
 export function createAudioPracticeFiles(app: App): AudioPracticeFiles {
@@ -42,7 +47,22 @@ export function createAudioPracticeFiles(app: App): AudioPracticeFiles {
 	};
 }
 
-export function listAudioPracticeFiles(app: App) {
+/** Lists the picker's file world and refreshes it when vault paths change. */
+export function createAudioPracticeCatalog(app: App): AudioPracticeCatalog {
+	return {
+		list: () => listAudioPracticeFiles(app),
+		subscribe(listener) {
+			const refs = [
+				app.vault.on("create", () => listener()),
+				app.vault.on("rename", () => listener()),
+				app.vault.on("delete", () => listener()),
+			];
+			return () => refs.forEach((ref) => app.vault.offref(ref));
+		},
+	};
+}
+
+export function listAudioPracticeFiles(app: App): AudioPracticeFileCatalog {
 	const files = app.vault.getFiles();
 	const paths = (extensions: string[]) =>
 		files

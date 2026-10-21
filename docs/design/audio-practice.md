@@ -27,3 +27,5 @@
 领域测试覆盖逐句边界、进度与同步、字幕往返和校对约束；生成测试覆盖 SSE、分段去重、原文歧义、取消、恢复、OpenAI 兼容响应与 multipart、无词级时间戳降级。发布前需要真实桌面和手机验证解码、生成、片段边界、背景暂停与同步。未持有服务密钥时只运行协议夹具测试，不声称真实服务验证通过。
 
 接口依据：[百炼语音转写 HTTP API](https://help.aliyun.cn/zh/model-studio/fun-asr-flash-recorded-speech-recognition-http-api)、[OpenAI 语音转写 API](https://platform.openai.com/docs/api-reference/audio/createTranscription)。
+
+实现约束与 seam 见 [听说练习指南](../agents/audio-practice.md)。

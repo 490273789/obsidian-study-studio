@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import React, { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
 	AudioLines,
 	Captions,
@@ -34,10 +34,11 @@ import { ModalSurface } from "../../../core/ui/primitives/Modal";
 import { PlaybackRateControl } from "../../../core/ui/primitives/PlaybackRate";
 import { FlashcardSelect } from "../../../core/ui/primitives/Select";
 import { FlashcardSlider } from "../../../core/ui/primitives/Slider";
-import { type AudioPracticeFailure, toAudioFailure } from "../domain/failures";
 import type {
 	AudioMaterial,
+	AudioPracticeCatalog,
 	AudioPracticeDraftSnapshot,
+	AudioPracticeFiles,
 	AudioPracticeSnapshot,
 	TimedTextWord,
 } from "../domain/types";
@@ -46,32 +47,37 @@ import type { AudioPracticeRuntime } from "../domain/audioPracticeRuntime";
 import { audioFailureCopy } from "../strings/failures";
 import { audioPracticeStrings } from "../strings/audioPractice";
 import type { AudioPracticeStrings } from "../strings/audioPractice";
+import { MaterialEditSession, type MaterialEditSessionSnapshot } from "./materialEditSession";
 import styles from "./AudioPractice.module.scss";
 
 export interface AudioPracticeViewProps {
 	runtime: AudioPracticeRuntime;
+	files: AudioPracticeFiles;
+	catalog: AudioPracticeCatalog;
 	language: Language;
-	audioPaths: readonly string[];
-	subtitlePaths: readonly string[];
-	textPaths: readonly string[];
-	onReadText: (path: string) => Promise<string>;
 	onOpenSettings: () => void;
 }
 
-type MaterialDialogState = { mode: "add" } | { mode: "edit"; material: AudioMaterial };
-
 export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNode {
-	const { runtime, language, onOpenSettings } = props;
+	const { runtime, files, catalog, language, onOpenSettings } = props;
 	const snapshot = useSyncExternalStore(
 		(listener) => runtime.subscribe(listener),
 		() => runtime.getSnapshot(),
 	);
+	const editSession = useMemo(
+		() => new MaterialEditSession({ runtime, files, catalog }),
+		[runtime, files, catalog],
+	);
+	useEffect(() => () => editSession.dispose(), [editSession]);
+	const edit = useSyncExternalStore(
+		editSession.subscribe,
+		editSession.getSnapshot,
+		editSession.getSnapshot,
+	);
 	const t = audioPracticeStrings(language);
 	const media = useRef<HTMLAudioElement>(null);
 	const practiceRef = useRef<HTMLElement>(null);
-	const [materialDialog, setMaterialDialog] = useState<MaterialDialogState | null>(null);
 	const [reviewOpen, setReviewOpen] = useState(false);
-	const [dialogOperationId, setDialogOperationId] = useState<number | null>(null);
 	const [materialToolsOpen, setMaterialToolsOpen] = useState(false);
 	const [playerOptionsOpen, setPlayerOptionsOpen] = useState(false);
 	const libraryId = useId();
@@ -82,11 +88,6 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 	const materialBusy = operation.status === "pending" || snapshot.loading;
 	const busy =
 		materialBusy || ["preparing", "transcribing", "aligning", "saving"].includes(draft.status);
-	const dialogFailure =
-		materialDialog !== null &&
-		dialogOperationId === operation.id &&
-		operation.kind === materialDialog.mode &&
-		(materialDialog.mode === "add" || operation.materialId === materialDialog.material.id);
 	const operationError = operation.failure
 		? audioFailureCopy(language, operation.failure).message
 		: null;
@@ -95,10 +96,9 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 	const reviewReady = draft.status === "review";
 	const pendingCues = reviewReady ? draft.cues.filter((cue) => cue.needsReview).length : 0;
 	const openMaterialDialog = (mode: "add" | "edit") => {
-		setDialogOperationId(null);
 		if (mode === "edit") {
-			if (material) setMaterialDialog({ mode, material });
-		} else setMaterialDialog({ mode });
+			if (material) editSession.openEdit(material);
+		} else editSession.openAdd();
 	};
 	useEffect(() => {
 		const audio = media.current;
@@ -390,7 +390,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 							/>
 						</>
 					)}
-					{operationError && !dialogFailure && (
+					{operationError && edit.failure === null && (
 						<div role="alert" className={styles.alert}>
 							{operationError}
 							<Button
@@ -413,47 +413,27 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 					)}
 				</main>
 			</div>
-			{materialDialog !== null && (
+			{edit.open && (
 				<MaterialDialog
-					material={materialDialog.mode === "edit" ? materialDialog.material : undefined}
-					audioPaths={props.audioPaths}
-					subtitlePaths={props.subtitlePaths}
-					textPaths={props.textPaths}
-					onReadText={props.onReadText}
+					edit={edit}
 					t={t}
 					language={language}
 					busy={
+						edit.busy ||
 						materialBusy ||
-						(materialDialog.mode === "edit" &&
+						(edit.mode === "edit" &&
 							generating &&
-							materialDialog.material.id === material?.id)
+							edit.expectedMaterial?.id === material?.id)
 					}
-					error={dialogFailure ? operationError : null}
+					error={edit.failure ? audioFailureCopy(language, edit.failure).message : null}
 					onCancel={() => {
-						if (runtime.getSnapshot().materialOperation.status === "pending") return;
-						if (dialogFailure) runtime.dismissMaterialOperationFailure();
-						setDialogOperationId(null);
-						setMaterialDialog(null);
+						if (edit.failure) runtime.dismissMaterialOperationFailure();
+						editSession.cancel();
 					}}
-					onSubmit={(value) => {
-						if (runtime.getSnapshot().materialOperation.status === "pending") return;
-						const completion =
-							materialDialog.mode === "edit"
-								? runtime.editMaterial(
-										materialDialog.material.id,
-										value,
-										materialDialog.material,
-									)
-								: runtime.addMaterial(value);
-						const operationId = runtime.getSnapshot().materialOperation.id;
-						setDialogOperationId(operationId);
-						void completion
-							.then(() => {
-								if (runtime.getSnapshot().materialOperation.id === operationId)
-									setMaterialDialog(null);
-							})
-							.catch(() => {});
-					}}
+					onField={(field, value) => editSession.setField(field, value)}
+					onText={(value) => editSession.setText(value)}
+					onReadTextFile={(path) => void editSession.readTextFile(path)}
+					onSubmit={() => void editSession.submit()}
 				/>
 			)}
 			{reviewOpen && reviewReady && material && (
@@ -478,40 +458,30 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 	);
 }
 
-interface MaterialInput {
-	title: string;
-	audioPath: string;
-	subtitlePath: string | null;
-	originalText: string;
-}
+type MaterialFieldName = "title" | "audioPath" | "subtitlePath";
 
-interface MaterialFormProps {
-	material?: AudioMaterial;
-	error?: string | null;
-	audioPaths: readonly string[];
-	subtitlePaths: readonly string[];
-	textPaths: readonly string[];
-	onReadText: (path: string) => Promise<string>;
-	t: AudioPracticeStrings;
-	language: Language;
-	busy: boolean;
-	initialFocusProps?: { "data-modal-initial-focus": string };
+interface MaterialDialogProps {
+	readonly edit: MaterialEditSessionSnapshot;
+	readonly t: AudioPracticeStrings;
+	readonly language: Language;
+	readonly busy: boolean;
+	readonly error: string | null;
+	readonly initialFocusProps?: { "data-modal-initial-focus": string };
 	onCancel(): void;
-	onSubmit(value: MaterialInput): void;
+	onField(field: MaterialFieldName, value: string): void;
+	onText(value: string): void;
+	onReadTextFile(path: string): void;
+	onSubmit(): void;
 }
 
-function MaterialDialog(
-	props: MaterialFormProps & {
-		onCancel(): void;
-	},
-): React.ReactNode {
+function MaterialDialog(props: MaterialDialogProps): React.ReactNode {
 	const { t } = props;
 	const titleId = useId();
 	return (
 		<ModalSurface
 			className={styles.materialDialog}
 			labelledBy={titleId}
-			onRequestClose={props.onCancel}
+			onRequestClose={() => props.onCancel()}
 			isDismissible={!props.busy}
 		>
 			{({ requestClose, initialFocusProps }) => (
@@ -520,7 +490,7 @@ function MaterialDialog(
 						<div className="flashcard-modal-heading">
 							<span id={titleId} className="flashcard-modal-title">
 								<NotebookPen size={17} />
-								{props.material ? t.original : t.add}
+								{props.edit.mode === "edit" ? t.original : t.add}
 							</span>
 							<span className="flashcard-modal-subtitle">{t.materialDialogHint}</span>
 						</div>
@@ -544,33 +514,16 @@ function MaterialDialog(
 	);
 }
 
-function MaterialForm(props: MaterialFormProps): React.ReactNode {
-	const { material, t } = props;
-	const [title, setTitle] = useState(material?.title ?? "");
-	const [audioPath, setAudioPath] = useState(material?.audioPath ?? props.audioPaths[0] ?? "");
-	const [subtitlePath, setSubtitlePath] = useState(material?.subtitlePath ?? "");
-	const [text, setText] = useState(material?.originalText ?? "");
-	const [readError, setReadError] = useState<AudioPracticeFailure | null>(null);
-	const [reading, setReading] = useState(false);
-	const readVersion = useRef(0);
-	useEffect(
-		() => () => {
-			readVersion.current++;
-		},
-		[],
-	);
+function MaterialForm(props: MaterialDialogProps): React.ReactNode {
+	const { edit, t } = props;
+	const { fields, candidates } = edit;
 	return (
 		<form
 			className={styles.materialForm}
 			onSubmit={(event) => {
 				event.preventDefault();
-				if (reading || props.busy || !audioPath) return;
-				props.onSubmit({
-					title: title.trim() || audioPath.split("/").pop() || t.title,
-					audioPath,
-					subtitlePath: subtitlePath || null,
-					originalText: text,
-				});
+				if (props.busy || edit.readingText || !fields.audioPath) return;
+				props.onSubmit();
 			}}
 		>
 			<div className={cls("flashcard-modal-body", styles.materialBody)}>
@@ -583,8 +536,8 @@ function MaterialForm(props: MaterialFormProps): React.ReactNode {
 					<span>{t.name}</span>
 					<FlashcardInput
 						disabled={props.busy}
-						value={title}
-						onChange={(event) => setTitle(event.target.value)}
+						value={fields.title}
+						onChange={(event) => props.onField("title", event.target.value)}
 						{...props.initialFocusProps}
 					/>
 				</label>
@@ -592,17 +545,12 @@ function MaterialForm(props: MaterialFormProps): React.ReactNode {
 					<span>{t.audio}</span>
 					<FlashcardSelect
 						disabled={props.busy}
-						value={audioPath}
-						onChange={(event) => setAudioPath(event.target.value)}
+						value={fields.audioPath}
+						onChange={(event) => props.onField("audioPath", event.target.value)}
 						required
 					>
 						<option value="">{t.choose}</option>
-						{Array.from(
-							new Set([
-								...(material ? [material.audioPath] : []),
-								...props.audioPaths,
-							]),
-						).map((path) => (
+						{candidates.audioPaths.map((path) => (
 							<option key={path}>{path}</option>
 						))}
 					</FlashcardSelect>
@@ -612,16 +560,11 @@ function MaterialForm(props: MaterialFormProps): React.ReactNode {
 						<span>{t.subtitle}</span>
 						<FlashcardSelect
 							disabled={props.busy}
-							value={subtitlePath}
-							onChange={(event) => setSubtitlePath(event.target.value)}
+							value={fields.subtitlePath ?? ""}
+							onChange={(event) => props.onField("subtitlePath", event.target.value)}
 						>
 							<option value="">{t.noSubtitle}</option>
-							{Array.from(
-								new Set([
-									...(material?.subtitlePath ? [material.subtitlePath] : []),
-									...props.subtitlePaths,
-								]),
-							).map((path) => (
+							{candidates.subtitlePaths.map((path) => (
 								<option key={path}>{path}</option>
 							))}
 						</FlashcardSelect>
@@ -631,33 +574,10 @@ function MaterialForm(props: MaterialFormProps): React.ReactNode {
 						<FlashcardSelect
 							disabled={props.busy}
 							defaultValue=""
-							onChange={(event) => {
-								const path = event.target.value;
-								const version = ++readVersion.current;
-								if (!path) {
-									setReading(false);
-									return;
-								}
-								setReadError(null);
-								setReading(true);
-								void props.onReadText(path).then(
-									(value) => {
-										if (readVersion.current === version) {
-											setText(value);
-											setReading(false);
-										}
-									},
-									(cause) => {
-										if (readVersion.current === version) {
-											setReadError(toAudioFailure(cause));
-											setReading(false);
-										}
-									},
-								);
-							}}
+							onChange={(event) => props.onReadTextFile(event.target.value)}
 						>
 							<option value="">{t.choose}</option>
-							{props.textPaths.map((path) => (
+							{candidates.textPaths.map((path) => (
 								<option key={path}>{path}</option>
 							))}
 						</FlashcardSelect>
@@ -667,18 +587,14 @@ function MaterialForm(props: MaterialFormProps): React.ReactNode {
 					<span>{t.text}</span>
 					<FlashcardTextarea
 						disabled={props.busy}
-						value={text}
-						onChange={(event) => {
-							readVersion.current++;
-							setReading(false);
-							setText(event.target.value);
-						}}
+						value={fields.text}
+						onChange={(event) => props.onText(event.target.value)}
 						rows={5}
 					/>
 				</label>
-				{readError && (
+				{edit.readFailure && (
 					<p role="alert" className={styles.alert}>
-						{audioFailureCopy(props.language, readError).message}
+						{audioFailureCopy(props.language, edit.readFailure).message}
 					</p>
 				)}
 			</div>
@@ -689,9 +605,9 @@ function MaterialForm(props: MaterialFormProps): React.ReactNode {
 				<Button
 					type="submit"
 					variant="primary"
-					disabled={props.busy || reading || !audioPath}
+					disabled={props.busy || edit.readingText || !edit.canSubmit}
 				>
-					{material ? t.save : t.create}
+					{edit.mode === "edit" ? t.save : t.create}
 				</Button>
 			</div>
 		</form>

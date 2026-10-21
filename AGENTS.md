@@ -27,6 +27,7 @@ Read only the guides relevant to the current task; a task crossing several areas
 | Card syntax, parsing, source edits, persistence, migrations, or stable identity | `docs/agents/cards-data-and-identity.md`                                            |
 | Study, practice, spelling, scheduling, results, undo, or answer transitions     | `docs/agents/sessions.md`                                                           |
 | Pronunciation, autoplay, online providers, secrets, or audio cache              | `docs/agents/pronunciation.md`                                                      |
+| Listening practice, material editing, subtitles, or transcription               | `docs/agents/audio-practice.md`                                                     |
 | React UI, deck home, Obsidian view/settings, localization, modals, or CSS       | `docs/agents/ui-and-obsidian.md`                                                    |
 | Desktop deck PDF export                                                         | `docs/agents/pdf-export.md`                                                         |
 | Commands, tests, validation, generated files, deployment, commits, or releases  | `docs/agents/testing-and-workflow.md`                                               |

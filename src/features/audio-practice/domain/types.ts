@@ -65,6 +65,19 @@ export interface AudioPracticeFiles {
 	writeSubtitle(audioPath: string, contents: string): Promise<string>;
 	subscribe?(listener: (change: AudioFileChange) => void): () => void;
 }
+/** Paths offered by the listening-material file picker. */
+export interface AudioPracticeFileCatalog {
+	readonly audioPaths: readonly string[];
+	readonly subtitlePaths: readonly string[];
+	readonly textPaths: readonly string[];
+}
+
+/** The vault file world an edit session lists and refreshes; separate from single-file reads. */
+export interface AudioPracticeCatalog {
+	list(): AudioPracticeFileCatalog;
+	subscribe(listener: () => void): () => void;
+}
+
 export interface AudioMediaPort {
 	src: string;
 	currentTime: number;

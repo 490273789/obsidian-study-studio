@@ -4,7 +4,7 @@ import type { AudioPracticeRuntime } from "../../domain/audioPracticeRuntime";
 import { audioFailure } from "../../domain/failures";
 import { emptyAudioPracticeData } from "../../domain/repository";
 import type {
-	AudioMaterial,
+	AudioPracticeCatalog,
 	AudioPracticeSnapshot,
 	MaterialOperationKind,
 } from "../../domain/types";
@@ -33,13 +33,17 @@ vi.mock("react", async (original) => ({
 		return hooks.values[index];
 	},
 	useEffect: () => {},
+	useMemo: (build: () => unknown) => {
+		const index = hooks.index++;
+		if (!(index in hooks.values)) hooks.values[index] = build();
+		return hooks.values[index];
+	},
 	useId: () => "test-id",
 	useSyncExternalStore: (_subscribe: unknown, getSnapshot: () => unknown) => getSnapshot(),
 }));
 
 interface ElementProps {
 	children?: React.ReactNode;
-	material?: AudioMaterial;
 	error?: string | null;
 	busy?: boolean;
 	disabled?: boolean;
@@ -48,15 +52,12 @@ interface ElementProps {
 	"aria-current"?: string;
 	onClick?: () => void;
 	onCancel?: () => void;
-	onSubmit?: (value: typeof input) => void;
-	onReadText?: (path: string) => Promise<string>;
+	onSubmit?: () => void;
+	onField?: (field: string, value: string) => void;
+	onText?: (value: string) => void;
+	onReadTextFile?: (path: string) => void;
 }
-const input = {
-	title: "Revised",
-	audioPath: "old.mp3",
-	subtitlePath: "new.srt",
-	originalText: "New text",
-};
+
 function elements(node: React.ReactNode): React.ReactElement<ElementProps>[] {
 	const result: React.ReactElement<ElementProps>[] = [];
 	React.Children.forEach(node, (child) => {
@@ -65,14 +66,15 @@ function elements(node: React.ReactNode): React.ReactElement<ElementProps>[] {
 	});
 	return result;
 }
-function dialog(node: React.ReactNode) {
-	const found = elements(node).find(
-		(element) => element.props.onSubmit && element.props.onReadText,
-	);
+
+function dialog(node: React.ReactNode): React.ReactElement<ElementProps> {
+	const found = elements(node).find((element) => element.props.onSubmit && element.props.onField);
 	if (!found) throw new Error("Expected material dialog");
 	return found;
 }
+
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
 function harness() {
 	const material = {
 		id: "material",
@@ -121,13 +123,32 @@ function harness() {
 			},
 		};
 		return new Promise<void>((yes, no) => {
-			resolve = yes;
-			reject = no;
+			resolve = () => {
+				snapshot = {
+					...snapshot,
+					materialOperation: { ...snapshot.materialOperation, status: "succeeded" },
+				};
+				yes();
+			};
+			reject = (error) => {
+				snapshot = {
+					...snapshot,
+					materialOperation: {
+						...snapshot.materialOperation,
+						status: "failed",
+						failure: { kind: "persist-failed" },
+					},
+				};
+				no(error);
+			};
 		});
 	};
 	const runtime = {
 		getSnapshot: () => snapshot,
 		subscribe: () => () => {},
+		pause: () => {},
+		cancelSubtitleGeneration: () => {},
+		bindMedia: () => () => {},
 		editMaterial: vi.fn((id: string) => operation("edit", id)),
 		addMaterial: vi.fn(() => operation("add", null)),
 		selectMaterial: vi.fn((id: string) => operation("select", id)),
@@ -139,68 +160,82 @@ function harness() {
 			};
 		}),
 	};
+	const files = {
+		readText: async () => "read text",
+		stat: () => ({ size: 1024, mtime: 10 }),
+		mediaUrl: (path: string) => path,
+		exists: () => true,
+		writeSubtitle: async () => "generated.srt",
+	};
+	const catalog: AudioPracticeCatalog = {
+		list: () => ({
+			audioPaths: ["old.mp3", "new.mp3"],
+			subtitlePaths: ["old.srt", "new.srt"],
+			textPaths: ["note.md"],
+		}),
+		subscribe: () => () => {},
+	};
+	const primaryValues: unknown[] = [];
+	const otherValues: unknown[] = [];
+	const renderWith = (values: unknown[]) => {
+		hooks.index = 0;
+		hooks.values = values;
+		return AudioPracticeView({
+			runtime: runtime as unknown as AudioPracticeRuntime,
+			files: files as never,
+			catalog,
+			language: "en",
+			onOpenSettings: () => {},
+		});
+	};
+	const view = () => renderWith(primaryValues);
+	const other = () => renderWith(otherValues);
+	const click = (node: React.ReactNode, label: string) => {
+		const element = elements(node).find((item) => item.props["aria-label"] === label);
+		if (!element?.props.onClick) throw new Error(`Missing action ${label}`);
+		element.props.onClick();
+	};
 	return {
 		material,
 		runtime,
+		view,
+		other,
+		clickEdit() {
+			click(view(), "Edit title and reference text");
+		},
+		clickAdd() {
+			click(view(), "Add material");
+		},
 		update(value: Partial<AudioPracticeSnapshot>) {
 			snapshot = { ...snapshot, ...value };
 		},
 		snapshot: () => snapshot,
-		succeed() {
-			snapshot = {
-				...snapshot,
-				materialOperation: { ...snapshot.materialOperation, status: "succeeded" },
-			};
-			resolve();
-		},
-		fail() {
-			const failure = { kind: "persist-failed" } as const;
-			snapshot = {
-				...snapshot,
-				materialOperation: { ...snapshot.materialOperation, status: "failed", failure },
-			};
-			reject(audioFailure(failure));
-		},
-		view(mode: "add" | "edit" | null = "edit") {
-			const values: unknown[] = [
-				{ current: null },
-				{ current: null },
-				mode === "edit" ? { mode, material } : mode ? { mode } : null,
-			];
-			return () => {
-				hooks.index = 0;
-				hooks.values = values;
-				return AudioPracticeView({
-					runtime: runtime as unknown as AudioPracticeRuntime,
-					language: "en",
-					audioPaths: ["old.mp3"],
-					subtitlePaths: ["old.srt", "new.srt"],
-					textPaths: [],
-					onReadText: async () => "",
-					onOpenSettings: () => {},
-				});
-			};
-		},
+		succeed: () => resolve(),
+		fail: () => reject(audioFailure({ kind: "persist-failed" })),
 	};
 }
 
 describe("listening material operations view", () => {
 	it("submits one edit, locks all views and closes only after success", async () => {
 		const h = harness();
-		const render = h.view();
-		const other = h.view(null);
-		const first = dialog(render());
-		first.props.onSubmit!(input);
-		first.props.onSubmit!(input);
+		h.clickEdit();
+		const first = dialog(h.view());
+		first.props.onSubmit!();
+		first.props.onSubmit!();
 		expect(h.runtime.editMaterial).toHaveBeenCalledExactlyOnceWith(
 			"material",
-			input,
+			{
+				title: "Original",
+				audioPath: "old.mp3",
+				subtitlePath: "old.srt",
+				originalText: "Original text",
+			},
 			h.material,
 		);
-		expect(dialog(render()).props.busy).toBe(true);
-		dialog(render()).props.onCancel!();
-		expect(dialog(render())).toBeDefined();
-		const buttons = elements(other()).filter(
+		expect(dialog(h.view()).props.busy).toBe(true);
+		dialog(h.view()).props.onCancel!();
+		expect(dialog(h.view())).toBeDefined();
+		const buttons = elements(h.other()).filter(
 			(node) =>
 				node.props["aria-current"] ||
 				node.props["aria-label"] === "Add material" ||
@@ -210,39 +245,59 @@ describe("listening material operations view", () => {
 		expect(buttons.every((node) => node.props.disabled)).toBe(true);
 		h.succeed();
 		await flush();
-		expect(elements(render()).some((node) => node.props.onSubmit)).toBe(false);
+		expect(elements(h.view()).some((node) => node.props.onSubmit)).toBe(false);
 	});
 
 	it.each(["add", "edit"] as const)(
 		"shows failed %s inside its originating dialog and in other views",
 		async (mode) => {
 			const h = harness();
-			const render = h.view(mode);
-			const other = h.view(mode);
-			dialog(render()).props.onSubmit!(input);
+			if (mode === "edit") h.clickEdit();
+			else h.clickAdd();
+			dialog(h.view()).props.onSubmit!();
 			h.fail();
 			await flush();
-			expect(dialog(render()).props.error).toBeTruthy();
-			expect(elements(render()).filter((node) => node.props.role === "alert")).toHaveLength(
+			const treeNow = h.view();
+			expect(dialog(treeNow).props.error).toBeTruthy();
+			expect(elements(h.view()).filter((node) => node.props.role === "alert")).toHaveLength(
 				0,
 			);
-			expect(dialog(other()).props.error).toBeNull();
-			expect(elements(other()).filter((node) => node.props.role === "alert")).toHaveLength(1);
+
+			expect(
+				elements(h.other()).some(
+					(element) => (element.type as { name?: string }).name === "MaterialDialog",
+				),
+			).toBe(false);
+			expect(elements(h.other()).filter((node) => node.props.role === "alert")).toHaveLength(
+				1,
+			);
+
+			dialog(treeNow).props.onCancel!();
+			expect(h.runtime.dismissMaterialOperationFailure).toHaveBeenCalledOnce();
+			expect(
+				elements(h.view()).some(
+					(element) => (element.type as { name?: string }).name === "MaterialDialog",
+				),
+			).toBe(false);
 		},
 	);
 
 	it("keeps the material chosen when the edit dialog opened", () => {
 		const h = harness();
-		const render = h.view();
+		h.clickEdit();
 		h.update({ currentMaterial: { ...h.material, id: "other" }, currentMaterialId: "other" });
-		dialog(render()).props.onSubmit!(input);
-		expect(h.runtime.editMaterial).toHaveBeenCalledWith("material", input, h.material);
+		dialog(h.view()).props.onSubmit!();
+		expect(h.runtime.editMaterial).toHaveBeenCalledWith(
+			"material",
+			expect.objectContaining({ title: "Original" }),
+			h.material,
+		);
 	});
 
 	it("allows add, selection and removal while generating and disables editing", () => {
 		const h = harness();
 		h.update({ draft: { ...h.snapshot().draft, status: "transcribing" } });
-		const tree = h.view(null)();
+		const tree = h.view();
 		const nodes = elements(tree);
 		expect(nodes.find((node) => node.props["aria-current"])!.props.disabled).toBe(false);
 		expect(
@@ -261,8 +316,8 @@ describe("listening material operations view", () => {
 		"shows %s failure with a shared dismissal that preserves other failures",
 		async (kind) => {
 			const h = harness();
-			const render = h.view(null);
-			const node = elements(render()).find((element) =>
+			const tree = h.view();
+			const node = elements(tree).find((element) =>
 				kind === "select"
 					? element.props["aria-current"]
 					: element.props["aria-label"]?.startsWith("Remove"),
@@ -271,12 +326,12 @@ describe("listening material operations view", () => {
 			h.fail();
 			await flush();
 			h.update({ failure: { kind: "missing-file" } });
-			const alerts = elements(render()).filter((element) => element.props.role === "alert");
+			const alerts = elements(h.view()).filter((element) => element.props.role === "alert");
 			expect(alerts).toHaveLength(2);
 			elements(alerts[0]).find((element) => element.props.onClick)!.props.onClick!();
 			expect(h.runtime.dismissMaterialOperationFailure).toHaveBeenCalledOnce();
 			expect(
-				elements(render()).filter((element) => element.props.role === "alert"),
+				elements(h.view()).filter((element) => element.props.role === "alert"),
 			).toHaveLength(1);
 		},
 	);

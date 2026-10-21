@@ -1,12 +1,9 @@
-import React, { useEffect, useState } from "react";
-import type { App } from "obsidian";
 import { Headphones } from "lucide-react";
 import { defineFeatureLifetime } from "../../core/host/featureLifetime";
 import { createReactItemView } from "../../core/host/reactItemView";
 import type { WorkbenchModule } from "../../core/host/workbench";
 import type { WorkbenchStore } from "../../core/storage/workbenchStore";
 import type { OutboundPort } from "../../core/net/types";
-import type { Language } from "../../core/shared/types";
 import { FlashcardButton } from "../../core/ui/primitives/Button";
 import { ModalProvider } from "../../core/ui/primitives/Modal";
 import { AudioPracticeRuntime } from "./domain/audioPracticeRuntime";
@@ -15,7 +12,7 @@ import { createBrowserAudioPreparation } from "./domain/transcription/browserAud
 import { createTranscriptionProvider } from "./domain/transcription/providers";
 import { createAudioSourceFiles } from "./obsidian/audioSourceFiles";
 import { createAudioPracticeRepository } from "./obsidian/repositoryAdapter";
-import { createAudioPracticeFiles, listAudioPracticeFiles } from "./obsidian/vaultFiles";
+import { createAudioPracticeCatalog, createAudioPracticeFiles } from "./obsidian/vaultFiles";
 import { AudioPracticeView } from "./ui/AudioPracticeView";
 import { audioPracticeStrings } from "./strings/audioPractice";
 import { audioPracticeSettingsPresentation } from "./settings/viewModel";
@@ -33,6 +30,7 @@ export function createAudioPracticeFeature(deps: {
 		id: "audioPractice",
 		start(host, lifetime) {
 			const files = createAudioPracticeFiles(host.app);
+			const catalog = createAudioPracticeCatalog(host.app);
 			const source = createAudioSourceFiles(host.app);
 			let mediaWindow: Window = window;
 			const generation = lifetime.own(
@@ -92,11 +90,11 @@ export function createAudioPracticeFeature(deps: {
 					render: ({ language, settings, rootEl }) =>
 						settings.audioPractice.enabled ? (
 							<ModalProvider host={rootEl}>
-								<AudioPracticeHost
-									app={host.app}
+								<AudioPracticeView
 									runtime={runtime}
+									files={files}
+									catalog={catalog}
 									language={language}
-									onReadText={(path) => files.readText(path)}
 									onOpenSettings={openSettings}
 								/>
 							</ModalProvider>
@@ -146,24 +144,4 @@ export function createAudioPracticeFeature(deps: {
 			};
 		},
 	});
-}
-
-function AudioPracticeHost(props: {
-	app: App;
-	runtime: AudioPracticeRuntime;
-	language: Language;
-	onReadText(path: string): Promise<string>;
-	onOpenSettings(): void;
-}) {
-	const [paths, setPaths] = useState(() => listAudioPracticeFiles(props.app));
-	useEffect(() => {
-		const update = () => setPaths(listAudioPracticeFiles(props.app));
-		const refs = [
-			props.app.vault.on("create", update),
-			props.app.vault.on("rename", update),
-			props.app.vault.on("delete", update),
-		];
-		return () => refs.forEach((ref) => props.app.vault.offref(ref));
-	}, [props.app]);
-	return <AudioPracticeView {...props} {...paths} />;
 }
