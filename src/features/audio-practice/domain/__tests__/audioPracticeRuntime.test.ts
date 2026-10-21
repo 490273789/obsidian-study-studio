@@ -74,7 +74,7 @@ async function setup() {
 			return () => {};
 		},
 	};
-	const runtime = new AudioPracticeRuntime(repo, files);
+	const runtime = new AudioPracticeRuntime({ repository: repo, files });
 	await runtime.addMaterial({ title: "Audio", audioPath: "test.mp3", subtitlePath: "test.srt" });
 	const media = new Media();
 	const release = runtime.bindMedia(media);
@@ -507,7 +507,7 @@ async function materialEditHarness() {
 			return () => {};
 		},
 	};
-	const runtime = new AudioPracticeRuntime(repo, files);
+	const runtime = new AudioPracticeRuntime({ repository: repo, files });
 	await new Promise<void>((resolve) => setTimeout(resolve, 0));
 	const input = () => ({ ...runtime.getSnapshot().currentMaterial! });
 	return {

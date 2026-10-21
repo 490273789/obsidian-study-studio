@@ -97,28 +97,12 @@ export class AudioPracticeRuntime {
 		failure: null,
 	};
 
-	constructor(
-		repositoryOrOptions: AudioPracticeRepository | AudioPracticeRuntimeOptions,
-		files?: AudioPracticeFiles,
-		extra?: {
-			source?: AudioSourceFiles;
-			settings?: AudioPracticeSettingsReader;
-			generation?: SubtitleDraftEngine;
-		},
-	) {
-		if ("repository" in repositoryOrOptions) {
-			this.repository = repositoryOrOptions.repository;
-			this.files = repositoryOrOptions.files;
-			this.source = repositoryOrOptions.source;
-			this.settings = repositoryOrOptions.settings;
-			this.generationService = repositoryOrOptions.generation;
-		} else {
-			this.repository = repositoryOrOptions;
-			this.files = files!;
-			this.source = extra?.source;
-			this.settings = extra?.settings;
-			this.generationService = extra?.generation;
-		}
+	constructor(options: AudioPracticeRuntimeOptions) {
+		this.repository = options.repository;
+		this.files = options.files;
+		this.source = options.source;
+		this.settings = options.settings;
+		this.generationService = options.generation;
 
 		this.data = normalizeAudioPracticeData(this.repository.load());
 		this.releases.push(

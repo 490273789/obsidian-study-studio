@@ -40,9 +40,13 @@ function text(node: React.ReactNode): string {
 	return result;
 }
 async function setup() {
-	const runtime = new AudioPracticeRuntime(
-		{ load: emptyAudioPracticeData, save: async () => {}, subscribeExternal: () => () => {} },
-		{
+	const runtime = new AudioPracticeRuntime({
+		repository: {
+			load: emptyAudioPracticeData,
+			save: async () => {},
+			subscribeExternal: () => () => {},
+		},
+		files: {
 			exists: () => true,
 			stat: () => ({ size: 1024, mtime: 10 }),
 			mediaUrl: (path) => path,
@@ -50,7 +54,7 @@ async function setup() {
 				"1\n00:00:01,000 --> 00:00:02,000\nFirst sentence\n\n2\n00:00:03,000 --> 00:00:04,000\nSecond sentence",
 			writeSubtitle: async () => "generated.srt",
 		},
-	);
+	});
 	await runtime.addMaterial({
 		title: "Audio",
 		audioPath: "audio.mp3",
