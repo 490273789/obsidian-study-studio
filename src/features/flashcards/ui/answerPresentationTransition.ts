@@ -3,15 +3,17 @@ import type {
 	ActivePracticeReference,
 	ActiveSpellingReference,
 	ActiveStudyReference,
-	ActiveStudySnapshot,
 	ActivePracticeSnapshot,
+	ActiveStudySnapshot,
 	LifecycleRejection,
 	LifecycleOutcome,
+	SessionCardSnapshot,
 	SessionLifecycle,
 	SessionLifecycleSnapshot,
 	SpellingLifecycleFeedback,
 } from "../domain/sessions/sessionLifecycle";
-import type { StudyRating } from "../../../core/shared/types";
+import type { ChallengeQuestionMode } from "../domain/sessions/challengeSessionEngine";
+import type { CardDirection, StudyRating } from "../../../core/shared/types";
 import type { PronunciationOutcome, PronunciationRuntime } from "../domain/pronunciation/types";
 import { extractSpellingWord } from "../domain/cards/spellingWord";
 
@@ -64,9 +66,27 @@ export type CardMotion = {
 	readonly direction: "forward" | "backward";
 } | null;
 
+export type PresentedCardKind = "study" | "practice" | "challenge" | "spelling";
+
+/**
+ * The one card encounter currently on screen. The encounter key follows
+ * `CONTEXT.md`'s 卡片呈现 rule; the presentation key adds the interaction phase
+ * that must remount a mode's local inputs (challenge feedback). Both are
+ * computed here so no view re-derives its own key.
+ */
+export interface PresentedCard {
+	readonly kind: PresentedCardKind;
+	readonly card: SessionCardSnapshot;
+	readonly direction: CardDirection;
+	readonly questionMode?: ChallengeQuestionMode;
+	readonly encounterKey: string;
+	readonly presentationKey: string;
+}
+
 export interface AnswerPresentationSnapshot {
 	readonly cardMotion: CardMotion;
 	readonly lifecycle: SessionLifecycleSnapshot;
+	readonly presentedCard: PresentedCard | null;
 	readonly cardPresentation: CardPresentationSnapshot;
 	readonly activity:
 		| { readonly kind: "idle" }
@@ -138,7 +158,7 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 		feedback: SpellingLifecycleFeedback,
 	) => Promise<number>;
 	private latestLifecycle: SessionLifecycleSnapshot;
-	private presentedLifecycle: SessionLifecycleSnapshot;
+	private presentedLifecycle!: SessionLifecycleSnapshot;
 	private activity: AnswerPresentationSnapshot["activity"] = { kind: "idle" };
 	private cardMotion: CardMotion = null;
 	private spellingFeedback: SpellingLifecycleFeedback | null = null;
@@ -157,6 +177,13 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 	private presentedCardPresentation = 0;
 	private latestCardScope = 0;
 	private presentedCardScope = 0;
+	// One presented encounter at a time; keys are computed only when a presented
+	// lifecycle frame actually changes, never per render or per latest snapshot.
+	private presentedCard: PresentedCard | null = null;
+	private presentedCardScopeKey: string | null = null;
+	private presentedCardBase: string | null = null;
+	private spellingEncounterGeneration = 0;
+	private presentedSpellingPhase: "retrieval" | "correction" | null = null;
 
 	constructor(private readonly options: CreateAnswerPresentationTransitionOptions) {
 		this.clock = options.clock ?? browserClock;
@@ -167,7 +194,7 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 			options.prepareSpellingAdvance ??
 			((feedback) => this.defaultPrepareSpellingAdvance(feedback));
 		this.latestLifecycle = options.lifecycle.getSnapshot();
-		this.presentedLifecycle = this.latestLifecycle;
+		this.setPresentedLifecycle(this.latestLifecycle);
 		this.snapshot = this.buildSnapshot();
 	}
 
@@ -259,7 +286,7 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 	private activate(): void {
 		this.cancelPendingTransition();
 		this.latestLifecycle = this.options.lifecycle.getSnapshot();
-		this.presentedLifecycle = this.latestLifecycle;
+		this.setPresentedLifecycle(this.latestLifecycle);
 		this.resetCardPresentation();
 		this.activity = { kind: "idle" };
 		this.spellingFeedback = null;
@@ -280,7 +307,7 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 		this.unsubscribeLifecycle = null;
 		this.cancelPendingTransition();
 		this.latestLifecycle = this.options.lifecycle.getSnapshot();
-		this.presentedLifecycle = this.latestLifecycle;
+		this.setPresentedLifecycle(this.latestLifecycle);
 		this.resetCardPresentation();
 		this.activity = { kind: "idle" };
 		this.spellingFeedback = null;
@@ -417,7 +444,7 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 		if (this.latestCardScope !== this.presentedCardScope) {
 			this.autoPronunciationEnabled = false;
 		}
-		this.presentedLifecycle = this.latestLifecycle;
+		this.setPresentedLifecycle(this.latestLifecycle);
 		this.presentedCardPresentation = this.latestCardPresentation;
 		this.presentedCardScope = this.latestCardScope;
 		if (
@@ -436,6 +463,98 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 		this.autoPronunciationAttempted = false;
 		this.presentedCardPresentation = this.latestCardPresentation;
 		this.presentedCardScope = this.latestCardScope;
+	}
+
+	private setPresentedLifecycle(next: SessionLifecycleSnapshot): void {
+		this.presentedLifecycle = next;
+		this.advancePresentedCard(next);
+	}
+
+	private advancePresentedCard(next: SessionLifecycleSnapshot): void {
+		if (next.kind !== "active") {
+			this.presentedCard = null;
+			this.presentedCardScopeKey = null;
+			this.presentedCardBase = null;
+			this.spellingEncounterGeneration = 0;
+			this.presentedSpellingPhase = null;
+			return;
+		}
+
+		const scope = `${next.mode}:${next.reference.key}`;
+		if (scope !== this.presentedCardScopeKey) {
+			this.presentedCardScopeKey = scope;
+			this.presentedCardBase = null;
+			this.spellingEncounterGeneration = 0;
+			this.presentedSpellingPhase = null;
+		}
+
+		if (next.mode === "challenge") {
+			const base = JSON.stringify([
+				next.currentCard.identity,
+				next.currentCard.front,
+				next.currentCard.back,
+				next.questionMode,
+			]);
+			this.presentedCardBase = base;
+			const answerCount = next.answerEventCount - (next.phase === "feedback" ? 1 : 0);
+			const encounterKey = JSON.stringify([scope, base, answerCount]);
+			this.presentedCard = Object.freeze({
+				kind: "challenge" as const,
+				card: next.currentCard,
+				direction:
+					next.questionMode === "normal" ? ("normal" as const) : ("reversed" as const),
+				questionMode: next.questionMode,
+				encounterKey,
+				presentationKey: JSON.stringify([encounterKey, next.phase]),
+			});
+			return;
+		}
+
+		if (next.mode === "spelling") {
+			const base = JSON.stringify([
+				next.currentCard.identity,
+				next.currentCard.front,
+				next.currentCard.back,
+			]);
+			if (base !== this.presentedCardBase) {
+				this.presentedCardBase = base;
+				this.spellingEncounterGeneration = 0;
+			} else if (this.presentedSpellingPhase === "correction" && next.phase === "retrieval") {
+				this.spellingEncounterGeneration++;
+			}
+			this.presentedSpellingPhase = next.phase;
+			const encounterKey = JSON.stringify([
+				scope,
+				base,
+				next.progress.completed,
+				this.spellingEncounterGeneration,
+			]);
+			this.presentedCard = Object.freeze({
+				kind: "spelling" as const,
+				card: next.currentCard,
+				direction: "reversed" as const,
+				encounterKey,
+				presentationKey: encounterKey,
+			});
+			return;
+		}
+
+		const base = JSON.stringify([
+			next.currentCard.identity,
+			next.currentCard.front,
+			next.currentCard.back,
+			next.direction,
+		]);
+		this.presentedCardBase = base;
+		this.presentedSpellingPhase = null;
+		const encounterKey = JSON.stringify([scope, base, next.answerEventCount]);
+		this.presentedCard = Object.freeze({
+			kind: next.mode,
+			card: next.currentCard,
+			direction: next.direction,
+			encounterKey,
+			presentationKey: encounterKey,
+		});
 	}
 
 	private getCardPresentation(): CardPresentationSnapshot {
@@ -573,6 +692,7 @@ class DefaultAnswerPresentationTransition implements AnswerPresentationTransitio
 		const activity = Object.freeze({ ...this.activity });
 		return Object.freeze({
 			lifecycle: this.presentedLifecycle,
+			presentedCard: this.presentedCard,
 			cardMotion: this.cardMotion,
 			cardPresentation: Object.freeze(this.getCardPresentation()),
 			activity,

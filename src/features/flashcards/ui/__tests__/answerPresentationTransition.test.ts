@@ -1376,3 +1376,143 @@ it("keeps challenge error feedback still, then animates the explicit continue", 
 	expect(subject.getSnapshot()).toMatchObject({ lifecycle: next, cardMotion: null });
 	release();
 });
+
+function activeChallenge(
+	cardId: string,
+	revision: number,
+	overrides: Partial<ActiveChallengeSnapshot> = {},
+): ActiveChallengeSnapshot {
+	return {
+		kind: "active",
+		mode: "challenge",
+		revision,
+		reference: { kind: "active", mode: "challenge", revision, key: "challenge" },
+		startTime: 0,
+		currentCard: card(cardId),
+		sourceDeck: { id: "deck", name: "Deck" },
+		questionMode: "normal",
+		phase: "question",
+		feedback: null,
+		progress: progress(revision, 3),
+		roundProgress: {
+			level: 1,
+			totalLevels: 1,
+			passedInLevel: 0,
+			currentLevelTotal: 3,
+			completedAcrossRound: 0,
+			totalAcrossRound: 3,
+		},
+		answerEventCount: revision - 1,
+		removedCardCount: 0,
+		...overrides,
+	};
+}
+
+describe("presented card encounters", () => {
+	function setup(initial: SessionLifecycleSnapshot) {
+		const lifecycle = new ScriptedLifecycle(initial);
+		const subject = createAnswerPresentationTransition({ lifecycle });
+		const unsubscribe = subject.subscribe(() => undefined);
+		return { lifecycle, subject, unsubscribe };
+	}
+
+	it("is null outside an active session", () => {
+		const test = setup(idle(1));
+		expect(test.subject.getSnapshot().presentedCard).toBeNull();
+		test.lifecycle.publish(practiceResult(2));
+		expect(test.subject.getSnapshot().presentedCard).toBeNull();
+		test.unsubscribe();
+	});
+
+	it("keeps one study encounter across explanation changes and starts one for content or a return", () => {
+		const initial = activeStudy("hello", 1, { answerEventCount: 0 });
+		const test = setup(initial);
+		const encounter = () => test.subject.getSnapshot().presentedCard?.encounterKey;
+		const first = encounter();
+		expect(first).toBeTypeOf("string");
+
+		test.lifecycle.publish({
+			...initial,
+			currentCard: { ...initial.currentCard, explanation: "new explanation" },
+		});
+		expect(encounter()).toBe(first);
+
+		test.lifecycle.publish({
+			...initial,
+			currentCard: { ...initial.currentCard, back: "changed back" },
+		});
+		expect(encounter()).not.toBe(first);
+		const afterContent = encounter();
+
+		test.lifecycle.publish({ ...initial, answerEventCount: 1 });
+		expect(encounter()).not.toBe(afterContent);
+		test.unsubscribe();
+	});
+
+	it("keeps spelling correction in one encounter and starts the next retrieval fresh", () => {
+		const initial = activeSpelling("hello", 1);
+		const test = setup(initial);
+		const encounter = () => test.subject.getSnapshot().presentedCard?.encounterKey;
+		const first = encounter();
+
+		test.lifecycle.publish({
+			...initial,
+			revision: 2,
+			phase: "correction",
+			answerEventCount: 1,
+		});
+		expect(encounter()).toBe(first);
+
+		test.lifecycle.publish({
+			...initial,
+			revision: 3,
+			phase: "retrieval",
+			answerEventCount: 2,
+		});
+		expect(encounter()).not.toBe(first);
+		test.unsubscribe();
+	});
+
+	it("distinguishes challenge question and feedback presentation keys in one encounter", () => {
+		const initial = activeChallenge("hello", 1, { answerEventCount: 0 });
+		const test = setup(initial);
+		const card = () => test.subject.getSnapshot().presentedCard;
+		const question = card();
+		expect(question?.encounterKey).toBeTypeOf("string");
+		expect(question?.presentationKey).not.toBe(question?.encounterKey);
+
+		test.lifecycle.publish({
+			...initial,
+			revision: 2,
+			phase: "feedback",
+			answerEventCount: 1,
+			feedback: { correct: false },
+		});
+		const feedbackCard = card();
+		expect(feedbackCard?.encounterKey).toBe(question?.encounterKey);
+		expect(feedbackCard?.presentationKey).not.toBe(question?.presentationKey);
+
+		test.lifecycle.publish({
+			...initial,
+			revision: 3,
+			phase: "question",
+			answerEventCount: 1,
+		});
+		expect(card()?.encounterKey).not.toBe(question?.encounterKey);
+		test.unsubscribe();
+	});
+
+	it("changes the challenge encounter when the question mode changes", () => {
+		const initial = activeChallenge("hello", 1, { answerEventCount: 0 });
+		const test = setup(initial);
+		const first = test.subject.getSnapshot().presentedCard?.encounterKey;
+		test.lifecycle.publish({
+			...initial,
+			questionMode: "reversed",
+			answerEventCount: 0,
+		});
+		expect(test.subject.getSnapshot().presentedCard?.encounterKey).not.toBe(first);
+		expect(test.subject.getSnapshot().presentedCard?.direction).toBe("reversed");
+		test.unsubscribe();
+	});
+});

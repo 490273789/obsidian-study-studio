@@ -8,6 +8,7 @@ import type { ActiveStudySnapshot } from "../../../domain/sessions/sessionLifecy
 import type {
 	AnswerPresentationTransition,
 	CardPresentationSnapshot,
+	PresentedCard,
 } from "../../answerPresentationTransition";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { SessionLayout } from "../../primitives/SessionLayout/SessionLayout";
@@ -16,11 +17,8 @@ import { sessionSurfaceFooter } from "../../primitives/SessionSurfaceFooter";
 import { SessionTimer } from "../../../../../core/ui/primitives/SessionTimer";
 import { useCardPresentationShortcuts } from "../../hooks/useCardPresentationShortcuts";
 import { useFlashcardI18n } from "../../../strings/context";
-import {
-	autoPronunciationControl,
-	deriveCardPresentation,
-} from "../../presentation/cardPresentation";
-import { CardPresentationBody } from "../../presentation/CardPresentationBody";
+import { autoPronunciationControl } from "../../presentation/cardPresentation";
+import { CardSurface } from "../../presentation/CardSurface";
 import styles from "./CardView.module.scss";
 
 const RATING_CLASSES: Record<StudyRating, string> = {
@@ -41,6 +39,7 @@ interface CardViewProps {
 	onDeleteCard: (deckId: string, cardId: string) => void;
 	onClose: () => void;
 	cardPresentation: CardPresentationSnapshot;
+	presentedCard: PresentedCard;
 }
 
 export const CardView = React.memo(function CardView({
@@ -53,6 +52,7 @@ export const CardView = React.memo(function CardView({
 	onDeleteCard,
 	onClose,
 	cardPresentation,
+	presentedCard,
 }: CardViewProps) {
 	const { t, language } = useFlashcardI18n();
 	const { answerVisible: showAnswer, pronunciationWord } = cardPresentation;
@@ -83,16 +83,6 @@ export const CardView = React.memo(function CardView({
 
 	const currentCard = session.currentCard;
 	const ratingButtons = useMemo(() => getRatingButtons(language), [language]);
-	const model = useMemo(
-		() =>
-			deriveCardPresentation({
-				card: currentCard ?? null,
-				direction: session.direction,
-				answerVisible: showAnswer,
-				pronunciationWord,
-			}),
-		[currentCard, session.direction, showAnswer, pronunciationWord],
-	);
 
 	const shortcutRootRef = useCardPresentationShortcuts(
 		{
@@ -226,9 +216,10 @@ export const CardView = React.memo(function CardView({
 				),
 			})}
 		>
-			<CardPresentationBody
-				model={model}
-				encounterKey={JSON.stringify([currentCard.identity, session.answerEventCount])}
+			<CardSurface
+				presented={presentedCard}
+				answerVisible={showAnswer}
+				pronunciationWord={pronunciationWord}
 			/>
 		</SessionLayout>
 	);

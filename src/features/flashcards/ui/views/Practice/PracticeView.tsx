@@ -1,18 +1,16 @@
 import type { CardMotion } from "../../answerPresentationTransition";
-import React, { useMemo } from "react";
+import React from "react";
 import { RotateCcw, X, Check } from "lucide-react";
 import { cls } from "../../../../../core/shared/classNames";
 import type { ActivePracticeSnapshot } from "../../../domain/sessions/sessionLifecycle";
 import type {
 	AnswerPresentationTransition,
 	CardPresentationSnapshot,
+	PresentedCard,
 } from "../../answerPresentationTransition";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
-import {
-	autoPronunciationControl,
-	deriveCardPresentation,
-} from "../../presentation/cardPresentation";
-import { CardPresentationBody } from "../../presentation/CardPresentationBody";
+import { autoPronunciationControl } from "../../presentation/cardPresentation";
+import { CardSurface } from "../../presentation/CardSurface";
 import styles from "./Practice.module.scss";
 import { SessionLayout } from "../../primitives/SessionLayout/SessionLayout";
 import { SessionToolbar } from "../../primitives/SessionToolbar";
@@ -29,6 +27,7 @@ interface PracticeViewProps {
 	onDeleteCard: (deckId: string, cardId: string) => void;
 	onClose: () => void;
 	cardPresentation: CardPresentationSnapshot;
+	presentedCard: PresentedCard;
 }
 
 export const PracticeView = React.memo(function PracticeView({
@@ -40,6 +39,7 @@ export const PracticeView = React.memo(function PracticeView({
 	onDeleteCard,
 	onClose,
 	cardPresentation,
+	presentedCard,
 }: PracticeViewProps) {
 	const { t } = useFlashcardI18n();
 	const { answerVisible: showAnswer, pronunciationWord } = cardPresentation;
@@ -68,16 +68,6 @@ export const PracticeView = React.memo(function PracticeView({
 	};
 
 	const currentCard = session.currentCard;
-	const model = useMemo(
-		() =>
-			deriveCardPresentation({
-				card: currentCard ?? null,
-				direction: session.direction,
-				answerVisible: showAnswer,
-				pronunciationWord,
-			}),
-		[currentCard, session.direction, showAnswer, pronunciationWord],
-	);
 
 	const shortcutRootRef = useCardPresentationShortcuts(
 		{
@@ -205,9 +195,10 @@ export const PracticeView = React.memo(function PracticeView({
 				),
 			})}
 		>
-			<CardPresentationBody
-				model={model}
-				encounterKey={JSON.stringify([currentCard.identity, session.answerEventCount])}
+			<CardSurface
+				presented={presentedCard}
+				answerVisible={showAnswer}
+				pronunciationWord={pronunciationWord}
 			/>
 		</SessionLayout>
 	);

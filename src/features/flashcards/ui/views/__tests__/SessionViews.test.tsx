@@ -9,13 +9,16 @@ import type {
 	ActiveChallengeSnapshot,
 	SpellingLifecycleFeedback,
 } from "../../../domain/sessions/sessionLifecycle";
-import type { AnswerPresentationTransition } from "../../answerPresentationTransition";
+import type {
+	AnswerPresentationTransition,
+	PresentedCard,
+} from "../../answerPresentationTransition";
 import { SessionToolbar } from "../../primitives/SessionToolbar";
 import { CardView } from "../Card/CardView";
 import { PracticeView } from "../Practice/PracticeView";
 import { SpellingView } from "../Spelling/SpellingView";
 import { ChallengeView } from "../Challenge/ChallengeView";
-import { CardPresentationBody } from "../../presentation/CardPresentationBody";
+import { CardSurface } from "../../presentation/CardSurface";
 import { CardAnswerSection, CardQuestionPanel } from "../../presentation/CardPanels";
 
 // Exercise view adapters and slot content in node; effects and DOM renderers are external seams.
@@ -138,22 +141,32 @@ function renderMemo<P>(component: unknown, props: P): React.ReactNode {
 	hooks.cursor = 0;
 	return (component as { type: (props: P) => React.ReactNode }).type(props);
 }
+type StudyViewProps = Omit<React.ComponentProps<typeof CardView>, "presentedCard"> & {
+	presentedCard?: PresentedCard;
+};
+type PracticeViewProps = Omit<React.ComponentProps<typeof PracticeView>, "presentedCard"> & {
+	presentedCard?: PresentedCard;
+};
+function renderStudyView(props: StudyViewProps): React.ReactNode {
+	return renderMemo(CardView, {
+		...props,
+		presentedCard: props.presentedCard ?? presentedCardFor(props.session),
+	});
+}
+function renderPracticeView(props: PracticeViewProps): React.ReactNode {
+	return renderMemo(PracticeView, {
+		...props,
+		presentedCard: props.presentedCard ?? presentedCardFor(props.session),
+	});
+}
 function markdown(node: React.ReactNode): (string | undefined)[] {
 	const elementsInTree = elements(node);
-	const body = elementsInTree.find((element) => element.type === CardPresentationBody);
-	if (body) {
-		const model = (
-			body.props as unknown as {
-				model: {
-					question: { content: string };
-					answer: { content: string } | null;
-					explanation: { content: string } | null;
-				};
-			}
-		).model;
-		return [model.question.content, model.answer?.content, model.explanation?.content].filter(
-			(value): value is string => typeof value === "string" && value.length > 0,
+	const surface = elementsInTree.find((element) => element.type === CardSurface);
+	if (surface) {
+		const rendered = (CardSurface as unknown as (props: unknown) => React.ReactNode)(
+			surface.props,
 		);
+		return markdown(rendered);
 	}
 	const questionBlocks = elementsInTree
 		.filter((element) => element.type === CardQuestionPanel)
@@ -241,6 +254,28 @@ const challenge: ActiveChallengeSnapshot = {
 		totalAcrossRound: 50,
 	},
 };
+type SessionSnapshot = typeof study | typeof practice | typeof spelling | typeof challenge;
+
+function presentedCardFor(
+	session: SessionSnapshot,
+	presentationKey = "presentation",
+): PresentedCard {
+	const direction =
+		session.mode === "study" || session.mode === "practice"
+			? session.direction
+			: session.mode === "challenge" && session.questionMode === "normal"
+				? "normal"
+				: "reversed";
+	return {
+		kind: session.mode,
+		card: session.currentCard,
+		direction,
+		...(session.mode === "challenge" ? { questionMode: session.questionMode } : {}),
+		encounterKey: presentationKey,
+		presentationKey,
+	};
+}
+
 function fixture() {
 	const act = vi
 		.fn<AnswerPresentationTransition["act"]>()
@@ -277,13 +312,13 @@ describe("study and practice presentation", () => {
 			for (const direction of ["normal", "reversed"] as const) {
 				const tree =
 					mode === "study"
-						? renderMemo(CardView, {
+						? renderStudyView({
 								...common,
 								cardPresentation,
 								session: { ...study, direction },
 								onComplete: vi.fn(),
 							})
-						: renderMemo(PracticeView, {
+						: renderPracticeView({
 								...common,
 								cardPresentation,
 								session: { ...practice, direction },
@@ -301,7 +336,7 @@ describe("study and practice presentation", () => {
 	it("dispatches all five study ratings and undo with the presented reference", async () => {
 		const { act, common, cardPresentation } = fixture();
 		const onComplete = vi.fn();
-		const tree = renderMemo(CardView, {
+		const tree = renderStudyView({
 			...common,
 			session: study,
 			onComplete,
@@ -324,7 +359,7 @@ describe("study and practice presentation", () => {
 	});
 	it("dispatches practice undo, wrong and correct, and keeps edit/delete attached to the current card", async () => {
 		const { act, common, cardPresentation } = fixture();
-		const tree = renderMemo(PracticeView, {
+		const tree = renderPracticeView({
 			...common,
 			session: practice,
 			cardPresentation: { ...cardPresentation, answerVisible: true },
@@ -354,8 +389,8 @@ describe("study and practice presentation", () => {
 			const props = { ...common, isTransitioning: true, cardPresentation };
 			const tree =
 				mode === "study"
-					? renderMemo(CardView, { ...props, session: study, onComplete: vi.fn() })
-					: renderMemo(PracticeView, { ...props, session: practice });
+					? renderStudyView({ ...props, session: study, onComplete: vi.fn() })
+					: renderPracticeView({ ...props, session: practice });
 			expect(buttons(tree)[0]!.disabled).toBe(true);
 			expect(
 				find<React.ComponentProps<typeof SessionToolbar>>(tree, SessionToolbar).busy,
@@ -374,8 +409,8 @@ describe("study and practice presentation", () => {
 			};
 			const tree =
 				mode === "study"
-					? renderMemo(CardView, { ...props, session: study, onComplete: vi.fn() })
-					: renderMemo(PracticeView, { ...props, session: practice });
+					? renderStudyView({ ...props, session: study, onComplete: vi.fn() })
+					: renderPracticeView({ ...props, session: practice });
 			for (const button of buttons(tree)) expect(button.disabled).toBe(true);
 			expect(
 				find<React.ComponentProps<typeof SessionToolbar>>(tree, SessionToolbar).busy,
@@ -401,20 +436,27 @@ function enter(tree: React.ReactNode, options: { isComposing?: boolean; repeat?:
 }
 
 // Separate wrapper and question hooks and discard renders updated by render-time state.
-function renderSpellingWrapper(props: React.ComponentProps<typeof SpellingView>) {
+type SpellingViewProps = Omit<React.ComponentProps<typeof SpellingView>, "presentedCard"> & {
+	presentedCard?: PresentedCard;
+};
+function renderSpellingWrapper(props: SpellingViewProps) {
 	const questionState = hooks.state;
 	hooks.state = hooks.spellingWrapperState;
 	let wrapper: React.ReactElement<React.ComponentProps<typeof SpellingView>>;
 	let renders = 0;
+	const withCard = {
+		...props,
+		presentedCard: props.presentedCard ?? presentedCardFor(props.session),
+	};
 	do {
 		hooks.changed = false;
-		wrapper = renderMemo(SpellingView, props) as typeof wrapper;
+		wrapper = renderMemo(SpellingView, withCard) as typeof wrapper;
 		if (++renders > 3) throw new Error("Spelling wrapper did not settle");
 	} while (hooks.changed);
 	hooks.state = questionState;
 	return wrapper;
 }
-function renderSpelling(props: React.ComponentProps<typeof SpellingView>): React.ReactNode {
+function renderSpelling(props: SpellingViewProps): React.ReactNode {
 	const wrapper = renderSpellingWrapper(props);
 	if (hooks.spellingKey !== wrapper.key) {
 		hooks.state = [];
@@ -469,6 +511,13 @@ describe("spelling retrieval and correction", () => {
 								...spelling,
 								currentCard: { ...spelling.currentCard, identity: "next" },
 							},
+							presentedCard: presentedCardFor(
+								{
+									...spelling,
+									currentCard: { ...spelling.currentCard, identity: "next" },
+								},
+								"next encounter",
+							),
 						}
 					: props;
 			if (reason === "expired") inputVisibility.current = false;
@@ -484,40 +533,47 @@ describe("spelling retrieval and correction", () => {
 			expect(inputVisibility.focus).not.toHaveBeenCalled();
 		},
 	);
-	it("keeps the question key across revision and correction, but replaces it for a new encounter or content", () => {
+	it("keys the surface from the presented presentation key", () => {
 		const { common } = fixture();
-		const props = { ...common, session: spelling, feedback: null };
+		const props = {
+			...common,
+			session: spelling,
+			feedback: null,
+			presentedCard: presentedCardFor(spelling, "first encounter"),
+		};
 		const wrapper = renderSpellingWrapper(props);
 		void renderSpelling(props);
+		expect(wrapper.key).toBe("first encounter");
 		expect(inputVisibility.bind.mock.lastCall?.[2]).toBe(wrapper.key);
-		for (const session of [
-			{ ...spelling, reference: { ...spelling.reference, revision: 2 } },
-			{ ...spelling, phase: "correction" as const },
-		]) {
-			const next = renderSpellingWrapper({ ...props, session }) as React.ReactElement;
-			expect(next.key).toBe(wrapper.key);
-		}
-		for (const session of [
-			{ ...spelling, progress: { ...spelling.progress, completed: 1 } },
-			{ ...spelling, currentCard: { ...spelling.currentCard, back: "new meaning" } },
-		]) {
-			const next = renderSpellingWrapper({ ...props, session }) as React.ReactElement;
-			expect(next.key).not.toBe(wrapper.key);
-		}
+
+		const correction = renderSpellingWrapper({
+			...props,
+			session: { ...spelling, phase: "correction" as const },
+			presentedCard: presentedCardFor(spelling, "first encounter"),
+		}) as React.ReactElement;
+		expect(correction.key).toBe(wrapper.key);
+
+		const next = renderSpellingWrapper({
+			...props,
+			presentedCard: presentedCardFor(spelling, "second encounter"),
+		}) as React.ReactElement;
+		expect(next.key).not.toBe(wrapper.key);
 	});
 
-	it("starts a fresh encounter for the same card after correction while retaining retrieval-to-correction drafts", () => {
+	it("starts a fresh encounter when the presented key changes and keeps drafts within one encounter", () => {
 		const { common } = fixture();
-		const props = { ...common, session: spelling, feedback: null };
+		const props = {
+			...common,
+			session: spelling,
+			feedback: null,
+			presentedCard: presentedCardFor(spelling, "first encounter"),
+		};
 		typeInput(renderSpelling(props), "retrieval draft");
 		const firstQuestion = inputVisibility.question;
 		const correction = {
 			...props,
-			session: {
-				...spelling,
-				phase: "correction" as const,
-				reference: { ...spelling.reference, revision: 2 },
-			},
+			session: { ...spelling, phase: "correction" as const },
+			presentedCard: presentedCardFor(spelling, "first encounter"),
 		};
 		let tree = renderSpelling(correction);
 		expect(inputVisibility.question).toBe(firstQuestion);
@@ -527,7 +583,7 @@ describe("spelling retrieval and correction", () => {
 		typeInput(tree, "correction draft");
 		tree = renderSpelling({
 			...props,
-			session: { ...spelling, reference: { ...spelling.reference, revision: 3 } },
+			presentedCard: presentedCardFor(spelling, "second encounter"),
 		});
 		expect(inputVisibility.question).not.toBe(firstQuestion);
 		expect(find<React.ComponentProps<typeof FlashcardInput>>(tree, FlashcardInput).value).toBe(
@@ -539,9 +595,9 @@ describe("spelling retrieval and correction", () => {
 			...props,
 			session: {
 				...spelling,
-				reference: { ...spelling.reference, revision: 4 },
 				currentCard: { ...spelling.currentCard, explanation: "updated explanation" },
 			},
+			presentedCard: presentedCardFor(spelling, "second encounter"),
 		});
 		expect(inputVisibility.question).toBe(nextQuestion);
 		expect(find<React.ComponentProps<typeof FlashcardInput>>(tree, FlashcardInput).value).toBe(
@@ -631,8 +687,15 @@ describe("spelling retrieval and correction", () => {
 	});
 });
 
-function renderChallenge(props: React.ComponentProps<typeof ChallengeView>): React.ReactNode {
-	const wrapper = renderMemo(ChallengeView, props) as React.ReactElement<
+type ChallengeViewProps = Omit<React.ComponentProps<typeof ChallengeView>, "presentedCard"> & {
+	presentedCard?: PresentedCard;
+};
+function renderChallenge(props: ChallengeViewProps): React.ReactNode {
+	const withCard = {
+		...props,
+		presentedCard: props.presentedCard ?? presentedCardFor(props.session),
+	};
+	const wrapper = renderMemo(ChallengeView, withCard) as React.ReactElement<
 		React.ComponentProps<typeof ChallengeView>
 	>;
 	return renderMemo(wrapper.type, wrapper.props);
@@ -643,7 +706,14 @@ describe("challenge questions and feedback", () => {
 		const { common } = fixture();
 		for (const questionMode of ["normal", "spelling"] as const) {
 			for (const phase of ["question", "feedback"] as const) {
-				const props = { ...common, session: { ...challenge, questionMode, phase } };
+				const props = {
+					...common,
+					session: { ...challenge, questionMode, phase },
+					presentedCard: presentedCardFor(
+						{ ...challenge, questionMode, phase },
+						"challenge encounter",
+					),
+				};
 				const wrapper = renderMemo(ChallengeView, props) as React.ReactElement;
 				const tree = renderChallenge(props);
 				expect(inputVisibility.bind.mock.lastCall?.slice(2)).toEqual([

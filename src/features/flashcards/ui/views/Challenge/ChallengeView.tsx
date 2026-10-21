@@ -6,14 +6,15 @@ import { FlashcardInput } from "../../../../../core/ui/primitives/Input";
 import { useCardPresentationShortcuts } from "../../hooks/useCardPresentationShortcuts";
 import type { ActiveChallengeSnapshot } from "../../../domain/sessions/sessionLifecycle";
 import { useFlashcardI18n } from "../../../strings/context";
-import type { AnswerPresentationTransition } from "../../answerPresentationTransition";
+import type {
+	AnswerPresentationTransition,
+	PresentedCard,
+} from "../../answerPresentationTransition";
 import { useSessionInputVisibility } from "../../hooks/useSessionInputVisibility";
 import { SessionLayout } from "../../primitives/SessionLayout/SessionLayout";
 import { SessionToolbar } from "../../primitives/SessionToolbar";
 import { sessionSurfaceFooter } from "../../primitives/SessionSurfaceFooter";
-import { deriveCardPresentation } from "../../presentation/cardPresentation";
-import { CardAnswerSection, CardQuestionPanel } from "../../presentation/CardPanels";
-import { CardPresentationStack } from "../../presentation/CardPresentationStack";
+import { CardSurface } from "../../presentation/CardSurface";
 import styles from "./Challenge.module.scss";
 
 interface ChallengeViewProps {
@@ -22,50 +23,35 @@ interface ChallengeViewProps {
 	isTransitioning: boolean;
 	cardMotion?: CardMotion;
 	onClose: () => void;
+	presentedCard: PresentedCard;
 }
 
 export const ChallengeView = memo(function ChallengeView(props: ChallengeViewProps) {
-	const { session } = props;
-	const question = JSON.stringify([
-		session.reference.key,
-		session.currentCard.identity,
-		session.currentCard.front,
-		session.currentCard.back,
-		session.phase,
-	]);
-	return <ChallengeQuestion key={question} question={question} {...props} />;
+	return <ChallengeQuestion key={props.presentedCard.presentationKey} {...props} />;
 });
 
 const ChallengeQuestion = memo(function ChallengeQuestion({
-	question,
 	session,
 	transition,
 	isTransitioning,
 	cardMotion,
 	onClose,
-}: ChallengeViewProps & { question: string }) {
+	presentedCard,
+}: ChallengeViewProps) {
 	const { t } = useFlashcardI18n();
 	const [answerVisible, setAnswerVisible] = useState(false);
 	const [input, setInput] = useState("");
 	const inputRef = useRef<HTMLInputElement>(null);
 	const viewRef = useRef<HTMLDivElement>(null);
-	const currentCard = session.currentCard;
 	const isSpelling = session.questionMode === "spelling";
 	const feedback = session.feedback;
 	const isFeedback = session.phase === "feedback";
 	const showAnswer = isFeedback || (!isSpelling && answerVisible);
-	const model = deriveCardPresentation({
-		card: currentCard,
-		direction: session.questionMode === "normal" ? "normal" : "reversed",
-		answerVisible: showAnswer,
-		questionLabel: isSpelling ? "challenge.spellingPrompt" : "common.question",
-		explanation: currentCard.explanation ?? "",
-	});
 
 	const { keepInputVisible, handleInputBlur } = useSessionInputVisibility(
 		inputRef,
 		viewRef,
-		question,
+		presentedCard.presentationKey,
 		isSpelling && !isFeedback,
 	);
 
@@ -263,11 +249,7 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 				</>
 			}
 		>
-			<CardPresentationStack key={currentCard.identity}>
-				<CardQuestionPanel block={model.question} />
-				{model.answer ? (
-					<CardAnswerSection answer={model.answer} explanation={model.explanation} />
-				) : null}
+			<CardSurface presented={presentedCard} answerVisible={showAnswer}>
 				{isFeedback && feedback && (
 					<output className={styles.feedback}>
 						<X size={18} />
@@ -304,7 +286,7 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 						/>
 					</label>
 				)}
-			</CardPresentationStack>
+			</CardSurface>
 		</SessionLayout>
 	);
 });

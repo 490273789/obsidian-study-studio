@@ -116,6 +116,7 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 		readAnswerPresentation,
 	);
 	const presentedLifecycleSnapshot = answerPresentationSnapshot.lifecycle;
+	const presentedCard = answerPresentationSnapshot.presentedCard;
 	const isAnswerTransitioning = answerPresentationSnapshot.activity.kind === "transitioning";
 	const cardEditing = useMemo(
 		() =>
@@ -239,10 +240,12 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 
 	const renderContent = (): React.ReactNode => {
 		if (presentedLifecycleSnapshot.kind === "active") {
+			if (!presentedCard) return renderHome();
 			if (presentedLifecycleSnapshot.mode === "challenge")
 				return (
 					<ChallengeView
 						session={presentedLifecycleSnapshot}
+						presentedCard={presentedCard}
 						transition={answerPresentationTransition}
 						isTransitioning={isAnswerTransitioning}
 						cardMotion={answerPresentationSnapshot.cardMotion}
@@ -253,6 +256,7 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 				return (
 					<CardView
 						session={presentedLifecycleSnapshot}
+						presentedCard={presentedCard}
 						transition={answerPresentationTransition}
 						isTransitioning={isAnswerTransitioning}
 						cardMotion={answerPresentationSnapshot.cardMotion}
@@ -268,6 +272,7 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 				return (
 					<PracticeView
 						session={presentedLifecycleSnapshot}
+						presentedCard={presentedCard}
 						transition={answerPresentationTransition}
 						isTransitioning={isAnswerTransitioning}
 						cardMotion={answerPresentationSnapshot.cardMotion}
@@ -281,6 +286,7 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 			return (
 				<SpellingView
 					session={presentedLifecycleSnapshot}
+					presentedCard={presentedCard}
 					transition={answerPresentationTransition}
 					isTransitioning={isAnswerTransitioning}
 					cardMotion={answerPresentationSnapshot.cardMotion}

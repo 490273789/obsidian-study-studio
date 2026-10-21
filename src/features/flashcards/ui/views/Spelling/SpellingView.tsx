@@ -10,12 +10,15 @@ import type {
 	SpellingLifecycleFeedback,
 } from "../../../domain/sessions/sessionLifecycle";
 import { useFlashcardI18n } from "../../../strings/context";
-import type { AnswerPresentationTransition } from "../../answerPresentationTransition";
+import type {
+	AnswerPresentationTransition,
+	PresentedCard,
+} from "../../answerPresentationTransition";
 import { useSessionInputVisibility } from "../../hooks/useSessionInputVisibility";
 import { SessionLayout } from "../../primitives/SessionLayout/SessionLayout";
 import { SessionToolbar } from "../../primitives/SessionToolbar";
-import { CardExplanationPanel, CardQuestionPanel } from "../../presentation/CardPanels";
-import { CardPresentationStack } from "../../presentation/CardPresentationStack";
+import { CardExplanationPanel } from "../../presentation/CardPanels";
+import { CardSurface } from "../../presentation/CardSurface";
 import { useCardPresentationDependencies } from "../../presentation/context";
 import styles from "./Spelling.module.scss";
 
@@ -35,41 +38,14 @@ interface SpellingViewProps {
 	onEditCard: (deckId: string, cardId: string) => void;
 	onDeleteCard: (deckId: string, cardId: string) => void;
 	onClose: () => void;
+	presentedCard: PresentedCard;
 }
 
 export const SpellingView = React.memo(function SpellingView(props: SpellingViewProps) {
-	const { session } = props;
-	const baseQuestion = JSON.stringify([
-		session.reference.key,
-		session.currentCard.identity,
-		session.currentCard.front,
-		session.currentCard.back,
-		session.progress.completed,
-	]);
-	const [encounter, setEncounter] = useState({
-		baseQuestion,
-		phase: session.phase,
-		generation: 0,
-	});
-	// A repeated failed card can return to retrieval without changing content or progress.
-	// Adjust this component's state before committing the next question subtree.
-	if (encounter.baseQuestion !== baseQuestion || encounter.phase !== session.phase) {
-		setEncounter({
-			baseQuestion,
-			phase: session.phase,
-			generation:
-				encounter.baseQuestion !== baseQuestion
-					? 0
-					: encounter.generation +
-						(encounter.phase === "correction" && session.phase === "retrieval" ? 1 : 0),
-		});
-	}
-	const question = JSON.stringify([baseQuestion, encounter.generation]);
-	return <SpellingQuestion key={question} question={question} {...props} />;
+	return <SpellingQuestion key={props.presentedCard.presentationKey} {...props} />;
 });
 
 const SpellingQuestion = React.memo(function SpellingQuestion({
-	question,
 	session,
 	transition,
 	isTransitioning,
@@ -78,7 +54,8 @@ const SpellingQuestion = React.memo(function SpellingQuestion({
 	onEditCard,
 	onDeleteCard,
 	onClose,
-}: SpellingViewProps & { question: string }) {
+	presentedCard,
+}: SpellingViewProps) {
 	const { t } = useFlashcardI18n();
 	const { pronunciationRuntime } = useCardPresentationDependencies();
 	const [input, setInput] = useState("");
@@ -90,7 +67,7 @@ const SpellingQuestion = React.memo(function SpellingQuestion({
 	const { keepInputVisible, handleInputBlur, captureReturn } = useSessionInputVisibility(
 		inputRef,
 		viewRef,
-		question,
+		presentedCard.presentationKey,
 	);
 
 	useEffect(() => {
@@ -183,14 +160,7 @@ const SpellingQuestion = React.memo(function SpellingQuestion({
 				</>
 			}
 		>
-			<CardPresentationStack key={currentCard.identity}>
-				<CardQuestionPanel
-					block={{
-						label: "spelling.meaningPrompt",
-						content: currentCard.back,
-						pronunciationWord: null,
-					}}
-				/>
+			<CardSurface presented={presentedCard} answerVisible={false}>
 				{feedback &&
 					(feedback.kind === "retrieval-incorrect" ||
 						feedback.kind === "correction-incorrect") && (
@@ -298,7 +268,7 @@ const SpellingQuestion = React.memo(function SpellingQuestion({
 						aria-invalid={isCorrection || undefined}
 					/>
 				</label>
-			</CardPresentationStack>
+			</CardSurface>
 		</SessionLayout>
 	);
 });
