@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
+
+vi.mock("obsidian", () => ({ Component: class {}, Notice: class {} }));
 import type { DeckHome, DeckHomeAction, DeckHomeOutcome } from "../../domain/decks/deckHome";
 import type {
 	ActionFor,

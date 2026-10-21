@@ -229,29 +229,6 @@ export type SpellingSelection =
  * View-local setup defaults and navigation state. Active sessions and retained
  * results are represented exclusively by SessionLifecycleSnapshot.
  */
-export type ViewState =
-	| { type: "home" }
-	| {
-			type: "study-setup";
-			deckId: string;
-			initialStudyOrder?: "sequential" | "random";
-			initialDirection?: CardDirection;
-	  }
-	| { type: "word-list"; deckId: string }
-	| {
-			type: "practice-setup";
-			deckId: string;
-			initialSelection?: PracticeSelection;
-			initialDirection?: CardDirection;
-	  }
-	| {
-			type: "spelling-setup";
-			deckId: string;
-			initialSelection?: SpellingSelection;
-	  }
-	| { type: "challenge-setup" }
-	| { type: "stats" };
-
 /**
  * A single study history entry (recorded when a session ends)
  */

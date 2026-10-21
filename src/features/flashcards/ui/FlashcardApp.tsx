@@ -12,13 +12,7 @@ import type { WorkbenchFeatureShortcut } from "../../../core/host/workbench";
 import type { DeckHome, DeckHomeDestination } from "../domain/decks/deckHome";
 import { type SessionLifecycle } from "../domain/sessions/sessionLifecycle";
 import type { FlashcardLearningActivityPort } from "../domain/storage/flashcardPersistence";
-import { HomeRoute, DeckHomeSnapshotRoute } from "./views/Home/HomeRoute";
-import { CardView, CardEditorModal } from "./views/Card";
-import { PracticeSetup, PracticeView, PracticeSummary } from "./views/Practice";
-import { WordListView } from "./views/WordList";
-import { StudySetup, StudySummary } from "./views/Study";
-import { StatsView } from "./views/Stats";
-import { SpellingSetup, SpellingView, SpellingSummary } from "./views/Spelling";
+import { CardEditorModal } from "./views/Card";
 import { createTranslator } from "../strings/index";
 import { ConfirmDialog } from "../../../core/ui/primitives/ConfirmDialog";
 import type { CardIdentityContinuity } from "../domain/identity/cardIdentityContinuity";
@@ -26,9 +20,9 @@ import { CardEditingInteraction } from "./cardEditingInteraction";
 import type { PronunciationRuntime } from "../domain/pronunciation";
 import { ModalProvider } from "../../../core/ui/primitives/Modal";
 import { createAnswerPresentationTransition } from "./answerPresentationTransition";
-import { ChallengeSetupModal, ChallengeView, ChallengeSummary } from "./views/Challenge";
 import { FlashcardNavigation } from "./flashcardNavigation";
 import { PageTransitionTracker } from "./pageTransition";
+import { resolvePage, type FlashcardPageContext } from "./routes";
 import { InputVisibilityProvider } from "./hooks/useSessionInputVisibility";
 import { CardPresentationProvider } from "./presentation/context";
 import styles from "./FlashcardApp.module.scss";
@@ -203,6 +197,10 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 		if (presentedLifecycleSnapshot.kind === "result")
 			void navigation.result(presentedLifecycleSnapshot.reference, "home");
 	}, [navigation, presentedLifecycleSnapshot]);
+	const handleNextLevel = useCallback(() => {
+		if (presentedLifecycleSnapshot.kind === "result")
+			void navigation.result(presentedLifecycleSnapshot.reference, "next-level");
+	}, [navigation, presentedLifecycleSnapshot]);
 
 	const handleDeleteCardRequest = useCallback(
 		(deckId: string, cardId: string) => {
@@ -223,232 +221,54 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 		[app, t],
 	);
 
-	const renderHome = () => (
-		<HomeRoute
-			home={deckHome}
-			ownerId={deckHomeOwnerId}
-			onNavigate={handleHomeNavigate}
-			onRequestMigration={handleRequestHomeMigration}
-			onOpenSourceFile={handleOpenSourceFile}
-			onOpenStats={handleOpenStats}
-			onOpenSettings={onOpenSettings}
-			onOpenAddCard={handleOpenAddCard}
-			onOpenChallenge={navigation.challenge}
-			shortcuts={shortcuts}
-		/>
-	);
-
-	const renderContent = (): React.ReactNode => {
-		if (presentedLifecycleSnapshot.kind === "active") {
-			if (!presentedCard) return renderHome();
-			if (presentedLifecycleSnapshot.mode === "challenge")
-				return (
-					<ChallengeView
-						session={presentedLifecycleSnapshot}
-						presentedCard={presentedCard}
-						transition={answerPresentationTransition}
-						isTransitioning={isAnswerTransitioning}
-						cardMotion={answerPresentationSnapshot.cardMotion}
-						onClose={handleExitActive}
-					/>
-				);
-			if (presentedLifecycleSnapshot.mode === "study") {
-				return (
-					<CardView
-						session={presentedLifecycleSnapshot}
-						presentedCard={presentedCard}
-						transition={answerPresentationTransition}
-						isTransitioning={isAnswerTransitioning}
-						cardMotion={answerPresentationSnapshot.cardMotion}
-						onComplete={handleSessionComplete}
-						onEditCard={handleOpenEditCard}
-						onDeleteCard={handleDeleteCardRequest}
-						onClose={handleExitActive}
-						cardPresentation={answerPresentationSnapshot.cardPresentation}
-					/>
-				);
-			}
-			if (presentedLifecycleSnapshot.mode === "practice") {
-				return (
-					<PracticeView
-						session={presentedLifecycleSnapshot}
-						presentedCard={presentedCard}
-						transition={answerPresentationTransition}
-						isTransitioning={isAnswerTransitioning}
-						cardMotion={answerPresentationSnapshot.cardMotion}
-						onEditCard={handleOpenEditCard}
-						onDeleteCard={handleDeleteCardRequest}
-						onClose={handleExitActive}
-						cardPresentation={answerPresentationSnapshot.cardPresentation}
-					/>
-				);
-			}
-			return (
-				<SpellingView
-					session={presentedLifecycleSnapshot}
-					presentedCard={presentedCard}
-					transition={answerPresentationTransition}
-					isTransitioning={isAnswerTransitioning}
-					cardMotion={answerPresentationSnapshot.cardMotion}
-					feedback={answerPresentationSnapshot.spellingFeedback}
-					onEditCard={handleOpenEditCard}
-					onDeleteCard={handleDeleteCardRequest}
-					onClose={handleExitActive}
-				/>
-			);
-		}
-
-		if (presentedLifecycleSnapshot.kind === "result") {
-			if (presentedLifecycleSnapshot.mode === "challenge")
-				return (
-					<ChallengeSummary
-						result={presentedLifecycleSnapshot}
-						onNextLevel={() =>
-							void navigation.result(
-								presentedLifecycleSnapshot.reference,
-								"next-level",
-							)
-						}
-						onRestart={handlePracticeRestart}
-						onEnd={handleResultHomeClick}
-						markdownRenderer={renderMarkdown}
-					/>
-				);
-			if (presentedLifecycleSnapshot.mode === "study") {
-				return (
-					<StudySummary
-						result={presentedLifecycleSnapshot}
-						onHome={handleResultHomeClick}
-						onRestart={handlePracticeRestart}
-					/>
-				);
-			}
-			return presentedLifecycleSnapshot.mode === "practice" ? (
-				<PracticeSummary
-					result={presentedLifecycleSnapshot}
-					onRestart={handlePracticeRestart}
-					onPracticeIncorrect={handlePracticeRetryIncorrect}
-					onHome={handleResultHomeClick}
-					markdownRenderer={renderMarkdown}
-				/>
-			) : (
-				<SpellingSummary
-					result={presentedLifecycleSnapshot}
-					onRetryIncorrect={handlePracticeRetryIncorrect}
-					onRestart={handlePracticeRestart}
-					onHome={handleResultHomeClick}
-					markdownRenderer={renderMarkdown}
-				/>
-			);
-		}
-
-		switch (viewState.type) {
-			case "study-setup": {
-				const deck = deckHome.getDeck(viewState.deckId);
-				if (!deck) return renderHome();
-				return (
-					<DeckHomeSnapshotRoute home={deckHome}>
-						{() => {
-							const plan = deckHome.getStudySetupPlan(
-								deck.id,
-								viewState.initialStudyOrder,
-							);
-							if (!plan) return renderHome();
-							return (
-								<StudySetup
-									key={deck.id}
-									deck={deck}
-									plan={plan}
-									defaultDirection={viewState.initialDirection ?? "normal"}
-									spellingEnabled={Boolean(
-										settings.wordLearningDecks[viewState.deckId],
-									)}
-									onStartSession={handleStartSession}
-									onBack={handleBackHome}
-								/>
-							);
-						}}
-					</DeckHomeSnapshotRoute>
-				);
-			}
-
-			case "practice-setup": {
-				const deck = deckHome.getDeck(viewState.deckId);
-				if (!deck) return renderHome();
-				const plan = deckHome.getPracticeSetupPlan(deck.id, viewState.initialSelection);
-				if (!plan) return renderHome();
-				return (
-					<PracticeSetup
-						key={deck.id}
-						deck={deck}
-						plan={plan}
-						defaultDirection={viewState.initialDirection ?? "normal"}
-						initialDirection={viewState.initialDirection}
-						onStartSession={handleStartSession}
-						onBack={handleBackHome}
-					/>
-				);
-			}
-
-			case "spelling-setup": {
-				const deck = deckHome.getDeck(viewState.deckId);
-				if (!deck) return renderHome();
-				return (
-					<DeckHomeSnapshotRoute home={deckHome}>
-						{() => {
-							const plan = deckHome.getSpellingSetupPlan(
-								deck.id,
-								viewState.initialSelection,
-							);
-							if (!plan) return renderHome();
-							return (
-								<SpellingSetup
-									key={deck.id}
-									deck={deck}
-									plan={plan}
-									onStartSession={handleStartSession}
-									onBack={handleBackHome}
-								/>
-							);
-						}}
-					</DeckHomeSnapshotRoute>
-				);
-			}
-
-			case "word-list": {
-				const deck = deckHome.getDeck(viewState.deckId);
-				if (!deck) {
-					return renderHome();
-				}
-				return (
-					<WordListView
-						key={deck.id}
-						deck={deck}
-						onBack={handleBackHome}
-						onRecordVisit={handleRecordWordListVisit}
-					/>
-				);
-			}
-
-			case "stats":
-				return (
-					<DeckHomeSnapshotRoute home={deckHome}>
-						{(snapshot) => (
-							<StatsView history={snapshot.studyHistory} onBack={handleBackHome} />
-						)}
-					</DeckHomeSnapshotRoute>
-				);
-
-			case "home":
-			default:
-				return renderHome();
-		}
+	const pageContext: FlashcardPageContext = {
+		deckHome,
+		deckHomeOwnerId,
+		shortcuts,
+		wordLearningDecks: settings.wordLearningDecks,
+		transition: answerPresentationTransition,
+		presentedCard,
+		cardPresentation: answerPresentationSnapshot.cardPresentation,
+		isAnswerTransitioning,
+		cardMotion: answerPresentationSnapshot.cardMotion,
+		spellingFeedback: answerPresentationSnapshot.spellingFeedback,
+		isNavigationBusy: navigationBusy,
+		language: settings.language,
+		markdownRenderer: renderMarkdown,
+		onOpenSettings,
+		onStartSession: handleStartSession,
+		onBackHome: handleBackHome,
+		onOpenStats: handleOpenStats,
+		onHomeNavigate: handleHomeNavigate,
+		onRequestMigration: handleRequestHomeMigration,
+		onOpenSourceFile: handleOpenSourceFile,
+		onOpenAddCard: handleOpenAddCard,
+		onOpenChallenge: navigation.challenge,
+		onEditCard: handleOpenEditCard,
+		onDeleteCard: handleDeleteCardRequest,
+		onCloseActive: handleExitActive,
+		onComplete: handleSessionComplete,
+		onRestart: handlePracticeRestart,
+		onRetryIncorrect: handlePracticeRetryIncorrect,
+		onResultHome: handleResultHomeClick,
+		onNextLevel: handleNextLevel,
+		onStartChallenge: (request, replaceExisting) => {
+			void navigation.startChallenge(request, replaceExisting);
+		},
+		onRecordWordListVisit: handleRecordWordListVisit,
 	};
+
+	const page = resolvePage({
+		viewState,
+		lifecycle: presentedLifecycleSnapshot,
+		presentedCard,
+		deckHome,
+	});
 
 	// Only page changes restart the animation. Card progress, settings updates,
 	// and the challenge setup overlay keep the current page (and its local state).
 	const pageTransitionTracker = useMemo(() => new PageTransitionTracker(), []);
-	const pageTransition = pageTransitionTracker.resolve(viewState, presentedLifecycleSnapshot);
+	const pageTransition = pageTransitionTracker.resolve(page);
 	const pageTransitionRef = useRef<HTMLDivElement | null>(null);
 
 	// The CSS entrance starts when the keyed page is inserted. If the commit runs
@@ -476,32 +296,8 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 						data-page={pageTransition.key}
 						data-direction={pageTransition.direction}
 					>
-						{renderContent()}
+						{page.render(pageContext)}
 					</div>
-					{viewState.type === "challenge-setup" &&
-						presentedLifecycleSnapshot.kind === "idle" && (
-							<DeckHomeSnapshotRoute home={deckHome}>
-								{(snapshot) => (
-									<ChallengeSetupModal
-										readiness={snapshot.challenge}
-										isStarting={navigationBusy}
-										onStart={(challengeMode, intent) =>
-											void navigation.startChallenge(
-												{
-													mode: "challenge",
-													challengeMode,
-													intent,
-													expectedRoundId:
-														snapshot.challenge.savedRoundId,
-												},
-												snapshot.challenge.round !== null,
-											)
-										}
-										onClose={handleBackHome}
-									/>
-								)}
-							</DeckHomeSnapshotRoute>
-						)}
 					{cardEditor && (
 						<CardEditorModal
 							key={cardEditor.id}

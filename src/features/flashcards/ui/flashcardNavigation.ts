@@ -1,4 +1,4 @@
-import type { Language, ViewState } from "../../../core/shared/types";
+import type { Language } from "../../../core/shared/types";
 import type { DeckHome, DeckHomeDestination, DeckHomeOutcome } from "../domain/decks/deckHome";
 import {
 	type LifecycleOutcome,
@@ -7,7 +7,7 @@ import {
 	type SessionStartRequest,
 } from "../domain/sessions/sessionLifecycle";
 import { createTranslator } from "../strings";
-import { toRestartViewState } from "./restartViewState";
+import * as routes from "./routes";
 
 type ActiveReference = Extract<LifecycleReference, { kind: "active" }>;
 type ResultReference = Extract<LifecycleReference, { kind: "result" }>;
@@ -20,7 +20,7 @@ export interface FlashcardConfirmation {
 }
 
 export interface FlashcardNavigationSnapshot {
-	readonly view: Readonly<ViewState>;
+	readonly view: Readonly<routes.ViewState>;
 	readonly busy: boolean;
 	readonly confirmation: (FlashcardConfirmation & { readonly id: number }) | null;
 }
@@ -89,9 +89,9 @@ export class FlashcardNavigation {
 		};
 	}
 
-	home = (): void => this.show({ type: "home" });
-	stats = (): void => this.show({ type: "stats" });
-	challenge = (): void => this.show({ type: "challenge-setup" });
+	home = (): void => this.show(routes.home());
+	stats = (): void => this.show(routes.stats());
+	challenge = (): void => this.show(routes.challengeSetup());
 
 	async navigate(destination: DeckHomeDestination, deckId: string): Promise<void> {
 		const lease = this.lease;
@@ -104,11 +104,7 @@ export class FlashcardNavigation {
 			this.reportHomeOutcome(outcome);
 			return;
 		}
-		this.publishView({
-			type:
-				outcome.destination === "word-list" ? "word-list" : `${outcome.destination}-setup`,
-			deckId: outcome.deckId,
-		});
+		this.publishView(routeForDestination(outcome.destination, outcome.deckId));
 	}
 
 	start = async (request: SessionStartRequest): Promise<void> => {
@@ -127,7 +123,7 @@ export class FlashcardNavigation {
 						? this.t("challenge.noEligible")
 						: this.t("notice.deckEmpty");
 		if (this.reportLifecycleOutcome(outcome, fallback) && request.mode === "challenge")
-			this.publishView({ type: "home" });
+			this.publishView(routes.home());
 	};
 
 	async startChallenge(
@@ -218,7 +214,7 @@ export class FlashcardNavigation {
 		)
 			return;
 		this.publishView(
-			action === "restart" ? toRestartViewState(result.restartOrigin) : { type: "home" },
+			action === "restart" ? routes.fromRestartOrigin(result.restartOrigin) : routes.home(),
 		);
 	}
 
@@ -353,7 +349,7 @@ export class FlashcardNavigation {
 		const noticeId = snapshot.lastEnd.id;
 		if (this.lastEndNotice !== noticeId) {
 			this.lastEndNotice = noticeId;
-			this.show({ type: "home" });
+			this.show(routes.home());
 			this.options.notify(
 				this.t(
 					snapshot.lastEnd.mode === "challenge"
@@ -426,7 +422,7 @@ export class FlashcardNavigation {
 		);
 	}
 
-	private show(view: ViewState): void {
+	private show(view: routes.ViewState): void {
 		if (!this.lease) return;
 		this.navigationVersion++;
 		this.confirmationVersion++;
@@ -434,8 +430,8 @@ export class FlashcardNavigation {
 		this.publishView(view);
 	}
 
-	private publishView(view: ViewState): void {
-		this.snapshot = Object.freeze({ ...this.snapshot, view: freezeView(view) });
+	private publishView(view: routes.ViewState): void {
+		this.snapshot = Object.freeze({ ...this.snapshot, view });
 		this.publish();
 	}
 
@@ -490,18 +486,15 @@ export class FlashcardNavigation {
 	}
 }
 
-function freezeView(view: ViewState): Readonly<ViewState> {
-	if (view.type === "practice-setup" && view.initialSelection) {
-		return Object.freeze({
-			...view,
-			initialSelection: Object.freeze({ ...view.initialSelection }),
-		});
+function routeForDestination(destination: DeckHomeDestination, deckId: string): routes.ViewState {
+	switch (destination) {
+		case "study":
+			return routes.studySetup(deckId);
+		case "practice":
+			return routes.practiceSetup(deckId);
+		case "spelling":
+			return routes.spellingSetup(deckId);
+		case "word-list":
+			return routes.wordList(deckId);
 	}
-	if (view.type === "spelling-setup" && view.initialSelection) {
-		return Object.freeze({
-			...view,
-			initialSelection: Object.freeze({ ...view.initialSelection }),
-		});
-	}
-	return Object.freeze({ ...view });
 }
