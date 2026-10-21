@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { DeviceVideoPlayerStateV1, VideoPlayerDocumentStore } from "../../domain/types";
 import { VideoPlayerRuntime, emptyState } from "../../domain/videoPlayerRuntime";
+import type { VideoPlayerSettings } from "../../settings/slice";
 import { PlayerViewInteraction } from "../playerViewInteraction";
 
 class MemoryStore implements VideoPlayerDocumentStore {
@@ -27,6 +28,10 @@ interface TestElement {
 	playsInline: boolean;
 	preload: string;
 	tabIndex: number;
+	attributes: Map<string, string>;
+	setAttribute(name: string, value: string): void;
+	getAttribute(name: string): string | null;
+	closest(selector: string): Element | null;
 	append(child: TestElement): void;
 	remove(): void;
 	focus: ReturnType<typeof vi.fn>;
@@ -53,6 +58,31 @@ function createTestElement(tagName: string): TestElement {
 		playsInline: false,
 		preload: "metadata",
 		tabIndex: -1,
+		attributes: new Map(),
+		setAttribute(name: string, value: string) {
+			element.attributes.set(name, value);
+		},
+		getAttribute(name: string) {
+			return element.attributes.get(name) ?? null;
+		},
+		closest(selector: string) {
+			const parts = selector.split(",").map((part) => part.trim().toLowerCase());
+			let current: TestElement | null = element;
+			while (current) {
+				const tag = current.tagName.toLowerCase();
+				const matched = parts.some(
+					(part) =>
+						part === tag ||
+						(part === "[role='button']" &&
+							current!.attributes.get("role") === "button") ||
+						(part === "[contenteditable='true']" &&
+							current!.attributes.get("contenteditable") === "true"),
+				);
+				if (matched) return current as unknown as Element;
+				current = current.parentElement;
+			}
+			return null;
+		},
 		append(child: TestElement) {
 			child.parentElement = element;
 			element.children.push(child);
@@ -153,12 +183,22 @@ function createTestDocument(viewport = { width: 1000, height: 800 }): TestDocume
 	};
 }
 
+const defaultSettings: VideoPlayerSettings = {
+	enabled: true,
+	skipInterval: 10,
+	shortcuts: { togglePlayback: "Space", seekBackward: "ArrowLeft", seekForward: "ArrowRight" },
+};
+
+function createInteraction(runtime: VideoPlayerRuntime): PlayerViewInteraction {
+	return new PlayerViewInteraction({ runtime, readSettings: () => defaultSettings });
+}
+
 describe("PlayerViewInteraction", () => {
 	it("gives the earliest live Player view presentation and hands it off in registration order", async () => {
 		const playback = new MemoryStore();
 		const runtime = new VideoPlayerRuntime({ store: playback, toMediaUrl: (path) => path });
 		runtime.addSources([{ id: "one", path: "/one.mp4", name: "one.mp4" }]);
-		const interaction = new PlayerViewInteraction({ runtime });
+		const interaction = createInteraction(runtime);
 
 		const doc1 = createTestDocument();
 		const doc2 = createTestDocument();
@@ -191,7 +231,7 @@ describe("PlayerViewInteraction", () => {
 			store: new MemoryStore(),
 			toMediaUrl: (path) => path,
 		});
-		const interaction = new PlayerViewInteraction({ runtime });
+		const interaction = createInteraction(runtime);
 		const doc = createTestDocument();
 		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
 
@@ -217,7 +257,7 @@ describe("PlayerViewInteraction", () => {
 			store: new MemoryStore(),
 			toMediaUrl: (path) => path,
 		});
-		const interaction = new PlayerViewInteraction({ runtime });
+		const interaction = createInteraction(runtime);
 		const doc = createTestDocument();
 		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
 		const focusSurfaceEl = createTestElement("div");
@@ -239,7 +279,7 @@ describe("PlayerViewInteraction", () => {
 			store: new MemoryStore(),
 			toMediaUrl: (path) => path,
 		});
-		const interaction = new PlayerViewInteraction({ runtime });
+		const interaction = createInteraction(runtime);
 		const doc = createTestDocument();
 		const activate = vi.fn(async () => undefined);
 
@@ -261,12 +301,116 @@ describe("PlayerViewInteraction", () => {
 		expect(focusSurfaceEl.focus).toHaveBeenCalledTimes(2);
 	});
 
+	it("sets the focus surface behavior attributes and toggles playback from its shortcuts", async () => {
+		const runtime = new VideoPlayerRuntime({
+			store: new MemoryStore(),
+			toMediaUrl: (path) => path,
+		});
+		runtime.addSources([{ id: "one", path: "/one.mp4", name: "one.mp4" }]);
+		const interaction = createInteraction(runtime);
+		const doc = createTestDocument();
+		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
+		const surface = createTestElement("div");
+		view.refs.focusSurface(surface as unknown as HTMLElement);
+
+		expect(surface.getAttribute("role")).toBe("application");
+		expect(surface.tabIndex).toBe(0);
+
+		const preventDefault = vi.fn();
+		surface.dispatchEvent({
+			type: "keydown",
+			key: " ",
+			ctrlKey: false,
+			altKey: false,
+			shiftKey: false,
+			metaKey: false,
+			repeat: false,
+			target: surface,
+			preventDefault,
+			stopPropagation: vi.fn(),
+		});
+		await Promise.resolve();
+		expect(preventDefault).toHaveBeenCalledOnce();
+		expect(runtime.getSnapshot().playing).toBe(true);
+	});
+
+	it("leaves interactive targets and repeated keys to their own controls", async () => {
+		const runtime = new VideoPlayerRuntime({
+			store: new MemoryStore(),
+			toMediaUrl: (path) => path,
+		});
+		const interaction = createInteraction(runtime);
+		const doc = createTestDocument();
+		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
+		const surface = createTestElement("div");
+		view.refs.focusSurface(surface as unknown as HTMLElement);
+		const button = createTestElement("button");
+
+		const interactivePrevent = vi.fn();
+		surface.dispatchEvent({
+			type: "keydown",
+			key: " ",
+			ctrlKey: false,
+			altKey: false,
+			shiftKey: false,
+			metaKey: false,
+			repeat: false,
+			target: button,
+			preventDefault: interactivePrevent,
+			stopPropagation: vi.fn(),
+		});
+		expect(interactivePrevent).not.toHaveBeenCalled();
+		expect(runtime.getSnapshot().playing).toBe(false);
+
+		const repeatPrevent = vi.fn();
+		surface.dispatchEvent({
+			type: "keydown",
+			key: " ",
+			ctrlKey: false,
+			altKey: false,
+			shiftKey: false,
+			metaKey: false,
+			repeat: true,
+			target: surface,
+			preventDefault: repeatPrevent,
+			stopPropagation: vi.fn(),
+		});
+		expect(repeatPrevent).toHaveBeenCalledOnce();
+		expect(runtime.getSnapshot().playing).toBe(false);
+	});
+
+	it("does not focus the surface from controls inside it", () => {
+		const runtime = new VideoPlayerRuntime({
+			store: new MemoryStore(),
+			toMediaUrl: (path) => path,
+		});
+		const interaction = createInteraction(runtime);
+		const doc = createTestDocument();
+		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
+		const surface = createTestElement("div");
+		view.refs.focusSurface(surface as unknown as HTMLElement);
+		surface.focus.mockClear();
+
+		const editable = createTestElement("div");
+		editable.setAttribute("contenteditable", "true");
+		surface.dispatchEvent({ type: "pointerdown", target: editable });
+		expect(surface.focus).not.toHaveBeenCalled();
+
+		const roleButton = createTestElement("div");
+		roleButton.setAttribute("role", "button");
+		surface.dispatchEvent({ type: "pointerdown", target: roleButton });
+		expect(surface.focus).not.toHaveBeenCalled();
+
+		surface.dispatchEvent({ type: "pointerdown", target: surface });
+		expect(surface.focus).toHaveBeenCalledOnce();
+	});
+
 	it("creates one owner-document media element and reparents it across player surfaces", () => {
 		const runtime = new VideoPlayerRuntime({
 			store: new MemoryStore(),
 			toMediaUrl: (path) => path,
 		});
-		const interaction = new PlayerViewInteraction({ runtime });
+		const interaction = createInteraction(runtime);
 		const doc = createTestDocument();
 		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
 
@@ -292,7 +436,7 @@ describe("PlayerViewInteraction", () => {
 			store: new MemoryStore(),
 			toMediaUrl: (path) => path,
 		});
-		const interaction = new PlayerViewInteraction({ runtime });
+		const interaction = createInteraction(runtime);
 		const doc = createTestDocument();
 		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
 		const header = createTestElement("div");
@@ -342,7 +486,7 @@ describe("PlayerViewInteraction", () => {
 			store: new MemoryStore(),
 			toMediaUrl: (path) => path,
 		});
-		const interaction = new PlayerViewInteraction({ runtime });
+		const interaction = createInteraction(runtime);
 		const doc = createTestDocument();
 		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
 
@@ -375,7 +519,7 @@ describe("PlayerViewInteraction", () => {
 			store: new MemoryStore(),
 			toMediaUrl: (path) => path,
 		});
-		const interaction = new PlayerViewInteraction({ runtime });
+		const interaction = createInteraction(runtime);
 		const doc = createTestDocument();
 		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
 

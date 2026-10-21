@@ -32,7 +32,6 @@ import type { Language } from "../../../core/shared/types";
 import type { LocalVideoSource, VideoPlayerSnapshot } from "../domain/types";
 import { VIDEO_PLAYBACK_RATES } from "../domain/types";
 import type { VideoPlayerRuntime } from "../domain/videoPlayerRuntime";
-import { matchesKeyboardShortcut } from "../settings/keyboardShortcut";
 import type { VideoPlayerSettings } from "../settings/slice";
 import { videoPlayerStrings } from "../strings/videoPlayer";
 import styles from "./VideoPlayer.module.scss";
@@ -41,9 +40,6 @@ import type {
 	PlayerViewPresentation,
 	PlayerViewRefs,
 } from "./playerViewInteraction";
-
-/* oxlint-disable jsx-a11y/no-noninteractive-element-interactions -- The player is a composite keyboard surface. */
-/* oxlint-disable jsx-a11y/no-noninteractive-tabindex -- The composite player must be tabbable. */
 
 export interface VideoPlayerViewProps {
 	runtime: VideoPlayerRuntime;
@@ -465,33 +461,8 @@ function PlayerSurface({
 	onFloat: () => void;
 	t: PlayerCopy;
 }): React.ReactNode {
-	const handleShortcut = (event: React.KeyboardEvent<HTMLDivElement>) => {
-		if (isInteractiveTarget(event.target)) return;
-		const action = matchesKeyboardShortcut(event, settings.shortcuts.togglePlayback)
-			? onToggle
-			: matchesKeyboardShortcut(event, settings.shortcuts.seekBackward)
-				? onBackward
-				: matchesKeyboardShortcut(event, settings.shortcuts.seekForward)
-					? onForward
-					: null;
-		if (!action) return;
-		event.preventDefault();
-		event.stopPropagation();
-		if (!event.repeat) action();
-	};
-
 	return (
-		<div
-			ref={focusSurfaceRef}
-			className={styles.surface}
-			tabIndex={0}
-			role="application"
-			aria-label={t.playerRegion}
-			onKeyDown={handleShortcut}
-			onPointerDown={(event) => {
-				if (!isInteractiveTarget(event.target)) event.currentTarget.focus();
-			}}
-		>
+		<div ref={focusSurfaceRef} className={styles.surface} aria-label={t.playerRegion}>
 			<div ref={mediaHostRef} className={styles.mediaHost} />
 			{error && <p className={styles.error}>{error}</p>}
 			<ProgressSlider
@@ -734,14 +705,6 @@ function sourceProgressLabel(
 	if (snapshot.completedSourceIds.includes(sourceId)) return t.completed;
 	const progress = snapshot.progressBySource[sourceId] ?? 0;
 	return progress > 0 ? t.watched(formatTime(progress)) : "";
-}
-
-function isInteractiveTarget(target: EventTarget): boolean {
-	return Boolean(
-		(target as Element | null)?.closest?.(
-			"button, input, select, textarea, summary, a, [contenteditable='true']",
-		),
-	);
 }
 
 function clamp(value: number, min: number, max: number): number {

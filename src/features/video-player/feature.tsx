@@ -44,6 +44,7 @@ export function createVideoPlayerFeature(): WorkbenchModule<"videoPlayer"> {
 			const interaction = lifetime.own(
 				new PlayerViewInteraction({
 					runtime,
+					readSettings: () => host.settings.read().videoPlayer,
 				}),
 			);
 			const open = async (): Promise<void> => {

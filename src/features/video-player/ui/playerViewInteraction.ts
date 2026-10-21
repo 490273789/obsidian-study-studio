@@ -1,5 +1,7 @@
 import type { FloatingRect } from "../domain/types";
 import type { VideoPlayerRuntime } from "../domain/videoPlayerRuntime";
+import { matchesKeyboardShortcut } from "../settings/keyboardShortcut";
+import type { VideoPlayerSettings } from "../settings/slice";
 import styles from "./VideoPlayer.module.scss";
 
 export type PlayerViewPresentation =
@@ -52,6 +54,8 @@ export interface PointerPoint {
 
 export interface PlayerViewInteractionOptions {
 	readonly runtime: VideoPlayerRuntime;
+	/** Read the current playback shortcuts on each key event; settings changes need no remount. */
+	readonly readSettings: () => VideoPlayerSettings;
 }
 
 type PointerKind = "move" | "resize-left" | "resize-right";
@@ -82,30 +86,19 @@ interface PointerGesture {
 export class PlayerViewInteraction {
 	private readonly registrations: Registration[] = [];
 	private presentation: PlayerViewPresentation = { kind: "docked" };
-	private queueExpanded: boolean;
+	private lastQueueExpanded: boolean;
 	private pendingFocus = false;
 	private pointerGesture: PointerGesture | null = null;
 	private disposed = false;
 	private readonly unsubscribePresentation: () => void;
 
 	constructor(private readonly options: PlayerViewInteractionOptions) {
-		this.queueExpanded = options.runtime.getSnapshot().queueExpanded;
+		this.lastQueueExpanded = options.runtime.getSnapshot().queueExpanded;
 		this.unsubscribePresentation = options.runtime.subscribe(() => {
-			const state = options.runtime.getSnapshot();
-			const rect =
-				this.presentation.kind === "floating" && state.floatingRect
-					? state.floatingRect
-					: this.presentation.kind === "floating"
-						? this.presentation.rect
-						: null;
-			const changed =
-				state.queueExpanded !== this.queueExpanded ||
-				(this.presentation.kind === "floating" && rect !== this.presentation.rect);
-			this.queueExpanded = state.queueExpanded;
-			if (this.presentation.kind === "floating" && rect) {
-				this.presentation = { ...this.presentation, rect };
-			}
-			if (changed) this.publish();
+			const queueExpanded = options.runtime.getSnapshot().queueExpanded;
+			if (queueExpanded === this.lastQueueExpanded) return;
+			this.lastQueueExpanded = queueExpanded;
+			this.publish();
 		});
 	}
 
@@ -213,10 +206,10 @@ export class PlayerViewInteraction {
 				this.publish();
 				return { kind: "applied" };
 			case "set-queue-expanded":
-				if (this.queueExpanded === action.expanded) return { kind: "applied" };
-				this.queueExpanded = action.expanded;
+				if (this.options.runtime.getSnapshot().queueExpanded === action.expanded) {
+					return { kind: "applied" };
+				}
 				this.options.runtime.setQueueExpanded(action.expanded);
-				this.publish();
 				return { kind: "applied" };
 		}
 	}
@@ -288,7 +281,7 @@ export class PlayerViewInteraction {
 		return {
 			role,
 			presentation: this.presentation,
-			queueExpanded: this.queueExpanded,
+			queueExpanded: this.options.runtime.getSnapshot().queueExpanded,
 		};
 	}
 
@@ -315,8 +308,39 @@ export class PlayerViewInteraction {
 	}
 
 	private setFocusNode(registration: Registration, node: HTMLElement | null): void {
+		this.clearRef(registration, "focusSurface");
 		registration.focusNode = node;
-		if (node) this.consumePendingFocus();
+		if (!node) return;
+		node.setAttribute("role", "application");
+		node.tabIndex = 0;
+		const onKeyDown = (event: KeyboardEvent) => this.handleSurfaceKeyDown(registration, event);
+		const onPointerDown = (event: PointerEvent) => {
+			if (!isInteractiveTarget(event.target)) this.focus(registration);
+		};
+		node.addEventListener("keydown", onKeyDown);
+		node.addEventListener("pointerdown", onPointerDown);
+		registration.refCleanups.set("focusSurface", () => {
+			node.removeEventListener("keydown", onKeyDown);
+			node.removeEventListener("pointerdown", onPointerDown);
+		});
+		this.consumePendingFocus();
+	}
+
+	private handleSurfaceKeyDown(registration: Registration, event: KeyboardEvent): void {
+		if (registration.released || !registration.active) return;
+		if (registration !== this.presenter() || isInteractiveTarget(event.target)) return;
+		const settings = this.options.readSettings();
+		const action = matchesKeyboardShortcut(event, settings.shortcuts.togglePlayback)
+			? () => this.options.runtime.togglePlayback()
+			: matchesKeyboardShortcut(event, settings.shortcuts.seekBackward)
+				? () => this.options.runtime.seekBy(-settings.skipInterval)
+				: matchesKeyboardShortcut(event, settings.shortcuts.seekForward)
+					? () => this.options.runtime.seekBy(settings.skipInterval)
+					: null;
+		if (!action) return;
+		event.preventDefault();
+		event.stopPropagation();
+		if (!event.repeat) action();
 	}
 
 	private setMediaHost(registration: Registration, node: HTMLElement | null): void {
@@ -594,7 +618,7 @@ function point(event: PointerEvent): PointerPoint {
 function isInteractiveTarget(target: EventTarget | null): boolean {
 	return Boolean(
 		(target as { closest?: (selector: string) => Element | null } | null)?.closest?.(
-			"button, input, select, textarea, a, [role='button']",
+			"button, input, select, textarea, summary, a, [contenteditable='true'], [role='button']",
 		),
 	);
 }
