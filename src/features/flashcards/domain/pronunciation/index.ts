@@ -1,5 +1,8 @@
-export * from "./types";
-export * from "./providers";
-export * from "./audioCache";
-export * from "./pronunciationRuntime";
-export * from "./pronunciationSettings";
+export type {
+	PronunciationCacheUsage,
+	PronunciationFailureReason,
+	PronunciationRuntime,
+	PronunciationSnapshot,
+} from "./types";
+export { createPronunciationRuntime } from "./pronunciationRuntime";
+export { normalizePronunciationText } from "./providers";

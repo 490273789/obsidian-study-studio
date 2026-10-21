@@ -4,7 +4,6 @@ import {
 	answerStudyCard,
 	canUndoStudyAnswer,
 	createStudySession,
-	finishStudySession,
 	getCurrentStudyCardId,
 	getStudyProgress,
 	undoStudyAnswer,
@@ -268,40 +267,6 @@ describe("undoStudyAnswer", () => {
 		expect(canUndoStudyAnswer(session)).toBe(false);
 		expect(undoStudyAnswer(session)).toBeNull();
 		expect(session.answerEvents).toHaveLength(1);
-	});
-});
-
-describe("finishStudySession", () => {
-	it("records abandoned sessions only when answer events exist", () => {
-		expect(finishStudySession(makeSession(), "abandoned", 5000)).toBeNull();
-		expect(
-			finishStudySession(
-				makeSession({
-					answerEvents: [
-						{
-							cardId: "card-1",
-							rating: 3,
-							previousFsrsCard: createEmptyCard(),
-							nextFsrsCard: createEmptyCard(),
-							repeatInSession: false,
-							answeredAt: 2000,
-							previousCurrentIndex: 0,
-							previousCardQueueLength: 3,
-							previousRepeatQueue: [],
-						},
-					],
-				}),
-				"abandoned",
-				65000,
-			),
-		).toEqual({
-			reason: "abandoned",
-			deckId: "notes/deck.md",
-			mode: "study",
-			cardCount: 1,
-			duration: 64,
-			incrementStudyCount: false,
-		});
 	});
 });
 

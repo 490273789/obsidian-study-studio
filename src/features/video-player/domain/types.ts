@@ -26,21 +26,6 @@ export interface DeviceVideoPlayerStateV1 {
 	readonly queueExpanded: boolean;
 }
 
-export type VideoPlayerPlaybackStateV1 = Pick<
-	DeviceVideoPlayerStateV1,
-	| "schemaVersion"
-	| "sources"
-	| "currentSourceId"
-	| "progressBySource"
-	| "completedSourceIds"
-	| "playbackRate"
->;
-
-export type VideoPlayerPresentationStateV1 = Pick<
-	DeviceVideoPlayerStateV1,
-	"floatingRect" | "queueExpanded"
->;
-
 export interface VideoPlayerSnapshot {
 	readonly sources: readonly LocalVideoSource[];
 	readonly completedSourceIds: readonly string[];

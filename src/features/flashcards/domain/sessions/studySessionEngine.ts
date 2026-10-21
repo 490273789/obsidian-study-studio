@@ -157,17 +157,6 @@ export function undoStudyAnswer(session: StudySession): StudySessionUndoStep | n
 	};
 }
 
-export function finishStudySession(
-	session: StudySession,
-	reason: StudySessionFinishReason,
-	now: number = Date.now(),
-): StudySessionFinishIntent | null {
-	const normalized = normalizeStudySession(session);
-	if (normalized.answerEvents.length === 0) return null;
-
-	return buildFinishIntent(normalized, reason, now);
-}
-
 export function getCurrentStudyCardId(session: StudySession): string | null {
 	const normalized = normalizeStudySession(session);
 	return normalized.cardQueue[normalized.currentIndex] ?? null;
