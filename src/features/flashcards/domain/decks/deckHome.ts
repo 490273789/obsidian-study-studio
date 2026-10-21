@@ -196,6 +196,12 @@ export type DeckHomeAction =
 			readonly kind: "navigate";
 			readonly destination: DeckHomeDestination;
 			readonly deckId: string;
+	  }
+	| {
+			readonly kind: "record-word-list-visit";
+			readonly deckId: string;
+			readonly startTimeMs: number;
+			readonly endTimeMs: number;
 	  };
 
 export type DeckHomeRejectionReason =
@@ -264,6 +270,12 @@ export interface DeckHomeRepository {
 	/** Revision of the installed challenge progress; changes invalidate its clone cache. */
 	getChallengeProgressRevision(): number;
 	getDeck(deckId: string): Deck | undefined;
+	recordWordListVisit(
+		deckId: string,
+		deckName: string,
+		startTimeMs: number,
+		endTimeMs: number,
+	): Promise<void>;
 	getDeckStats(deck: Deck, now?: Date): DeckStats;
 	getSettings(): FlashcardStudySettings;
 	getEffectiveStudySettings(deckId: string): StudySettings;
@@ -455,6 +467,8 @@ class DefaultDeckHome implements DeckHome {
 				return this.exportDeck(action.deckId);
 			case "navigate":
 				return this.navigate(action.destination, action.deckId);
+			case "record-word-list-visit":
+				return this.recordWordListVisit(action);
 		}
 	}
 
@@ -865,6 +879,24 @@ class DefaultDeckHome implements DeckHome {
 			}
 		}
 		return { kind: "navigation", destination, deckId };
+	}
+
+	private async recordWordListVisit(
+		action: Extract<DeckHomeAction, { kind: "record-word-list-visit" }>,
+	): Promise<DeckHomeOutcome> {
+		const deck = this.options.repository.getDeck(action.deckId);
+		if (!deck) return { kind: "rejected", reason: "deck-missing" };
+		try {
+			await this.options.repository.recordWordListVisit(
+				deck.id,
+				deck.name,
+				action.startTimeMs,
+				action.endTimeMs,
+			);
+			return { kind: "applied" };
+		} catch (error) {
+			return { kind: "failed", message: getErrorMessage(error) };
+		}
 	}
 
 	/**

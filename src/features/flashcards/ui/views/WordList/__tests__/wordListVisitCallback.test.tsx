@@ -150,13 +150,14 @@ function snapshot(decks: (typeof DECK_A)[]): DeckHomeSnapshot {
 }
 
 function makeDeckHome(decks: (typeof DECK_A)[]) {
+	const act = vi.fn(async () => ({ kind: "applied" }));
 	const home = {
 		getSnapshot: () => snapshot(decks),
 		subscribe: vi.fn(() => () => {}),
 		getDeck: (deckId: string) => decks.find((deck) => deck.id === deckId),
-		act: vi.fn(),
+		act,
 	} as unknown as React.ComponentProps<typeof FlashcardApp>["deckHome"];
-	return home;
+	return { home, act };
 }
 
 function findWordListView(node: React.ReactNode): React.ReactElement<WordListProps> {
@@ -176,10 +177,7 @@ function findWordListView(node: React.ReactNode): React.ReactElement<WordListPro
 	return found;
 }
 
-function propsFor(
-	deckHome: React.ComponentProps<typeof FlashcardApp>["deckHome"],
-	learningActivity?: React.ComponentProps<typeof FlashcardApp>["learningActivity"],
-) {
+function propsFor(deckHome: React.ComponentProps<typeof FlashcardApp>["deckHome"]) {
 	return {
 		app: {},
 		modalHost: {},
@@ -187,7 +185,6 @@ function propsFor(
 		cardIdentityContinuity: {},
 		pronunciationRuntime: {},
 		deckHome,
-		learningActivity,
 		settings: { language: "en", wordLearningDecks: {} },
 		onOpenSettings: vi.fn(),
 	} as unknown as React.ComponentProps<typeof FlashcardApp>;
@@ -210,22 +207,25 @@ describe("FlashcardApp word-list visit recording", () => {
 	});
 
 	it("hands the memoized word list a stable visit callback across unrelated renders", () => {
-		const recordWordListVisit = vi.fn(async () => {});
-		const deckHome = makeDeckHome([DECK_A]);
-		const props = propsFor(deckHome, { recordWordListVisit });
+		const { home, act } = makeDeckHome([DECK_A]);
+		const props = propsFor(home);
 
 		const first = findWordListView(render(props));
 		const second = findWordListView(render(props));
 		expect(second.props.onRecordVisit).toBe(first.props.onRecordVisit);
 
 		second.props.onRecordVisit?.(1_000, 2_000);
-		expect(recordWordListVisit).toHaveBeenCalledWith(DECK_A.id, DECK_A.name, 1_000, 2_000);
+		expect(act).toHaveBeenCalledWith({
+			kind: "record-word-list-visit",
+			deckId: DECK_A.id,
+			startTimeMs: 1_000,
+			endTimeMs: 2_000,
+		});
 	});
 
 	it("replaces the visit callback when the word-list deck changes", () => {
-		const recordWordListVisit = vi.fn(async () => {});
-		const deckHome = makeDeckHome([DECK_A, DECK_B]);
-		const props = propsFor(deckHome, { recordWordListVisit });
+		const { home, act } = makeDeckHome([DECK_A, DECK_B]);
+		const props = propsFor(home);
 
 		const first = findWordListView(render(props));
 		navigationState.view = { type: "word-list", deckId: DECK_B.id };
@@ -233,6 +233,11 @@ describe("FlashcardApp word-list visit recording", () => {
 		expect(second.props.onRecordVisit).not.toBe(first.props.onRecordVisit);
 
 		second.props.onRecordVisit?.(3_000, 4_000);
-		expect(recordWordListVisit).toHaveBeenCalledWith(DECK_B.id, DECK_B.name, 3_000, 4_000);
+		expect(act).toHaveBeenCalledWith({
+			kind: "record-word-list-visit",
+			deckId: DECK_B.id,
+			startTimeMs: 3_000,
+			endTimeMs: 4_000,
+		});
 	});
 });

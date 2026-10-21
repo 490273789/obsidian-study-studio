@@ -11,7 +11,6 @@ import type { ScopedWorkbenchSettings } from "../../../core/host/settingsSlices"
 import type { WorkbenchFeatureShortcut } from "../../../core/host/workbench";
 import type { DeckHome, DeckHomeDestination } from "../domain/decks/deckHome";
 import { type SessionLifecycle } from "../domain/sessions/sessionLifecycle";
-import type { FlashcardLearningActivityPort } from "../domain/storage/flashcardPersistence";
 import { CardEditorModal } from "./views/Card";
 import { createTranslator } from "../strings/index";
 import { ConfirmDialog } from "../../../core/ui/primitives/ConfirmDialog";
@@ -34,7 +33,6 @@ interface FlashcardAppProps {
 	cardIdentityContinuity: CardIdentityContinuity;
 	pronunciationRuntime: PronunciationRuntime;
 	deckHome: DeckHome;
-	learningActivity?: FlashcardLearningActivityPort;
 	settings: ScopedWorkbenchSettings<"flashcards">;
 	shortcuts: readonly WorkbenchFeatureShortcut[];
 	onOpenSettings: () => void;
@@ -47,7 +45,6 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 	sessionLifecycle,
 	pronunciationRuntime,
 	deckHome,
-	learningActivity,
 	settings,
 	shortcuts,
 	onOpenSettings,
@@ -145,16 +142,15 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 	const wordListDeckId = viewState.type === "word-list" ? viewState.deckId : null;
 	const handleRecordWordListVisit = useCallback(
 		(startTimeMs: number, endTimeMs: number) => {
-			if (wordListDeckId === null || !learningActivity) return;
-			const deckName = deckHome.getDeck(wordListDeckId)?.name ?? wordListDeckId;
-			void learningActivity.recordWordListVisit(
-				wordListDeckId,
-				deckName,
+			if (wordListDeckId === null) return;
+			void deckHome.act({
+				kind: "record-word-list-visit",
+				deckId: wordListDeckId,
 				startTimeMs,
 				endTimeMs,
-			);
+			});
 		},
-		[learningActivity, deckHome, wordListDeckId],
+		[deckHome, wordListDeckId],
 	);
 
 	const handleOpenAddCard = useCallback(() => {

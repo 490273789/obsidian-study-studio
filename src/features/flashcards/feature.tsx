@@ -650,7 +650,6 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 							sessionLifecycle={sessionLifecycleWiring.lifecycle}
 							pronunciationRuntime={pronunciationRuntime}
 							deckHome={deckHome}
-							learningActivity={repo.learningActivity}
 							settings={settings}
 							onOpenSettings={() => host.settingsTab.open(FLASHCARD_SECTION_ID)}
 							shortcuts={host.featureShortcuts()}

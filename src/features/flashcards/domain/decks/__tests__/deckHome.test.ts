@@ -120,6 +120,8 @@ class MemoryRepository implements DeckHomeRepository {
 	challengeProgress: ChallengeProgress | null = null;
 	spellingProgress: SpellingProgressSnapshot = {};
 	studyHistory: StudyHistoryEntry[] = [];
+	readonly wordListVisits: { deckId: string; deckName: string; start: number; end: number }[] =
+		[];
 
 	constructor(
 		public decks: Deck[],
@@ -128,6 +130,20 @@ class MemoryRepository implements DeckHomeRepository {
 
 	getDeck(deckId: string): Deck | undefined {
 		return this.decks.find((deck) => deck.id === deckId);
+	}
+
+	async recordWordListVisit(
+		deckId: string,
+		deckName: string,
+		startTimeMs: number,
+		endTimeMs: number,
+	): Promise<void> {
+		this.wordListVisits.push({
+			deckId,
+			deckName,
+			start: startTimeMs,
+			end: endTimeMs,
+		});
 	}
 
 	getEffectiveStudySettings(deckId: string): StudySettings {
@@ -838,6 +854,41 @@ describe("DeckHome", () => {
 				deckId: deck.id,
 			}),
 		).toEqual({ kind: "rejected", reason: "deck-missing" });
+	});
+
+	it("records word-list visits through the repository and rejects missing decks", async () => {
+		const deck = makeDeck();
+		const repository = new MemoryRepository([deck]);
+		const home = createDeckHome({
+			repository,
+			identity: makeIdentity(),
+			saveSettingsPatch: vi.fn(),
+			exportDeck: vi.fn(),
+			report: (event) => events.push(event),
+		});
+
+		await expect(
+			home.act({
+				kind: "record-word-list-visit",
+				deckId: deck.id,
+				startTimeMs: 1_000,
+				endTimeMs: 7_000,
+			}),
+		).resolves.toEqual({ kind: "applied" });
+		expect(repository.wordListVisits).toEqual([
+			{ deckId: deck.id, deckName: deck.name, start: 1_000, end: 7_000 },
+		]);
+
+		repository.decks = [];
+		await expect(
+			home.act({
+				kind: "record-word-list-visit",
+				deckId: deck.id,
+				startTimeMs: 2_000,
+				endTimeMs: 3_000,
+			}),
+		).resolves.toEqual({ kind: "rejected", reason: "deck-missing" });
+		expect(repository.wordListVisits).toHaveLength(1);
 	});
 
 	it("refreshes due counts at the earliest due time and stops the clock without subscribers", () => {
