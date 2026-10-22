@@ -1,6 +1,7 @@
 @use "../../../core/styles/mixins.scss" as *;
 
 .page {
+	--page-content-width: 1400px;
 	gap: 0;
 }
 
@@ -31,18 +32,26 @@
 	}
 }
 
-/*
- * The docked column is content-sized. Letting it shrink squeezed the player
- * panel below the video's own aspect ratio whenever the leaf was even slightly
- * short, and `object-fit: contain` then left black gutters inside the frame.
- * The page body scrolls instead.
- */
 .layout {
 	display: flex;
 	min-height: 0;
 	flex: 0 0 auto;
 	flex-direction: column;
 	gap: 16px;
+}
+
+@container flashcard-pane (min-width: 1100px) {
+	.layout {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) 360px;
+		align-items: start;
+	}
+}
+
+.layoutCollapsed {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 56px;
+	align-items: start;
 }
 
 .playerPanel,
@@ -257,6 +266,8 @@
 
 .queueHeading {
 	display: flex;
+	min-width: 0;
+	flex: 1;
 	align-items: center;
 	justify-content: flex-start;
 	gap: var(--fc-space-2);
@@ -279,33 +290,57 @@
 }
 
 .queueSummaryText {
+	min-width: 0;
+	overflow: hidden;
 	color: var(--fc-text);
 	font-size: var(--fc-font-sm);
 	font-weight: var(--fc-weight-semibold);
+	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
 .queueHeaderActions {
 	display: flex;
+	flex-shrink: 0;
 	align-items: center;
 	gap: var(--fc-space-2);
 }
 
 .queueAddBtn {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--fc-space-1);
-	padding: var(--fc-space-1) var(--fc-space-2);
 	border-radius: var(--fc-radius-md);
-	font-size: var(--fc-font-xs);
-	font-weight: var(--fc-weight-medium);
-	cursor: pointer;
-	min-height: unset !important;
-	height: auto !important;
 	box-shadow: none !important;
 	transition:
 		background-color var(--fc-motion-quick) ease,
 		color var(--fc-motion-quick) ease;
+}
+
+.queueCollapsed .queueHeader {
+	flex-direction: column;
+	align-items: center;
+	gap: var(--fc-space-1);
+	padding: 6px;
+}
+
+.queueCollapsed .queueHeading {
+	width: 40px;
+	height: 40px !important;
+	min-height: 40px !important;
+	flex: 0 0 auto;
+	justify-content: center;
+	padding: 0;
+}
+
+.queueCollapsed .queueSummaryText {
+	display: none;
+}
+
+.queueCollapsed .queueHeaderActions {
+	justify-content: center;
+	width: 100%;
+}
+
+.queueCollapsed .queueAddBtn {
+	--fc-button-height: 40px;
 }
 
 .queueList {
@@ -479,6 +514,12 @@
 	text-align: left;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.sourceNameTooltip {
+	max-width: min(480px, calc(100vw - 32px));
+	white-space: normal;
+	overflow-wrap: anywhere;
 }
 
 .sourceMeta {

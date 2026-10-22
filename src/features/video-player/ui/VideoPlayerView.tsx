@@ -1,7 +1,9 @@
 import React, { useCallback, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
+import { setTooltip } from "obsidian";
 import {
 	ChevronDown,
+	ChevronLeft,
 	ChevronRight,
 	ChevronUp,
 	CirclePlay,
@@ -145,13 +147,6 @@ export function VideoPlayerView({
 							aria-label={t.settings}
 							onClick={onOpenSettings}
 						/>
-						<FlashcardButton
-							icon={FolderPlus}
-							preset="icon"
-							title={t.addVideos}
-							aria-label={t.addVideos}
-							onClick={() => void addVideos()}
-						/>
 					</div>
 				}
 			/>
@@ -170,7 +165,12 @@ export function VideoPlayerView({
 						</FlashcardButton>
 					</div>
 				) : (
-					<div className={styles.layout}>
+					<div
+						className={cls(
+							styles.layout,
+							!viewSnapshot.queueExpanded && styles.layoutCollapsed,
+						)}
+					>
 						<section className={styles.playerPanel}>
 							{floating ? (
 								<div className={styles.floatingPlaceholder}>
@@ -186,13 +186,22 @@ export function VideoPlayerView({
 								renderPlayer()
 							)}
 						</section>
-						<aside className={styles.queue} aria-label={t.queue}>
+						<aside
+							className={cls(
+								styles.queue,
+								!viewSnapshot.queueExpanded && styles.queueCollapsed,
+							)}
+							aria-label={t.queue}
+						>
 							<div className={styles.queueHeader}>
 								<FlashcardButton
 									variant="ghost"
 									className={styles.queueHeading}
 									aria-expanded={viewSnapshot.queueExpanded}
 									title={
+										viewSnapshot.queueExpanded ? t.queueCollapse : t.queueExpand
+									}
+									aria-label={
 										viewSnapshot.queueExpanded ? t.queueCollapse : t.queueExpand
 									}
 									onClick={() =>
@@ -202,11 +211,11 @@ export function VideoPlayerView({
 										})
 									}
 								>
-									<span className={styles.queueChevron}>
+									<span className={styles.queueChevron} aria-hidden="true">
 										{viewSnapshot.queueExpanded ? (
-											<ChevronDown size={16} />
-										) : (
 											<ChevronRight size={16} />
+										) : (
+											<ChevronLeft size={16} />
 										)}
 									</span>
 									<span className={styles.queueSummaryText}>
@@ -215,16 +224,14 @@ export function VideoPlayerView({
 								</FlashcardButton>
 								<div className={styles.queueHeaderActions}>
 									<FlashcardButton
-										variant="ghost"
-										size="sm"
+										preset="icon"
 										icon={FolderPlus}
 										iconSize={14}
 										className={styles.queueAddBtn}
 										title={t.addVideos}
+										aria-label={t.addVideos}
 										onClick={() => void addVideos()}
-									>
-										<span>{t.addVideos}</span>
-									</FlashcardButton>
+									/>
 								</div>
 							</div>
 							{viewSnapshot.queueExpanded && (
@@ -266,13 +273,26 @@ export function VideoPlayerView({
 															<FlashcardButton
 																variant="ghost"
 																className={styles.sourceContent}
+																ref={(element) => {
+																	if (element) {
+																		setTooltip(
+																			element,
+																			source.name,
+																			{
+																				placement: "top",
+																				classes: [
+																					styles.sourceNameTooltip,
+																				],
+																			},
+																		);
+																	}
+																}}
 																aria-current={
 																	isActive ? "true" : undefined
 																}
 																onClick={() =>
 																	runtime.selectSource(source.id)
 																}
-																title={`${source.name}\n${source.path}`}
 															>
 																<span className={styles.sourceName}>
 																	{source.name}

@@ -1,7 +1,7 @@
 /*
  * Layout module: the workbench page shell, its panels, and the view container.
  *
- * Every feature used to restate the same page recipe (centred max-width column,
+ * Every feature used to restate the same page recipe (full-width chrome,
  * spacing, scroll behaviour) and the same panel recipe (bordered surface with
  * header/body/footer), which is how the two newest features ended up outside the
  * responsive and motion layers with containers that had no styles at all.
@@ -10,16 +10,27 @@
  * keeps only what is specific to that view.
  */
 
-/* A workbench page. Feature styles may override its default content width. */
+/* A workbench page. Chrome spans the leaf; content has its own width below. */
 .fc-page {
 	display: flex;
 	box-sizing: border-box;
 	min-width: 0;
-	width: min(var(--fc-layout-max-width), 100%);
-	margin-inline: auto;
+	width: 100%;
+	--page-viewport-gutter: var(--fc-space-4);
 	flex-direction: column;
 	gap: var(--fc-space-4);
 	color: var(--fc-text);
+}
+
+/* Non-scrolling page content. A page may set --page-content-width locally. */
+.fc-page__content {
+	box-sizing: border-box;
+	min-width: 0;
+	width: min(
+		var(--page-content-width, var(--fc-layout-max-width)),
+		calc(100% - var(--page-viewport-gutter) - var(--page-viewport-gutter))
+	);
+	margin-inline: auto;
 }
 
 /* A page that fills its leaf and scrolls inside its own body. */
@@ -35,8 +46,14 @@
 /* The scrollable region of a fill page. */
 .fc-page__body {
 	display: flex;
+	box-sizing: border-box;
 	flex: 1 1 auto;
 	flex-direction: column;
+	width: min(
+		var(--page-content-width, var(--fc-layout-max-width)),
+		calc(100% - var(--page-viewport-gutter) - var(--page-viewport-gutter))
+	);
+	margin-inline: auto;
 	padding: 0 var(--fc-space-4);
 	gap: var(--fc-space-4);
 	min-height: 0;

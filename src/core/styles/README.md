@@ -96,9 +96,9 @@
 
 页面外壳、面板与视图容器只在这里实现一次。视图在自己的类名旁叠加布局类，不重写配方：
 
-- `.fc-page`：页面根（flex 纵向、区块间距、`--fc-text`），默认使用 `width: min(var(--fc-layout-max-width), 100%)` 并水平居中；需要其他宽度时，在页面自己的样式中覆盖。
+- `.fc-page`：全宽页面根（flex 纵向、区块间距、`--fc-text`），让页面 header 铺满视图。
 - `.fc-page--fill`：填满 leaf、内部滚动、带 `--fc-motion-page-enter` 进入动效。
-- `.fc-page__body`：可滚动正文区。
+- `.fc-page__body`：可滚动、居中的正文区；`.fc-page__content`：非滚动正文块。两者默认最大宽度为 1024px，页面可在自己的 `.fc-page` 样式上设置 `--page-content-width` 覆盖，例如 `--page-content-width: 1200px`；小屏仍保留侧边留白。
 - `.fc-panel` + `.fc-panel > header|footer`：带边框的面板与其头/尾语义。
 - `.workspace-leaf-content .flashcard-container`：挂载接缝为每个视图添加的唯一容器类。
 
@@ -269,7 +269,7 @@ Portal 到 `document.body` 的插件浮层（如浮动视频窗口）必须包�
 - 通用页面外壳、跨视图布局模式和控件的响应式规则集中在 `responsive.scss`；Header、Modal 等组件及业务视图专属规则与对应样式就近存放。
 - 宽度断点只有两档，统一从 `breakpoints.scss` 引用：`breakpoints.$phone`（≤640px）和 `breakpoints.$tablet`（≤1024px）。641–1024px 为平板布局，宽于 1024px 使用桌面默认布局；平板规则先写，手机规则随后覆盖，避免另加 400、480、720、768、900 或 960px 宽度断点。
 - 同一样式文件中，相同条件的 `@media` 合并为一个区块。`@media`（视口宽度）、`@container`（面板宽度）与 Obsidian 手机环境类的触发条件不同，按需分别保留。
-- 内容区默认最大宽度为 1024px，与 `breakpoints.$tablet` 共用定义；`.flashcard-root` 填满视图，宽度约束由 `.fc-page` 承担，页面可按需覆盖。平板断点按宿主 `flashcard-pane` 的实际宽度判断，避免内容最大宽度使桌面始终命中平板规则。手机及学习卡片的内容适配继续使用 `flashcard-page`、`session` 或组件自身容器；窄桌面分栏也能正常适配。
+- 内容区默认最大宽度为 1024px，与 `breakpoints.$tablet` 共用定义；`.flashcard-root` 与 `.fc-page` 填满视图，宽度约束由正文块承担，页面可通过 `--page-content-width` 按需覆盖。平板断点按宿主 `flashcard-pane` 的实际宽度判断。手机及学习卡片的内容适配继续使用 `flashcard-page`、`session` 或组件自身容器；窄桌面分栏也能正常适配。
 - 平板允许折叠栏位和重排工具栏，但不缩小基础字号；手机布局可以堆叠，信息层级保持不变。
 - 弹窗内部的局部空间优先使用自动换行或 `auto-fit` 网格，不额外增加设备断点。触摸目标继续由 `(pointer: coarse)` 独立保证，不能通过宽度推断输入设备。
 - 亮色与暗色主题默认都直接继承 Obsidian token。只有透明度或对比度确实无法自动适配时，才在对应组件文件里添加极少量 `.theme-light` 光学修正，禁止维护一套固定色值的独立亮色主题文件。

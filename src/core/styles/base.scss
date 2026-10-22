@@ -210,8 +210,8 @@
 
 /*
  * Root frame: full-width layout skeleton plus the neutral canvas surface.
- * Pages own their content width through .fc-page; responsive.scss adjusts the
- * root padding at narrow widths.
+ * Pages fill the leaf so navigation chrome reaches its edges. Their content
+ * regions retain independent width and gutters.
  */
 .flashcard-root {
 	position: relative;
@@ -225,8 +225,8 @@
 	flex-direction: column;
 	container-name: flashcard-page;
 	container-type: inline-size;
-	padding: var(--fc-space-4);
-	border-radius: var(--fc-radius-md);
+	padding: 0 0 var(--fc-space-4);
+	border-radius: 0;
 	scrollbar-gutter: auto;
 }
 

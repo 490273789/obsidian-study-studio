@@ -19,7 +19,10 @@
 
 	> :global(.flashcard-card-stack) {
 		box-sizing: border-box;
-		max-width: var(--fc-layout-max-width);
+		width: min(
+			var(--page-content-width, var(--fc-layout-max-width)),
+			calc(100% - var(--page-viewport-gutter) - var(--page-viewport-gutter))
+		);
 		margin: 0 auto;
 		flex-shrink: 0;
 	}
@@ -27,8 +30,10 @@
 
 .footer:global(.flashcard-footer) {
 	box-sizing: border-box;
-	width: 100%;
-	max-width: var(--fc-layout-max-width);
+	width: min(
+		var(--page-content-width, var(--fc-layout-max-width)),
+		calc(100% - var(--page-viewport-gutter) - var(--page-viewport-gutter))
+	);
 	margin-inline: auto;
 	gap: var(--fc-space-3);
 	padding: var(--fc-space-4) 0 var(--fc-space-3);

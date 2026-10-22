@@ -72,7 +72,7 @@ export function createVideoPlayerFeature(): WorkbenchModule<"videoPlayer"> {
 						const strings = videoPlayerStrings(language);
 						if (!host.settings.read().videoPlayer.enabled) {
 							return (
-								<div className="fc-page">
+								<div className="fc-page fc-page__content">
 									<p className="fc-kicker">{strings.disabled}</p>
 									<FlashcardButton
 										variant="primary"

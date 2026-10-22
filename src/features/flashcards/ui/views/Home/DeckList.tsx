@@ -245,7 +245,10 @@ export const DeckList = React.memo(function DeckList({
 
 				{snapshot.migration && (
 					<section
-						className={cls("flashcard-identity-migration-card", styles.migrationCard)}
+						className={cls(
+							"flashcard-identity-migration-card fc-page__content",
+							styles.migrationCard,
+						)}
 					>
 						<div
 							className={cls(

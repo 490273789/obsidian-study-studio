@@ -44,7 +44,10 @@ export function DictionaryFavoriteView({
 			</header>
 
 			<form
-				className={cls("flashcard-dictionary-favorite-form", styles.favoriteForm)}
+				className={cls(
+					"flashcard-dictionary-favorite-form fc-page__content",
+					styles.favoriteForm,
+				)}
 				onSubmit={(event) => {
 					event.preventDefault();
 					if (canSave) void controller.save();

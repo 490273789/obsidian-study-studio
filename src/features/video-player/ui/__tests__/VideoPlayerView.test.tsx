@@ -1,14 +1,20 @@
 import React from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { FlashcardButton } from "../../../../core/ui/primitives/Button";
+import { FlashcardHeader } from "../../../../core/ui/primitives/Header";
 import { ReorderableList, SortableRow } from "../../../../core/ui/primitives/Sortable/Sortable";
 import type { SortableInteraction } from "../../../../core/ui/primitives/Sortable/sortableInteraction";
 import type { VideoPlayerSnapshot } from "../../domain/types";
 import type { VideoPlayerRuntime } from "../../domain/videoPlayerRuntime";
 import { normalizeVideoPlayerSettings } from "../../settings/slice";
 import { videoPlayerStrings } from "../../strings/videoPlayer";
+import styles from "../VideoPlayer.module.scss";
 import { VideoPlayerView } from "../VideoPlayerView";
 import type { PlayerViewMount } from "../playerViewInteraction";
+
+const tooltipApi = vi.hoisted(() => ({ setTooltip: vi.fn() }));
+vi.mock("obsidian", () => tooltipApi);
 
 // Render the view's adapter boundary in node; shared sorting sensors and DOM
 // gestures are covered by the primitive's own tests.
@@ -80,8 +86,16 @@ function harness() {
 	sortingAdapter.interaction = null;
 	const reorderSources = vi.fn();
 	const selectSource = vi.fn();
+	const addSources = vi.fn();
+	const onPickVideos = vi.fn(async () => [{ id: "fourth", name: "fourth", path: "fourth.mp4" }]);
+	let queueExpanded = true;
+	const act = vi.fn(() => ({ kind: "applied" as const }));
 	const snapshot: VideoPlayerSnapshot = {
-		sources: ["first", "second", "third"].map((id) => ({ id, name: id, path: `${id}.mp4` })),
+		sources: ["first", "second", "third"].map((id) => ({
+			id,
+			name: id === "third" ? "A long video filename that exceeds the queue width.mp4" : id,
+			path: `${id}.mp4`,
+		})),
 		currentSourceId: "second",
 		completedSourceIds: ["first"],
 		progressBySource: { third: 20 },
@@ -98,11 +112,12 @@ function harness() {
 		subscribe: vi.fn(),
 		reorderSources,
 		selectSource,
+		addSources,
 	} as unknown as VideoPlayerRuntime;
 	const view: PlayerViewMount = {
 		getSnapshot: () => ({
 			role: "presenter",
-			queueExpanded: true,
+			queueExpanded,
 			presentation: { kind: "docked" },
 		}),
 		subscribe: () => () => {},
@@ -113,7 +128,7 @@ function harness() {
 			resizeLeft: vi.fn(),
 			resizeRight: vi.fn(),
 		},
-		act: () => ({ kind: "applied" }),
+		act,
 		dispose: vi.fn(),
 	};
 	const render = () =>
@@ -125,7 +140,7 @@ function harness() {
 			settings: normalizeVideoPlayerSettings(undefined),
 			onFocusExisting: vi.fn(),
 			onOpenSettings: vi.fn(),
-			onPickVideos: vi.fn(async () => []),
+			onPickVideos,
 			onPickReplacement: vi.fn(async () => null),
 		});
 	let list: React.ReactElement<React.ComponentProps<typeof ReorderableList>>;
@@ -149,6 +164,13 @@ function harness() {
 	return {
 		reorderSources,
 		selectSource,
+		addSources,
+		onPickVideos,
+		act,
+		setQueueExpanded: (expanded: boolean) => {
+			queueExpanded = expanded;
+		},
+		render,
 		snapshot,
 		get list() {
 			return list;
@@ -159,7 +181,99 @@ function harness() {
 	};
 }
 
-describe("video queue sorting", () => {
+describe("video queue view", () => {
+	it("collapses into a side rail and expands from its left arrow", () => {
+		const h = harness();
+		const expanded = h.render();
+		const layout = (tree: React.ReactNode) =>
+			findElement<React.ComponentProps<"div">>(
+				tree,
+				(element) =>
+					element.type === "div" &&
+					element.props.className?.includes(styles.layout) === true,
+			);
+		const queue = (tree: React.ReactNode) =>
+			findElement<React.ComponentProps<"aside">>(
+				tree,
+				(element) =>
+					element.type === "aside" && element.props["aria-label"] === "Playback queue",
+			);
+		const toggle = (tree: React.ReactNode) =>
+			findElement<React.ComponentProps<typeof FlashcardButton>>(
+				tree,
+				(element) =>
+					element.type === FlashcardButton &&
+					element.props["aria-expanded"] !== undefined,
+			);
+		expect(layout(expanded).props.className).not.toContain(styles.layoutCollapsed);
+		expect(toggle(expanded).props["aria-expanded"]).toBe(true);
+		expect(
+			findElement(
+				toggle(expanded).props.children,
+				(element) => element.type === ChevronRight,
+			),
+		).toBeDefined();
+		toggle(expanded).props.onClick!({} as React.MouseEvent<HTMLButtonElement>);
+		expect(h.act).toHaveBeenCalledWith({ type: "set-queue-expanded", expanded: false });
+
+		h.setQueueExpanded(false);
+		const collapsed = h.render();
+		expect(layout(collapsed).props.className).toContain(styles.layoutCollapsed);
+		expect(queue(collapsed).props.className).toContain(styles.queueCollapsed);
+		expect(toggle(collapsed).props["aria-expanded"]).toBe(false);
+		expect(toggle(collapsed).props["aria-label"]).toBe(videoPlayerStrings("en").queueExpand);
+		expect(
+			findElement(
+				toggle(collapsed).props.children,
+				(element) => element.type === ChevronLeft,
+			),
+		).toBeDefined();
+		expect(() => findElement(collapsed, (element) => element.type === ReorderableList)).toThrow(
+			"Expected view element",
+		);
+		expect(
+			findElement<React.ComponentProps<typeof FlashcardButton>>(
+				queue(collapsed),
+				(element) =>
+					element.type === FlashcardButton &&
+					element.props.title === videoPlayerStrings("en").addVideos,
+			),
+		).toBeDefined();
+		toggle(collapsed).props.onClick!({} as React.MouseEvent<HTMLButtonElement>);
+		expect(h.act).toHaveBeenLastCalledWith({ type: "set-queue-expanded", expanded: true });
+	});
+
+	it("offers video import only from the queue and keeps the icon accessible", async () => {
+		const h = harness();
+		const tree = h.render();
+		const copy = videoPlayerStrings("en");
+		const header = findElement<React.ComponentProps<typeof FlashcardHeader>>(
+			tree,
+			(element) => element.type === FlashcardHeader,
+		);
+		expect(() =>
+			findElement<React.ComponentProps<typeof FlashcardButton>>(
+				header.props.right,
+				(element) =>
+					element.type === FlashcardButton && element.props.title === copy.addVideos,
+			),
+		).toThrow("Expected view element");
+		const add = findElement<React.ComponentProps<typeof FlashcardButton>>(
+			tree,
+			(element) => element.type === FlashcardButton && element.props.title === copy.addVideos,
+		);
+		expect(add.props.preset).toBe("icon");
+		expect(add.props["aria-label"]).toBe(copy.addVideos);
+		expect(add.props.children).toBeUndefined();
+		add.props.onClick!({} as React.MouseEvent<HTMLButtonElement>);
+		await vi.waitFor(() =>
+			expect(h.addSources).toHaveBeenCalledExactlyOnceWith([
+				{ id: "fourth", name: "fourth", path: "fourth.mp4" },
+			]),
+		);
+		expect(h.onPickVideos).toHaveBeenCalledOnce();
+	});
+
 	it("passes source IDs and language to shared sorting and persists the moved order", () => {
 		const h = harness();
 		expect(h.list.props.interaction.getSnapshot().items).toEqual(["first", "second", "third"]);
@@ -176,7 +290,8 @@ describe("video queue sorting", () => {
 		const source = findElement<React.ComponentProps<typeof FlashcardButton>>(
 			h.content("third"),
 			(element) =>
-				element.type === FlashcardButton && element.props.title === "third\nthird.mp4",
+				element.type === FlashcardButton &&
+				element.props.className === styles.sourceContent,
 		);
 		source.props.onClick!({} as React.MouseEvent<HTMLButtonElement>);
 		expect(h.selectSource).toHaveBeenCalledExactlyOnceWith("third");
@@ -193,6 +308,25 @@ describe("video queue sorting", () => {
 				),
 			).toBeDefined();
 		}
+	});
+
+	it("shows the full video name with an Obsidian tooltip on hover", () => {
+		tooltipApi.setTooltip.mockClear();
+		const h = harness();
+		const source = findElement<React.ComponentPropsWithRef<typeof FlashcardButton>>(
+			h.content("third"),
+			(element) =>
+				element.type === FlashcardButton &&
+				element.props.className === styles.sourceContent,
+		);
+		const element = {} as HTMLButtonElement;
+		if (typeof source.props.ref !== "function") throw new Error("Expected a tooltip ref");
+		source.props.ref(element);
+		expect(tooltipApi.setTooltip).toHaveBeenCalledExactlyOnceWith(
+			element,
+			"A long video filename that exceeds the queue width.mp4",
+			{ placement: "top", classes: [styles.sourceNameTooltip] },
+		);
 	});
 
 	it("renders only the shared handle and removes native drag event wiring", () => {

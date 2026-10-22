@@ -2,6 +2,7 @@
 @use "../../../core/styles/mixins.scss" as *;
 
 .page {
+	--page-content-width: 1700px;
 	gap: 0;
 }
 

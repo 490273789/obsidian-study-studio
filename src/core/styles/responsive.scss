@@ -4,8 +4,10 @@
 
 @mixin tablet-layout {
 	.flashcard-root {
-		padding: 0 var(--fc-space-3) var(--fc-space-3);
 		padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--fc-mobile-bottom-padding));
+	}
+	.fc-page {
+		--page-viewport-gutter: var(--fc-space-3);
 	}
 
 	@include patterns.fc-rail-row-stacked;
@@ -18,9 +20,10 @@
 
 @mixin phone-layout {
 	.flashcard-root {
-		padding: var(--fc-space-2) var(--fc-space-2)
-			calc(env(safe-area-inset-bottom, 0px) + var(--fc-mobile-bottom-padding));
-		border-radius: 0;
+		padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--fc-mobile-bottom-padding));
+	}
+	.fc-page {
+		--page-viewport-gutter: var(--fc-space-2);
 	}
 
 	.fc-page {

@@ -143,11 +143,10 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 					/>
 				}
 			/>
-			{/* Captions are rendered as accessible, interactive sentence text below. */}
-			{/* oxlint-disable-next-line jsx-a11y/media-has-caption */}
+
 			<audio ref={media} preload="metadata" />
 			<div
-				className={styles.workspace}
+				className={cls("fc-page__content", styles.workspace)}
 				data-mobile-tools-open={materialToolsOpen || !material}
 			>
 				<aside

@@ -11,7 +11,7 @@
 .content,
 .actions {
 	width: 100%;
-	max-width: var(--fc-layout-max-width);
+	max-width: var(--page-content-width, var(--fc-layout-max-width));
 	margin-inline: auto;
 	box-sizing: border-box;
 }

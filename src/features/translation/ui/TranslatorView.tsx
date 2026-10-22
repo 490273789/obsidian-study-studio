@@ -163,14 +163,14 @@ export const TranslatorView = React.memo(function TranslatorView({
 			</section>
 
 			{!snapshot.settings.enabled ? (
-				<section className={styles.notice}>
+				<section className={cls("fc-page__content", styles.notice)}>
 					<span>{strings.disabled}</span>
 					<FlashcardButton variant="secondary" size="sm" onClick={onOpenSettings}>
 						{strings.openSettings}
 					</FlashcardButton>
 				</section>
 			) : configuredProfiles.length === 0 ? (
-				<section className={styles.notice}>
+				<section className={cls("fc-page__content", styles.notice)}>
 					<span>{strings.noProfiles}</span>
 					<FlashcardButton variant="secondary" size="sm" onClick={onOpenSettings}>
 						{strings.openSettings}
@@ -178,7 +178,7 @@ export const TranslatorView = React.memo(function TranslatorView({
 				</section>
 			) : null}
 
-			<section className={styles.workspace}>
+			<section className={cls("fc-page__content", styles.workspace)}>
 				<article className={cls("fc-panel", styles.panel)}>
 					<header>
 						<label htmlFor={`${viewId}-translator-input`}>{strings.inputLabel}</label>
@@ -278,7 +278,7 @@ export const TranslatorView = React.memo(function TranslatorView({
 				</section>
 			</section>
 
-			<footer className={styles.footer}>
+			<footer className={cls("fc-page__content", styles.footer)}>
 				<div className={styles.actions}>
 					<FlashcardButton
 						variant="primary"

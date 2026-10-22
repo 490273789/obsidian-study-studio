@@ -99,7 +99,7 @@ export function createAudioPracticeFeature(deps: {
 								/>
 							</ModalProvider>
 						) : (
-							<div className="fc-page">
+							<div className="fc-page fc-page__content">
 								<p>{audioPracticeStrings(language).disabled}</p>
 								<FlashcardButton onClick={openSettings}>
 									{audioPracticeStrings(language).openSettings}

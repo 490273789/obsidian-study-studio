@@ -363,7 +363,7 @@ export const WordListView = React.memo(function WordListView({
 				})}
 			</div>
 
-			<div className={styles.scroll} ref={bindScroll}>
+			<div className={cls("fc-page__content", styles.scroll)} ref={bindScroll}>
 				<div
 					ref={bindList}
 					className={styles.virtual}
