@@ -10,6 +10,8 @@ import {
 	ListMusic,
 	LoaderCircle,
 	NotebookPen,
+	PanelRightClose,
+	PanelRightOpen,
 	Pause,
 	Pencil,
 	Play,
@@ -79,6 +81,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 	const practiceRef = useRef<HTMLElement>(null);
 	const [reviewOpen, setReviewOpen] = useState(false);
 	const [materialToolsOpen, setMaterialToolsOpen] = useState(false);
+	const [libraryCollapsed, setLibraryCollapsed] = useState(false);
 	const [playerOptionsOpen, setPlayerOptionsOpen] = useState(false);
 	const libraryId = useId();
 	const materialActionsId = useId();
@@ -148,81 +151,8 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 			<div
 				className={cls("fc-page__content", styles.workspace)}
 				data-mobile-tools-open={materialToolsOpen || !material}
+				data-library-collapsed={libraryCollapsed}
 			>
-				<aside
-					id={libraryId}
-					className={cls("fc-panel", styles.library)}
-					aria-label={t.library}
-				>
-					<header className={styles.libraryHeader}>
-						<h2 className={styles.libraryTitle}>
-							{t.library}
-							<span className={styles.libraryCount}>{snapshot.materials.length}</span>
-						</h2>
-						<Button
-							preset="icon"
-							icon={Plus}
-							aria-label={t.add}
-							title={t.add}
-							disabled={materialBusy}
-							onClick={() => openMaterialDialog("add")}
-						/>
-					</header>
-					<div className={styles.materialList}>
-						{snapshot.materials.length === 0 && (
-							<p className={styles.libraryEmpty}>{t.libraryEmpty}</p>
-						)}
-						{snapshot.materials.map((item) => {
-							const active = item.id === material?.id;
-							return (
-								<div
-									key={item.id}
-									className={cls(
-										styles.materialRow,
-										active && styles.materialRowActive,
-									)}
-								>
-									<Button
-										variant="ghost"
-										className={styles.materialSelect}
-										disabled={materialBusy}
-										aria-current={active ? "true" : undefined}
-										onClick={() =>
-											void runtime.selectMaterial(item.id).then(
-												() => {
-													if (
-														runtime.getSnapshot().currentMaterialId ===
-														item.id
-													)
-														setMaterialToolsOpen(false);
-												},
-												() => {},
-											)
-										}
-									>
-										<span className={styles.materialName}>{item.title}</span>
-										<span className={styles.materialPath}>
-											{fileName(item.audioPath)}
-										</span>
-									</Button>
-									<Button
-										preset="icon"
-										size="sm"
-										icon={Trash2}
-										className={styles.materialRemove}
-										aria-label={`${t.remove}: ${item.title}`}
-										title={t.remove}
-										disabled={materialBusy}
-										onClick={() =>
-											void runtime.removeMaterial(item.id).catch(() => {})
-										}
-									/>
-								</div>
-							);
-						})}
-					</div>
-					<p className={styles.libraryHint}>{t.removeHint}</p>
-				</aside>
 				<main className={styles.stage}>
 					{!material && (
 						<div className={cls("fc-panel", styles.empty)}>
@@ -411,6 +341,93 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 						</p>
 					)}
 				</main>
+				<aside
+					id={libraryId}
+					className={cls("fc-panel", styles.library)}
+					aria-label={t.library}
+					data-collapsed={libraryCollapsed}
+				>
+					<header className={styles.libraryHeader}>
+						<h2 className={styles.libraryTitle}>
+							{t.library}
+							<span className={styles.libraryCount}>{snapshot.materials.length}</span>
+						</h2>
+						<div className={styles.libraryActions}>
+							<Button
+								preset="icon"
+								icon={Plus}
+								aria-label={t.add}
+								title={t.add}
+								disabled={materialBusy}
+								onClick={() => openMaterialDialog("add")}
+							/>
+							<Button
+								preset="icon"
+								icon={libraryCollapsed ? PanelRightOpen : PanelRightClose}
+								className={styles.libraryToggle}
+								aria-label={libraryCollapsed ? t.expandLibrary : t.collapseLibrary}
+								title={libraryCollapsed ? t.expandLibrary : t.collapseLibrary}
+								aria-expanded={!libraryCollapsed}
+								aria-controls={libraryId}
+								onClick={() => setLibraryCollapsed((collapsed) => !collapsed)}
+							/>
+						</div>
+					</header>
+					<div className={styles.materialList}>
+						{snapshot.materials.length === 0 && (
+							<p className={styles.libraryEmpty}>{t.libraryEmpty}</p>
+						)}
+						{snapshot.materials.map((item) => {
+							const active = item.id === material?.id;
+							return (
+								<div
+									key={item.id}
+									className={cls(
+										styles.materialRow,
+										active && styles.materialRowActive,
+									)}
+								>
+									<Button
+										variant="ghost"
+										className={styles.materialSelect}
+										disabled={materialBusy}
+										aria-current={active ? "true" : undefined}
+										onClick={() =>
+											void runtime.selectMaterial(item.id).then(
+												() => {
+													if (
+														runtime.getSnapshot().currentMaterialId ===
+														item.id
+													)
+														setMaterialToolsOpen(false);
+												},
+												() => {},
+											)
+										}
+									>
+										<span className={styles.materialName}>{item.title}</span>
+										<span className={styles.materialPath}>
+											{fileName(item.audioPath)}
+										</span>
+									</Button>
+									<Button
+										preset="icon"
+										size="sm"
+										icon={Trash2}
+										className={styles.materialRemove}
+										aria-label={`${t.remove}: ${item.title}`}
+										title={t.remove}
+										disabled={materialBusy}
+										onClick={() =>
+											void runtime.removeMaterial(item.id).catch(() => {})
+										}
+									/>
+								</div>
+							);
+						})}
+					</div>
+					<p className={styles.libraryHint}>{t.removeHint}</p>
+				</aside>
 			</div>
 			{edit.open && (
 				<MaterialDialog

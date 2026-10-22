@@ -5,6 +5,8 @@
 .page {
 	@include fc-scrollbar;
 
+	padding-top: var(--fc-space-4);
+
 	&.dictionary {
 		width: min(
 			var(--page-content-width, var(--fc-layout-max-width)),

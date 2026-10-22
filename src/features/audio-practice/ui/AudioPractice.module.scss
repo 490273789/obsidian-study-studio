@@ -6,14 +6,39 @@
 	gap: 0;
 }
 
-/* Layout: library rail + practice stage, both filling the leaf above the docked player. */
+/* Layout: practice stage + right library rail, both filling the leaf above the docked player. */
 .workspace {
 	display: grid;
-	grid-template-columns: minmax(180px, 232px) minmax(0, 1fr);
+	grid-template-columns: minmax(0, 1fr) minmax(180px, 232px);
 	gap: var(--fc-space-3);
 	flex: 1 1 auto;
 	min-height: 0;
 	padding: var(--fc-space-3) var(--fc-space-4) var(--fc-space-4);
+}
+
+.library:focus-within {
+	border-color: var(--fc-line);
+}
+
+@container flashcard-pane (min-width: 821px) {
+	.workspace[data-library-collapsed="true"] {
+		grid-template-columns: minmax(0, 1fr) 48px;
+	}
+
+	.library[data-collapsed="true"] {
+		.libraryHeader {
+			justify-content: center;
+			padding-inline: var(--fc-space-1);
+			border-bottom: 0;
+		}
+
+		.libraryTitle,
+		.libraryActions > :first-child,
+		.materialList,
+		.libraryHint {
+			display: none;
+		}
+	}
 }
 
 .libraryHeader {
@@ -30,6 +55,16 @@
 	font-size: var(--fc-font-xs);
 	font-weight: var(--fc-weight-semibold);
 	letter-spacing: 0.04em;
+}
+
+.libraryActions {
+	display: flex;
+	align-items: center;
+	gap: var(--fc-space-1);
+}
+
+.libraryToggle {
+	flex: none;
 }
 
 .libraryCount {
@@ -890,7 +925,16 @@
 	}
 
 	.library {
+		grid-row: 1;
 		max-height: 128px;
+	}
+
+	.stage {
+		grid-row: 2;
+	}
+
+	.libraryToggle {
+		display: none;
 	}
 
 	.libraryTitle {
@@ -943,6 +987,10 @@
 
 	.workspace[data-mobile-tools-open="false"] {
 		grid-template-rows: minmax(0, 1fr);
+
+		.stage {
+			grid-row: 1;
+		}
 
 		.library,
 		.materialActions {

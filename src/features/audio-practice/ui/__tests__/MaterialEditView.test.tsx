@@ -23,7 +23,10 @@ vi.mock("react", async (original) => ({
 		return [
 			values[index],
 			(value: unknown) => {
-				values[index] = value;
+				values[index] =
+					typeof value === "function"
+						? (value as (previous: unknown) => unknown)(values[index])
+						: value;
 			},
 		];
 	},
@@ -50,6 +53,8 @@ interface ElementProps {
 	role?: string;
 	"aria-label"?: string;
 	"aria-current"?: string;
+	"aria-expanded"?: boolean;
+	"data-library-collapsed"?: boolean;
 	onClick?: () => void;
 	onCancel?: () => void;
 	onSubmit?: () => void;
@@ -216,6 +221,26 @@ function harness() {
 }
 
 describe("listening material operations view", () => {
+	it("places the library after practice and toggles its collapsed state", () => {
+		const h = harness();
+		const workspace = () =>
+			elements(h.view()).find(
+				(element) => element.props["data-library-collapsed"] !== undefined,
+			)!;
+		const children = React.Children.toArray(workspace().props.children).filter(
+			React.isValidElement,
+		);
+		expect(children.map((child) => child.type)).toEqual(["main", "aside"]);
+		const toggle = (label: string) =>
+			elements(h.view()).find((element) => element.props["aria-label"] === label)!;
+		expect(toggle("Collapse materials").props["aria-expanded"]).toBe(true);
+		toggle("Collapse materials").props.onClick!();
+		expect(workspace().props["data-library-collapsed"]).toBe(true);
+		expect(toggle("Expand materials").props["aria-expanded"]).toBe(false);
+		toggle("Expand materials").props.onClick!();
+		expect(workspace().props["data-library-collapsed"]).toBe(false);
+	});
+
 	it("submits one edit, locks all views and closes only after success", async () => {
 		const h = harness();
 		h.clickEdit();
