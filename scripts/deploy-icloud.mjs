@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 const targetDir =
-	"/Users/ethan/Library/Mobile Documents/iCloud~md~obsidian/Documents/obsidianCloud/.obsidian/plugins/wsr-flash-card";
+	"/Users/ethan/Library/Mobile Documents/iCloud~md~obsidian/Documents/obsidianCloud/.obsidian/plugins/study-studio";
 const filesToCopy = ["main.js", "manifest.json", "styles.css"];
 
 async function assertFileExists(filePath) {
