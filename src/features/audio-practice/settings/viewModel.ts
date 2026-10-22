@@ -44,12 +44,27 @@ export function audioPracticeSettingsPresentation(
 							update({ bailianWorkspaceId: bailianWorkspaceId.trim() }),
 					},
 				);
-				group.text(
+				group.select(
 					"model",
 					{ name: t.bailianModel, description: t.bailianModelHint },
 					{
 						value: settings.bailianModel,
-						onChange: (bailianModel) => update({ bailianModel: bailianModel.trim() }),
+						options: [
+							{
+								value: "fun-asr-flash-2026-06-15",
+								label: "fun-asr-flash-2026-06-15",
+							},
+							{
+								value: "qwen-audio-3.1-asr-flash",
+								label: "qwen-audio-3.1-asr-flash",
+							},
+							{
+								value: "qwen-audio-3.0-asr-flash",
+								label: "qwen-audio-3.0-asr-flash",
+							},
+						],
+						missingValueLabel: `${t.bailianLegacyModel}: ${settings.bailianModel}`,
+						onChange: (bailianModel) => update({ bailianModel }),
 					},
 				);
 				group.secret(

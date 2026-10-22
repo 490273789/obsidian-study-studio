@@ -11,8 +11,8 @@ const zh = {
 	workspace: "百炼 Workspace ID",
 	workspaceHint: "使用北京地域的业务空间。",
 	bailianModel: "百炼模型",
-	bailianModelHint:
-		"可选 fun-asr-flash-2026-06-15、qwen-audio-3.1-asr-flash、qwen-audio-3.0-asr-flash，三者共用同一识别协议。qwen3-asr-flash、fun-asr、paraformer 等模型协议不同或只支持异步/WebSocket，填入会失败。",
+	bailianModelHint: "选择用于同步语音识别的模型。",
+	bailianLegacyModel: "旧配置中的模型（可能不兼容）",
 	bailianSecret: "百炼 API Key 密钥",
 	bailianSecretHint: "选择 Obsidian 密钥库中的百炼 API Key；密钥本身不写入插件数据。",
 	bailianServiceHint:
@@ -40,8 +40,8 @@ const en: typeof zh = {
 	workspace: "Model Studio Workspace ID",
 	workspaceHint: "Use a workspace in the Beijing region.",
 	bailianModel: "Model Studio model",
-	bailianModelHint:
-		"Use fun-asr-flash-2026-06-15, qwen-audio-3.1-asr-flash, or qwen-audio-3.0-asr-flash; they share one protocol. qwen3-asr-flash, fun-asr, and paraformer use different or asynchronous/WebSocket APIs and will fail here.",
+	bailianModelHint: "Choose a model for synchronous speech recognition.",
+	bailianLegacyModel: "Previously saved model (may be incompatible)",
 	bailianSecret: "Model Studio API key",
 	bailianSecretHint:
 		"Select a Model Studio API key from Obsidian Secret Storage. The key itself is not stored in plugin data.",
