@@ -707,11 +707,10 @@
 }
 
 .playButton {
-	--fc-button-height: 48px;
+	--fc-button-height: 36px;
 	width: var(--fc-button-height);
 	height: var(--fc-button-height);
 	min-width: var(--fc-button-height);
-	border-radius: var(--fc-radius-pill);
 }
 
 .playerOptions {

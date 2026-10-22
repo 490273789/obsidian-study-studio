@@ -10,11 +10,13 @@
  * keeps only what is specific to that view.
  */
 
-/* A workbench page. */
+/* A workbench page. Feature styles may override its default content width. */
 .fc-page {
 	display: flex;
 	box-sizing: border-box;
 	min-width: 0;
+	width: min(var(--fc-layout-max-width), 100%);
+	margin-inline: auto;
 	flex-direction: column;
 	gap: var(--fc-space-4);
 	color: var(--fc-text);
