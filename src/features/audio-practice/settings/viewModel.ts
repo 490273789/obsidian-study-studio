@@ -35,13 +35,13 @@ export function audioPracticeSettingsPresentation(
 				},
 			);
 			if (settings.provider === "bailian") {
-				group.text(
+				group.secret(
 					"workspace",
 					{ name: t.workspace, description: t.workspaceHint },
 					{
-						value: settings.bailianWorkspaceId,
-						onChange: (bailianWorkspaceId) =>
-							update({ bailianWorkspaceId: bailianWorkspaceId.trim() }),
+						value: settings.bailianWorkspaceSecretId,
+						onChange: (bailianWorkspaceSecretId) =>
+							update({ bailianWorkspaceSecretId, bailianWorkspaceId: "" }),
 					},
 				);
 				group.select(

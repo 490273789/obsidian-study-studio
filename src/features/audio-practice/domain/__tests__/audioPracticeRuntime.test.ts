@@ -876,6 +876,7 @@ const defaultSettings: AudioPracticeSettings = {
 	enabled: true,
 	provider: "bailian",
 	bailianWorkspaceId: "workspace",
+	bailianWorkspaceSecretId: "",
 	bailianSecretId: "secret",
 	bailianModel: "fun-asr-flash-2026-06-15",
 	openaiBaseUrl: "https://api.openai.com/v1",
@@ -902,6 +903,7 @@ function draftHarness(
 		matchesSource?: () => Promise<boolean>;
 		settingsPatch?: Partial<AudioPracticeSettings>;
 		secret?: string | null;
+		secrets?: Record<string, string | null>;
 		timedWords?: { text: string; start: number; end: number }[];
 	} = {},
 ) {
@@ -1030,7 +1032,13 @@ function draftHarness(
 	};
 	const settingsReader = {
 		read: () => ({ ...defaultSettings, ...options.settingsPatch }),
-		readSecret: vi.fn(() => (options.secret === undefined ? "secret" : options.secret)),
+		readSecret: vi.fn((id: string) =>
+			options.secrets
+				? (options.secrets[id] ?? null)
+				: options.secret === undefined
+					? "secret"
+					: options.secret,
+		),
 	};
 
 	const runtime = new AudioPracticeRuntime({
@@ -1166,6 +1174,40 @@ describe("audio practice runtime subtitle generation admission", () => {
 			kind: "config-invalid",
 			field: "secret",
 		});
+	});
+
+	it("resolves the selected workspace from SecretStorage before generation", async () => {
+		const h = draftHarness({
+			settingsPatch: {
+				bailianWorkspaceId: "legacy-workspace",
+				bailianWorkspaceSecretId: "workspace-ref",
+			},
+			secrets: { "workspace-ref": " selected-workspace ", secret: "api-key" },
+		});
+		expect(await h.runtime.generateSubtitles()).toBe(true);
+		expect(h.settingsReader.readSecret).toHaveBeenCalledWith("workspace-ref");
+		expect(h.generation.generate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				config: expect.objectContaining({ workspaceId: "selected-workspace" }),
+			}),
+			expect.anything(),
+		);
+	});
+
+	it("does not fall back to plaintext when a selected workspace secret is missing", async () => {
+		const h = draftHarness({
+			settingsPatch: {
+				bailianWorkspaceId: "legacy-workspace",
+				bailianWorkspaceSecretId: "missing-workspace-ref",
+			},
+			secrets: { "missing-workspace-ref": null, secret: "api-key" },
+		});
+		expect(await h.runtime.generateSubtitles()).toBe(false);
+		expect(h.runtime.getSnapshot().draft.error).toEqual({
+			kind: "config-invalid",
+			field: "workspace",
+		});
+		expect(h.source.stat).not.toHaveBeenCalled();
 	});
 
 	it("surfaces a vault read failure without starting generation", async () => {

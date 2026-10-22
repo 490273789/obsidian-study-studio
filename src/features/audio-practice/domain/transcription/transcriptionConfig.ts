@@ -37,13 +37,30 @@ export function openAiCompatibleAudioUrl(baseUrl: string): string {
 	return `${url.origin}${path}/audio/transcriptions`;
 }
 
-/** Provider/model identity; credentials are deliberately excluded. */
-export function transcriptionConfigFingerprint(config: TranscriptionConfig): string {
-	return config.provider === "bailian"
-		? ["bailian", config.workspaceId.trim(), config.model.trim()].join("|")
-		: [
-				"openai-compatible",
-				config.baseUrl.trim().replace(/\/+$/, ""),
-				config.model.trim(),
-			].join("|");
+/** Provider/model identity; the workspace value is hashed before a draft is saved. */
+export async function transcriptionConfigFingerprint(config: TranscriptionConfig): Promise<string> {
+	if (config.provider === "bailian") {
+		const bytes = new TextEncoder().encode(config.workspaceId.trim());
+		const hash = await crypto.subtle.digest("SHA-256", bytes);
+		const workspaceHash = Array.from(new Uint8Array(hash), (byte) =>
+			byte.toString(16).padStart(2, "0"),
+		).join("");
+		return ["bailian", workspaceHash, config.model.trim()].join("|");
+	}
+	return [
+		"openai-compatible",
+		config.baseUrl.trim().replace(/\/+$/, ""),
+		config.model.trim(),
+	].join("|");
+}
+
+/** Accepts an older plaintext draft fingerprint only for the same Bailian workspace and model. */
+export function matchesLegacyBailianFingerprint(
+	fingerprint: string,
+	config: TranscriptionConfig,
+): boolean {
+	return (
+		config.provider === "bailian" &&
+		fingerprint === ["bailian", config.workspaceId.trim(), config.model.trim()].join("|")
+	);
 }

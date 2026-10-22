@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { AudioFailureError, type AudioFailure } from "../failures";
 import { encodeMonoWav } from "../transcription/browserAudio";
 import { createBailianProvider, parseBailianResponse } from "../transcription/bailianProvider";
+import { transcriptionConfigFingerprint } from "../transcription/transcriptionConfig";
 import type { BailianTranscriptionConfig } from "../transcriptionTypes";
 import type { OutboundPort } from "../../../../core/net/types";
 
@@ -24,6 +25,13 @@ function failureOf(run: () => unknown): AudioFailure {
 }
 
 describe("bailian transcription & audio encoding", () => {
+	it("keeps the workspace value out of saved draft fingerprints", async () => {
+		const fingerprint = await transcriptionConfigFingerprint(config);
+		expect(fingerprint).not.toContain(config.workspaceId);
+		expect(fingerprint).not.toBe(
+			await transcriptionConfigFingerprint({ ...config, workspaceId: "another-workspace" }),
+		);
+	});
 	it("writes PCM WAV metadata and clips samples", () => {
 		const wav = new DataView(encodeMonoWav(new Float32Array([-2, 0, 2])));
 		expect(wav.getUint32(24, true)).toBe(16000);

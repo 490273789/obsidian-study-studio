@@ -9,7 +9,8 @@ const zh = {
 	providerBailian: "阿里云百炼",
 	providerOpenAi: "OpenAI 兼容服务",
 	workspace: "百炼 Workspace ID",
-	workspaceHint: "使用北京地域的业务空间。",
+	workspaceHint:
+		"在 Obsidian 密钥库保存北京地域的 Workspace ID 后选择；旧版明文配置在重新选择前仍可使用。",
 	bailianModel: "百炼模型",
 	bailianModelHint: "选择用于同步语音识别的模型。",
 	bailianLegacyModel: "旧配置中的模型（可能不兼容）",
@@ -38,7 +39,8 @@ const en: typeof zh = {
 	providerBailian: "Alibaba Cloud Model Studio",
 	providerOpenAi: "OpenAI-compatible service",
 	workspace: "Model Studio Workspace ID",
-	workspaceHint: "Use a workspace in the Beijing region.",
+	workspaceHint:
+		"Save a Beijing-region Workspace ID in Obsidian Secret Storage, then select it here. Older plaintext settings keep working until you choose a secret.",
 	bailianModel: "Model Studio model",
 	bailianModelHint: "Choose a model for synchronous speech recognition.",
 	bailianLegacyModel: "Previously saved model (may be incompatible)",

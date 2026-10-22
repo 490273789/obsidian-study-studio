@@ -12,6 +12,7 @@ const base: AudioPracticeSettings = {
 	enabled: true,
 	provider: "bailian",
 	bailianWorkspaceId: "workspace",
+	bailianWorkspaceSecretId: "workspace-secret",
 	bailianSecretId: "secret",
 	bailianModel: DEFAULT_BAILIAN_MODEL,
 	openaiBaseUrl: DEFAULT_OPENAI_BASE_URL,
@@ -53,6 +54,8 @@ describe("audio practice settings presentation", () => {
 			value: "bailian",
 			options: [{ value: "bailian" }, { value: "openai-compatible" }],
 		});
+		const workspace = rows(presentation).find((row) => row.key === "workspace")?.controls[0];
+		expect(workspace).toMatchObject({ kind: "secret", value: "workspace-secret" });
 		const model = rows(presentation).find((row) => row.key === "model")?.controls[0];
 		expect(model).toMatchObject({
 			kind: "select",
@@ -63,6 +66,19 @@ describe("audio practice settings presentation", () => {
 				{ value: "qwen-audio-3.0-asr-flash" },
 			],
 		});
+	});
+	it("stores a workspace secret reference and clears the legacy plaintext value", async () => {
+		const { updates, presentation } = build(base);
+		const workspace = rows(presentation).find((row) => row.key === "workspace")?.controls[0];
+		if (workspace?.kind !== "secret") throw new Error("Expected workspace secret picker");
+		const result = await presentation.invoke({
+			action: workspace.action,
+			value: "new-workspace-secret",
+		});
+		expect(result).toEqual({ status: "applied" });
+		expect(updates).toEqual([
+			{ bailianWorkspaceSecretId: "new-workspace-secret", bailianWorkspaceId: "" },
+		]);
 	});
 	it("shows the compatible-service fields and hides the Bailian fields", () => {
 		const { presentation } = build({ ...base, provider: "openai-compatible" });

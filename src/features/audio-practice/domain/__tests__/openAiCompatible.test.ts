@@ -207,10 +207,10 @@ describe("transcription configuration", () => {
 			failureOf(() => validateTranscriptionConfig({ ...config, baseUrl: "not-a-url" })),
 		).toMatchObject({ kind: "config-invalid", field: "base-url" });
 	});
-	it("changes the fingerprint when the provider or model changes", () => {
-		expect(transcriptionConfigFingerprint(config)).not.toBe(
-			transcriptionConfigFingerprint({ ...config, model: "gpt-4o-transcribe" }),
+	it("changes the fingerprint when the provider or model changes", async () => {
+		expect(await transcriptionConfigFingerprint(config)).not.toBe(
+			await transcriptionConfigFingerprint({ ...config, model: "gpt-4o-transcribe" }),
 		);
-		expect(transcriptionConfigFingerprint(config)).not.toContain("secret");
+		expect(await transcriptionConfigFingerprint(config)).not.toContain("secret");
 	});
 });

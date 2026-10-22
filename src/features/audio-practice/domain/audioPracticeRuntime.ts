@@ -1171,7 +1171,7 @@ export class AudioPracticeRuntime {
 		}
 		this.draftError = null;
 		const settings = this.settings.read();
-		const config = transcriptionConfig(settings);
+		const config = transcriptionConfig(settings, (id) => this.settings?.readSecret(id) ?? null);
 		try {
 			validateTranscriptionConfig(config);
 		} catch (error) {
@@ -1525,11 +1525,16 @@ function remapCueProgress(
 	};
 }
 
-function transcriptionConfig(settings: AudioPracticeSettings): TranscriptionConfig {
+function transcriptionConfig(
+	settings: AudioPracticeSettings,
+	readSecret: (id: string) => string | null,
+): TranscriptionConfig {
 	return settings.provider === "bailian"
 		? {
 				provider: "bailian",
-				workspaceId: settings.bailianWorkspaceId.trim(),
+				workspaceId: settings.bailianWorkspaceSecretId
+					? (readSecret(settings.bailianWorkspaceSecretId)?.trim() ?? "")
+					: settings.bailianWorkspaceId.trim(),
 				secretId: settings.bailianSecretId,
 				model: settings.bailianModel.trim(),
 			}

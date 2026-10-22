@@ -14,6 +14,7 @@ describe("audio practice settings slice", () => {
 			enabled: true,
 			provider: "bailian",
 			bailianWorkspaceId: "",
+			bailianWorkspaceSecretId: "",
 			bailianSecretId: "",
 			bailianModel: DEFAULT_BAILIAN_MODEL,
 			openaiBaseUrl: DEFAULT_OPENAI_BASE_URL,
@@ -29,6 +30,7 @@ describe("audio practice settings slice", () => {
 			enabled: false,
 			provider: "bailian",
 			bailianWorkspaceId: "ws",
+			bailianWorkspaceSecretId: "",
 			bailianSecretId: "key",
 			bailianModel: DEFAULT_BAILIAN_MODEL,
 		});
@@ -39,6 +41,7 @@ describe("audio practice settings slice", () => {
 				workspaceId: "legacy",
 				secretId: "legacy-secret",
 				bailianWorkspaceId: "current",
+				bailianWorkspaceSecretId: "workspace-secret",
 				bailianSecretId: "current-secret",
 				bailianModel: "qwen-audio-3.1-asr-flash",
 				provider: "openai-compatible",
@@ -49,7 +52,8 @@ describe("audio practice settings slice", () => {
 		});
 		expect(settings).toMatchObject({
 			provider: "openai-compatible",
-			bailianWorkspaceId: "current",
+			bailianWorkspaceId: "",
+			bailianWorkspaceSecretId: "workspace-secret",
 			bailianSecretId: "current-secret",
 			bailianModel: "qwen-audio-3.1-asr-flash",
 			openaiBaseUrl: "https://gateway.test/v1",

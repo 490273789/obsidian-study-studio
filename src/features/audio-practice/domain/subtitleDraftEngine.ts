@@ -15,7 +15,10 @@ import {
 	type TranscribeAudio,
 	type Transcript,
 } from "./transcriptionTypes";
-import { transcriptionConfigFingerprint } from "./transcription/transcriptionConfig";
+import {
+	matchesLegacyBailianFingerprint,
+	transcriptionConfigFingerprint,
+} from "./transcription/transcriptionConfig";
 
 interface TextToken {
 	readonly text: string;
@@ -470,7 +473,7 @@ export class SubtitleDraftEngine {
 			if (input.audio.byteLength > MAX_AUDIO_BYTES)
 				throw audioFailure({ kind: "audio-too-large", maxBytes: MAX_AUDIO_BYTES });
 			const fingerprint = await sourceFingerprint(input.audio, input.referenceText ?? "");
-			const configFingerprint = transcriptionConfigFingerprint(input.config);
+			const configFingerprint = await transcriptionConfigFingerprint(input.config);
 			await this.writes.catch(() => {});
 			const saved = options.force
 				? null
@@ -485,8 +488,12 @@ export class SubtitleDraftEngine {
 					kind: "audio-too-long",
 					maxSeconds: MAX_AUDIO_DURATION_SECONDS,
 				});
+			const legacyReuse =
+				saved?.fingerprint === fingerprint &&
+				matchesLegacyBailianFingerprint(saved.configFingerprint, input.config);
 			const reuse =
-				saved?.fingerprint === fingerprint && saved.configFingerprint === configFingerprint;
+				saved?.fingerprint === fingerprint &&
+				(saved.configFingerprint === configFingerprint || legacyReuse);
 			const results: Transcript[] = reuse && saved ? [...saved.results] : [];
 			this.draft = {
 				taskKey: input.taskKey,
@@ -499,7 +506,8 @@ export class SubtitleDraftEngine {
 				notice: null,
 			};
 			if (reuse && saved?.complete) {
-				this.draft = saved;
+				this.draft = { ...saved, configFingerprint };
+				if (legacyReuse) await this.persist();
 				this.publish({
 					status: "review",
 					duration: prepared.duration,
@@ -510,6 +518,7 @@ export class SubtitleDraftEngine {
 				});
 				return;
 			}
+			if (legacyReuse) await this.persist();
 			this.publish({
 				status: "transcribing",
 				duration: prepared.duration,

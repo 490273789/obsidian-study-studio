@@ -211,7 +211,7 @@ describe("SubtitleDraftEngine - Deep Module Lifecycle & Actions", () => {
 			chunks: [{ index: 0, start: 0, end: 10, wav: createMockAudio() }],
 		}));
 
-		const transcribe = vi.fn(async () => ({
+		const transcribe = vi.fn(async (_chunk: AudioChunk) => ({
 			cues: [
 				{ id: "cue-1", text: "Hello world", start: 1.0, end: 2.0, needsReview: true },
 				{ id: "cue-2", text: "Nice to meet you", start: 3.0, end: 5.0, needsReview: true },
@@ -255,6 +255,62 @@ describe("SubtitleDraftEngine - Deep Module Lifecycle & Actions", () => {
 		// Both cues match recognized words exactly, so highlightable should be precomputed as true
 		expect(snapshot.cues[0]!.highlightable).toBe(true);
 		expect(snapshot.cues[1]!.highlightable).toBe(true);
+	});
+
+	it("reuses a complete legacy Bailian draft and replaces its plaintext fingerprint", async () => {
+		const { engine, prepare, transcribe, draftStore, savedDrafts } = setupEngine();
+		const input: GenerationInput = {
+			audio: createMockAudio(),
+			name: "test.mp3",
+			taskKey: "legacy-complete",
+			config: mockConfig,
+		};
+		await engine.generate(input);
+		const saved = savedDrafts.get(input.taskKey)!;
+		savedDrafts.set(input.taskKey, {
+			...saved,
+			configFingerprint: `bailian|${mockConfig.workspaceId}|${mockConfig.model}`,
+		});
+		transcribe.mockClear();
+		const resumed = new SubtitleDraftEngine({ prepare, transcribe, drafts: draftStore });
+		await resumed.generate(input);
+		expect(resumed.getSnapshot().status).toBe("review");
+		expect(transcribe).not.toHaveBeenCalled();
+		expect(savedDrafts.get(input.taskKey)?.configFingerprint).toBe(saved.configFingerprint);
+		expect(savedDrafts.get(input.taskKey)?.configFingerprint).not.toContain(
+			mockConfig.workspaceId,
+		);
+	});
+
+	it("continues an incomplete legacy Bailian draft from its first unfinished chunk", async () => {
+		const { engine, prepare, transcribe, draftStore, savedDrafts } = setupEngine();
+		prepare.mockResolvedValue({
+			duration: 20,
+			chunks: [
+				{ index: 0, start: 0, end: 10, wav: createMockAudio() },
+				{ index: 1, start: 10, end: 20, wav: createMockAudio() },
+			],
+		});
+		const input: GenerationInput = {
+			audio: createMockAudio(),
+			name: "test.mp3",
+			taskKey: "legacy-incomplete",
+			config: mockConfig,
+		};
+		await engine.generate(input);
+		const saved = savedDrafts.get(input.taskKey)!;
+		savedDrafts.set(input.taskKey, {
+			...saved,
+			complete: false,
+			results: saved.results.slice(0, 1),
+			configFingerprint: `bailian|${mockConfig.workspaceId}|${mockConfig.model}`,
+		});
+		transcribe.mockClear();
+		const resumed = new SubtitleDraftEngine({ prepare, transcribe, drafts: draftStore });
+		await resumed.generate(input);
+		expect(transcribe).toHaveBeenCalledOnce();
+		expect(transcribe.mock.calls[0]?.[0]).toMatchObject({ index: 1 });
+		expect(savedDrafts.get(input.taskKey)?.configFingerprint).toBe(saved.configFingerprint);
 	});
 
 	it("dispatches atomic draft actions through the single act() seam", async () => {

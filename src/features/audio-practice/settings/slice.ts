@@ -9,8 +9,10 @@ export interface AudioPracticeSettings {
 	enabled: boolean;
 	/** Which speech service receives generated audio. */
 	provider: TranscriptionProviderId;
-	/** Alibaba Cloud Model Studio workspace in the Beijing region. */
+	/** Legacy plaintext workspace; cleared when a SecretStorage entry is selected. */
 	bailianWorkspaceId: string;
+	/** Obsidian SecretStorage ID for the Beijing-region workspace ID. */
+	bailianWorkspaceSecretId: string;
 	/** Obsidian SecretStorage ID for the workspace API key; never the key itself. */
 	bailianSecretId: string;
 	bailianModel: string;
@@ -38,6 +40,7 @@ export const audioPracticeSettingsSlice: SettingsSlice<{ audioPractice: AudioPra
 			enabled: true,
 			provider: "bailian",
 			bailianWorkspaceId: "",
+			bailianWorkspaceSecretId: "",
 			bailianSecretId: "",
 			bailianModel: DEFAULT_BAILIAN_MODEL,
 			openaiBaseUrl: DEFAULT_OPENAI_BASE_URL,
@@ -49,11 +52,15 @@ export const audioPracticeSettingsSlice: SettingsSlice<{ audioPractice: AudioPra
 		const value = settingsRecord(settingsRecord(raw).audioPractice);
 		const legacyWorkspaceId = text(value.workspaceId);
 		const legacySecretId = text(value.secretId);
+		const bailianWorkspaceSecretId = text(value.bailianWorkspaceSecretId);
 		return {
 			audioPractice: {
 				enabled: value.enabled !== false,
 				provider: value.provider === "openai-compatible" ? "openai-compatible" : "bailian",
-				bailianWorkspaceId: migrated(text(value.bailianWorkspaceId), legacyWorkspaceId),
+				bailianWorkspaceId: bailianWorkspaceSecretId
+					? ""
+					: migrated(text(value.bailianWorkspaceId), legacyWorkspaceId),
+				bailianWorkspaceSecretId,
 				bailianSecretId: migrated(text(value.bailianSecretId), legacySecretId),
 				bailianModel: text(value.bailianModel) || DEFAULT_BAILIAN_MODEL,
 				openaiBaseUrl: text(value.openaiBaseUrl) || DEFAULT_OPENAI_BASE_URL,
