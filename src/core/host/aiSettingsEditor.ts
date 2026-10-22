@@ -9,7 +9,11 @@ import {
 import { AI_PRESETS } from "../ai/configuration";
 import { aiErrorText, aiStrings } from "../i18n/ai";
 import type { Language } from "../shared/types";
-import { buildAiSettingsViewModel, type AiViewMode } from "./aiSettingsViewModel";
+import {
+	buildAiSettingsViewModel,
+	type AiSettingsScope,
+	type AiViewMode,
+} from "./aiSettingsViewModel";
 
 /** Only unsaved form drafts live here. Committed state and requests belong to AiService. */
 export class AiSettingsEditor {
@@ -24,6 +28,7 @@ export class AiSettingsEditor {
 		private service: AiService,
 		private language: () => Language,
 		private refresh: () => void,
+		private scope: AiSettingsScope = "all",
 	) {
 		this.draftIsNew = true;
 		this.draft = this.newDraft();
@@ -163,14 +168,16 @@ export class AiSettingsEditor {
 				},
 			},
 			this.language(),
+			this.scope,
 		);
 	}
 	private newDraft(): AiEngineConfig {
+		const provider = this.scope === "youdao" ? "youdao" : "deepseek";
 		return {
 			id: `draft-${crypto.randomUUID()}`,
 			name: "",
-			provider: "deepseek",
-			...AI_PRESETS.deepseek,
+			provider,
+			...AI_PRESETS[provider],
 			secretId: "",
 		};
 	}

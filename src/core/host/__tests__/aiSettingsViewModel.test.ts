@@ -50,6 +50,25 @@ const rows = (presentation: SettingsPresentation) =>
 	presentation.snapshot.groups.flatMap((g) => g.rows);
 
 describe("AI settings presentation", () => {
+	it("separates Youdao gateway configurations from standard engines", () => {
+		const { state, actions } = setup("list");
+		state.snapshot = {
+			...state.snapshot,
+			settings: {
+				...state.snapshot.settings,
+				configs: [
+					...state.snapshot.settings.configs,
+					{ ...state.draft, id: "gateway", name: "Gateway", provider: "youdao" },
+				],
+			},
+		};
+		const standard = buildAiSettingsViewModel(state, actions, "zh", "standard");
+		const youdao = buildAiSettingsViewModel(state, actions, "zh", "youdao");
+		expect(rows(standard).some((row) => row.name === "Gateway")).toBe(false);
+		expect(rows(youdao).some((row) => row.name === "Gateway")).toBe(true);
+		expect(youdao.snapshot.groups[0]?.heading).toBe("大模型网关（API Key）");
+	});
+
 	it("presents configured engines and dispatches list actions", async () => {
 		const { state, actions } = setup("list");
 		const presentation = buildAiSettingsViewModel(state, actions, "zh");

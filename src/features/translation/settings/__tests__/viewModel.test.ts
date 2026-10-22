@@ -83,7 +83,27 @@ function setup(): {
 }
 
 describe("translation settings presentation", () => {
-	it("uses generic cards for profiles and only offers supported AI engines", () => {
+	it("opens the unified Youdao settings page from translation settings", async () => {
+		const { state, actions } = setup();
+		const openYoudao = vi.fn();
+		const presentation = buildTranslationSettingsViewModel(
+			state,
+			{ ...actions, openYoudao },
+			"zh",
+		);
+		const control = presentation.snapshot.groups
+			.flatMap((group) => group.rows)
+			.flatMap((row) => row.controls)
+			.find(
+				(candidate) =>
+					candidate.kind === "button" && candidate.label === "打开有道智云设置",
+			);
+		if (control?.kind !== "button") throw new Error("Missing Youdao link");
+		await presentation.invoke({ action: control.action, value: undefined });
+		expect(openYoudao).toHaveBeenCalledOnce();
+	});
+
+	it("keeps service credentials on the Youdao page and offers all configured AI engines", () => {
 		const { state, actions } = setup();
 		const presentation = buildTranslationSettingsViewModel(state, actions, "zh");
 		const groups = presentation.snapshot.groups;
@@ -91,7 +111,6 @@ describe("translation settings presentation", () => {
 			"常规设置",
 			"翻译方案管理",
 			"提示词模板",
-			"有道翻译连接",
 			"保存设置",
 		]);
 		const cards = groups
@@ -104,7 +123,16 @@ describe("translation settings presentation", () => {
 		expect(providerField?.controls).toHaveLength(2);
 		const engineSelect = providerField?.controls.find((control) => control.key === "engine");
 		if (engineSelect?.kind !== "select") throw new Error("Expected engine select");
-		expect(engineSelect.options.map((option) => option.value)).toEqual(["", "deepseek"]);
+		expect(engineSelect.options.map((option) => option.value)).toEqual([
+			"",
+			"deepseek",
+			"gateway",
+		]);
+		const youdao = buildTranslationSettingsViewModel(state, actions, "zh", "youdao");
+		expect(youdao.snapshot.groups.map((group) => group.heading)).toEqual([
+			"文本翻译 API（应用 ID / 应用密钥）",
+			"保存设置",
+		]);
 	});
 
 	it("keeps a missing selected engine available for repair", () => {

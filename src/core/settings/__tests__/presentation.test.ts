@@ -1,8 +1,56 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { defineSettings, SettingsPresentationError } from "../presentation";
+import {
+	combineSettingsPresentations,
+	defineSettings,
+	SettingsPresentationError,
+} from "../presentation";
 import { RecordingSettingsAdapter } from "../testing/recordingSettingsAdapter";
 
 describe("settings presentation", () => {
+	it("combines independent editors and expires both sets of actions together", async () => {
+		const gatewayAction = vi.fn();
+		const translationAction = vi.fn();
+		const gateway = defineSettings("gateway", (page) => {
+			page.group("connection", "Gateway", (group) => {
+				group.button(
+					"test",
+					{ name: "Test gateway" },
+					{ label: "Test", onPress: gatewayAction },
+				);
+			});
+		});
+		const translation = defineSettings("translation", (page) => {
+			page.group("connection", "Translation", (group) => {
+				group.button(
+					"test",
+					{ name: "Test translation" },
+					{ label: "Test", onPress: translationAction },
+				);
+			});
+		});
+		const combined = combineSettingsPresentations("youdao", [gateway, translation]);
+		expect(combined.snapshot.groups.map((group) => group.key)).toEqual([
+			"gateway/connection",
+			"translation/connection",
+		]);
+		const controls = combined.snapshot.groups.map((group) => group.rows[0]?.controls[0]);
+		for (const control of controls) {
+			if (control?.kind !== "button") throw new Error("Missing test button");
+			expect(await combined.invoke({ action: control.action, value: undefined })).toEqual({
+				status: "applied",
+			});
+		}
+		expect(gatewayAction).toHaveBeenCalledOnce();
+		expect(translationAction).toHaveBeenCalledOnce();
+		combined.dispose();
+		const stale = controls[0];
+		if (stale?.kind !== "button") throw new Error("Missing stale button");
+		expect(await combined.invoke({ action: stale.action, value: undefined })).toEqual({
+			status: "ignored",
+			reason: "stale",
+		});
+	});
+
 	it("builds an immutable callback-free snapshot and dispatches through action references", async () => {
 		const setEnabled = vi.fn();
 		const presentation = defineSettings("example", (page) => {

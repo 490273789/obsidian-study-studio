@@ -236,8 +236,6 @@ export class TranslationRuntime {
 			.getSnapshot()
 			.settings.configs.find((config) => config.id === profile.configId);
 		if (!config) throw new AiError("config-not-found");
-		if (config.provider !== "deepseek" && config.provider !== "bailian")
-			throw new AiError("invalid-config");
 		return this.ai.generate({
 			configId: profile.configId,
 			thinkingEnabled: settings.thinkingEnabled,

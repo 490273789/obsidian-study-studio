@@ -70,7 +70,18 @@ describe("translation feature", () => {
 	});
 
 	it("registers its view, its chrome, and its settings section", () => {
-		const feature = createTranslationFeature({ ai: {} as never, net: {} as never });
+		const feature = createTranslationFeature({
+			ai: {
+				getSnapshot: () => ({
+					settings: { configs: [], defaultConfigId: null },
+					models: {},
+					loadingModels: [],
+					testing: [],
+				}),
+				subscribe: () => () => {},
+			} as never,
+			net: {} as never,
+		});
 		const fake = createFakeWorkbenchHost("translation", enabledSettings);
 
 		feature.render(fake.host);
@@ -91,6 +102,15 @@ describe("translation feature", () => {
 		expect(fake.sections.get("translation")!.label("zh")).toBe(
 			translationSettingsStrings("zh").heading,
 		);
+		expect(fake.sections.get("youdao")!.label("zh")).toBe("有道智云");
+		expect(fake.sections.get("youdao")!.order).toBe(1.5);
+		const youdao = fake.sections.get("youdao")!.presentation("zh");
+		expect(youdao.snapshot.groups.map((group) => group.heading)).toEqual([
+			"大模型网关（API Key）",
+			"文本翻译 API（应用 ID / 应用密钥）",
+			"保存设置",
+		]);
+		youdao.dispose();
 
 		feature.stop();
 	});

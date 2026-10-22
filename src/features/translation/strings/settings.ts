@@ -2,6 +2,10 @@ import type { Language } from "../../../core/shared/types";
 
 const zh = {
 	heading: "AI 翻译",
+	youdaoServices: "有道智云",
+	connectionsHeading: "服务连接",
+	connectionsDesc: "在有道智云设置页管理大模型网关和文本翻译 API 的独立凭证。",
+	openYoudao: "打开有道智云设置",
 	generalHeading: "常规设置",
 	enabled: "启用 AI 翻译",
 	enabledDesc: "启用后可通过翻译视图和命令使用翻译功能。",
@@ -16,9 +20,9 @@ const zh = {
 	profileNamePlaceholder: "例如：DeepSeek 翻译",
 	provider: "翻译方式",
 	engine: "已配置的 AI 引擎",
-	youdao: "有道翻译",
+	youdao: "有道文本翻译 API",
 	selectEngine: "选择 AI 引擎",
-	noEngineConfigs: "尚无可用于翻译的 DeepSeek 或百炼引擎配置。",
+	noEngineConfigs: "尚无可用于翻译的 AI 引擎配置。",
 	missingEngineConfig: "已删除的引擎配置",
 	moveUp: "上移",
 	moveDown: "下移",
@@ -28,7 +32,9 @@ const zh = {
 	promptHeading: "提示词模板",
 	promptDesc: "可使用 {source_language} 和 {target_language} 占位符。",
 	resetPrompt: "恢复默认提示词",
-	youdaoHeading: "有道翻译连接",
+	youdaoHeading: "文本翻译 API（应用 ID / 应用密钥）",
+	youdaoConnectionDesc:
+		"有道文本翻译服务使用应用 ID 和应用密钥签名；与大模型网关的 API Key 不通用。",
 	youdaoEndpoint: "接口地址",
 	youdaoEndpointPlaceholder: "https://openapi.youdao.com/api",
 	youdaoEndpointDesc: "有道翻译 API 地址。密钥仅保存为 Obsidian SecretStorage 引用。",
@@ -38,7 +44,10 @@ const zh = {
 	testing: "测试中…",
 	testYoudaoDesc: "测试已保存的有道配置，会发送少量文字，可能产生费用。",
 	saved: "翻译设置已保存",
+	youdaoSaved: "有道文本翻译连接已保存",
 	save: "保存翻译设置",
+	saveYoudao: "保存有道翻译连接",
+	saveYoudaoDesc: "仅保存文本翻译 API 的接口地址和应用凭证引用。",
 	saveHeading: "保存设置",
 	saveDesc: "保存当前修改并使其在翻译视图中生效。",
 	testSuccess: "有道翻译连接测试成功",
@@ -47,6 +56,11 @@ const zh = {
 
 const en: typeof zh = {
 	heading: "AI translation",
+	youdaoServices: "Youdao Zhiyun",
+	connectionsHeading: "Service connections",
+	connectionsDesc:
+		"Manage separate LLM gateway and text translation API credentials on the Youdao Zhiyun settings page.",
+	openYoudao: "Open Youdao settings",
 	generalHeading: "General settings",
 	enabled: "Enable AI translation",
 	enabledDesc: "Makes translation available in the translation view and commands.",
@@ -61,10 +75,9 @@ const en: typeof zh = {
 	profileNamePlaceholder: "For example: DeepSeek translation",
 	provider: "Translation method",
 	engine: "Configured AI engine",
-	youdao: "Youdao translation",
+	youdao: "Youdao text translation API",
 	selectEngine: "Select AI engine",
-	noEngineConfigs:
-		"No DeepSeek or Model Studio engine configuration is available for translation.",
+	noEngineConfigs: "No AI engine configuration is available for translation.",
 	missingEngineConfig: "Deleted engine configuration",
 	moveUp: "Move up",
 	moveDown: "Move down",
@@ -74,7 +87,9 @@ const en: typeof zh = {
 	promptHeading: "Prompt template",
 	promptDesc: "You can use the {source_language} and {target_language} placeholders.",
 	resetPrompt: "Restore default prompt",
-	youdaoHeading: "Youdao translation connection",
+	youdaoHeading: "Text translation API (App ID / App Secret)",
+	youdaoConnectionDesc:
+		"Youdao text translation signs requests with an App ID and App Secret. These credentials are separate from the LLM gateway API Key.",
 	youdaoEndpoint: "Endpoint",
 	youdaoEndpointPlaceholder: "https://openapi.youdao.com/api",
 	youdaoEndpointDesc:
@@ -86,7 +101,10 @@ const en: typeof zh = {
 	testYoudaoDesc:
 		"Tests the saved Youdao configuration with a small text request. Charges may apply.",
 	saved: "Translation settings saved",
+	youdaoSaved: "Youdao text translation connection saved",
 	save: "Save translation settings",
+	saveYoudao: "Save Youdao translation connection",
+	saveYoudaoDesc: "Saves only the text translation API endpoint and credential references.",
 	saveHeading: "Save settings",
 	saveDesc: "Save all changes and apply them to translation.",
 	testSuccess: "Youdao translation connection test succeeded",

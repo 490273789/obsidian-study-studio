@@ -57,6 +57,34 @@ function setup() {
 }
 
 describe("translation session", () => {
+	it("uses a configured Youdao LLM gateway as an AI translation engine", async () => {
+		const { runtime, ai, request, youdao, settings } = setup();
+		const id = await ai.saveConfig({
+			name: "Gateway",
+			provider: "youdao",
+			baseUrl: "https://openapi.youdao.com/llmgateway/api/v1",
+			secretId: "gateway-key",
+			model: "deepseek-v4-flash",
+		});
+		await runtime.configure({
+			...settings,
+			profiles: [
+				{ id: "gateway", name: "Gateway", kind: "engine", configId: id, enabled: true },
+			],
+		});
+		runtime.setInput("你好");
+		await runtime.translate();
+		expect(request).toHaveBeenCalledWith(
+			expect.objectContaining({
+				url: "https://openapi.youdao.com/llmgateway/api/v1/chat/completions",
+				headers: expect.objectContaining({ Authorization: "Bearer secret" }),
+			}),
+		);
+		expect(youdao).not.toHaveBeenCalled();
+		expect(runtime.getSnapshot().results[0]?.text).toBe("Hello");
+		runtime.dispose();
+	});
+
 	it("prefills without requesting and preserves order when results finish out of order", async () => {
 		const { runtime, request, youdao } = setup();
 		const gate = deferred<OutboundResponse>();

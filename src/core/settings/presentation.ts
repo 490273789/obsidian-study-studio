@@ -450,6 +450,48 @@ export function defineSettings(
 	};
 }
 
+/** Displays independently owned settings editors in one section without sharing their actions. */
+export function combineSettingsPresentations(
+	sectionId: string,
+	presentations: readonly SettingsPresentation[],
+): SettingsPresentation {
+	const generation = nextGeneration++;
+	let active = true;
+	return {
+		snapshot: deepFreeze({
+			sectionId,
+			generation,
+			groups: presentations.flatMap((presentation) =>
+				presentation.snapshot.groups.map((group) => ({
+					...group,
+					key: `${presentation.snapshot.sectionId}/${group.key}`,
+				})),
+			),
+		}),
+		invoke(interaction) {
+			if (!active) return Promise.resolve({ status: "ignored", reason: "stale" });
+			const actionId = readActionId(interaction);
+			const owner = presentations.find((presentation) =>
+				actionId?.startsWith(
+					`${presentation.snapshot.sectionId}@${presentation.snapshot.generation}/`,
+				),
+			);
+			if (owner) return owner.invoke(interaction);
+			return Promise.resolve({
+				status: "failed",
+				error: new SettingsPresentationError(
+					"invalid-interaction",
+					`Unknown settings action: ${actionId ?? ""}`,
+				),
+			});
+		},
+		dispose() {
+			active = false;
+			for (const presentation of presentations) presentation.dispose();
+		},
+	};
+}
+
 class GroupComposer implements SettingsGroupBuilder {
 	private readonly keys = new Set<string>();
 

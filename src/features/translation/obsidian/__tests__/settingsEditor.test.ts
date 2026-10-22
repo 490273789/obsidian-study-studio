@@ -76,6 +76,33 @@ function findControl(presentation: SettingsPresentation, kind: string, label?: s
 }
 
 describe("TranslationSettingsEditor", () => {
+	it("saves translation and Youdao connection drafts independently", async () => {
+		const { runtime, settings } = createRuntime(initial);
+		const editor = new TranslationSettingsEditor(runtime, createAi(), () => "zh", vi.fn());
+		const translation = editor.presentation();
+		const enabled = findControl(translation, "toggle");
+		const youdao = editor.presentation("youdao");
+		const endpoint = findControl(youdao, "text");
+		const saveYoudao = findControl(youdao, "button", "保存有道翻译连接");
+		if (
+			enabled?.kind !== "toggle" ||
+			endpoint?.kind !== "text" ||
+			saveYoudao?.kind !== "button"
+		)
+			throw new Error("Missing settings controls");
+		await translation.invoke({ action: enabled.action, value: true });
+		await youdao.invoke({ action: endpoint.action, value: "https://custom.example/api" });
+		await youdao.invoke({ action: saveYoudao.action, value: undefined });
+		expect(settings().enabled).toBe(false);
+		expect(settings().youdao.baseUrl).toBe("https://custom.example/api");
+		const updated = editor.presentation();
+		const saveTranslation = findControl(updated, "button", "保存翻译设置");
+		if (saveTranslation?.kind !== "button") throw new Error("Missing translation save");
+		await updated.invoke({ action: saveTranslation.action, value: undefined });
+		expect(settings().enabled).toBe(true);
+		expect(settings().youdao.baseUrl).toBe("https://custom.example/api");
+	});
+
 	it("holds a draft and persists it only through Save", async () => {
 		const { runtime, configure, settings } = createRuntime(initial);
 		const editor = new TranslationSettingsEditor(runtime, createAi(), () => "zh", vi.fn());
@@ -104,12 +131,13 @@ describe("TranslationSettingsEditor", () => {
 		const editor = new TranslationSettingsEditor(runtime, createAi(), () => "en", vi.fn());
 		const presentation = editor.presentation();
 		const cards = findControl(presentation, "cards");
-		const test = findControl(presentation, "button", "Test Youdao connection");
+		const youdao = editor.presentation("youdao");
+		const test = findControl(youdao, "button", "Test Youdao connection");
 		if (cards?.kind !== "cards" || test?.kind !== "button") throw new Error("Missing controls");
 		expect(cards.items[0]?.actions.find((action) => action.icon === "remove")?.disabled).toBe(
 			true,
 		);
-		await presentation.invoke({ action: test.action, value: undefined });
+		await youdao.invoke({ action: test.action, value: undefined });
 		expect(testYoudao).toHaveBeenCalledOnce();
 		expect(configure).not.toHaveBeenCalled();
 	});

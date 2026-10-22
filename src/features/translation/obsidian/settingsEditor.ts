@@ -29,6 +29,7 @@ export class TranslationSettingsEditor {
 		private readonly ai: AiService,
 		private readonly language: () => Language,
 		private readonly refresh: () => void,
+		private readonly openYoudao?: () => void,
 	) {
 		this.draft = normalizeTranslationSettings(runtime.getSnapshot().settings);
 	}
@@ -47,7 +48,7 @@ export class TranslationSettingsEditor {
 			this.draft = normalizeTranslationSettings(this.runtime.getSnapshot().settings);
 	}
 
-	presentation(): SettingsPresentation {
+	presentation(view: "translation" | "youdao" = "translation"): SettingsPresentation {
 		const snapshot = this.runtime.getSnapshot();
 		return buildTranslationSettingsViewModel(
 			{
@@ -56,12 +57,13 @@ export class TranslationSettingsEditor {
 				aiSnapshot: this.ai.getSnapshot(),
 				saving: this.saving || snapshot.saving,
 			},
-			this.actions(),
+			this.actions(view),
 			this.language(),
+			view,
 		);
 	}
 
-	private actions(): TranslationSettingsEditorActions {
+	private actions(view: "translation" | "youdao"): TranslationSettingsEditorActions {
 		return {
 			patch: (patch) => this.patch(patch),
 			patchProfile: (id, patch) => {
@@ -73,11 +75,7 @@ export class TranslationSettingsEditor {
 			},
 			addProfile: () => {
 				const number = this.draft.profiles.length + 1;
-				const firstEngine = this.ai
-					.getSnapshot()
-					.settings.configs.find(
-						(config) => config.provider === "deepseek" || config.provider === "bailian",
-					);
+				const firstEngine = this.ai.getSnapshot().settings.configs[0];
 				this.patch({
 					profiles: [
 						...this.draft.profiles,
@@ -101,7 +99,8 @@ export class TranslationSettingsEditor {
 			},
 			moveProfile: (id, offset) => this.moveProfile(id, offset),
 			resetPrompt: () => this.patch({ promptTemplate: DEFAULT_TRANSLATION_PROMPT }),
-			save: () => this.save(),
+			...(this.openYoudao ? { openYoudao: this.openYoudao } : {}),
+			save: () => this.save(view),
 			testYoudao: () => this.testYoudao(),
 		};
 	}
@@ -124,17 +123,27 @@ export class TranslationSettingsEditor {
 		this.patch({ profiles });
 	}
 
-	private async save(): Promise<void> {
+	private async save(view: "translation" | "youdao"): Promise<void> {
 		if (this.saving || this.runtime.getSnapshot().saving) return;
 		this.saving = true;
 		this.refresh();
 		try {
-			await this.runtime.configure({
-				...this.draft,
-				direction: this.runtime.getSnapshot().settings.direction,
-			});
-			this.draft = normalizeTranslationSettings(this.runtime.getSnapshot().settings);
-			new Notice(translationSettingsStrings(this.language()).saved);
+			const committed = this.runtime.getSnapshot().settings;
+			await this.runtime.configure(
+				view === "youdao"
+					? { ...committed, youdao: this.draft.youdao }
+					: { ...this.draft, youdao: committed.youdao, direction: committed.direction },
+			);
+			const saved = normalizeTranslationSettings(this.runtime.getSnapshot().settings);
+			this.draft =
+				view === "youdao"
+					? { ...this.draft, youdao: saved.youdao }
+					: { ...saved, youdao: this.draft.youdao };
+			new Notice(
+				view === "youdao"
+					? translationSettingsStrings(this.language()).youdaoSaved
+					: translationSettingsStrings(this.language()).saved,
+			);
 		} catch (error) {
 			this.report(error);
 		} finally {

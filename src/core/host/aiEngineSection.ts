@@ -24,6 +24,7 @@ export function createAiEngineSection(options: AiEngineSectionOptions): Workbenc
 		options.ai,
 		() => language,
 		() => options.refresh(),
+		"standard",
 	);
 
 	return {
