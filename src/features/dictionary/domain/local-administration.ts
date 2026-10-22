@@ -92,6 +92,13 @@ type LocalDictionaryRemoveResult =
 	  }
 	| LocalDictionaryAdministrationFailureResult;
 
+type LocalDictionaryRenameResult =
+	| {
+			readonly ok: true;
+			readonly snapshot: LocalDictionarySnapshot;
+	  }
+	| LocalDictionaryAdministrationFailureResult;
+
 interface LocalDictionaryAdministration {
 	importFiles(
 		files: readonly File[],
@@ -100,6 +107,7 @@ interface LocalDictionaryAdministration {
 	): Promise<LocalDictionaryImportResult>;
 	list(): LocalDictionarySnapshot;
 	remove(dictionaryId: string): Promise<LocalDictionaryRemoveResult>;
+	rename(dictionaryId: string, name: string): Promise<LocalDictionaryRenameResult>;
 }
 
 interface LocalDictionaryCandidate {
@@ -505,6 +513,10 @@ export class LocalDictionaryAdministrationModule implements LocalDictionaryAdmin
 		return this.enqueue(async () => this.removeNow(dictionaryId));
 	}
 
+	rename(dictionaryId: string, name: string): Promise<LocalDictionaryRenameResult> {
+		return this.enqueue(async () => this.renameNow(dictionaryId, name));
+	}
+
 	cancelActiveOperations(): void {
 		this.storage.cancelActive();
 	}
@@ -650,5 +662,30 @@ export class LocalDictionaryAdministrationModule implements LocalDictionaryAdmin
 
 		const snapshot = this.commitSnapshot();
 		return { ok: true, removed: toListItem(dictionary), snapshot };
+	}
+
+	private async renameNow(
+		dictionaryId: string,
+		name: string,
+	): Promise<LocalDictionaryRenameResult> {
+		if (this.degraded) return this.failure("recovery-incomplete", "incomplete");
+		const nextName = name.trim().slice(0, 120);
+		if (!nextName) return this.failure("invalid-selection");
+		const current = this.settings
+			.getLocalDictionaryAdministrationState()
+			.localDictionaries.find((dictionary) => dictionary.id === dictionaryId);
+		if (!current) return this.failure("not-found");
+		if (current.name === nextName) return { ok: true, snapshot: this.list() };
+
+		const saved = await this.settings.updateDictionarySettings((draft) => {
+			const dictionary = draft.localDictionaries.find((item) => item.id === dictionaryId);
+			if (dictionary) dictionary.name = nextName;
+			const source = draft.sources.find(
+				(item) => item.id === dictionaryId && item.kind === "local",
+			);
+			if (source) source.label = nextName;
+		});
+		if (!saved) return this.failure("persistence-failed");
+		return { ok: true, snapshot: this.commitSnapshot() };
 	}
 }

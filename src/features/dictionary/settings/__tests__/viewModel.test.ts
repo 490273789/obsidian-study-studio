@@ -49,6 +49,7 @@ function setup() {
 		setAiConfigId: vi.fn(),
 		pickLocalDictionaryFiles: vi.fn(),
 		pickLocalDictionaryFolder: vi.fn(),
+		renameLocalDictionary: vi.fn(),
 		deleteLocalDictionary: vi.fn(),
 	};
 	return { state, actions };
@@ -107,6 +108,37 @@ describe("favorite open mode settings", () => {
 		expect(findSelect(buildDictionarySettingsViewModel(state, actions, "en")).disabled).toBe(
 			true,
 		);
+	});
+});
+
+describe("local dictionary settings", () => {
+	it("offers rename and delete actions for each imported desktop dictionary", async () => {
+		const { state, actions } = setup();
+		state.localDictionaries = [
+			{
+				files: [{ name: "sample.eudic", size: 1024 }],
+				id: "sample",
+				name: "Sample dictionary",
+				requiresReimport: true,
+			},
+		];
+		const presentation = buildDictionarySettingsViewModel(state, actions, "zh");
+		const row = presentation.snapshot.groups
+			.flatMap((group) => group.rows)
+			.find((item) => item.name === "Sample dictionary");
+		expect(row?.description).toContain("sample.eudic");
+		const [rename, remove] = row?.controls ?? [];
+		if (rename?.kind !== "button" || remove?.kind !== "button")
+			throw new Error("Expected rename and delete buttons");
+		expect(rename.label).toBe(dictionaryStrings("zh").localRename);
+		expect(remove.label).toBe(dictionaryStrings("zh").localDelete);
+		await presentation.invoke({ action: rename.action, value: undefined });
+		expect(actions.renameLocalDictionary).toHaveBeenCalledWith("sample");
+		state.saving = true;
+		const busyRow = buildDictionarySettingsViewModel(state, actions, "zh")
+			.snapshot.groups.flatMap((group) => group.rows)
+			.find((item) => item.name === "Sample dictionary");
+		expect(busyRow?.controls.every((control) => control.disabled)).toBe(true);
 	});
 });
 

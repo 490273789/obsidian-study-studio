@@ -42,6 +42,7 @@ export interface DictionarySettingsEditorActions {
 	setAiConfigId: (configId: string | null) => SettingsActionResult;
 	pickLocalDictionaryFiles: () => SettingsActionResult;
 	pickLocalDictionaryFolder: () => SettingsActionResult;
+	renameLocalDictionary: (id: string) => SettingsActionResult;
 	deleteLocalDictionary: (id: string) => SettingsActionResult;
 }
 
@@ -281,14 +282,21 @@ export function buildDictionarySettingsViewModel(
 					localDictionaryStatusText(local, state.compiledStatus, t),
 				].join(" · ");
 				if (state.desktop) {
-					group.button(
+					group.row(
 						`local-${settingsKey(local.id)}`,
 						{ name: local.name, description },
-						{
-							label: t.localDelete,
-							disabled: busy,
-							tone: "warning",
-							onPress: () => actions.deleteLocalDictionary(local.id),
+						(row) => {
+							row.button("rename", {
+								label: t.localRename,
+								disabled: busy,
+								onPress: () => actions.renameLocalDictionary(local.id),
+							});
+							row.button("delete", {
+								label: t.localDelete,
+								disabled: busy,
+								tone: "warning",
+								onPress: () => actions.deleteLocalDictionary(local.id),
+							});
 						},
 					);
 				} else {

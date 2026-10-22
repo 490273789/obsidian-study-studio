@@ -17,7 +17,7 @@ import {
 } from "../settings/viewModel";
 import type { SettingsPresentation } from "../../../core/settings/presentation";
 import { pickLocalDictionaryFiles } from "./localDictionaryFilePicker";
-import { confirmLocalDictionaryDeletion } from "./modals";
+import { confirmLocalDictionaryDeletion, promptLocalDictionaryName } from "./modals";
 
 function dictionaryImportErrorMessage(
 	code: LocalDictionaryAdministrationFailureCode,
@@ -149,6 +149,7 @@ export class DictionarySettingsEditor {
 				}),
 			pickLocalDictionaryFiles: () => this.importLocalDictionaries("files"),
 			pickLocalDictionaryFolder: () => this.importLocalDictionaries("folder"),
+			renameLocalDictionary: (id) => this.renameLocalDictionary(id),
 			deleteLocalDictionary: (id) => this.deleteLocalDictionary(id),
 		};
 	}
@@ -247,6 +248,37 @@ export class DictionarySettingsEditor {
 			new Notice(strings.localDeleteFailed);
 		} finally {
 			this.deleting = false;
+			this.refresh();
+		}
+	}
+
+	private async renameLocalDictionary(id: string): Promise<void> {
+		if (this.saving || this.deleting || this.importing) return;
+		const strings = dictionaryStrings(this.language());
+		const item = this.runtime.administration.list().find((candidate) => candidate.id === id);
+		if (!item) {
+			new Notice(strings.localSourceMissing);
+			return;
+		}
+		const name = await promptLocalDictionaryName(this.runtime.app, strings, item.name);
+		if (name === null || name === item.name) return;
+		this.saving = true;
+		this.refresh();
+		try {
+			const result = await this.runtime.administration.rename(id, name);
+			if (!result.ok) {
+				new Notice(
+					result.error.code === "not-found"
+						? strings.localSourceMissing
+						: result.error.recovery === "incomplete"
+							? strings.localRecoveryRequired
+							: strings.localRenameFailed,
+				);
+			}
+		} catch {
+			new Notice(strings.localRenameFailed);
+		} finally {
+			this.saving = false;
 			this.refresh();
 		}
 	}

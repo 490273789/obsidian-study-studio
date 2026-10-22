@@ -88,7 +88,18 @@ class FakeSettingsStore implements DictionarySettingsStore {
 		};
 	}
 
-	async updateDictionarySettings(): Promise<boolean> {
+	async updateDictionarySettings(mutate: (draft: DictionarySettings) => void): Promise<boolean> {
+		const draft = structuredClone(this.getDictionarySettings()) as DictionarySettings;
+		mutate(draft);
+		try {
+			await this.saveAction();
+		} catch {
+			return false;
+		}
+		this.state = {
+			localDictionaries: draft.localDictionaries,
+			sources: draft.sources,
+		};
 		return true;
 	}
 
@@ -342,5 +353,72 @@ describe("LocalDictionaryAdministrationModule import recovery", () => {
 		expect(settings.save).not.toHaveBeenCalled();
 		expect(settings.setStates).toHaveLength(0);
 		expectUnchanged(settings, before);
+	});
+});
+
+describe("local dictionary rename", () => {
+	const storage = () =>
+		new FakeStorageAdapter(async () => {
+			throw new Error("Rename must not stage files");
+		});
+
+	it("persists the display name and lookup source label without changing identity or files", async () => {
+		const before = initialState();
+		const settings = new FakeSettingsStore(before);
+		const files = storage();
+		const invalidate = vi.fn();
+		const administration = new LocalDictionaryAdministrationModule(settings, files, invalidate);
+
+		const result = await administration.rename("old-dictionary", "  我的英语词典  ");
+
+		expect(result).toMatchObject({ ok: true });
+		expect(administration.list()[0]).toMatchObject({
+			id: "old-dictionary",
+			name: "我的英语词典",
+			files: before.localDictionaries[0]?.files,
+		});
+		expect(settings.getDictionarySettings().sources[1]).toMatchObject({
+			enabled: true,
+			id: "old-dictionary",
+			label: "我的英语词典",
+		});
+		expect(invalidate).toHaveBeenCalledOnce();
+		expect(files.stageImport).not.toHaveBeenCalled();
+		expect(files.stageRemoval).not.toHaveBeenCalled();
+	});
+
+	it("rejects empty and missing names without changing the catalog", async () => {
+		const settings = new FakeSettingsStore();
+		const administration = new LocalDictionaryAdministrationModule(settings, storage());
+
+		expect(await administration.rename("old-dictionary", "  ")).toMatchObject({
+			ok: false,
+			error: { code: "invalid-selection" },
+		});
+		expect(await administration.rename("missing", "Other")).toMatchObject({
+			ok: false,
+			error: { code: "not-found" },
+		});
+		expect(settings.getDictionarySettings().localDictionaries[0]?.name).toBe("Old dictionary");
+	});
+
+	it("keeps the original name and snapshot when saving fails", async () => {
+		const settings = new FakeSettingsStore(initialState(), async () => {
+			throw new Error("save failed");
+		});
+		const invalidate = vi.fn();
+		const administration = new LocalDictionaryAdministrationModule(
+			settings,
+			storage(),
+			invalidate,
+		);
+
+		expect(await administration.rename("old-dictionary", "Other")).toMatchObject({
+			ok: false,
+			error: { code: "persistence-failed" },
+		});
+		expect(administration.list()[0]?.name).toBe("Old dictionary");
+		expect(settings.getDictionarySettings().sources[1]?.label).toBe("Old dictionary");
+		expect(invalidate).not.toHaveBeenCalled();
 	});
 });
