@@ -436,8 +436,7 @@
 .addCardBtn {
 	border: 1px dashed var(--fc-line-strong);
 	color: var(--fc-muted);
-	width: 100%;
-	margin: 0 auto;
+	margin: 0;
 
 	&:hover:not(:disabled),
 	&:focus-visible {
@@ -448,14 +447,15 @@
 
 .homeActions {
 	display: flex;
+	justify-content: center;
 	gap: var(--fc-space-3);
 	flex-shrink: 0;
 	width: 100%;
 
 	:global(.flashcard-btn),
 	button {
-		flex: 1 1 0;
-		width: 100%;
+		flex: 0 0 160px;
+		width: 160px;
 		min-width: 0;
 		margin: 0;
 	}
@@ -605,7 +605,7 @@
 
 	.homeActions {
 		width: 100%;
-		max-width: 320px;
+		max-width: 360px;
 	}
 }
 
@@ -816,6 +816,12 @@
 	.homeActions {
 		order: 3;
 		flex: 0 0 auto;
+
+		:global(.flashcard-btn),
+		button {
+			flex: 1 1 0;
+			width: 100%;
+		}
 	}
 }
 

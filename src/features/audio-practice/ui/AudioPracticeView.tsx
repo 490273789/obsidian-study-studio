@@ -147,6 +147,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 				}
 			/>
 
+			{/* oxlint-disable-next-line jsx-a11y/media-has-caption -- Captions are rendered by the synchronized PracticeSurface below. */}
 			<audio ref={media} preload="metadata" />
 			<div
 				className={cls("fc-page__content", styles.workspace)}
