@@ -40,6 +40,16 @@ and `词典` own their runtimes the same way. Shared services reach a feature th
 
 `src/core/selectionHelper/` is the 工作台-owned 选区助手 interaction module, not a 工作台功能. It runs through the same `WorkbenchModule` lifecycle without contributing a catalog entry. 词典 and AI 翻译 each provide a narrow adapter, and 词典 also injects its result-body renderer through the composition module; the composition module connects them without reading either feature's runtime.
 
+`src/features/translation/domain/translationExecution.ts` owns translation profile selection,
+effective request identity, prompt/thinking rules, and Youdao/AI dispatch. The translator
+session and the video composition adapter use this same module with independent settings
+readers; they never share view/session state. A prepared translation rechecks the accepted
+identity immediately before dispatching from the same captured configuration. Video tasks
+pass their persisted translation identity through the composition seam instead of interpreting
+translation settings. Changes to the selected engine's provider, model, endpoint, credential
+reference, prompt, or thinking setting invalidate that identity. Legacy incomplete identities
+are rejected rather than inferred from today's settings; already saved subtitles remain.
+
 For selection-source registration, expiry, or delayed capture ordering, read
 [Selection helper sources](ui-and-obsidian.md#selection-helper-sources).
 

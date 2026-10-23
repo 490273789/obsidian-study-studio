@@ -2,12 +2,11 @@ import { AiError, aiFailureCode, type AiService } from "../../../core/ai";
 import {
 	detectTranslationDirection,
 	normalizeTranslationSettings,
-	renderTranslationPrompt,
 	validateTranslationSettings,
 } from "./configuration";
+import { TranslationExecution, type YoudaoTranslation } from "./translationExecution";
 import type {
 	TranslationOutput,
-	TranslationProfile,
 	TranslationResultState,
 	TranslationSettings,
 	TranslationSnapshot,
@@ -15,12 +14,7 @@ import type {
 
 interface TranslationDependencies {
 	persist(settings: TranslationSettings): Promise<void>;
-	youdao(
-		settings: TranslationSettings["youdao"],
-		text: string,
-		direction: TranslationSettings["direction"],
-		signal: AbortSignal,
-	): Promise<TranslationOutput>;
+	youdao: YoudaoTranslation;
 }
 
 /** Shared session authority for every translator view; owns no UI or Obsidian I/O. */
@@ -43,6 +37,7 @@ export class TranslationRuntime {
 	private disposed = false;
 	private unsubscribe: () => void;
 	private engineSettings: string;
+	private readonly execution: TranslationExecution;
 
 	constructor(
 		settings: unknown,
@@ -50,6 +45,11 @@ export class TranslationRuntime {
 		private deps: TranslationDependencies,
 	) {
 		this.settings = normalizeTranslationSettings(settings);
+		this.execution = new TranslationExecution({
+			ai,
+			readSettings: () => this.settings,
+			youdao: deps.youdao,
+		});
 		this.engineSettings = JSON.stringify(ai.getSnapshot().settings);
 		this.unsubscribe = ai.subscribe(() => {
 			const next = JSON.stringify(ai.getSnapshot().settings);
@@ -171,44 +171,40 @@ export class TranslationRuntime {
 		const generation = this.generation;
 		const controller = new AbortController();
 		this.controller = controller;
+		const translations = settings.profiles
+			.filter((profile) => profile.enabled)
+			.map((profile) => ({
+				profile,
+				request: this.execution.prepare(profile.id, settings.direction),
+			}));
 		this.state.status = "loading";
 		this.state.results = this.state.results.map((result) => ({ ...result, status: "loading" }));
 		this.publish();
 		await Promise.all(
-			settings.profiles
-				.filter((profile) => profile.enabled)
-				.map(async (profile) => {
-					const key = JSON.stringify([
-						this.engineSettings,
-						settings.direction,
-						profile,
-						settings.youdao,
-						settings.thinkingEnabled,
-						settings.promptTemplate,
-						text.trim(),
-					]);
-					try {
-						let output = this.cache.get(key);
-						if (output) {
-							this.cache.delete(key);
-							this.cache.set(key, output);
-						} else {
-							output = await this.request(profile, settings, text, controller.signal);
-							if (generation !== this.generation || this.disposed) return;
-							this.cache.set(key, output);
-							if (this.cache.size > 30)
-								this.cache.delete(this.cache.keys().next().value!);
-						}
+			translations.map(async ({ profile, request }) => {
+				const key = JSON.stringify([request.signature, text.trim()]);
+				try {
+					let output = this.cache.get(key);
+					if (output) {
+						this.cache.delete(key);
+						this.cache.set(key, output);
+					} else {
+						output = await request.translate(text, controller.signal);
 						if (generation !== this.generation || this.disposed) return;
-						this.updateResult(profile.id, { ...output, status: "success" });
-					} catch (error) {
-						if (generation !== this.generation || this.disposed) return;
-						this.updateResult(profile.id, {
-							status: "error",
-							error: aiFailureCode(error),
-						});
+						this.cache.set(key, output);
+						if (this.cache.size > 30)
+							this.cache.delete(this.cache.keys().next().value!);
 					}
-				}),
+					if (generation !== this.generation || this.disposed) return;
+					this.updateResult(profile.id, { ...output, status: "success" });
+				} catch (error) {
+					if (generation !== this.generation || this.disposed) return;
+					this.updateResult(profile.id, {
+						status: "error",
+						error: aiFailureCode(error),
+					});
+				}
+			}),
 		);
 		if (generation !== this.generation || this.disposed) return;
 		this.controller = null;
@@ -223,31 +219,6 @@ export class TranslationRuntime {
 		this.testController?.abort();
 		this.clear();
 		this.listeners.clear();
-	}
-	private request(
-		profile: TranslationProfile,
-		settings: TranslationSettings,
-		text: string,
-		signal: AbortSignal,
-	): Promise<TranslationOutput> {
-		if (profile.kind === "youdao")
-			return this.deps.youdao(settings.youdao, text, settings.direction, signal);
-		const config = this.ai
-			.getSnapshot()
-			.settings.configs.find((config) => config.id === profile.configId);
-		if (!config) throw new AiError("config-not-found");
-		return this.ai.generate({
-			configId: profile.configId,
-			thinkingEnabled: settings.thinkingEnabled,
-			signal,
-			messages: [
-				{
-					role: "system",
-					text: renderTranslationPrompt(settings.promptTemplate, settings.direction),
-				},
-				{ role: "user", text },
-			],
-		});
 	}
 	private invalidate(clearCache: boolean): void {
 		this.generation++;

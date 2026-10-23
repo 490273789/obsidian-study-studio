@@ -1,6 +1,5 @@
 import type { Plugin } from "obsidian";
 import type { AiService } from "../core/ai";
-import { AiError } from "../core/ai";
 import { createTranscriptionProvider } from "../core/media/transcription/providers";
 import { transcriptionConfigFingerprint } from "../core/media/transcription/transcriptionConfig";
 import type { TranscriptionConfig } from "../core/media/transcriptionTypes";
@@ -15,7 +14,10 @@ import { createSelectionHelperModule } from "../core/selectionHelper/module";
 import { createVideoPlayerFeature, type VideoShadowingServices } from "./video-player/feature";
 import { createAudioPracticeFeature } from "./audio-practice/feature";
 import { translateYoudao } from "./translation/domain/youdao";
-import { renderTranslationPrompt } from "./translation/domain/configuration";
+import {
+	TranslationConfigurationChangedError,
+	TranslationExecution,
+} from "./translation/domain/translationExecution";
 
 interface WorkbenchModuleDeps {
 	ai: AiService;
@@ -27,13 +29,12 @@ interface WorkbenchModuleDeps {
 /** The composition seam borrows other features' configuration without sharing their runtimes. */
 function createVideoShadowingServices(deps: WorkbenchModuleDeps): VideoShadowingServices {
 	const transcribe = createTranscriptionProvider(deps.net);
-	const fingerprint = (value: unknown): string => {
-		const serialized = JSON.stringify(value);
-		let hash = 2166136261;
-		for (let index = 0; index < serialized.length; index++)
-			hash = Math.imul(hash ^ serialized.charCodeAt(index), 16777619);
-		return (hash >>> 0).toString(16);
-	};
+	const translation = new TranslationExecution({
+		ai: deps.ai,
+		readSettings: () => deps.store.getSettings().translation,
+		youdao: (connection, text, direction, signal) =>
+			translateYoudao(connection, text, direction, deps.net, signal),
+	});
 	const readConfig = (provider: "bailian" | "openai-compatible"): TranscriptionConfig => {
 		const settings = deps.store.getSettings().audioPractice;
 		if (provider === "openai-compatible") {
@@ -82,51 +83,25 @@ function createVideoShadowingServices(deps: WorkbenchModuleDeps): VideoShadowing
 			return transcriptionConfigFingerprint(readConfig(provider));
 		},
 		getTranslationProfileId(selected) {
-			return (
-				selected.trim() ||
-				deps.store.getSettings().translation.profiles.find((profile) => profile.enabled)
-					?.id ||
-				""
-			);
+			return translation.prepare(selected, "en-zh").profileId;
 		},
 		getTranslationSignature(profileId) {
-			if (!profileId) return "none";
-			const settings = deps.store.getSettings().translation;
-			const profile = settings.profiles.find((item) => item.id === profileId);
-			return fingerprint({
-				profile,
-				promptTemplate: settings.promptTemplate,
-				youdao: profile?.kind === "youdao" ? settings.youdao : undefined,
-			});
+			return translation.prepare(profileId, "en-zh").signature;
 		},
 		listTranslationProfiles() {
-			return deps.store
-				.getSettings()
-				.translation.profiles.filter((profile) => profile.enabled)
-				.map(({ id, name }) => ({ id, name }));
+			return translation.listProfiles();
 		},
-		async translate(text, profileId, signal) {
-			const settings = deps.store.getSettings().translation;
-			const profile = settings.profiles.find(
-				(candidate) => candidate.id === profileId && candidate.enabled,
-			);
-			if (!profile) throw new AiError("config-not-found");
-			const output =
-				profile.kind === "youdao"
-					? await translateYoudao(settings.youdao, text, "en-zh", deps.net, signal)
-					: await deps.ai.generate({
-							configId: profile.configId,
-							thinkingEnabled: settings.thinkingEnabled,
-							signal,
-							messages: [
-								{
-									role: "system",
-									text: renderTranslationPrompt(settings.promptTemplate, "en-zh"),
-								},
-								{ role: "user", text },
-							],
-						});
-			return output.text;
+		async translate(text, profileId, signature, signal) {
+			try {
+				const output = await translation
+					.prepare(profileId, "en-zh")
+					.translate(text, signal, signature);
+				return output.text;
+			} catch (error) {
+				if (error instanceof TranslationConfigurationChangedError)
+					throw new Error("翻译配置已变化，请重新生成字幕。");
+				throw error;
+			}
 		},
 	};
 }

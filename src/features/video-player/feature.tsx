@@ -51,7 +51,12 @@ export interface VideoShadowingServices {
 		provider: "bailian" | "openai-compatible",
 		signal: AbortSignal,
 	): Promise<readonly { start: number; end: number; text: string }[]>;
-	translate(text: string, profileId: string, signal: AbortSignal): Promise<string>;
+	translate(
+		text: string,
+		profileId: string,
+		signature: string,
+		signal: AbortSignal,
+	): Promise<string>;
 	getTranscriptionSignature(provider: "bailian" | "openai-compatible"): Promise<string>;
 	getTranslationProfileId(selected: string): string;
 	getTranslationSignature(profileId: string): string;
@@ -195,12 +200,14 @@ export function createVideoPlayerFeature(
 								throw new Error("翻译配置已变化，请重新生成字幕。");
 							const signature = JSON.parse(task.config.serviceSignature) as {
 								translationProfileId: string;
+								translation: string;
 							};
 							if (!signature.translationProfileId)
 								throw new Error("请在影子跟读设置中启用翻译配置。");
 							return shadowing.translate(
 								text,
 								signature.translationProfileId,
+								signature.translation,
 								signal,
 							);
 						},
