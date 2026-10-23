@@ -1,13 +1,7 @@
 import { audioFailure, type AudioFailure, toAudioFailure } from "./failures";
 import { emptyProgress, normalizeAudioPracticeData } from "./repository";
 import { parseSubtitles, serializeSrt, validateCues } from "./subtitles";
-import type {
-	AudioSourceFiles,
-	GenerationInput,
-	TimedTextWord,
-	TranscriptionConfig,
-} from "./transcriptionTypes";
-import { MAX_AUDIO_BYTES } from "./transcriptionTypes";
+import type { AudioSourceFiles, TimedTextWord } from "./transcriptionTypes";
 import { SubtitleDraftEngine, type SubtitleDraftAction } from "./subtitleDraftEngine";
 import {
 	TranscriptionConfiguration,
@@ -63,8 +57,6 @@ export class AudioPracticeRuntime {
 	private listeners = new Set<() => void>();
 	private releases: (() => void)[] = [];
 	private error: AudioFailure | null = null;
-	private draftError: AudioFailure | null = null;
-	private savingDraft = false;
 	private revealed = false;
 	private loading = false;
 	private loadingMedia = false;
@@ -84,8 +76,6 @@ export class AudioPracticeRuntime {
 	private mediaLease = 0;
 	private subtitleOperation = new Map<string, number>();
 	private materialEdit: MaterialEdit | null = null;
-	private draftSourceValidated = true;
-	private draftValidationToken = 0;
 	private materialOperation: MaterialOperationSnapshot = {
 		id: 0,
 		kind: null,
@@ -103,6 +93,15 @@ export class AudioPracticeRuntime {
 			: undefined;
 		this.generationService = options.generation;
 
+		if (this.generationService) {
+			this.generationService.bindHost?.({
+				source: this.source,
+				transcription: this.transcription,
+				commitSubtitles: (id, cues, timings) => this.saveSubtitles(id, cues, timings),
+			});
+			this.releases.push(this.generationService.subscribe(() => this.publish()));
+		}
+
 		this.data = normalizeAudioPracticeData(this.repository.load());
 		this.releases.push(
 			this.repository.subscribeExternal(() => {
@@ -118,16 +117,12 @@ export class AudioPracticeRuntime {
 					(previous?.audioPath !== current?.audioPath ||
 						previous?.originalText !== current?.originalText)
 				) {
-					this.draftValidationToken++;
-					this.draftSourceValidated = false;
+					this.generationService?.invalidateValidation();
 				}
 				void this.loadMaterial();
 			}),
 		);
 		if (this.files.subscribe) this.releases.push(this.files.subscribe(this.handleFileChange));
-		if (this.generationService) {
-			this.releases.push(this.generationService.subscribe(() => this.publish()));
-		}
 		this.publish();
 		void this.loadMaterial();
 	}
@@ -340,8 +335,7 @@ export class AudioPracticeRuntime {
 					} else this.scheduleBoundary();
 				}
 				if (draftSourceChanged) {
-					this.draftValidationToken++;
-					this.draftSourceValidated = false;
+					this.generationService?.invalidateValidation();
 					if (this.generationService?.getSnapshot().taskKey === id)
 						this.generationService.cancel();
 				}
@@ -442,9 +436,7 @@ export class AudioPracticeRuntime {
 			);
 			try {
 				await this.generationService?.discard(id);
-			} catch {
-				this.draftError = { kind: "draft-save-failed" };
-			}
+			} catch {}
 			if (wasCurrent) await this.loadMaterial();
 			else this.publish();
 			if (epoch !== this.epoch) throw audioFailure({ kind: "stale-material" });
@@ -578,7 +570,7 @@ export class AudioPracticeRuntime {
 		this.invalidatedMarks = invalidatedMarks;
 		this.loadMedia();
 		this.publish();
-		this.reconcileRestore();
+		this.generationService?.syncWithMaterial(this.currentMaterial());
 	}
 	private beginSubtitleOperation(id: string): {
 		token: number;
@@ -906,7 +898,7 @@ export class AudioPracticeRuntime {
 		this.loading = false;
 		this.loadMedia();
 		this.publish();
-		this.reconcileRestore();
+		this.generationService?.syncWithMaterial(material);
 	}
 	private reconcileCues(next: readonly SubtitleCue[], persist = true): void {
 		const remapped = remapCueProgress(this.cues, next, this.progress());
@@ -1158,72 +1150,8 @@ export class AudioPracticeRuntime {
 		this.publish();
 	}
 	async generateSubtitles(force = false): Promise<boolean> {
-		if (this.disposed || this.savingDraft) return false;
-		if (!this.generationService || !this.transcription || !this.source) return false;
-		const genStatus = this.generationService.getSnapshot().status;
-		if (["preparing", "transcribing", "aligning"].includes(genStatus)) return false;
-		const material = this.currentMaterial();
-		if (!material) {
-			this.draftError = { kind: "missing-file" };
-			this.publish();
-			return false;
-		}
-		this.draftError = null;
-		let config: TranscriptionConfig;
-		try {
-			config = this.transcription.prepare();
-		} catch (error) {
-			this.draftError = toAudioFailure(error);
-			this.publish();
-			return false;
-		}
-		const stat = this.source.stat(material.audioPath);
-		if (!stat) {
-			this.draftError = { kind: "missing-file" };
-			this.publish();
-			return false;
-		}
-		if (stat.size > MAX_AUDIO_BYTES) {
-			this.draftError = { kind: "audio-too-large", maxBytes: MAX_AUDIO_BYTES };
-			this.publish();
-			return false;
-		}
-		try {
-			const audio = await this.source.readBinary(material.audioPath);
-			const current = this.currentMaterial();
-			if (!current || current.id !== material.id) {
-				this.draftError = { kind: "stale-material" };
-				this.publish();
-				return false;
-			}
-			const input: GenerationInput = {
-				audio,
-				name: fileName(current.audioPath),
-				taskKey: current.id,
-				referenceText: current.originalText,
-				config,
-			};
-			const validationToken = ++this.draftValidationToken;
-			const epoch = this.epoch;
-			this.draftSourceValidated = false;
-			await this.generationService.generate(input, { force });
-			if (
-				validationToken === this.draftValidationToken &&
-				epoch === this.epoch &&
-				this.currentMaterial()?.id === current.id &&
-				this.currentMaterial()?.audioPath === current.audioPath &&
-				this.currentMaterial()?.originalText === current.originalText &&
-				sameFileStat(stat, this.source.stat(current.audioPath))
-			) {
-				this.draftSourceValidated = true;
-				this.publish();
-			}
-			return true;
-		} catch (error) {
-			this.draftError = toAudioFailure(error);
-			this.publish();
-			return false;
-		}
+		if (this.disposed || !this.generationService) return false;
+		return this.generationService.generateForMaterial(this.currentMaterial(), { force });
 	}
 
 	cancelSubtitleGeneration(): void {
@@ -1232,141 +1160,53 @@ export class AudioPracticeRuntime {
 
 	dismissFailure(): void {
 		this.error = null;
-		this.draftError = null;
+		this.generationService?.dismissFailure();
 		this.publish();
 	}
 
 	async saveSubtitleDraft(): Promise<boolean> {
-		if (this.disposed || this.savingDraft) return false;
-		if (!this.generationService || !this.source) return false;
-		const genStatus = this.generationService.getSnapshot().status;
-		if (["preparing", "transcribing", "aligning"].includes(genStatus)) return false;
-		const material = this.currentMaterial();
-		if (!material) return false;
-		if (this.generationService.getSnapshot().taskKey !== material.id) {
-			this.draftError = { kind: "stale-material" };
-			this.publish();
-			return false;
-		}
-		if (!this.draftSourceValidated) {
-			this.draftError = { kind: "source-changed" };
-			this.publish();
-			return false;
-		}
-		this.savingDraft = true;
-		this.draftError = null;
-		this.publish();
-		try {
-			const stat = this.source.stat(material.audioPath);
-			if (!stat) throw audioFailure({ kind: "missing-file" });
-			const mtime = stat.mtime;
-			const audio = await this.source.readBinary(material.audioPath);
-			const matches = await this.generationService.matchesSource(
-				audio,
-				material.originalText,
-			);
-			const current = this.currentMaterial();
-			const afterStat = current ? this.source.stat(current.audioPath) : null;
-			if (
-				!matches ||
-				this.generationService.getSnapshot().taskKey !== material.id ||
-				current?.audioPath !== material.audioPath ||
-				current?.originalText !== material.originalText ||
-				afterStat?.mtime !== mtime
-			) {
-				throw audioFailure({ kind: "source-changed" });
-			}
-			const cues = this.generationService.validatedCues();
-			const wordTimingsObj = this.generationService.getValidatedWordTimings();
-			const timings = new Map<string, readonly TimedTextWord[]>();
-			for (const [cueId, cueTimings] of Object.entries(wordTimingsObj)) {
-				timings.set(cueId, cueTimings);
-			}
-			await this.saveSubtitles(material.id, cues, timings);
-			return true;
-		} catch (error) {
-			this.draftError = toAudioFailure(error);
-			return false;
-		} finally {
-			this.savingDraft = false;
-			this.publish();
-		}
+		if (this.disposed || !this.generationService) return false;
+		return this.generationService.commitForMaterial(this.currentMaterial());
 	}
 
 	actOnSubtitleDraft(action: SubtitleDraftAction): void {
 		this.generationService?.act(action);
 	}
 
-	private reconcileRestore(): void {
-		if (this.disposed || this.savingDraft || !this.generationService) return;
-		const gen = this.generationService.getSnapshot();
-		if (["preparing", "transcribing", "aligning"].includes(gen.status)) return;
-		const currentMaterialId = this.data.currentMaterialId;
-		if (!currentMaterialId || (gen.taskKey === currentMaterialId && this.draftSourceValidated))
-			return;
-		const token = ++this.draftValidationToken;
-		const epoch = this.epoch;
-		this.draftSourceValidated = false;
-		this.publish();
-		void (async () => {
-			const restored =
-				gen.taskKey === currentMaterialId ||
-				(await this.generationService!.restore(currentMaterialId));
-			if (token !== this.draftValidationToken) return;
-			const restoredSnapshot = this.generationService!.getSnapshot();
-			if (
-				!restored ||
-				!this.source ||
-				restoredSnapshot.taskKey !== currentMaterialId ||
-				restoredSnapshot.status !== "review"
-			) {
-				this.draftSourceValidated = true;
-				this.publish();
-				return;
-			}
-			const material = this.currentMaterial();
-			if (!material || material.id !== currentMaterialId || epoch !== this.epoch) return;
-			const before = this.source.stat(material.audioPath);
-			if (!before) return;
-			const audio = await this.source.readBinary(material.audioPath);
-			const matches = await this.generationService!.matchesSource(
-				audio,
-				material.originalText,
-			);
-			if (
-				token === this.draftValidationToken &&
-				epoch === this.epoch &&
-				this.currentMaterial()?.id === material.id &&
-				this.currentMaterial()?.audioPath === material.audioPath &&
-				this.currentMaterial()?.originalText === material.originalText &&
-				sameFileStat(before, this.source.stat(material.audioPath))
-			) {
-				this.draftSourceValidated = matches;
-				this.publish();
-			}
-		})().catch(() => {});
-	}
-
 	private getDraftSnapshot(): AudioPracticeDraftSnapshot {
-		if (!this.generationService || !this.data.currentMaterialId) {
+		if (!this.generationService) {
 			return {
-				status: this.savingDraft ? "saving" : "idle",
+				status: "idle",
 				cues: [],
 				completedChunks: 0,
 				totalChunks: 0,
 				failure: null,
-				error: this.draftError,
+				error: null,
 				notice: null,
 				hasReviewWordTimings: false,
 			};
 		}
 		const gen = this.generationService.getSnapshot();
+		if (!this.data.currentMaterialId) {
+			return {
+				status: "idle",
+				cues: [],
+				completedChunks: 0,
+				totalChunks: 0,
+				failure: null,
+				error: gen.error,
+				notice: null,
+				hasReviewWordTimings: false,
+			};
+		}
 		const isCurrent = gen.taskKey === this.data.currentMaterialId;
-		const sourceValid = this.draftSourceValidated;
-		const status: AudioPracticeDraftStatus = this.savingDraft
-			? "saving"
-			: !isCurrent ||
-				  (!sourceValid && !["preparing", "transcribing", "aligning"].includes(gen.status))
+		const sourceValid = this.generationService.isSourceValidated
+			? this.generationService.isSourceValidated()
+			: true;
+		const status: AudioPracticeDraftStatus =
+			!isCurrent ||
+			(!sourceValid &&
+				!["preparing", "transcribing", "aligning", "saving"].includes(gen.status))
 				? "idle"
 				: gen.status;
 		return {
@@ -1375,7 +1215,7 @@ export class AudioPracticeRuntime {
 			completedChunks: isCurrent ? gen.completedChunks : 0,
 			totalChunks: isCurrent ? gen.totalChunks : 0,
 			failure: isCurrent && sourceValid ? gen.failure : null,
-			error: this.draftError,
+			error: gen.error,
 			notice: isCurrent && sourceValid ? gen.notice : null,
 			hasReviewWordTimings: isCurrent && sourceValid ? gen.hasReviewWordTimings : false,
 		};
@@ -1451,8 +1291,7 @@ export class AudioPracticeRuntime {
 			(contains(material.audioPath, change.path) ||
 				(change.kind === "rename" && contains(material.audioPath, change.nextPath)))
 		) {
-			this.draftValidationToken++;
-			this.draftSourceValidated = false;
+			this.generationService?.invalidateValidation();
 		}
 		if (
 			material &&
@@ -1464,10 +1303,6 @@ export class AudioPracticeRuntime {
 		)
 			void this.loadMaterial(true);
 	};
-}
-
-function fileName(path: string): string {
-	return path.split("/").pop() ?? path;
 }
 
 function sameFileStat(

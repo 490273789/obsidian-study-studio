@@ -1,8 +1,10 @@
 import { audioFailure, toAudioFailure, type AudioFailure, type SubtitleProblem } from "./failures";
-import type { SubtitleCue } from "./types";
+import type { AudioMaterial, SubtitleCue } from "./types";
 import {
 	MAX_AUDIO_BYTES,
 	MAX_AUDIO_DURATION_SECONDS,
+	type AudioSourceFiles,
+	type AudioSourceStat,
 	type DraftCue,
 	type GenerationDraft,
 	type GenerationDraftStore,
@@ -14,6 +16,7 @@ import {
 	type TranscribeAudio,
 	type Transcript,
 } from "./transcriptionTypes";
+import type { TranscriptionConfiguration } from "./transcriptionConfiguration";
 import {
 	matchesLegacyBailianFingerprint,
 	transcriptionConfigFingerprint,
@@ -136,6 +139,7 @@ export interface SubtitleDraftSnapshot {
 		| "transcribing"
 		| "aligning"
 		| "review"
+		| "saving"
 		| "cancelled"
 		| "error";
 	readonly cues: readonly SubtitleDraftCue[];
@@ -143,15 +147,30 @@ export interface SubtitleDraftSnapshot {
 	readonly totalChunks: number;
 	readonly duration: number;
 	readonly failure: AudioFailure | null;
+	readonly error: AudioFailure | null;
 	readonly notice: GenerationNotice | null;
 	readonly taskKey: string | null;
 	readonly hasReviewWordTimings: boolean;
 }
 
-interface SubtitleDraftEngineOptions {
+export type SubtitleDraftCommitHandler = (
+	materialId: string,
+	cues: readonly SubtitleCue[],
+	wordTimings: ReadonlyMap<string, readonly TimedTextWord[]>,
+) => Promise<unknown>;
+
+export interface SubtitleDraftEngineOptions {
 	readonly prepare: PrepareAudio;
 	readonly transcribe: TranscribeAudio;
 	readonly drafts?: GenerationDraftStore;
+	readonly source?: AudioSourceFiles;
+	readonly transcription?: TranscriptionConfiguration;
+	readonly commitSubtitles?: SubtitleDraftCommitHandler;
+}
+
+function sameFileStat(a: AudioSourceStat | null, b: AudioSourceStat | null): boolean {
+	if (!a || !b) return false;
+	return a.size === b.size && a.mtime === b.mtime;
 }
 
 /**
@@ -166,11 +185,17 @@ export class SubtitleDraftEngine {
 		totalChunks: 0,
 		duration: 0,
 		failure: null,
+		error: null,
 		notice: null,
 		taskKey: null,
 		hasReviewWordTimings: false,
 	};
 	private readonly listeners = new Set<() => void>();
+	private readonly hostOptions: Partial<SubtitleDraftEngineOptions> = {};
+	private sourceValidated = true;
+	private validationToken = 0;
+	private saving = false;
+	private draftError: AudioFailure | null = null;
 	private controller: AbortController | null = null;
 	private input: GenerationInput | null = null;
 	private draft: GenerationDraft | null = null;
@@ -180,10 +205,45 @@ export class SubtitleDraftEngine {
 
 	constructor(private readonly options: SubtitleDraftEngineOptions) {}
 
+	private get source(): AudioSourceFiles | undefined {
+		return this.hostOptions.source ?? this.options.source;
+	}
+
+	private get transcription(): TranscriptionConfiguration | undefined {
+		return this.hostOptions.transcription ?? this.options.transcription;
+	}
+
+	private get commitSubtitles(): SubtitleDraftCommitHandler | undefined {
+		return this.hostOptions.commitSubtitles ?? this.options.commitSubtitles;
+	}
+
+	bindHost(
+		host: Partial<
+			Pick<SubtitleDraftEngineOptions, "source" | "transcription" | "commitSubtitles">
+		>,
+	): void {
+		Object.assign(this.hostOptions, host);
+	}
+
+	isSourceValidated(): boolean {
+		return this.sourceValidated;
+	}
+
+	invalidateValidation(): void {
+		this.validationToken++;
+		this.sourceValidated = false;
+		this.publish({});
+	}
+
+	dismissFailure(): void {
+		this.draftError = null;
+		this.publish({ failure: null });
+	}
+
 	getSnapshot = (): SubtitleDraftSnapshot => this.snapshot;
 
 	getTimedWords = (): readonly TimedWord[] =>
-		this.snapshot.status === "review" ? (this.draft?.words ?? []) : [];
+		["review", "saving"].includes(this.snapshot.status) ? (this.draft?.words ?? []) : [];
 
 	subscribe = (listener: () => void): (() => void) => {
 		if (this.disposed) return () => {};
@@ -204,10 +264,171 @@ export class SubtitleDraftEngine {
 		);
 	}
 
+	syncWithMaterial(material: AudioMaterial | null): void {
+		if (this.disposed || this.saving) return;
+		if (["preparing", "transcribing", "aligning"].includes(this.snapshot.status)) return;
+		if (!material) {
+			this.validationToken++;
+			this.sourceValidated = true;
+			this.draftError = null;
+			if (this.snapshot.status !== "idle" || this.snapshot.taskKey !== null) {
+				this.publish({ status: "idle", cues: [], taskKey: null, failure: null });
+			}
+			return;
+		}
+		if (this.snapshot.taskKey === material.id && this.sourceValidated) {
+			return;
+		}
+		const token = ++this.validationToken;
+		this.sourceValidated = false;
+		this.publish({});
+		void (async () => {
+			const restored =
+				this.snapshot.taskKey === material.id || (await this.restore(material.id));
+			if (token !== this.validationToken) return;
+			const currentSnap = this.snapshot;
+			if (
+				!restored ||
+				!this.source ||
+				currentSnap.taskKey !== material.id ||
+				currentSnap.status !== "review"
+			) {
+				this.sourceValidated = true;
+				this.publish({});
+				return;
+			}
+			const stat = this.source.stat(material.audioPath);
+			if (!stat) {
+				this.publish({});
+				return;
+			}
+			const audio = await this.source.readBinary(material.audioPath);
+			const matches = await this.matchesSource(audio, material.originalText);
+			if (
+				token === this.validationToken &&
+				this.snapshot.taskKey === material.id &&
+				sameFileStat(stat, this.source.stat(material.audioPath))
+			) {
+				this.sourceValidated = matches;
+				this.publish({});
+			}
+		})().catch(() => {});
+	}
+
+	async generateForMaterial(
+		material: AudioMaterial | null,
+		options: { force?: boolean } = {},
+	): Promise<boolean> {
+		if (this.disposed || this.saving) return false;
+		if (["preparing", "transcribing", "aligning"].includes(this.snapshot.status)) return false;
+		const source = this.source;
+		const transcription = this.transcription;
+		if (!material) {
+			this.draftError = { kind: "missing-file" };
+			this.publish({});
+			return false;
+		}
+		if (!transcription || !source) return false;
+		this.draftError = null;
+		let config: import("./transcriptionTypes").TranscriptionConfig;
+		try {
+			config = transcription.prepare();
+		} catch (error) {
+			this.draftError = toAudioFailure(error);
+			this.publish({});
+			return false;
+		}
+		const stat = source.stat(material.audioPath);
+		if (!stat) {
+			this.draftError = { kind: "missing-file" };
+			this.publish({});
+			return false;
+		}
+		if (stat.size > MAX_AUDIO_BYTES) {
+			this.draftError = { kind: "audio-too-large", maxBytes: MAX_AUDIO_BYTES };
+			this.publish({});
+			return false;
+		}
+		try {
+			const audio = await source.readBinary(material.audioPath);
+			const input: GenerationInput = {
+				audio,
+				name: material.audioPath.split("/").slice(-1)[0] || "audio",
+				taskKey: material.id,
+				referenceText: material.originalText,
+				config,
+			};
+			const token = ++this.validationToken;
+			this.sourceValidated = false;
+			await this.generate(input, options);
+			if (
+				token === this.validationToken &&
+				this.snapshot.taskKey === material.id &&
+				sameFileStat(stat, source.stat(material.audioPath))
+			) {
+				this.sourceValidated = true;
+				this.publish({});
+			}
+			return true;
+		} catch (error) {
+			this.draftError = toAudioFailure(error);
+			this.publish({});
+			return false;
+		}
+	}
+
+	async commitForMaterial(material: AudioMaterial | null): Promise<boolean> {
+		if (this.disposed || this.saving) return false;
+		if (["preparing", "transcribing", "aligning"].includes(this.snapshot.status)) return false;
+		if (!material) return false;
+		if (this.snapshot.taskKey !== material.id) {
+			this.draftError = { kind: "stale-material" };
+			this.publish({});
+			return false;
+		}
+		if (!this.sourceValidated) {
+			this.draftError = { kind: "source-changed" };
+			this.publish({});
+			return false;
+		}
+		const source = this.source;
+		const commit = this.commitSubtitles;
+		if (!source || !commit) return false;
+		this.saving = true;
+		this.draftError = null;
+		this.publish({ status: "saving" });
+		try {
+			const stat = source.stat(material.audioPath);
+			if (!stat) throw audioFailure({ kind: "missing-file" });
+			const mtime = stat.mtime;
+			const audio = await source.readBinary(material.audioPath);
+			const matches = await this.matchesSource(audio, material.originalText);
+			const afterStat = source.stat(material.audioPath);
+			if (!matches || this.snapshot.taskKey !== material.id || afterStat?.mtime !== mtime) {
+				throw audioFailure({ kind: "source-changed" });
+			}
+			const cues = this.validatedCues();
+			const wordTimingsObj = this.getValidatedWordTimings();
+			const timings = new Map<string, readonly TimedTextWord[]>();
+			for (const [cueId, cueTimings] of Object.entries(wordTimingsObj)) {
+				timings.set(cueId, cueTimings);
+			}
+			await commit(material.id, cues, timings);
+			return true;
+		} catch (error) {
+			this.draftError = toAudioFailure(error);
+			return false;
+		} finally {
+			this.saving = false;
+			this.publish({});
+		}
+	}
+
 	private publish(patch: Partial<SubtitleDraftSnapshot>): void {
 		if (this.disposed) return;
 		const nextStatus = patch.status ?? this.snapshot.status;
-		const timedWords = nextStatus === "review" ? (this.draft?.words ?? []) : [];
+		const timedWords =
+			nextStatus === "review" || nextStatus === "saving" ? (this.draft?.words ?? []) : [];
 		const hasReviewWordTimings = timedWords.length > 0;
 		const sourceCues = patch.cues ?? this.draft?.cues ?? this.snapshot.cues;
 		const cues: SubtitleDraftCue[] = sourceCues.map((cue) => {
@@ -224,6 +445,7 @@ export class SubtitleDraftEngine {
 		this.snapshot = {
 			...this.snapshot,
 			...patch,
+			error: this.draftError,
 			cues,
 			hasReviewWordTimings,
 		};

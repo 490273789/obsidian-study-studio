@@ -1,18 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { AudioPracticeRuntime } from "../audioPracticeRuntime";
 import { emptyAudioPracticeData, normalizeAudioPracticeData } from "../repository";
-import { audioFailure } from "../failures";
+import { audioFailure, toAudioFailure } from "../failures";
 import { MAX_AUDIO_BYTES } from "../transcriptionTypes";
 import type { AudioSourceStat, GenerationInput, TimedTextWord } from "../transcriptionTypes";
 import {
 	alignTimedWords,
 	type SubtitleDraftSnapshot,
 	type SubtitleDraftEngine,
+	type SubtitleDraftEngineOptions,
 	type SubtitleDraftAction,
 } from "../subtitleDraftEngine";
+import { TranscriptionConfiguration } from "../transcriptionConfiguration";
 import type { AudioPracticeSettings } from "../../settings/slice";
 import type {
 	AudioFileChange,
+	AudioMaterial,
 	AudioMediaPort,
 	AudioPracticeData,
 	AudioPracticeFiles,
@@ -950,15 +953,42 @@ function draftHarness(
 		totalChunks: 0,
 		duration: 0,
 		failure: null,
+		error: null,
 		notice: null,
 		taskKey: null,
 		hasReviewWordTimings: false,
 		...options.generationSnapshot,
 	};
 	const genListeners = new Set<() => void>();
+	let boundHost: Partial<SubtitleDraftEngineOptions> = {};
+	let sourceValidated = true;
+	let draftError: import("../failures").AudioFailure | null = null;
+	let saving = false;
+	let validationToken = 0;
+
 	const publishGen = (patch: Partial<SubtitleDraftSnapshot>) => {
-		genSnapshot = { ...genSnapshot, ...patch };
+		genSnapshot = { ...genSnapshot, ...patch, error: draftError };
 		for (const listener of genListeners) listener();
+	};
+
+	const remainingStats = [...(options.sourceStats ?? [])];
+	const defaultStat: AudioSourceStat | null =
+		options.sourceStat === undefined ? { size: 1024, mtime: 10 } : options.sourceStat;
+	const source = {
+		stat: vi.fn((_path?: string) =>
+			remainingStats.length ? (remainingStats.shift() ?? null) : defaultStat,
+		),
+		readBinary: vi.fn(options.readBinary ?? (async (_path?: string) => new ArrayBuffer(8))),
+	};
+	const settingsReader = {
+		read: () => ({ ...defaultSettings, ...options.settingsPatch }),
+		readSecret: vi.fn((id: string) =>
+			options.secrets
+				? (options.secrets[id] ?? null)
+				: options.secret === undefined
+					? "secret"
+					: options.secret,
+		),
 	};
 
 	const generation = {
@@ -968,7 +998,7 @@ function draftHarness(
 			genListeners.add(listener);
 			return () => genListeners.delete(listener);
 		},
-		generate: vi.fn(async () => {}),
+		generate: vi.fn(async (_input?: GenerationInput, _opt?: { force?: boolean }) => {}),
 		cancel: vi.fn(() => {
 			publishGen({ status: "cancelled", failure: null });
 		}),
@@ -978,8 +1008,10 @@ function draftHarness(
 				publishGen({ taskKey: null, status: "idle", cues: [] });
 			}
 		}),
-		restore: vi.fn(async () => true),
-		matchesSource: vi.fn(options.matchesSource ?? (async () => true)),
+		restore: vi.fn(async (_taskKey?: string) => true),
+		matchesSource: vi.fn(
+			options.matchesSource ?? (async (_audio?: ArrayBuffer, _text?: string) => true),
+		),
 		validatedCues: vi.fn(() => savedCues.map((c) => ({ ...c }))),
 		getValidatedWordTimings: vi.fn(() => {
 			const timings: Record<string, TimedTextWord[]> = {};
@@ -1021,24 +1053,166 @@ function draftHarness(
 					break;
 			}
 		}),
-	};
-
-	const remainingStats = [...(options.sourceStats ?? [])];
-	const defaultStat: AudioSourceStat | null =
-		options.sourceStat === undefined ? { size: 1024, mtime: 10 } : options.sourceStat;
-	const source = {
-		stat: vi.fn(() => (remainingStats.length ? (remainingStats.shift() ?? null) : defaultStat)),
-		readBinary: vi.fn(options.readBinary ?? (async () => new ArrayBuffer(8))),
-	};
-	const settingsReader = {
-		read: () => ({ ...defaultSettings, ...options.settingsPatch }),
-		readSecret: vi.fn((id: string) =>
-			options.secrets
-				? (options.secrets[id] ?? null)
-				: options.secret === undefined
-					? "secret"
-					: options.secret,
+		bindHost: vi.fn((host: Partial<SubtitleDraftEngineOptions>) => {
+			Object.assign(boundHost, host);
+		}),
+		isSourceValidated: () => sourceValidated,
+		invalidateValidation: vi.fn(() => {
+			validationToken++;
+			sourceValidated = false;
+			publishGen({});
+		}),
+		dismissFailure: vi.fn(() => {
+			draftError = null;
+			publishGen({ failure: null, error: null });
+		}),
+		syncWithMaterial: vi.fn((material: AudioMaterial | null) => {
+			if (!material) {
+				validationToken++;
+				sourceValidated = true;
+				draftError = null;
+				if (genSnapshot.status !== "idle" || genSnapshot.taskKey !== null) {
+					publishGen({ status: "idle", cues: [], taskKey: null, failure: null });
+				}
+				return;
+			}
+			if (genSnapshot.taskKey === material.id && sourceValidated) return;
+			const token = ++validationToken;
+			sourceValidated = false;
+			publishGen({});
+			void (async () => {
+				const restored =
+					genSnapshot.taskKey === material.id || (await generation.restore(material.id));
+				if (token !== validationToken) return;
+				if (
+					!restored ||
+					!source ||
+					genSnapshot.taskKey !== material.id ||
+					genSnapshot.status !== "review"
+				) {
+					sourceValidated = true;
+					publishGen({});
+					return;
+				}
+				const stat = source.stat(material.audioPath);
+				if (!stat) {
+					publishGen({});
+					return;
+				}
+				const audio = await source.readBinary(material.audioPath);
+				const matches = await generation.matchesSource(audio, material.originalText);
+				if (token === validationToken && genSnapshot.taskKey === material.id) {
+					sourceValidated = matches;
+					publishGen({});
+				}
+			})().catch(() => {});
+		}),
+		generateForMaterial: vi.fn(
+			async (material: AudioMaterial | null, opt: { force?: boolean } = {}) => {
+				if (saving) return false;
+				if (["preparing", "transcribing", "aligning"].includes(genSnapshot.status))
+					return false;
+				const s = boundHost.source ?? source;
+				const t =
+					boundHost.transcription ??
+					(settingsReader ? new TranscriptionConfiguration(settingsReader) : undefined);
+				if (!material) {
+					draftError = { kind: "missing-file" };
+					publishGen({ error: draftError });
+					return false;
+				}
+				if (!t || !s) return false;
+				draftError = null;
+				let config: any;
+				try {
+					config = t.prepare();
+				} catch (err) {
+					draftError = toAudioFailure(err);
+					publishGen({ error: draftError });
+					return false;
+				}
+				const stat = s.stat(material.audioPath);
+				if (!stat) {
+					draftError = { kind: "missing-file" };
+					publishGen({ error: draftError });
+					return false;
+				}
+				if (stat.size > MAX_AUDIO_BYTES) {
+					draftError = { kind: "audio-too-large", maxBytes: MAX_AUDIO_BYTES };
+					publishGen({ error: draftError });
+					return false;
+				}
+				try {
+					const audio = await s.readBinary(material.audioPath);
+					const input: GenerationInput = {
+						audio,
+						name: material.audioPath.split("/").slice(-1)[0] || "audio",
+						taskKey: material.id,
+						referenceText: material.originalText,
+						config,
+					};
+					++validationToken;
+					sourceValidated = false;
+					await generation.generate(input, opt);
+					sourceValidated = true;
+					draftError = null;
+					publishGen({ error: null });
+					return true;
+				} catch (err) {
+					draftError = toAudioFailure(err);
+					publishGen({ error: draftError });
+					return false;
+				}
+			},
 		),
+		commitForMaterial: vi.fn(async (material: AudioMaterial | null) => {
+			if (saving) return false;
+			if (["preparing", "transcribing", "aligning"].includes(genSnapshot.status))
+				return false;
+			if (!material) return false;
+			if (genSnapshot.taskKey !== material.id) {
+				draftError = { kind: "stale-material" };
+				publishGen({ error: draftError });
+				return false;
+			}
+			if (!sourceValidated) {
+				draftError = { kind: "source-changed" };
+				publishGen({ error: draftError });
+				return false;
+			}
+			const s = boundHost.source ?? source;
+			const commit = boundHost.commitSubtitles;
+			if (!s || !commit) return false;
+			saving = true;
+			draftError = null;
+			publishGen({ status: "saving", error: null });
+			try {
+				const stat = s.stat(material.audioPath);
+				if (!stat) throw audioFailure({ kind: "missing-file" });
+				const mtime = stat.mtime;
+				const audio = await s.readBinary(material.audioPath);
+				const matches = await generation.matchesSource(audio, material.originalText);
+				const afterStat = s.stat(material.audioPath);
+				if (!matches || genSnapshot.taskKey !== material.id || afterStat?.mtime !== mtime) {
+					throw audioFailure({ kind: "source-changed" });
+				}
+				const cues = generation.validatedCues();
+				const wordTimingsObj = generation.getValidatedWordTimings();
+				const timings = new Map<string, readonly TimedTextWord[]>();
+				for (const [cueId, cueTimings] of Object.entries(wordTimingsObj)) {
+					timings.set(cueId, cueTimings);
+				}
+				await commit(material.id, cues, timings);
+				return true;
+			} catch (err) {
+				draftError = toAudioFailure(err);
+				publishGen({ error: draftError });
+				return false;
+			} finally {
+				saving = false;
+				publishGen({});
+			}
+		}),
 	};
 
 	const runtime = new AudioPracticeRuntime({

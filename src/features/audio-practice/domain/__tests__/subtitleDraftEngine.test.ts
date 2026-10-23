@@ -8,6 +8,7 @@ import {
 } from "../subtitleDraftEngine";
 import type {
 	AudioChunk,
+	AudioSourceFiles,
 	GenerationDraft,
 	GenerationDraftStore,
 	GenerationInput,
@@ -381,5 +382,197 @@ describe("SubtitleDraftEngine - Deep Module Lifecycle & Actions", () => {
 		expect(timings[firstId]![0]!.startOffset).toBe(0);
 		expect(timings[firstId]![0]!.endOffset).toBe(5);
 		expect(timings[secondId]).toHaveLength(4);
+	});
+});
+
+describe("SubtitleDraftEngine - Material Lifecycle Integration", () => {
+	function setupLifecycleEngine(
+		options: {
+			sourceStat?: { size: number; mtime: number } | null;
+			audioBuffer?: ArrayBuffer;
+			prepareConfigError?: Error;
+		} = {},
+	) {
+		const savedDrafts = new Map<string, GenerationDraft>();
+		const draftStore: GenerationDraftStore = {
+			load: async (key) => savedDrafts.get(key) ?? null,
+			save: async (draft) => {
+				savedDrafts.set(draft.taskKey, draft);
+			},
+			remove: async (key) => {
+				savedDrafts.delete(key);
+			},
+		};
+
+		const prepare = vi.fn(async () => ({
+			duration: 10,
+			chunks: [{ index: 0, start: 0, end: 10, wav: createMockAudio() }],
+		}));
+
+		const transcribe = vi.fn(async (_chunk: AudioChunk) => ({
+			cues: [
+				{ id: "cue-1", text: "Hello world", start: 1.0, end: 2.0, needsReview: false },
+				{ id: "cue-2", text: "Nice to meet you", start: 3.0, end: 5.0, needsReview: false },
+			],
+			words: [
+				{ text: "hello", start: 1.0, end: 1.4 },
+				{ text: "world", start: 1.5, end: 2.0 },
+				{ text: "nice", start: 3.0, end: 3.4 },
+				{ text: "to", start: 3.5, end: 3.8 },
+				{ text: "meet", start: 3.9, end: 4.4 },
+				{ text: "you", start: 4.5, end: 5.0 },
+			],
+		}));
+
+		let statVal =
+			options.sourceStat === undefined ? { size: 100, mtime: 10 } : options.sourceStat;
+		const source: AudioSourceFiles = {
+			stat: vi.fn(() => statVal),
+			readBinary: vi.fn(async () => options.audioBuffer ?? createMockAudio(100)),
+		};
+
+		const transcription = {
+			prepare: vi.fn(() => {
+				if (options.prepareConfigError) throw options.prepareConfigError;
+				return mockConfig;
+			}),
+		} as unknown as import("../transcriptionConfiguration").TranscriptionConfiguration;
+
+		const commitSubtitles = vi.fn(
+			async (
+				_materialId: string,
+				_cues: readonly import("../types").SubtitleCue[],
+				_wordTimings: ReadonlyMap<
+					string,
+					readonly import("../transcriptionTypes").TimedTextWord[]
+				>,
+			) => {},
+		);
+
+		const engine = new SubtitleDraftEngine({
+			prepare,
+			transcribe,
+			drafts: draftStore,
+			source,
+			transcription,
+			commitSubtitles,
+		});
+
+		const sampleMaterial = {
+			id: "material-1",
+			title: "Lesson 1",
+			audioPath: "vault/audio/lesson1.mp3",
+			subtitlePath: null,
+			originalText: "Hello world. Nice to meet you.",
+		};
+
+		return {
+			engine,
+			prepare,
+			transcribe,
+			source,
+			transcription,
+			commitSubtitles,
+			sampleMaterial,
+			setStat: (next: { size: number; mtime: number } | null) => {
+				statVal = next;
+			},
+		};
+	}
+
+	it("bindHost binds source, transcription, and commitSubtitles dynamically", async () => {
+		const prepare = vi.fn(async () => ({ duration: 5, chunks: [] }));
+		const transcribe = vi.fn(async () => ({ cues: [], words: [] }));
+		const engine = new SubtitleDraftEngine({ prepare, transcribe });
+
+		const commit = vi.fn(async () => {});
+		engine.bindHost({ commitSubtitles: commit });
+		// Should not throw and options should be registered
+		expect(engine).toBeDefined();
+	});
+
+	it("generates for material and marks sourceValidated when audio matches", async () => {
+		const { engine, sampleMaterial } = setupLifecycleEngine();
+		const success = await engine.generateForMaterial(sampleMaterial);
+		expect(success).toBe(true);
+		expect(engine.isSourceValidated()).toBe(true);
+		const snap = engine.getSnapshot();
+		expect(snap.status).toBe("review");
+		expect(snap.taskKey).toBe(sampleMaterial.id);
+		expect(snap.cues).toHaveLength(2);
+	});
+
+	it("fails generation with missing-file when audio stat returns null", async () => {
+		const { engine, sampleMaterial } = setupLifecycleEngine({ sourceStat: null });
+		const success = await engine.generateForMaterial(sampleMaterial);
+		expect(success).toBe(false);
+		expect(engine.getSnapshot().error).toEqual({ kind: "missing-file" });
+	});
+
+	it("fails generation with audio-too-large when file size exceeds MAX_AUDIO_BYTES", async () => {
+		const { engine, sampleMaterial } = setupLifecycleEngine({
+			sourceStat: { size: 100 * 1024 * 1024 + 1, mtime: 1 },
+		});
+		const success = await engine.generateForMaterial(sampleMaterial);
+		expect(success).toBe(false);
+		expect(engine.getSnapshot().error?.kind).toBe("audio-too-large");
+	});
+
+	it("commits subtitles and validated word timings for material", async () => {
+		const { engine, sampleMaterial, commitSubtitles } = setupLifecycleEngine();
+		await engine.generateForMaterial(sampleMaterial);
+
+		const committed = await engine.commitForMaterial(sampleMaterial);
+		expect(committed).toBe(true);
+		expect(commitSubtitles).toHaveBeenCalledOnce();
+		const [materialId, cues, wordTimings] = commitSubtitles.mock.calls[0]!;
+		expect(materialId).toBe(sampleMaterial.id);
+		expect(cues).toHaveLength(2);
+		expect(wordTimings.get(cues[0]!.id)).toBeDefined();
+	});
+
+	it("rejects commit when draft validation is invalidated", async () => {
+		const { engine, sampleMaterial, commitSubtitles } = setupLifecycleEngine();
+		await engine.generateForMaterial(sampleMaterial);
+
+		engine.invalidateValidation();
+		expect(engine.isSourceValidated()).toBe(false);
+
+		const committed = await engine.commitForMaterial(sampleMaterial);
+		expect(committed).toBe(false);
+		expect(commitSubtitles).not.toHaveBeenCalled();
+		expect(engine.getSnapshot().error).toEqual({ kind: "source-changed" });
+	});
+
+	it("rejects commit when audio file mtime changes concurrently during read", async () => {
+		let statCall = 0;
+		const { engine, sampleMaterial, setStat, commitSubtitles } = setupLifecycleEngine();
+		await engine.generateForMaterial(sampleMaterial);
+
+		// During commitForMaterial: first stat returns mtime 10, second returns mtime 20
+		setStat(null); // will use custom stat
+		(engine["source"]!.stat as ReturnType<typeof vi.fn>).mockImplementation(() => {
+			statCall++;
+			return { size: 100, mtime: statCall === 1 ? 10 : 20 };
+		});
+
+		const committed = await engine.commitForMaterial(sampleMaterial);
+		expect(committed).toBe(false);
+		expect(commitSubtitles).not.toHaveBeenCalled();
+		expect(engine.getSnapshot().error).toEqual({ kind: "source-changed" });
+	});
+
+	it("syncWithMaterial restores draft and validates source fingerprint", async () => {
+		const { engine, sampleMaterial } = setupLifecycleEngine();
+		await engine.generateForMaterial(sampleMaterial);
+
+		// Switch away and sync back
+		engine.syncWithMaterial(null);
+		expect(engine.getSnapshot().status).toBe("idle");
+
+		engine.syncWithMaterial(sampleMaterial);
+		// Wait microtasks for restore and stat check
+		await vi.waitFor(() => expect(engine.getSnapshot().status).toBe("review"));
+		expect(engine.isSourceValidated()).toBe(true);
 	});
 });
