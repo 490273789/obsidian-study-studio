@@ -461,6 +461,88 @@
 	}
 }
 
+/* Desktop actions share the deck heading row; phones keep their bottom bar. */
+@media (min-width: #{breakpoints.$phone + 1px}) {
+	@container flashcard-pane (min-width: #{breakpoints.$phone + 1px}) {
+		:global(body:not(.is-mobile):not(.is-phone)) .workspace {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) max-content;
+			grid-template-rows: auto minmax(0, 1fr);
+			gap: 0;
+
+			.deckIndex {
+				grid-area: 1 / 1 / -1 / -1;
+				display: grid;
+				grid-template-columns: subgrid;
+				grid-template-rows: subgrid;
+			}
+
+			.deckIndexHeading {
+				grid-area: 1 / 1;
+				align-items: center;
+			}
+
+			.deckList {
+				grid-area: 2 / 1 / 3 / -1;
+			}
+
+			.homeActions {
+				grid-area: 1 / 2;
+				align-self: center;
+				width: auto;
+				margin-inline-end: var(--fc-space-4);
+				gap: var(--fc-space-2);
+
+				:global(.flashcard-btn) {
+					--fc-button-height: var(--fc-control-sm);
+					flex: 0 0 auto;
+					width: auto;
+					padding: var(--fc-space-1) var(--fc-space-3);
+					font-weight: var(--fc-weight-medium);
+
+					&:focus-visible {
+						@include fc-focus-ring;
+					}
+
+					@media (pointer: coarse) {
+						min-width: 40px;
+						min-height: 40px;
+					}
+				}
+
+				.addCardBtn {
+					--fc-button-bg: transparent;
+					--fc-button-bg-hover: var(--fc-surface-hover);
+					--fc-button-border: var(--fc-line);
+					--fc-button-text: var(--fc-text);
+					border: 1px solid var(--fc-button-border);
+					color: var(--fc-button-text);
+
+					&:hover:not(:disabled) {
+						border-color: var(--fc-button-border-hover);
+					}
+				}
+
+				:global(.flashcard-btn-primary) {
+					--fc-button-bg: color-mix(
+						in srgb,
+						var(--fc-primary) 10%,
+						var(--fc-surface-card)
+					);
+					--fc-button-bg-hover: color-mix(
+						in srgb,
+						var(--fc-primary) 18%,
+						var(--fc-surface-card)
+					);
+					--fc-button-border: color-mix(in srgb, var(--fc-primary) 32%, var(--fc-line));
+					--fc-button-border-hover: var(--fc-primary);
+					--fc-button-text: var(--fc-button-ink);
+				}
+			}
+		}
+	}
+}
+
 /* ── Migration card ──────────────────────────────────────────────────────── */
 
 .migrationCard {
