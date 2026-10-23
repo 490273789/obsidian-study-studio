@@ -10,6 +10,7 @@ import { App, Component, MarkdownRenderer, Notice, TFile } from "obsidian";
 import type { ScopedWorkbenchSettings } from "../../../core/host/settingsSlices";
 import type { WorkbenchFeatureShortcut } from "../../../core/host/workbench";
 import type { DeckHome, DeckHomeDestination } from "../domain/decks/deckHome";
+import type { DeckSettingsDraftSession } from "../domain/decks/deckSettingsDraftSession";
 import { type SessionLifecycle } from "../domain/sessions/sessionLifecycle";
 import { CardEditorModal } from "./views/Card";
 import { createTranslator } from "../strings/index";
@@ -33,6 +34,7 @@ interface FlashcardAppProps {
 	cardIdentityContinuity: CardIdentityContinuity;
 	pronunciationRuntime: PronunciationRuntime;
 	deckHome: DeckHome;
+	deckSettingsDraftSession?: DeckSettingsDraftSession;
 	settings: ScopedWorkbenchSettings<"flashcards">;
 	shortcuts: readonly WorkbenchFeatureShortcut[];
 	onOpenSettings: () => void;
@@ -45,12 +47,19 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 	sessionLifecycle,
 	pronunciationRuntime,
 	deckHome,
+	deckSettingsDraftSession,
 	settings,
 	shortcuts,
 	onOpenSettings,
 }) => {
 	const deckHomeOwnerId = useId();
 	const t = useMemo(() => createTranslator(settings.language), [settings.language]);
+
+	useLayoutEffect(() => {
+		return () => {
+			deckSettingsDraftSession?.releaseOwner(deckHomeOwnerId);
+		};
+	}, [deckSettingsDraftSession, deckHomeOwnerId]);
 
 	const navigation = useMemo(
 		() =>
@@ -220,6 +229,7 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 	const pageContext: FlashcardPageContext = {
 		deckHome,
 		deckHomeOwnerId,
+		deckSettingsDraftSession,
 		shortcuts,
 		wordLearningDecks: settings.wordLearningDecks,
 		transition: answerPresentationTransition,

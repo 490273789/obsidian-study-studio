@@ -4,12 +4,14 @@ import type {
 	DeckHomeDestination,
 	DeckHomeSnapshot,
 } from "../../../domain/decks/deckHome";
+import type { DeckSettingsDraftSession } from "../../../domain/decks/deckSettingsDraftSession";
 import type { WorkbenchFeatureShortcut } from "../../../../../core/host/workbench";
 import { DeckList } from "./DeckList";
 
 interface HomeRouteProps {
 	home: DeckHome;
 	ownerId: string;
+	settingsDraftSession?: DeckSettingsDraftSession;
 	onNavigate: (destination: DeckHomeDestination, deckId: string) => void;
 	onRequestMigration: (deckId?: string) => Promise<boolean>;
 	onOpenSourceFile: (filePath: string) => void;
@@ -25,7 +27,11 @@ interface HomeRouteProps {
  * The home rebuild is deferred while nothing is subscribed, so an active study
  * session no longer pays for a home snapshot on every committed answer.
  */
-export const HomeRoute = React.memo(function HomeRoute({ home, ...props }: HomeRouteProps) {
+export const HomeRoute = React.memo(function HomeRoute({
+	home,
+	settingsDraftSession,
+	...props
+}: HomeRouteProps) {
 	const subscribe = useCallback((listener: () => void) => home.subscribe(listener), [home]);
 	const readSnapshot = useCallback(() => home.getSnapshot(), [home]);
 	const snapshot = useSyncExternalStore(subscribe, readSnapshot, readSnapshot);
@@ -34,6 +40,7 @@ export const HomeRoute = React.memo(function HomeRoute({ home, ...props }: HomeR
 			snapshot={snapshot}
 			home={home}
 			ownerId={props.ownerId}
+			settingsDraftSession={settingsDraftSession}
 			onNavigate={props.onNavigate}
 			onRequestMigration={props.onRequestMigration}
 			onOpenSourceFile={props.onOpenSourceFile}

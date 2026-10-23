@@ -7,6 +7,7 @@ import type {
 	SpellingSelection,
 } from "../../../core/shared/types";
 import type { DeckHome, DeckHomeDestination } from "../domain/decks/deckHome";
+import type { DeckSettingsDraftSession } from "../domain/decks/deckSettingsDraftSession";
 import type {
 	ActiveChallengeSnapshot,
 	ActivePracticeSnapshot,
@@ -151,6 +152,7 @@ export function fromRestartOrigin(origin: SessionRestartOrigin): ViewState {
 export interface FlashcardPageContext {
 	readonly deckHome: DeckHome;
 	readonly deckHomeOwnerId: string;
+	readonly deckSettingsDraftSession?: DeckSettingsDraftSession;
 	readonly shortcuts: readonly WorkbenchFeatureShortcut[];
 	readonly wordLearningDecks: Readonly<Record<string, boolean>>;
 	readonly transition: AnswerPresentationTransition;
@@ -483,6 +485,7 @@ function renderHome(context: FlashcardPageContext): React.ReactNode {
 		<HomeRoute
 			home={context.deckHome}
 			ownerId={context.deckHomeOwnerId}
+			settingsDraftSession={context.deckSettingsDraftSession}
 			onNavigate={context.onHomeNavigate}
 			onRequestMigration={context.onRequestMigration}
 			onOpenSourceFile={context.onOpenSourceFile}

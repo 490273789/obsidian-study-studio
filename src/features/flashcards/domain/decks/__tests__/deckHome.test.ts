@@ -681,67 +681,12 @@ describe("DeckHome", () => {
 		expect(repository.statsReads.get(unchangedDeck.id)).toBeUndefined();
 	});
 
-	it("owns one settings draft, submits a narrow patch, and retains it after failure", async () => {
-		const deck = makeDeck();
-		const repository = new MemoryRepository([deck]);
-		const save = vi.fn().mockRejectedValueOnce(new Error("disk unavailable"));
-		const home = createDeckHome({
-			repository,
-			identity: makeIdentity(),
-			saveSettingsPatch: save,
-			exportDeck: vi.fn(),
-			report: (event) => events.push(event),
-		});
-
-		expect(
-			await home.act({
-				kind: "open-settings",
-				ownerId: "view-a",
-				deckId: deck.id,
-			}),
-		).toEqual({
-			kind: "applied",
-		});
-		expect(
-			await home.act({
-				kind: "open-settings",
-				ownerId: "view-b",
-				deckId: deck.id,
-			}),
-		).toEqual({ kind: "rejected", reason: "draft-owned-by-another-view" });
-		await home.act({
-			kind: "change-settings",
-			ownerId: "view-a",
-			change: { field: "dailyNewCards", value: 12 },
-		});
-
-		expect(await home.act({ kind: "save-settings", ownerId: "view-a" })).toEqual({
-			kind: "failed",
-			message: "disk unavailable",
-		});
-		expect(home.getSnapshot().settingsDraft).toMatchObject({
-			ownerId: "view-a",
-			dailyNewCards: 12,
-			daysToComplete: "1",
-		});
-		expect(events).toContainEqual({
-			kind: "settings-save-failed",
-			message: "disk unavailable",
-		});
-
-		await home.act({ kind: "save-settings", ownerId: "view-a" });
-		expect(save).toHaveBeenLastCalledWith({
-			deckId: deck.id,
-			overrides: null,
-			wordLearningEnabled: false,
-		});
-		expect(home.getSnapshot().settingsDraft).toBeNull();
-	});
-
 	it("serializes mutations while allowing one captured PDF export", async () => {
 		const deck = makeDeck();
 		const repository = new MemoryRepository([deck]);
-		const saving = deferred<void>();
+		const syncing = deferred<SynchronizeOutcome>();
+		const identity = makeIdentity();
+		identity.synchronize = vi.fn(() => syncing.promise);
 		const exportDeck = vi.fn(async (captured: Deck) => {
 			expect(captured).not.toBe(deck);
 			expect(captured.cards).not.toBe(deck.cards);
@@ -749,24 +694,14 @@ describe("DeckHome", () => {
 		});
 		const home = createDeckHome({
 			repository,
-			identity: makeIdentity(),
-			saveSettingsPatch: () => saving.promise,
+			identity,
 			exportDeck,
 			report: (event) => events.push(event),
 		});
-		await home.act({
-			kind: "open-settings",
-			ownerId: "view-a",
-			deckId: deck.id,
-		});
 
-		const savePromise = home.act({
-			kind: "save-settings",
-			ownerId: "view-a",
-		});
+		const refreshPromise = home.act({ kind: "refresh" });
 		expect(home.getSnapshot().mutation).toEqual({
-			kind: "saving-settings",
-			deckId: deck.id,
+			kind: "refreshing",
 		});
 		expect(await home.act({ kind: "refresh" })).toEqual({
 			kind: "rejected",
@@ -775,8 +710,11 @@ describe("DeckHome", () => {
 		expect(await home.act({ kind: "export", deckId: deck.id })).toEqual({
 			kind: "cancelled",
 		});
-		saving.resolve();
-		await savePromise;
+		syncing.resolve({
+			kind: "current",
+			change: { changedDeckIds: [], removedDeckIds: [], tagsChanged: false },
+		});
+		await refreshPromise;
 	});
 
 	it("uses an opaque migration continuation and cancels waiting work when its owner closes", async () => {
@@ -1103,11 +1041,6 @@ describe("DeckHome row identity", () => {
 			exportDeck: vi.fn(() => exporting.promise),
 		});
 		const before = home.getSnapshot();
-
-		await home.act({ kind: "open-settings", ownerId: "view", deckId: deck.id });
-		const withDraft = home.getSnapshot();
-		expect(withDraft.settingsDraft).not.toBeNull();
-		expect(withDraft.decks[0]).toBe(before.decks[0]);
 
 		const refreshing = home.act({ kind: "refresh" });
 		expect(home.getSnapshot().mutation.kind).toBe("refreshing");

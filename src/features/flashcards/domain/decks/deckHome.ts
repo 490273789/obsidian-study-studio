@@ -29,13 +29,12 @@ import type {
 	StudySettings,
 } from "../../../../core/shared/types";
 import type { FlashcardStudySettings } from "../../settings/slice";
-import {
-	calculateEstimatedDays,
-	calculateDailyNewCardsFromDays,
-	parseMaximumInterval,
-} from "../../settings/studyMeta";
 import type { DeckPdfExportProgress, DeckPdfExportResult } from "./deckPdfExporter";
 import { type LearningFootprintSnapshot } from "../history/dailyLearningActivity";
+export type {
+	DeckSettingsChange as DeckHomeSettingsChange,
+	DeckSettingsDraftSnapshot as DeckHomeSettingsDraft,
+} from "./deckSettingsDraftSession";
 
 interface DeckHomeTotals {
 	readonly deckCount: number;
@@ -66,32 +65,6 @@ export interface DeckHomeDeckSnapshot {
 	readonly spelling: DeckSpellingSnapshot;
 }
 
-export interface DeckHomeSettingsDraft {
-	readonly ownerId: string;
-	readonly deckId: string;
-	readonly deckName: string;
-	readonly filePath: string;
-	readonly totalCards: number;
-	readonly useCustom: boolean;
-	readonly dailyNewCards: number;
-	readonly dailyReviewCards: number;
-	readonly studyOrder: StudySettings["studyOrder"];
-	readonly requestRetention: number;
-	readonly maximumInterval: string;
-	readonly daysToComplete: string;
-	readonly wordLearningEnabled: boolean;
-	readonly global: Readonly<StudySettings>;
-	readonly spelling: {
-		readonly canStart: boolean;
-		readonly hasStableIdentities: boolean;
-		readonly invalidCards: ReadonlyArray<{
-			readonly cardId: string;
-			readonly indexInFile: number;
-			readonly front: string;
-		}>;
-	};
-}
-
 type DeckHomeMigrationScope =
 	| { readonly kind: "all" }
 	| { readonly kind: "deck"; readonly deckId: string };
@@ -107,8 +80,7 @@ type DeckHomeMutationActivity =
 			readonly kind: "awaiting-confirmation";
 			readonly ownerId: string;
 	  }
-	| { readonly kind: "migrating"; readonly scope: DeckHomeMigrationScope }
-	| { readonly kind: "saving-settings"; readonly deckId: string };
+	| { readonly kind: "migrating"; readonly scope: DeckHomeMigrationScope };
 
 type DeckHomeExportActivity =
 	| { readonly kind: "idle" }
@@ -147,23 +119,9 @@ export interface DeckHomeSnapshot {
 	readonly migration: Readonly<Pick<MigrationPreview, "sourceCount" | "cardCount">> | null;
 	readonly mutation: DeckHomeMutationActivity;
 	readonly export: DeckHomeExportActivity;
-	readonly settingsDraft: DeckHomeSettingsDraft | null;
 }
 
 export type DeckHomeDestination = "study" | "practice" | "spelling" | "word-list";
-
-export type DeckHomeSettingsChange =
-	| { readonly field: "useCustom"; readonly value: boolean }
-	| { readonly field: "dailyNewCards"; readonly value: number }
-	| { readonly field: "dailyReviewCards"; readonly value: number }
-	| {
-			readonly field: "studyOrder";
-			readonly value: StudySettings["studyOrder"];
-	  }
-	| { readonly field: "requestRetention"; readonly value: number }
-	| { readonly field: "maximumInterval"; readonly value: string }
-	| { readonly field: "daysToComplete"; readonly value: string }
-	| { readonly field: "wordLearningEnabled"; readonly value: boolean };
 
 export type DeckHomeAction =
 	| { readonly kind: "refresh" }
@@ -178,18 +136,6 @@ export type DeckHomeAction =
 			readonly continuation: string;
 			readonly confirmed: boolean;
 	  }
-	| {
-			readonly kind: "open-settings";
-			readonly ownerId: string;
-			readonly deckId: string;
-	  }
-	| {
-			readonly kind: "change-settings";
-			readonly ownerId: string;
-			readonly change: DeckHomeSettingsChange;
-	  }
-	| { readonly kind: "save-settings"; readonly ownerId: string }
-	| { readonly kind: "cancel-settings"; readonly ownerId: string }
 	| { readonly kind: "release-owner"; readonly ownerId: string }
 	| { readonly kind: "reorder"; readonly deckIds: readonly string[] }
 	| { readonly kind: "export"; readonly deckId: string }
@@ -209,8 +155,6 @@ type DeckHomeRejectionReason =
 	| "busy"
 	| "deck-missing"
 	| "deck-empty"
-	| "draft-owned-by-another-view"
-	| "draft-missing"
 	| "export-unavailable"
 	| "invalid-continuation"
 	| "migration-unavailable"
@@ -302,7 +246,8 @@ export interface DeckHomeClock {
 export interface CreateDeckHomeOptions {
 	repository: DeckHomeRepository;
 	identity: CardIdentityContinuity;
-	saveSettingsPatch(patch: DeckHomeSettingsPatch): Promise<void>;
+	/** @deprecated Settings mutations are now managed by DeckSettingsDraftSession */
+	saveSettingsPatch?: unknown;
 	saveDeckOrder?(deckIds: readonly string[]): Promise<void>;
 	exportDeck?(
 		deck: Deck,
@@ -330,19 +275,6 @@ export interface DeckHome {
 		initialSelection?: SpellingSelection,
 	): SpellingSetupPlan | null;
 	dispose(): void;
-}
-
-interface MutableSettingsDraft {
-	ownerId: string;
-	deckId: string;
-	useCustom: boolean;
-	dailyNewCards: number;
-	dailyReviewCards: number;
-	studyOrder: StudySettings["studyOrder"];
-	requestRetention: number;
-	maximumInterval: string;
-	daysToComplete: string;
-	wordLearningEnabled: boolean;
 }
 
 interface PendingMigration {
@@ -379,7 +311,6 @@ class DefaultDeckHome implements DeckHome {
 	private snapshot: DeckHomeSnapshot;
 	private mutation: DeckHomeMutationActivity = { kind: "idle" };
 	private exportActivity: DeckHomeExportActivity = { kind: "idle" };
-	private settingsDraft: MutableSettingsDraft | null = null;
 	private pendingMigration: PendingMigration | null = null;
 	private continuationSequence = 0;
 	private timer: unknown = null;
@@ -452,14 +383,6 @@ class DefaultDeckHome implements DeckHome {
 				return this.requestMigration(action.ownerId, action.deckId);
 			case "continue":
 				return this.continueMigration(action);
-			case "open-settings":
-				return this.openSettings(action.ownerId, action.deckId);
-			case "change-settings":
-				return this.changeSettings(action.ownerId, action.change);
-			case "save-settings":
-				return this.saveSettings(action.ownerId);
-			case "cancel-settings":
-				return this.cancelSettings(action.ownerId);
 			case "release-owner":
 				return this.releaseOwner(action.ownerId);
 			case "reorder":
@@ -642,152 +565,12 @@ class DefaultDeckHome implements DeckHome {
 		}
 	}
 
-	private openSettings(ownerId: string, deckId: string): DeckHomeOutcome {
-		const deck = this.options.repository
-			.getAllDecks()
-			.find((candidate) => candidate.id === deckId);
-		if (!deck) return { kind: "rejected", reason: "deck-missing" };
-		if (this.settingsDraft) {
-			if (this.settingsDraft.ownerId === ownerId) return { kind: "applied" };
-			if (this.settingsDraft.ownerId === "" && this.settingsDraft.deckId === deckId) {
-				this.settingsDraft.ownerId = ownerId;
-				this.publish();
-				return { kind: "applied" };
-			}
-			return { kind: "rejected", reason: "draft-owned-by-another-view" };
-		}
-		const settings = this.options.repository.getSettings();
-		const overrides = settings.deckStudySettings[deckId];
-		const dailyNewCards = overrides?.dailyNewCards ?? settings.dailyNewCards;
-		this.settingsDraft = {
-			ownerId,
-			deckId,
-			useCustom: overrides !== undefined,
-			dailyNewCards,
-			dailyReviewCards: overrides?.dailyReviewCards ?? settings.dailyReviewCards,
-			studyOrder: overrides?.studyOrder ?? settings.studyOrder,
-			requestRetention:
-				overrides?.fsrsParameters?.requestRetention ??
-				settings.fsrsParameters.requestRetention,
-			maximumInterval: String(
-				overrides?.fsrsParameters?.maximumInterval ??
-					settings.fsrsParameters.maximumInterval,
-			),
-			daysToComplete: String(calculateEstimatedDays(deck.cards.length, dailyNewCards)),
-			wordLearningEnabled: settings.wordLearningDecks[deckId] === true,
-		};
-		this.publish();
-		return { kind: "applied" };
-	}
-
-	private changeSettings(ownerId: string, change: DeckHomeSettingsChange): DeckHomeOutcome {
-		const draft = this.settingsDraft;
-		if (!draft) return { kind: "rejected", reason: "draft-missing" };
-		if (draft.ownerId !== ownerId) {
-			return { kind: "rejected", reason: "draft-owned-by-another-view" };
-		}
-		const deck = this.options.repository
-			.getAllDecks()
-			.find((candidate) => candidate.id === draft.deckId);
-		if (!deck) return { kind: "rejected", reason: "deck-missing" };
-		if (change.field === "daysToComplete") {
-			draft.daysToComplete = change.value;
-			const days = Number.parseInt(change.value, 10);
-			if (Number.isFinite(days) && days >= 1 && deck.cards.length > 0) {
-				draft.dailyNewCards = calculateDailyNewCardsFromDays(deck.cards.length, days);
-			}
-		} else if (change.field === "dailyNewCards") {
-			draft.dailyNewCards = change.value;
-			draft.daysToComplete = String(calculateEstimatedDays(deck.cards.length, change.value));
-		} else {
-			assignSettingsChange(draft, change);
-		}
-		this.publish();
-		return { kind: "applied" };
-	}
-
-	private async saveSettings(ownerId: string): Promise<DeckHomeOutcome> {
-		const draft = this.settingsDraft;
-		if (!draft) return { kind: "rejected", reason: "draft-missing" };
-		if (draft.ownerId !== ownerId) {
-			return { kind: "rejected", reason: "draft-owned-by-another-view" };
-		}
-		if (this.mutation.kind !== "idle") return { kind: "rejected", reason: "busy" };
-		const deck = this.options.repository
-			.getAllDecks()
-			.find((candidate) => candidate.id === draft.deckId);
-		if (!deck) return { kind: "rejected", reason: "deck-missing" };
-		const eligibility = evaluateSpellingDeckEligibility(deck, draft.wordLearningEnabled);
-		if (draft.wordLearningEnabled && !eligibility.hasStableIdentities) {
-			return {
-				kind: "rejected",
-				reason: "stable-card-identity-required",
-			};
-		}
-		if (draft.wordLearningEnabled && !eligibility.canStart) {
-			return { kind: "rejected", reason: "spelling-invalid" };
-		}
-		this.mutation = { kind: "saving-settings", deckId: draft.deckId };
-		this.publish();
-		try {
-			const settings = this.options.repository.getSettings();
-			const maximumInterval = parseMaximumInterval(
-				draft.maximumInterval,
-				settings.fsrsParameters.maximumInterval,
-			);
-			await this.options.saveSettingsPatch({
-				deckId: draft.deckId,
-				overrides: draft.useCustom
-					? {
-							dailyNewCards: draft.dailyNewCards,
-							dailyReviewCards: draft.dailyReviewCards,
-							studyOrder: draft.studyOrder,
-							fsrsParameters: {
-								requestRetention: draft.requestRetention,
-								maximumInterval,
-							},
-						}
-					: null,
-				wordLearningEnabled: draft.wordLearningEnabled,
-			});
-			this.settingsDraft = null;
-			return { kind: "applied" };
-		} catch (error) {
-			const message = errorMessage(error);
-			this.options.report({ kind: "settings-save-failed", message });
-			return { kind: "failed", message };
-		} finally {
-			this.mutation = { kind: "idle" };
-			this.publish();
-		}
-	}
-
-	private cancelSettings(ownerId: string): DeckHomeOutcome {
-		if (!this.settingsDraft) return { kind: "applied" };
-		if (this.settingsDraft.ownerId !== ownerId) {
-			return { kind: "rejected", reason: "draft-owned-by-another-view" };
-		}
-		if (this.mutation.kind === "saving-settings") {
-			return { kind: "rejected", reason: "busy" };
-		}
-		this.settingsDraft = null;
-		this.publish();
-		return { kind: "applied" };
-	}
-
 	private releaseOwner(ownerId: string): DeckHomeOutcome {
 		if (this.pendingMigration?.ownerId === ownerId) {
 			this.pendingMigration = null;
 			this.mutation = { kind: "idle" };
+			this.publish();
 		}
-		if (this.settingsDraft?.ownerId === ownerId) {
-			if (this.mutation.kind === "saving-settings") {
-				this.settingsDraft.ownerId = "";
-			} else {
-				this.settingsDraft = null;
-			}
-		}
-		this.publish();
 		return { kind: "applied" };
 	}
 
@@ -1000,7 +783,6 @@ class DefaultDeckHome implements DeckHome {
 				: null,
 			mutation: this.mutation,
 			export: this.exportActivity,
-			settingsDraft: this.buildSettingsDraftSnapshot(decks, settings),
 		});
 	}
 
@@ -1113,41 +895,6 @@ class DefaultDeckHome implements DeckHome {
 		return progress;
 	}
 
-	private buildSettingsDraftSnapshot(
-		decks: Deck[],
-		settings: FlashcardStudySettings,
-	): DeckHomeSettingsDraft | null {
-		const draft = this.settingsDraft;
-		if (!draft) return null;
-		const deck = decks.find((candidate) => candidate.id === draft.deckId);
-		if (!deck) {
-			this.settingsDraft = null;
-			return null;
-		}
-		// Dragging a settings slider republishes the draft; reuse the cached
-		// eligibility scan instead of walking every card of the deck per event.
-		const spelling = this.getDeckEligibilityCached(deck, draft.wordLearningEnabled).eligibility;
-		return {
-			...draft,
-			deckName: deck.name,
-			filePath: deck.filePath,
-			totalCards: deck.cards.length,
-			global: {
-				dailyNewCards: settings.dailyNewCards,
-				dailyReviewCards: settings.dailyReviewCards,
-				studyOrder: settings.studyOrder,
-				fsrsParameters: { ...settings.fsrsParameters },
-			},
-			spelling: {
-				canStart: spelling.canStart,
-				hasStableIdentities: spelling.hasStableIdentities,
-				invalidCards: spelling.invalidCards.map((card) => ({
-					...card,
-				})),
-			},
-		};
-	}
-
 	private scheduleTimer(): void {
 		this.stopTimer();
 		if (this.listeners.size === 0 || this.disposed) return;
@@ -1172,32 +919,6 @@ class DefaultDeckHome implements DeckHome {
 		if (this.timer === null) return;
 		this.clock.clearTimeout(this.timer);
 		this.timer = null;
-	}
-}
-
-function assignSettingsChange(
-	draft: MutableSettingsDraft,
-	change: Exclude<DeckHomeSettingsChange, { field: "dailyNewCards" | "daysToComplete" }>,
-): void {
-	switch (change.field) {
-		case "useCustom":
-			draft.useCustom = change.value;
-			break;
-		case "dailyReviewCards":
-			draft.dailyReviewCards = change.value;
-			break;
-		case "studyOrder":
-			draft.studyOrder = change.value;
-			break;
-		case "requestRetention":
-			draft.requestRetention = change.value;
-			break;
-		case "maximumInterval":
-			draft.maximumInterval = change.value;
-			break;
-		case "wordLearningEnabled":
-			draft.wordLearningEnabled = change.value;
-			break;
 	}
 }
 
@@ -1291,15 +1012,5 @@ function freezeDeckHomeSnapshot(snapshot: DeckHomeSnapshot): DeckHomeSnapshot {
 	if (snapshot.migration) Object.freeze(snapshot.migration);
 	Object.freeze(snapshot.mutation);
 	Object.freeze(snapshot.export);
-	if (snapshot.settingsDraft) {
-		Object.freeze(snapshot.settingsDraft.global.fsrsParameters);
-		Object.freeze(snapshot.settingsDraft.global);
-		for (const invalidCard of snapshot.settingsDraft.spelling.invalidCards) {
-			Object.freeze(invalidCard);
-		}
-		Object.freeze(snapshot.settingsDraft.spelling.invalidCards);
-		Object.freeze(snapshot.settingsDraft.spelling);
-		Object.freeze(snapshot.settingsDraft);
-	}
 	return Object.freeze(snapshot);
 }

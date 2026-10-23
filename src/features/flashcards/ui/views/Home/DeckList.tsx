@@ -1,4 +1,11 @@
-import React, { useCallback, useEffect, useId, useMemo, useState } from "react";
+import React, {
+	useCallback,
+	useEffect,
+	useId,
+	useMemo,
+	useState,
+	useSyncExternalStore,
+} from "react";
 import { rectSortingStrategy } from "@dnd-kit/sortable";
 import {
 	ReorderableList,
@@ -25,6 +32,7 @@ import type {
 	DeckHomeDestination,
 	DeckHomeSnapshot,
 } from "../../../domain/decks/deckHome";
+import type { DeckSettingsDraftSession } from "../../../domain/decks/deckSettingsDraftSession";
 import type { WorkbenchFeatureShortcut } from "../../../../../core/host/workbench";
 import { cls } from "../../../../../core/shared/classNames";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
@@ -43,6 +51,7 @@ interface DeckListProps {
 	snapshot: DeckHomeSnapshot;
 	home: DeckHome;
 	ownerId: string;
+	settingsDraftSession?: DeckSettingsDraftSession;
 	onNavigate: (destination: DeckHomeDestination, deckId: string) => void;
 	onRequestMigration: (deckId?: string) => Promise<boolean>;
 	onOpenSourceFile: (filePath: string) => void;
@@ -57,6 +66,7 @@ export const DeckList = React.memo(function DeckList({
 	snapshot,
 	home,
 	ownerId,
+	settingsDraftSession,
 	onNavigate,
 	onRequestMigration,
 	onOpenSourceFile,
@@ -74,7 +84,16 @@ export const DeckList = React.memo(function DeckList({
 		snapshot.mutation.kind === "preparing-migration" ||
 		snapshot.mutation.kind === "awaiting-confirmation" ||
 		snapshot.mutation.kind === "migrating";
-	const draft = snapshot.settingsDraft?.ownerId === ownerId ? snapshot.settingsDraft : null;
+	const subscribeDraft = useCallback(
+		(listener: () => void) => settingsDraftSession?.subscribe(listener) ?? (() => {}),
+		[settingsDraftSession],
+	);
+	const readDraft = useCallback(
+		() => settingsDraftSession?.getSnapshot() ?? null,
+		[settingsDraftSession],
+	);
+	const draftSnapshot = useSyncExternalStore(subscribeDraft, readDraft, readDraft);
+	const draft = draftSnapshot?.ownerId === ownerId ? draftSnapshot : null;
 	const [recentlyDroppedDeckId, setRecentlyDroppedDeckId] = useState<string | null>(null);
 	const [openMenuDeckId, setOpenMenuDeckId] = useState<string | null>(null);
 	const [isCompletedGroupOpen, setIsCompletedGroupOpen] = useState(false);
@@ -136,8 +155,8 @@ export const DeckList = React.memo(function DeckList({
 		[sortableRows, visibleDeckIds],
 	);
 	const handleCloseModal = useCallback(() => {
-		void home.act({ kind: "cancel-settings", ownerId });
-	}, [home, ownerId]);
+		settingsDraftSession?.cancel(ownerId);
+	}, [settingsDraftSession, ownerId]);
 
 	const handleExportDeck = useCallback(
 		async (deckId: string) => {
@@ -148,9 +167,9 @@ export const DeckList = React.memo(function DeckList({
 
 	const handleOpenDeckSettings = useCallback(
 		(deckId: string) => {
-			void home.act({ kind: "open-settings", ownerId, deckId });
+			settingsDraftSession?.open(deckId, ownerId);
 		},
-		[home, ownerId],
+		[settingsDraftSession, ownerId],
 	);
 
 	/**
@@ -162,12 +181,10 @@ export const DeckList = React.memo(function DeckList({
 
 	/** Another view's settings draft blocks a row unless that draft targets it. */
 	const isSettingsLocked = (deckId: string): boolean => {
-		const draft = snapshot.settingsDraft;
-		return (
-			draft !== null &&
-			draft.ownerId !== ownerId &&
-			(draft.ownerId !== "" || draft.deckId !== deckId)
-		);
+		if (settingsDraftSession) {
+			return settingsDraftSession.isLocked(deckId, ownerId);
+		}
+		return false;
 	};
 
 	const learnedCards = snapshot.totals.totalCards - snapshot.totals.newCards;
@@ -530,24 +547,13 @@ export const DeckList = React.memo(function DeckList({
 			{draft && (
 				<DeckSettingsModal
 					draft={draft}
-					isSaving={
-						snapshot.mutation.kind === "saving-settings" &&
-						snapshot.mutation.deckId === draft.deckId
-					}
-					isMigratingIdentity={
-						snapshot.mutation.kind === "preparing-migration" ||
-						snapshot.mutation.kind === "awaiting-confirmation" ||
-						snapshot.mutation.kind === "migrating"
-					}
+					isSaving={draft.isSaving}
+					isMigratingIdentity={isMigrating}
 					onChange={(change) => {
-						void home.act({
-							kind: "change-settings",
-							ownerId,
-							change,
-						});
+						settingsDraftSession?.change(ownerId, change);
 					}}
 					onSave={async () => {
-						await home.act({ kind: "save-settings", ownerId });
+						await settingsDraftSession?.save(ownerId);
 					}}
 					onOpenSourceFile={() => onOpenSourceFile(draft.filePath)}
 					onMigrateIdentity={() => onRequestMigration(draft.deckId)}

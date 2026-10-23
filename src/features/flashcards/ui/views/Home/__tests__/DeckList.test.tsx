@@ -7,9 +7,13 @@ import { rectSortingStrategy } from "@dnd-kit/sortable";
 import type {
 	DeckHome,
 	DeckHomeDeckSnapshot,
-	DeckHomeSettingsDraft,
 	DeckHomeSnapshot,
 } from "../../../../domain/decks/deckHome";
+import type {
+	DeckSettingsDraftSession,
+	DeckSettingsDraftSnapshot,
+	DeckSettingsOutcome,
+} from "../../../../domain/decks/deckSettingsDraftSession";
 import { restoreDailyLearningActivity } from "../../../../domain/history/dailyLearningActivity";
 import { DEFAULT_SETTINGS } from "../../../../../../core/host/settingsSlices";
 import { DeckList } from "../DeckList";
@@ -213,12 +217,29 @@ function harness(decks?: DeckOverrides[]) {
 		migration: null,
 		mutation: { kind: "idle" },
 		export: { kind: "idle" },
-		settingsDraft: null,
+	};
+	let currentDraft: DeckSettingsDraftSnapshot | null = null;
+	const openSpy = vi.fn((): DeckSettingsOutcome => ({ kind: "applied" }));
+	const settingsDraftSession: DeckSettingsDraftSession = {
+		getSnapshot: vi.fn(() => currentDraft),
+		subscribe: vi.fn(() => () => {}),
+		open: openSpy,
+		change: vi.fn((): DeckSettingsOutcome => ({ kind: "applied" })),
+		save: vi.fn(async (): Promise<DeckSettingsOutcome> => ({ kind: "applied" })),
+		cancel: vi.fn((): DeckSettingsOutcome => ({ kind: "applied" })),
+		releaseOwner: vi.fn((): DeckSettingsOutcome => ({ kind: "applied" })),
+		isLocked: vi.fn((deckId: string, ownerId: string): boolean => {
+			if (!currentDraft) return false;
+			if (currentDraft.ownerId === ownerId) return false;
+			return currentDraft.ownerId !== "" || currentDraft.deckId !== deckId;
+		}),
+		dispose: vi.fn(),
 	};
 	const props: React.ComponentProps<typeof DeckList> = {
 		snapshot,
 		home: { act } as unknown as DeckHome,
 		ownerId: "view",
+		settingsDraftSession,
 		onNavigate: vi.fn(),
 		onRequestMigration: vi.fn(async () => false),
 		onOpenSourceFile: vi.fn(),
@@ -297,6 +318,11 @@ function harness(decks?: DeckOverrides[]) {
 		act,
 		props,
 		render,
+		setDraft: (draft: DeckSettingsDraftSnapshot | null) => {
+			currentDraft = draft;
+		},
+		settingsDraftSession,
+		openSpy,
 		dnd,
 		drop,
 		setCardMenu,
@@ -323,7 +349,7 @@ function renderDeckCard(
 	return renderCard(element.props) as React.ReactElement<ElementProps>;
 }
 
-function makeSettingsDraft(ownerId: string, deckId: string): DeckHomeSettingsDraft {
+function makeSettingsDraft(ownerId: string, deckId: string): DeckSettingsDraftSnapshot {
 	return {
 		ownerId,
 		deckId,
@@ -338,6 +364,7 @@ function makeSettingsDraft(ownerId: string, deckId: string): DeckHomeSettingsDra
 		maximumInterval: "36500",
 		daysToComplete: "10",
 		wordLearningEnabled: false,
+		isSaving: false,
 		global: {
 			dailyNewCards: DEFAULT_SETTINGS.dailyNewCards,
 			dailyReviewCards: DEFAULT_SETTINGS.dailyReviewCards,
@@ -569,10 +596,7 @@ describe("deck row presentation state", () => {
 	it("passes the settings lock and export target to the affected rows", () => {
 		const h = harness();
 
-		h.props.snapshot = {
-			...h.props.snapshot,
-			settingsDraft: makeSettingsDraft("", "first"),
-		};
+		h.setDraft(makeSettingsDraft("", "first"));
 		h.render();
 		const locked = h.findAll(h.tree(), (element) => element.props.deck !== undefined);
 
@@ -580,9 +604,9 @@ describe("deck row presentation state", () => {
 		expect(locked[0]!.props.isSettingsLocked).toBe(false);
 		expect(locked[1]!.props.isSettingsLocked).toBe(true);
 
+		h.setDraft(null);
 		h.props.snapshot = {
 			...h.props.snapshot,
-			settingsDraft: null,
 			export: { kind: "exporting", deckId: "second", phase: null, completed: 0, total: 1 },
 		};
 		h.render();
@@ -591,6 +615,19 @@ describe("deck row presentation state", () => {
 		expect(exporting[0]!.props.isExporting).toBe(false);
 		expect(exporting[0]!.props.isExportBusy).toBe(true);
 		expect(exporting[1]!.props.isExporting).toBe(true);
+	});
+
+	it("delegates opening deck settings to the settings draft session", () => {
+		const h = harness();
+		h.render();
+		const card = h.findAll(h.tree(), (element) => element.props.deck !== undefined)[0]!;
+		// Find DeckCard's settings trigger:
+		// onOpenSettings is passed directly to the DeckCard component
+		const onOpenSettings = (
+			card.props as unknown as { onOpenSettings: (deckId: string) => void }
+		).onOpenSettings;
+		onOpenSettings("first");
+		expect(h.openSpy).toHaveBeenCalledWith("first", "view");
 	});
 });
 
