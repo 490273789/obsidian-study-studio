@@ -46,13 +46,19 @@ const SOURCE_IDS_KEY = "study-studio.shadowing.source-ids.v1";
 const SHADOW_ENABLED_KEY = "study-studio.shadowing.enabled-sources.v1";
 const FFMPEG_PATH_KEY = "study-studio.shadowing.ffmpeg-path.v1";
 
+export interface VideoShadowingCue {
+	readonly start: number;
+	readonly end: number;
+	readonly text: string;
+}
+
 export interface VideoShadowingServices {
 	transcribe(
 		audio: ArrayBuffer,
 		provider: "bailian" | "openai-compatible",
 		signature: string,
 		signal: AbortSignal,
-	): Promise<readonly { start: number; end: number; text: string }[]>;
+	): Promise<readonly VideoShadowingCue[]>;
 	translate(
 		text: string,
 		profileId: string,

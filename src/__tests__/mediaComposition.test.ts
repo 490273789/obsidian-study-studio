@@ -3,15 +3,12 @@ import { AiService, type AiEngineConfig } from "../core/ai";
 import { DEFAULT_SETTINGS } from "../core/host/settingsSlices";
 import type { OutboundPort, OutboundResponse } from "../core/net/types";
 import { WorkbenchStore } from "../core/storage/workbenchStore";
-import { createWorkbenchModules } from "../features";
-import type { VideoShadowingServices } from "../features/video-player/feature";
+import { createVideoShadowingServices, sanitizeTranscriptCues } from "../features/mediaComposition";
 import { TranslationRuntime } from "../features/translation/domain/translationRuntime";
 import {
 	VideoSubtitleJobs,
 	type ShadowSubtitleStore,
 } from "../features/video-player/domain/shadowSubtitlesJobs";
-
-const composition = vi.hoisted(() => ({ video: vi.fn() }));
 
 function response(text: string): OutboundResponse {
 	return {
@@ -21,23 +18,6 @@ function response(text: string): OutboundResponse {
 }
 
 vi.mock("obsidian", () => ({ requestUrl: vi.fn() }));
-vi.mock("../features/flashcards/feature", () => ({
-	createFlashcardFeature: () => ({ sourceEditAdapter: {} }),
-}));
-vi.mock("../features/translation/feature", () => ({
-	createTranslationFeature: () => ({ selectionAdapter: {} }),
-}));
-vi.mock("../features/dictionary/feature", () => ({
-	createDictionaryFeature: () => ({ selectionAdapter: {} }),
-}));
-vi.mock("../features/dictionary/ui/SelectionDictionaryResultContent", () => ({
-	SelectionDictionaryResultContent: () => null,
-}));
-vi.mock("../features/video-player/feature", () => ({
-	createVideoPlayerFeature: composition.video,
-}));
-vi.mock("../features/audio-practice/feature", () => ({ createAudioPracticeFeature: () => ({}) }));
-vi.mock("../core/selectionHelper/module", () => ({ createSelectionHelperModule: () => ({}) }));
 
 function setup() {
 	const engine: AiEngineConfig = {
@@ -80,9 +60,7 @@ function setup() {
 		persist: async (ai) => store.saveSettings({ ...store.getSettings(), ai }),
 		createId: () => "new-engine",
 	});
-	composition.video.mockClear();
-	createWorkbenchModules({ ai, store, net, plugin: {} as never });
-	const services = composition.video.mock.calls[0]![0].shadowing as VideoShadowingServices;
+	const services = createVideoShadowingServices({ ai, store, net });
 	return { ai, engine, store, services, request, net };
 }
 
@@ -301,5 +279,52 @@ describe("composed video transcription", () => {
 		} finally {
 			ai.dispose();
 		}
+	});
+});
+
+describe("sanitizeTranscriptCues", () => {
+	it("preserves valid cues and trims surrounding whitespace", () => {
+		const result = sanitizeTranscriptCues([
+			{ start: 0, end: 1.5, text: "  Hello world  " },
+			{ start: 1.5, end: 3.25, text: "Second sentence." },
+		]);
+		expect(result).toEqual([
+			{ start: 0, end: 1.5, text: "Hello world" },
+			{ start: 1.5, end: 3.25, text: "Second sentence." },
+		]);
+	});
+
+	it("filters out cues with null timestamps or non-finite numbers", () => {
+		const result = sanitizeTranscriptCues([
+			{ start: null, end: 1.0, text: "Null start" },
+			{ start: 1.0, end: null, text: "Null end" },
+			{ start: NaN, end: 2.0, text: "NaN start" },
+			{ start: 2.0, end: Number.POSITIVE_INFINITY, text: "Infinite end" },
+			{ start: 3.0, end: 4.0, text: "Valid" },
+		]);
+		expect(result).toEqual([{ start: 3.0, end: 4.0, text: "Valid" }]);
+	});
+
+	it("filters out cues with negative start or zero/inverted duration", () => {
+		const result = sanitizeTranscriptCues([
+			{ start: -0.5, end: 1.0, text: "Negative start" },
+			{ start: 2.0, end: 2.0, text: "Zero duration" },
+			{ start: 3.5, end: 3.0, text: "Inverted timing" },
+			{ start: 4.0, end: 5.0, text: "Valid timing" },
+		]);
+		expect(result).toEqual([{ start: 4.0, end: 5.0, text: "Valid timing" }]);
+	});
+
+	it("filters out cues with empty or whitespace-only text", () => {
+		const result = sanitizeTranscriptCues([
+			{ start: 0, end: 1.0, text: "" },
+			{ start: 1.0, end: 2.0, text: "   \t\n  " },
+			{ start: 2.0, end: 3.0, text: "Non-empty" },
+		]);
+		expect(result).toEqual([{ start: 2.0, end: 3.0, text: "Non-empty" }]);
+	});
+
+	it("returns empty array when given empty cues", () => {
+		expect(sanitizeTranscriptCues([])).toEqual([]);
 	});
 });
