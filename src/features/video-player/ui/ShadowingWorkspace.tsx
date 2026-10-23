@@ -2,84 +2,15 @@ import React, { useMemo, useState } from "react";
 import type { Language } from "../../../core/shared/types";
 import styles from "./ShadowingWorkspace.module.scss";
 
-export interface ShadowingCueRow {
-	id: string;
-	start: number;
-	end: number;
-	text: string;
-	translation?: string | null;
-	needsReview?: boolean;
-}
+import type { ShadowingCueRow, ShadowingRecordRow, ShadowingWorkspaceState } from "../domain/types";
+import type { ShadowingWorkspaceActions } from "../domain/shadowingWorkspaceSession";
 
-export interface ShadowingRecordRow {
-	id: string;
-	start: number;
-	end: number;
-	text: string;
-	kind: "difficult" | "recording";
-	createdAt?: number;
-	playbackRate?: number;
-}
-
-export interface ShadowingWorkspaceState {
-	enabled: boolean;
-	status: "idle" | "queued" | "transcribing" | "translating" | "paused" | "error" | "complete";
-	processedSeconds: number;
-	totalSeconds: number | null;
-	taskError: string | null;
-	translationFailed: boolean;
-	cues: readonly ShadowingCueRow[];
-	records: readonly ShadowingRecordRow[];
-	failedSaves: readonly {
-		id: string;
-		sourceId: string;
-		start: number;
-		end: number;
-		text: string;
-	}[];
-	hasCandidate: boolean;
-	hasPrevious: boolean;
-	practicePhase: string;
-	practiceMode: "shadow" | "repeat-after";
-	practiceStart: number | null;
-	practiceEnd: number | null;
-	countdown: number;
-	restSeconds: number;
-	responseMultiplier: number;
-	hasTemporaryTake: boolean;
-	savingTake: boolean;
-	practiceError: string | null;
-}
-
-export interface ShadowingWorkspaceActions {
-	generate: () => void;
-	translateImported: () => void;
-	retryTranslation: () => void;
-	reloadSubtitles: () => void;
-	pauseGeneration: () => void;
-	resumeGeneration: () => void;
-	importFile: (file: File, role: "original" | "translation" | "bilingual") => void;
-	adoptCandidate: () => void;
-	restorePrevious: () => void;
-	editCue: (id: string, text: string, translation: string) => void;
-	selectRange: (start: number, end: number, text: string) => void;
-	seekTo: (seconds: number) => void;
-	setMode: (mode: "shadow" | "repeat-after") => void;
-	setRestSeconds: (seconds: number) => void;
-	setResponseMultiplier: (multiplier: number) => void;
-	continueEarly: () => void;
-	startLoop: () => void;
-	stopPractice: () => void;
-	recordOnce: () => void;
-	replayTake: () => void;
-	replayOriginal: () => void;
-	saveTake: () => void;
-	retrySave: (takeId: string) => void;
-	continueWatching: () => void;
-	markDifficult: () => void;
-	openRecord: (record: ShadowingRecordRow) => void;
-	deleteRecord: (record: ShadowingRecordRow) => void;
-}
+export type {
+	ShadowingCueRow,
+	ShadowingRecordRow,
+	ShadowingWorkspaceState,
+	ShadowingWorkspaceActions,
+};
 
 export interface ShadowingWorkspaceProps {
 	language: Language;

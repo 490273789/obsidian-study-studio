@@ -12,7 +12,7 @@ import { VideoPlayerRuntime } from "./domain";
 import type { LocalVideoSource } from "./domain/types";
 import { VideoSubtitleJobs, type ShadowVideoSource } from "./domain/shadowSubtitlesJobs";
 import { validShadowVaultFolder } from "./domain/shadowVaultFolder";
-import { ShadowingSession, type ShadowRecorderPort } from "./domain/shadowingSession";
+import type { ShadowRecorderPort } from "./domain/shadowingSession";
 import {
 	localVideoMediaUrl,
 	ObsidianVideoPlayerStateStore,
@@ -32,7 +32,8 @@ import type { VideoPlayerSettings } from "./settings/slice";
 import { videoPlayerStrings } from "./strings/videoPlayer";
 import { PlayerViewInteraction } from "./ui/playerViewInteraction";
 import { VideoPlayerView } from "./ui/VideoPlayerView";
-import { ShadowingBridge } from "./ui/shadowingBridge";
+import { ShadowingWorkspaceSession } from "./domain/shadowingWorkspaceSession";
+import { createBrowserTakeAudioPlayer } from "./obsidian/browserTakeAudioPlayer";
 
 export const VIDEO_PLAYER_SECTION_ID = "video-player";
 export const VIEW_TYPE_VIDEO_PLAYER = "study-studio-local-video-player";
@@ -145,7 +146,7 @@ export function createVideoPlayerFeature(
 				sourceSignature: await shadowVideoSourceSignature(source.path, requireModule),
 				serviceSignature: await serviceSignature(),
 			});
-			let bridge: ShadowingBridge | undefined;
+			let shadowingSession: ShadowingWorkspaceSession | undefined;
 			if (deps.shadowing) {
 				const shadowing = deps.shadowing;
 				let recorderWindow: Window | null = null;
@@ -220,22 +221,13 @@ export function createVideoPlayerFeature(
 						},
 					}),
 				);
-				const session = lifetime.own(
-					new ShadowingSession({
-						runtime,
-						recorder,
-						saveTake: async (take) => {
-							await records.saveTake(take);
-							await bridge?.refreshRecords(take.range.sourceId);
-						},
-					}),
-				);
-				bridge = lifetime.own(
-					new ShadowingBridge({
+				shadowingSession = lifetime.own(
+					new ShadowingWorkspaceSession({
 						runtime,
 						jobs,
-						session,
+						recorder,
 						records,
+						audioPlayer: createBrowserTakeAudioPlayer(),
 						readEnabled: (sourceId) => enabledSources.has(sourceId),
 						writeEnabled: (sourceId, enabled) => {
 							if (enabled) enabledSources.add(sourceId);
@@ -279,7 +271,8 @@ export function createVideoPlayerFeature(
 								.defaultView as typeof desktopWindow;
 						const unsubscribe = view.subscribe(() => {
 							const presenter = view.getSnapshot().role === "presenter";
-							if (wasPresenter && !presenter) bridge?.stopForPresenterLoss();
+							if (wasPresenter && !presenter)
+								shadowingSession?.stopForPresenterLoss();
 							if (!wasPresenter && presenter)
 								desktopWindow = rootEl.ownerDocument
 									.defaultView as typeof desktopWindow;
@@ -288,7 +281,7 @@ export function createVideoPlayerFeature(
 						return {
 							resource: view,
 							dispose: () => {
-								if (wasPresenter) bridge?.stopForPresenterLoss();
+								if (wasPresenter) shadowingSession?.stopForPresenterLoss();
 								unsubscribe();
 								view.dispose();
 							},
@@ -318,7 +311,7 @@ export function createVideoPlayerFeature(
 								language={language}
 								rootEl={rootEl}
 								settings={host.settings.read().videoPlayer}
-								shadowing={bridge}
+								shadowing={shadowingSession}
 								onFocusExisting={() => void open()}
 								onOpenSettings={() =>
 									host.settingsTab.open(VIDEO_PLAYER_SECTION_ID)
