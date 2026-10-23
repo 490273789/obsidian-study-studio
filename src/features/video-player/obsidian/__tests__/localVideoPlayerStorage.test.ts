@@ -7,6 +7,7 @@ describe("parseDeviceVideoPlayerState", () => {
 			schemaVersion: 1,
 			sources: [],
 			playbackRate: 1,
+			queueExpanded: false,
 		});
 	});
 	it("keeps valid paths, progress, playback rate, and geometry", () => {

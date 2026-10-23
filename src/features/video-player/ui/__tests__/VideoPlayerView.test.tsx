@@ -1,5 +1,5 @@
 import React from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { FlashcardButton } from "../../../../core/ui/primitives/Button";
 import { FlashcardHeader } from "../../../../core/ui/primitives/Header";
@@ -10,7 +10,7 @@ import type { VideoPlayerRuntime } from "../../domain/videoPlayerRuntime";
 import { normalizeVideoPlayerSettings } from "../../settings/slice";
 import { videoPlayerStrings } from "../../strings/videoPlayer";
 import styles from "../VideoPlayer.module.scss";
-import { VideoPlayerView } from "../VideoPlayerView";
+import { VideoPlayerView, type ShadowingViewBridge } from "../VideoPlayerView";
 import type { PlayerViewMount } from "../playerViewInteraction";
 
 const tooltipApi = vi.hoisted(() => ({ setTooltip: vi.fn() }));
@@ -131,7 +131,7 @@ function harness() {
 		act,
 		dispose: vi.fn(),
 	};
-	const render = () =>
+	const render = (shadowing?: ShadowingViewBridge) =>
 		VideoPlayerView({
 			runtime,
 			view,
@@ -142,6 +142,7 @@ function harness() {
 			onOpenSettings: vi.fn(),
 			onPickVideos,
 			onPickReplacement: vi.fn(async () => null),
+			shadowing,
 		});
 	let list: React.ReactElement<React.ComponentProps<typeof ReorderableList>>;
 	function rerender() {
@@ -182,7 +183,7 @@ function harness() {
 }
 
 describe("video queue view", () => {
-	it("collapses into a side rail and expands from its left arrow", () => {
+	it("keeps a compact queue bar and opens the list on demand", () => {
 		const h = harness();
 		const expanded = h.render();
 		const layout = (tree: React.ReactNode) =>
@@ -205,27 +206,24 @@ describe("video queue view", () => {
 					element.type === FlashcardButton &&
 					element.props["aria-expanded"] !== undefined,
 			);
-		expect(layout(expanded).props.className).not.toContain(styles.layoutCollapsed);
+		expect(layout(expanded).props.className).not.toContain(styles.layoutWithShadow);
 		expect(toggle(expanded).props["aria-expanded"]).toBe(true);
 		expect(
-			findElement(
-				toggle(expanded).props.children,
-				(element) => element.type === ChevronRight,
-			),
+			findElement(toggle(expanded).props.children, (element) => element.type === ChevronUp),
 		).toBeDefined();
 		toggle(expanded).props.onClick!({} as React.MouseEvent<HTMLButtonElement>);
 		expect(h.act).toHaveBeenCalledWith({ type: "set-queue-expanded", expanded: false });
 
 		h.setQueueExpanded(false);
 		const collapsed = h.render();
-		expect(layout(collapsed).props.className).toContain(styles.layoutCollapsed);
-		expect(queue(collapsed).props.className).toContain(styles.queueCollapsed);
+		expect(layout(collapsed).props.className).not.toContain(styles.layoutWithShadow);
+		expect(queue(collapsed).props.className).toContain(styles.queue);
 		expect(toggle(collapsed).props["aria-expanded"]).toBe(false);
 		expect(toggle(collapsed).props["aria-label"]).toBe(videoPlayerStrings("en").queueExpand);
 		expect(
 			findElement(
 				toggle(collapsed).props.children,
-				(element) => element.type === ChevronLeft,
+				(element) => element.type === ChevronDown,
 			),
 		).toBeDefined();
 		expect(() => findElement(collapsed, (element) => element.type === ReorderableList)).toThrow(
@@ -241,6 +239,59 @@ describe("video queue view", () => {
 		).toBeDefined();
 		toggle(collapsed).props.onClick!({} as React.MouseEvent<HTMLButtonElement>);
 		expect(h.act).toHaveBeenLastCalledWith({ type: "set-queue-expanded", expanded: true });
+	});
+
+	it("shows the right subtitle panel only when the current video switch is on", () => {
+		const h = harness();
+		let enabled = false;
+		const setEnabled = vi.fn((value: boolean) => {
+			enabled = value;
+		});
+		const bridge = {
+			getSnapshot: () => ({ enabled }),
+			subscribe: () => () => undefined,
+			setEnabled,
+			actions: {},
+		} as unknown as ShadowingViewBridge;
+		const off = h.render(bridge);
+		expect(
+			findElement<React.ComponentProps<"input">>(
+				off,
+				(element) => element.type === "input" && element.props.type === "checkbox",
+			).props.checked,
+		).toBe(false);
+		expect(() =>
+			findElement<React.ComponentProps<"aside">>(
+				off,
+				(element) =>
+					element.type === "aside" && element.props.className === styles.shadowSide,
+			),
+		).toThrow("Expected view element");
+
+		const toggle = findElement<React.ComponentProps<"input">>(
+			off,
+			(element) => element.type === "input" && element.props.type === "checkbox",
+		);
+		toggle.props.onChange!({
+			currentTarget: { checked: true },
+		} as React.ChangeEvent<HTMLInputElement>);
+		expect(setEnabled).toHaveBeenCalledWith(true);
+		const on = h.render(bridge);
+		expect(
+			findElement<React.ComponentProps<"div">>(
+				on,
+				(element) =>
+					element.type === "div" &&
+					element.props.className?.includes(styles.layout) === true,
+			).props.className,
+		).toContain(styles.layoutWithShadow);
+		expect(
+			findElement<React.ComponentProps<"aside">>(
+				on,
+				(element) =>
+					element.type === "aside" && element.props.className === styles.shadowSide,
+			),
+		).toBeDefined();
 	});
 
 	it("offers video import only from the queue and keeps the icon accessible", async () => {
@@ -295,6 +346,7 @@ describe("video queue view", () => {
 		);
 		source.props.onClick!({} as React.MouseEvent<HTMLButtonElement>);
 		expect(h.selectSource).toHaveBeenCalledExactlyOnceWith("third");
+		expect(h.act).toHaveBeenCalledWith({ type: "set-queue-expanded", expanded: false });
 		expect(h.reorderSources).not.toHaveBeenCalled();
 		for (const [id, label] of [
 			["first", "Completed"],

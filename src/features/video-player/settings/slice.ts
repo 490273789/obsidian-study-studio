@@ -1,4 +1,5 @@
 import { settingsRecord, type SettingsSlice } from "../../../core/settings/slice";
+import { validShadowVaultFolder } from "../domain/shadowVaultFolder";
 import {
 	DEFAULT_VIDEO_PLAYER_SHORTCUTS,
 	normalizeKeyboardShortcut,
@@ -12,6 +13,9 @@ export interface VideoPlayerSettings {
 	enabled: boolean;
 	skipInterval: VideoSkipInterval;
 	shortcuts: VideoPlayerShortcuts;
+	shadowTranscriptionProvider: "bailian" | "openai-compatible";
+	shadowTranslationProfileId: string;
+	shadowVaultFolder: string;
 }
 
 export function normalizeVideoPlayerSettings(value: unknown): VideoPlayerSettings {
@@ -37,6 +41,17 @@ export function normalizeVideoPlayerSettings(value: unknown): VideoPlayerSetting
 			? (data.skipInterval as VideoSkipInterval)
 			: 10,
 		shortcuts: makeShortcutsUnique(normalizedShortcuts),
+		shadowTranscriptionProvider:
+			data.shadowTranscriptionProvider === "openai-compatible"
+				? "openai-compatible"
+				: "bailian",
+		shadowTranslationProfileId:
+			typeof data.shadowTranslationProfileId === "string"
+				? data.shadowTranslationProfileId
+				: "",
+		shadowVaultFolder: validShadowVaultFolder(data.shadowVaultFolder)
+			? data.shadowVaultFolder
+			: "Study Studio/影子跟读",
 	};
 }
 
@@ -51,6 +66,9 @@ export const videoPlayerSettingsSlice: SettingsSlice<{
 			enabled: true,
 			skipInterval: 10,
 			shortcuts: { ...DEFAULT_VIDEO_PLAYER_SHORTCUTS },
+			shadowTranscriptionProvider: "bailian",
+			shadowTranslationProfileId: "",
+			shadowVaultFolder: "Study Studio/影子跟读",
 		},
 	}),
 	normalize: (raw) => ({

@@ -164,12 +164,12 @@ describe("VideoPlayerRuntime", () => {
 			toMediaUrl: (path) => path,
 		});
 
-		expect(runtime.getSnapshot().queueExpanded).toBe(true);
+		expect(runtime.getSnapshot().queueExpanded).toBe(false);
 		expect(runtime.getSnapshot().floatingRect).toBeNull();
 
-		runtime.setQueueExpanded(false);
-		expect(runtime.getSnapshot().queueExpanded).toBe(false);
-		expect(store.state.queueExpanded).toBe(false);
+		runtime.setQueueExpanded(true);
+		expect(runtime.getSnapshot().queueExpanded).toBe(true);
+		expect(store.state.queueExpanded).toBe(true);
 
 		const rect = { x: 50, y: 60, width: 400, height: 300 };
 		runtime.setFloatingRect(rect);
@@ -190,8 +190,8 @@ describe("VideoPlayerRuntime", () => {
 			reportError,
 		});
 
-		runtime.setQueueExpanded(false);
-		expect(runtime.getSnapshot().queueExpanded).toBe(false);
+		runtime.setQueueExpanded(true);
+		expect(runtime.getSnapshot().queueExpanded).toBe(true);
 		expect(reportError).toHaveBeenCalledWith(failure);
 	});
 
@@ -202,13 +202,34 @@ describe("VideoPlayerRuntime", () => {
 			toMediaUrl: (path) => path,
 		});
 		runtime.addSources([source("one")]);
-		runtime.setQueueExpanded(false);
+		runtime.setQueueExpanded(true);
 		runtime.setFloatingRect({ x: 10, y: 20, width: 300, height: 200 });
 
 		runtime.clearLocalData();
 		expect(runtime.getSnapshot().sources).toEqual([]);
-		expect(runtime.getSnapshot().queueExpanded).toBe(true);
+		expect(runtime.getSnapshot().queueExpanded).toBe(false);
 		expect(runtime.getSnapshot().floatingRect).toBeNull();
 		expect(store.state).toEqual(emptyState());
+	});
+
+	it("ignores a queued internal pause after bounded playback has resumed", async () => {
+		const runtime = new VideoPlayerRuntime({
+			store: new MemoryStore(),
+			toMediaUrl: (path) => path,
+		});
+		const media = new Media();
+		media.pause = vi.fn(() => {
+			media.paused = true;
+			queueMicrotask(() => media.emit("pause"));
+		});
+		runtime.addSources([source("one")]);
+		runtime.bindMedia(media);
+		await Promise.resolve();
+		await media.play();
+		const result = runtime.playRange(10, 12);
+		await Promise.resolve();
+		media.currentTime = 12;
+		media.emit("timeupdate");
+		expect(await result).toBe("completed");
 	});
 });

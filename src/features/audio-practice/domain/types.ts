@@ -8,13 +8,8 @@ export interface MaterialOperationSnapshot {
 	readonly status: "idle" | "pending" | "succeeded" | "failed";
 	readonly failure: AudioFailure | null;
 }
-export interface SubtitleCue {
-	readonly id: string;
-	readonly text: string;
-	readonly start: number;
-	readonly end: number;
-	readonly needsReview?: boolean;
-}
+import type { SubtitleCue } from "../../../core/media/subtitles";
+export type { SubtitleCue } from "../../../core/media/subtitles";
 export const AUDIO_PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5] as const;
 export type AudioPlaybackRate = (typeof AUDIO_PLAYBACK_RATES)[number];
 export type AudioPracticeMode = "sentence" | "continuous";

@@ -1,0 +1,210 @@
+.workspace {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-height: 0;
+	padding: 12px;
+	border: 1px solid var(--fc-line-soft);
+	border-radius: 12px;
+	background: var(--fc-surface-section);
+}
+
+.tabs,
+.toolbar,
+.practice {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+
+.tabs {
+	border-bottom: 1px solid var(--fc-line-soft);
+	padding-bottom: 8px;
+}
+
+.workspace button,
+.workspace select,
+.fileButton,
+.floating button {
+	min-height: 34px;
+	padding: 5px 9px;
+	border: 1px solid var(--fc-line);
+	border-radius: 6px;
+	background: var(--background-primary);
+	color: var(--text-normal);
+	cursor: pointer;
+}
+
+.workspace button:hover,
+.floating button:hover,
+.fileButton:hover {
+	border-color: var(--interactive-accent);
+}
+
+.workspace button:focus-visible,
+.floating button:focus-visible,
+.workspace select:focus-visible,
+.workspace input:focus-visible,
+.workspace textarea:focus-visible,
+.fileButton:focus-within {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+}
+
+.workspace button:disabled,
+.floating button:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.tabs button[aria-current="page"] {
+	border-color: var(--interactive-accent);
+	color: var(--interactive-accent);
+}
+
+.fileButton {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	font-size: var(--font-ui-small);
+
+	input {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		opacity: 0;
+		cursor: pointer;
+	}
+}
+
+.cueList,
+.recordList {
+	display: flex;
+	max-height: min(42vh, 420px);
+	min-height: 0;
+	flex-direction: column;
+	gap: 4px;
+	overflow: auto;
+}
+
+.cue,
+.record {
+	display: grid;
+	grid-template-columns: 64px minmax(0, 1fr);
+	gap: 4px 10px;
+	width: 100%;
+	text-align: left;
+}
+
+.cue.selected {
+	border-color: var(--interactive-accent);
+	background: color-mix(in srgb, var(--interactive-accent) 12%, var(--background-primary));
+}
+
+.cue.current {
+	box-shadow: inset 3px 0 var(--interactive-accent);
+}
+
+.time {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+}
+
+.original,
+.translation {
+	grid-column: 2;
+	min-width: 0;
+	word-break: break-word;
+}
+
+.translation {
+	color: var(--text-muted);
+}
+
+.draft {
+	grid-column: 2;
+	color: var(--text-warning);
+	font-size: var(--font-ui-smaller);
+}
+
+.selection,
+.task,
+.practice {
+	padding: 9px;
+	border: 1px solid var(--fc-line-soft);
+	border-radius: 8px;
+}
+
+.rangeInputs,
+.editor {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	width: 100%;
+}
+
+.rangeInputs label,
+.editor label {
+	display: flex;
+	min-width: 100px;
+	flex-direction: column;
+	gap: 4px;
+	font-size: var(--font-ui-smaller);
+}
+
+.rangeInputs input {
+	width: 112px;
+}
+
+.editor textarea {
+	min-width: 170px;
+	min-height: 56px;
+}
+
+.task p,
+.empty {
+	margin: 4px 0;
+	color: var(--text-muted);
+}
+
+.record {
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: start;
+}
+
+.record button:first-child {
+	text-align: left;
+}
+
+.floating {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 8px 12px;
+	background: #111418;
+	color: #f5f6f8;
+
+	p {
+		margin: 0;
+	}
+
+	p + p {
+		color: #c4c8d0;
+	}
+
+	button {
+		background: #20262e;
+		color: #f5f6f8;
+	}
+}
+
+@media (pointer: coarse) {
+	.workspace button,
+	.workspace select,
+	.fileButton,
+	.floating button {
+		min-height: 40px;
+	}
+}

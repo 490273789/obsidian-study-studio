@@ -9,12 +9,24 @@ interface VideoPlayerSettingsActions {
 	setSkipInterval: (seconds: VideoSkipInterval) => void | Promise<void>;
 	setShortcut: (key: keyof VideoPlayerShortcuts, shortcut: string) => void | Promise<void>;
 	clearLocalData: () => void | Promise<void>;
+	setShadowTranscriptionProvider?: (
+		provider: "bailian" | "openai-compatible",
+	) => void | Promise<void>;
+	setShadowTranslationProfileId?: (profileId: string) => void | Promise<void>;
+	setShadowVaultFolder?: (folder: string) => void | Promise<void>;
+	setShadowFfmpegPath?: (path: string) => void | Promise<void>;
+}
+
+export interface ShadowingSettingsChoices {
+	translationProfiles: readonly { id: string; name: string }[];
+	ffmpegPath: string;
 }
 
 export function buildVideoPlayerSettingsViewModel(
 	settings: VideoPlayerSettings,
 	actions: VideoPlayerSettingsActions,
 	language: Language,
+	shadowing?: ShadowingSettingsChoices,
 ): SettingsPresentation {
 	const t = videoPlayerStrings(language);
 	return defineSettings("video-player", (page) => {
@@ -76,6 +88,61 @@ export function buildVideoPlayerSettingsViewModel(
 				);
 			}
 		});
+		if (shadowing)
+			page.group("shadowing", t.shadowSettings, (group) => {
+				group.select(
+					"transcription-provider",
+					{ name: t.shadowProvider, description: t.shadowProviderDescription },
+					{
+						value: settings.shadowTranscriptionProvider,
+						options: [
+							{ value: "bailian", label: "百炼" },
+							{ value: "openai-compatible", label: "OpenAI compatible" },
+						],
+						onChange: (value) =>
+							actions.setShadowTranscriptionProvider?.(
+								value as "bailian" | "openai-compatible",
+							),
+					},
+				);
+				group.select(
+					"translation-profile",
+					{ name: t.shadowTranslation, description: t.shadowTranslationDescription },
+					{
+						value: settings.shadowTranslationProfileId,
+						options: [
+							{
+								value: "",
+								label:
+									language === "zh"
+										? "自动选择已启用配置"
+										: "First enabled profile",
+							},
+							...shadowing.translationProfiles.map((profile) => ({
+								value: profile.id,
+								label: profile.name,
+							})),
+						],
+						onChange: (value) => actions.setShadowTranslationProfileId?.(value),
+					},
+				);
+				group.text(
+					"vault-folder",
+					{ name: t.shadowFolder, description: t.shadowFolderDescription },
+					{
+						value: settings.shadowVaultFolder,
+						onChange: (value) => actions.setShadowVaultFolder?.(value.trim()),
+					},
+				);
+				group.text(
+					"ffmpeg-path",
+					{ name: t.shadowFfmpeg, description: t.shadowFfmpegDescription },
+					{
+						value: shadowing.ffmpegPath,
+						onChange: (value) => actions.setShadowFfmpegPath?.(value.trim()),
+					},
+				);
+			});
 		page.group("local-data", t.localData, (group) => {
 			group.button(
 				"clear",

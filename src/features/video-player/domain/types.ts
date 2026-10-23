@@ -44,6 +44,7 @@ export interface VideoPlayerSnapshot {
 export interface VideoMediaPort {
 	currentTime: number;
 	readonly duration: number;
+	readonly seeking?: boolean;
 	paused: boolean;
 	playbackRate: number;
 	src: string;

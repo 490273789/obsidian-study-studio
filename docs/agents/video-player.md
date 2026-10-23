@@ -14,6 +14,14 @@
 
 `VideoPlayerRuntime` 明确不持有 DOM；它只负责播放、队列、持久化与跨 view 的 presenter 竞争。`VideoPlayerView` 只读取 interaction/runtime snapshot、渲染结构与控件、提供 refs。
 
+## 影子跟读
+
+`VideoSubtitleJobs` 是插件生命周期的字幕任务 owner，字幕文档存在资料库，外部视频路径与任务检查点存在设备本地。`ShadowStorageRouter` 将 source ID 固定到第一次选定的资料库目录；`ShadowPracticeRecords` 管理难段和用户保留的录音。字幕冲突后通过 `reloadSource` 丢弃当前未保存草稿并重新读取资料库版本，不要让视图直接改 store。字幕、跟读和录音的边界记录在 [ADR 0009](../adr/0009-local-video-shadowing.md)。
+
+`ShadowingSession` 拥有范围播放、停顿、录音、回听和失败保存队列；`VideoPlayerRuntime.playRange` 只实现有界播放。`ShadowingBridge` 发布视图所需的快照和意图，主视图与浮动视图共用同一实例。Presenter 交接时停止活动会话，关闭 view 不销毁插件生命周期的字幕任务。配置的跨功能借用只在 `src/features/index.ts`；`video-player` 不导入听说练习或翻译功能的内部模块。
+
+字幕和跟读按当前视频单独启用，默认关闭；启用列表只保存在设备本地。关闭时隐藏主视图的字幕侧栏及浮动字幕控件，并取消当前跟读会话。队列是顶部紧凑栏，展开列表浮在内容上方，不改变视频宽度。
+
 ## Presentation 状态
 
 - 持久化值（`queueExpanded`、`floatingRect`）属于 runtime/store；interaction 的 snapshot 直接读 runtime 的当前值。

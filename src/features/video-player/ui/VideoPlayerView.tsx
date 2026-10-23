@@ -3,8 +3,6 @@ import { createPortal } from "react-dom";
 import { setTooltip } from "obsidian";
 import {
 	ChevronDown,
-	ChevronLeft,
-	ChevronRight,
 	ChevronUp,
 	CirclePlay,
 	FastForward,
@@ -42,6 +40,19 @@ import type {
 	PlayerViewPresentation,
 	PlayerViewRefs,
 } from "./playerViewInteraction";
+import {
+	ShadowingFloatingControls,
+	ShadowingWorkspace,
+	type ShadowingWorkspaceActions,
+	type ShadowingWorkspaceState,
+} from "./ShadowingWorkspace";
+
+export interface ShadowingViewBridge {
+	getSnapshot(): ShadowingWorkspaceState;
+	subscribe(listener: () => void): () => void;
+	setEnabled(enabled: boolean): void;
+	actions: ShadowingWorkspaceActions;
+}
 
 interface VideoPlayerViewProps {
 	runtime: VideoPlayerRuntime;
@@ -53,6 +64,7 @@ interface VideoPlayerViewProps {
 	onOpenSettings: () => void;
 	onPickVideos: () => Promise<readonly LocalVideoSource[]>;
 	onPickReplacement: (sourceId: string) => Promise<LocalVideoSource | null>;
+	shadowing?: ShadowingViewBridge;
 }
 
 export function VideoPlayerView({
@@ -65,6 +77,7 @@ export function VideoPlayerView({
 	onOpenSettings,
 	onPickVideos,
 	onPickReplacement,
+	shadowing,
 }: VideoPlayerViewProps): React.ReactNode {
 	const snapshot = useSyncExternalStore(
 		(listener) => runtime.subscribe(listener),
@@ -74,6 +87,10 @@ export function VideoPlayerView({
 		(listener) => view.subscribe(listener),
 		() => view.getSnapshot(),
 	);
+	const shadowSnapshot = useSyncExternalStore(
+		(listener) => shadowing?.subscribe(listener) ?? (() => undefined),
+		() => shadowing?.getSnapshot() ?? null,
+	);
 	const { interaction: sorting, snapshot: sortingSnapshot } = useSortableInteraction({
 		items: snapshot.sources.map((source) => source.id),
 		disabled: viewSnapshot.role !== "presenter" || !viewSnapshot.queueExpanded,
@@ -82,6 +99,7 @@ export function VideoPlayerView({
 	const t = videoPlayerStrings(language);
 	const document = rootEl.ownerDocument;
 	const floating = viewSnapshot.presentation.kind === "floating";
+	const shadowEnabled = shadowSnapshot?.enabled ?? false;
 
 	const addVideos = useCallback(async () => {
 		const sources = await onPickVideos();
@@ -151,7 +169,13 @@ export function VideoPlayerView({
 				}
 			/>
 
-			<div className={cls("fc-page__body", styles.pageBody)}>
+			<div
+				className={cls(
+					"fc-page__body",
+					styles.pageBody,
+					snapshot.sources.length > 0 && styles.playerBody,
+				)}
+			>
 				{snapshot.sources.length === 0 ? (
 					<div className={styles.empty}>
 						<h3>{t.emptyTitle}</h3>
@@ -168,31 +192,38 @@ export function VideoPlayerView({
 					<div
 						className={cls(
 							styles.layout,
-							!viewSnapshot.queueExpanded && styles.layoutCollapsed,
+							shadowEnabled && !floating && styles.layoutWithShadow,
 						)}
 					>
-						<section className={styles.playerPanel}>
-							{floating ? (
-								<div className={styles.floatingPlaceholder}>
-									<p>{t.floating}</p>
-									<FlashcardButton
-										variant="secondary"
-										onClick={() => view.act({ type: "dock-and-pause" })}
-									>
-										{t.dockAndPause}
-									</FlashcardButton>
-								</div>
-							) : (
-								renderPlayer()
-							)}
-						</section>
-						<aside
-							className={cls(
-								styles.queue,
-								!viewSnapshot.queueExpanded && styles.queueCollapsed,
-							)}
-							aria-label={t.queue}
-						>
+						<div className={styles.studyColumn}>
+							<section className={styles.playerPanel}>
+								{floating ? (
+									<div className={styles.floatingPlaceholder}>
+										<p>{t.floating}</p>
+										<FlashcardButton
+											variant="secondary"
+											onClick={() => view.act({ type: "dock-and-pause" })}
+										>
+											{t.dockAndPause}
+										</FlashcardButton>
+									</div>
+								) : (
+									renderPlayer()
+								)}
+							</section>
+						</div>
+						{shadowing && shadowEnabled && !floating && (
+							<aside className={styles.shadowSide} aria-label={t.shadowSettings}>
+								<ShadowingPane
+									key={snapshot.currentSourceId}
+									bridge={shadowing}
+									language={language}
+									currentTime={snapshot.currentTime}
+									duration={snapshot.duration}
+								/>
+							</aside>
+						)}
+						<aside className={styles.queue} aria-label={t.queue}>
 							<div className={styles.queueHeader}>
 								<FlashcardButton
 									variant="ghost"
@@ -213,16 +244,39 @@ export function VideoPlayerView({
 								>
 									<span className={styles.queueChevron} aria-hidden="true">
 										{viewSnapshot.queueExpanded ? (
-											<ChevronRight size={16} />
+											<ChevronUp size={16} />
 										) : (
-											<ChevronLeft size={16} />
+											<ChevronDown size={16} />
 										)}
 									</span>
 									<span className={styles.queueSummaryText}>
 										{t.queueSummary(snapshot.sources.length, currentIndex + 1)}
 									</span>
 								</FlashcardButton>
+								<span
+									className={styles.queueCurrentName}
+									title={snapshot.sources[currentIndex]?.name}
+								>
+									{snapshot.sources[currentIndex]?.name}
+								</span>
 								<div className={styles.queueHeaderActions}>
+									{shadowing && (
+										<label
+											className={styles.shadowToggle}
+											title={t.shadowToggleHint}
+										>
+											<input
+												type="checkbox"
+												checked={shadowEnabled}
+												onChange={(event) =>
+													shadowing.setEnabled(
+														event.currentTarget.checked,
+													)
+												}
+											/>
+											<span>{t.shadowToggle}</span>
+										</label>
+									)}
 									<FlashcardButton
 										preset="icon"
 										icon={FolderPlus}
@@ -290,9 +344,13 @@ export function VideoPlayerView({
 																aria-current={
 																	isActive ? "true" : undefined
 																}
-																onClick={() =>
-																	runtime.selectSource(source.id)
-																}
+																onClick={() => {
+																	runtime.selectSource(source.id);
+																	view.act({
+																		type: "set-queue-expanded",
+																		expanded: false,
+																	});
+																}}
 															>
 																<span className={styles.sourceName}>
 																	{source.name}
@@ -428,11 +486,69 @@ export function VideoPlayerView({
 							resizeRightLabel={t.resizeRight}
 						>
 							{renderPlayer()}
+							{shadowing && shadowEnabled && (
+								<ShadowingFloatingPane
+									bridge={shadowing}
+									language={language}
+									currentTime={snapshot.currentTime}
+								/>
+							)}
 						</FloatingPlayer>
 					</div>,
 					document.body,
 				)}
 		</div>
+	);
+}
+
+function ShadowingPane({
+	bridge,
+	language,
+	currentTime,
+	duration,
+}: {
+	bridge: ShadowingViewBridge;
+	language: Language;
+	currentTime: number;
+	duration: number | null;
+}): React.ReactNode {
+	const state = useSyncExternalStore(
+		(listener) => bridge.subscribe(listener),
+		() => bridge.getSnapshot(),
+	);
+	return (
+		<ShadowingWorkspace
+			language={language}
+			currentTime={currentTime}
+			duration={duration}
+			state={state}
+			actions={bridge.actions}
+		/>
+	);
+}
+
+function ShadowingFloatingPane({
+	bridge,
+	language,
+	currentTime,
+}: {
+	bridge: ShadowingViewBridge;
+	language: Language;
+	currentTime: number;
+}): React.ReactNode {
+	const state = useSyncExternalStore(
+		(listener) => bridge.subscribe(listener),
+		() => bridge.getSnapshot(),
+	);
+	const cue =
+		state.cues.find((item) => currentTime >= item.start && currentTime < item.end) ?? null;
+	return (
+		<ShadowingFloatingControls
+			language={language}
+			currentCue={cue}
+			state={state}
+			actions={bridge.actions}
+		/>
 	);
 }
 

@@ -31,6 +31,16 @@ export class VideoPlayerRuntime {
 	private loadingMedia = false;
 	private error: VideoPlayerSnapshot["error"] = null;
 	private disposed = false;
+	private bounded: {
+		start: number;
+		end: number;
+		resolve: (result: "completed" | "cancelled") => void;
+		timer: ReturnType<typeof setInterval>;
+		seeking: boolean;
+	} | null = null;
+	private readonly interruptionListeners = new Set<() => void>();
+	private internalMediaChange = false;
+	private suppressEnded = false;
 
 	constructor(private readonly options: VideoPlayerRuntimeOptions) {
 		this.state = options.store.load();
@@ -42,6 +52,14 @@ export class VideoPlayerRuntime {
 		this.listeners.add(listener);
 		return () => this.listeners.delete(listener);
 	};
+
+	subscribeInterruptions(listener: () => void): () => void {
+		this.interruptionListeners.add(listener);
+		return () => this.interruptionListeners.delete(listener);
+	}
+	private interrupt(): void {
+		for (const listener of this.interruptionListeners) listener();
+	}
 
 	bindMedia(media: VideoMediaPort): () => void {
 		if (this.media && this.media !== media) this.pauseAndSave();
@@ -56,6 +74,9 @@ export class VideoPlayerRuntime {
 		media.addEventListener("loadedmetadata", this.handleLoadedMetadata);
 		media.addEventListener("ended", this.handleEnded);
 		media.addEventListener("error", this.handleError);
+		media.addEventListener("seeking", this.handleSeeking);
+		media.addEventListener("seeked", this.handleSeeked);
+		media.addEventListener("ratechange", this.handleRateChanged);
 		this.publish();
 		return () => {
 			if (this.media === media) this.unbindMedia();
@@ -166,7 +187,107 @@ export class VideoPlayerRuntime {
 		this.publish();
 	}
 
+	async play(): Promise<void> {
+		this.suppressEnded = false;
+		if (!this.media || !this.currentSource()) throw new Error("No video selected");
+		try {
+			await this.media.play();
+		} catch (error) {
+			this.setError("playback");
+			throw error;
+		}
+	}
+
+	/** Resolves only when media time reaches the boundary; cancellation never advances the queue. */
+	playRange(start: number, end: number): Promise<"completed" | "cancelled"> {
+		this.stopRange();
+		this.suppressEnded = true;
+		const media = this.media;
+		if (
+			!media ||
+			!this.currentSource() ||
+			!Number.isFinite(start) ||
+			!Number.isFinite(end) ||
+			start < 0 ||
+			end <= start ||
+			!Number.isFinite(media.duration) ||
+			start >= media.duration
+		)
+			return Promise.reject(new Error("Invalid practice range"));
+		return new Promise((resolve, reject) => {
+			this.internalMediaChange = true;
+			media.pause();
+			media.currentTime = start;
+			this.internalMediaChange = false;
+			const timer = setInterval(this.checkBoundary, 25);
+			this.bounded = {
+				start,
+				end: Math.min(end, media.duration),
+				resolve,
+				timer,
+				seeking: media.seeking ?? false,
+			};
+			const bounded = this.bounded;
+			if (!bounded.seeking)
+				void media.play().catch((error) => {
+					if (this.bounded !== bounded) return;
+					reject(error);
+					this.stopRange();
+					this.setError("playback");
+				});
+			this.publish();
+		});
+	}
+
+	stopRange(): void {
+		const bounded = this.bounded;
+		if (!bounded) return;
+		this.bounded = null;
+		clearInterval(bounded.timer);
+		bounded.resolve("cancelled");
+	}
+
+	private checkBoundary = (): void => {
+		const bounded = this.bounded;
+		if (!bounded || !this.media || bounded.seeking) return;
+		if (this.media.currentTime >= bounded.end) {
+			this.bounded = null;
+			clearInterval(bounded.timer);
+			this.media.pause();
+			bounded.resolve("completed");
+			this.publish();
+		}
+	};
+	private handleSeeking = (): void => {
+		if (this.internalMediaChange) return;
+		// The queued seeking event caused by our initial seek is allowed.
+		if (
+			this.bounded?.seeking &&
+			Math.abs((this.media?.currentTime ?? -1) - this.bounded.start) < 0.05
+		)
+			return;
+		this.stopRange();
+		this.interrupt();
+	};
+	private handleSeeked = (): void => {
+		const bounded = this.bounded;
+		if (!bounded?.seeking || !this.media) return;
+		bounded.seeking = false;
+		void this.media.play().catch(() => {
+			this.stopRange();
+			this.setError("playback");
+		});
+	};
+	private handleRateChanged = (): void => {
+		if (!this.internalMediaChange) {
+			this.stopRange();
+			this.interrupt();
+		}
+	};
+
 	togglePlayback(): void {
+		this.interrupt();
+		if (!this.bounded) this.suppressEnded = false;
 		if (!this.media || !this.currentSource()) return;
 		if (this.media.paused) void this.media.play().catch(() => this.setError("playback"));
 		else this.media.pause();
@@ -178,15 +299,19 @@ export class VideoPlayerRuntime {
 	}
 
 	seekTo(seconds: number): void {
+		this.interrupt();
 		if (!this.media || !Number.isFinite(this.media.duration) || !Number.isFinite(seconds))
 			return;
+		this.stopRange();
 		this.media.currentTime = clamp(seconds, 0, this.media.duration);
 		this.saveProgress(true);
 		this.publish();
 	}
 
 	setPlaybackRate(rate: VideoPlaybackRate): void {
+		this.interrupt();
 		if (!VIDEO_PLAYBACK_RATES.includes(rate)) return;
+		this.stopRange();
 		this.state = { ...this.state, playbackRate: rate };
 		if (this.media) this.media.playbackRate = rate;
 		this.persist();
@@ -208,6 +333,8 @@ export class VideoPlayerRuntime {
 	}
 
 	pause(): void {
+		this.interrupt();
+		this.stopRange();
 		this.media?.pause();
 		this.saveProgress(true);
 	}
@@ -240,6 +367,7 @@ export class VideoPlayerRuntime {
 		this.disposed = true;
 		this.unbindMedia();
 		this.listeners.clear();
+		this.interruptionListeners.clear();
 	}
 
 	private currentSource(): LocalVideoSource | null {
@@ -251,6 +379,8 @@ export class VideoPlayerRuntime {
 		return this.state.sources.findIndex((source) => source.id === this.state.currentSourceId);
 	}
 	private loadCurrentMedia(): void {
+		this.stopRange();
+		this.suppressEnded = false;
 		if (!this.media) return;
 		const source = this.currentSource();
 		this.error = null;
@@ -266,11 +396,17 @@ export class VideoPlayerRuntime {
 	}
 	private handleMediaChanged = (): void => {
 		if (this.loadingMedia) return;
+		this.checkBoundary();
 		this.saveProgress(false);
 		this.publish();
 	};
 	private handleMediaPaused = (): void => {
 		if (this.loadingMedia) return;
+		// HTMLMediaElement queues pause events. An earlier internal pause may arrive
+		// after playRange has already resumed playback; it must not cancel that range.
+		if (this.bounded && this.media && !this.media.paused) return;
+		this.checkBoundary();
+		if (!this.internalMediaChange) this.stopRange();
 		this.saveProgress(true);
 		this.publish();
 	};
@@ -294,6 +430,10 @@ export class VideoPlayerRuntime {
 		this.handleMediaChanged();
 	};
 	private handleEnded = (): void => {
+		if (this.suppressEnded) {
+			this.checkBoundary();
+			return;
+		}
 		const source = this.currentSource();
 		if (source && this.media) {
 			this.state = {
@@ -311,7 +451,10 @@ export class VideoPlayerRuntime {
 		this.next(true);
 		this.publish();
 	};
-	private handleError = (): void => this.setError("media");
+	private handleError = (): void => {
+		this.stopRange();
+		this.setError("media");
+	};
 	private setError(error: NonNullable<VideoPlayerSnapshot["error"]>): void {
 		this.error = error;
 		this.publish();
@@ -332,6 +475,7 @@ export class VideoPlayerRuntime {
 		this.persist();
 	}
 	private pauseAndSave(): void {
+		this.stopRange();
 		this.media?.pause();
 		this.saveProgress(true);
 	}
@@ -363,6 +507,8 @@ export class VideoPlayerRuntime {
 		for (const listener of this.listeners) listener();
 	}
 	private unbindMedia(): void {
+		this.interrupt();
+		this.stopRange();
 		if (!this.media) return;
 		for (const [event, handler] of Object.entries({
 			play: this.handleMediaChanged,
@@ -371,6 +517,9 @@ export class VideoPlayerRuntime {
 			loadedmetadata: this.handleLoadedMetadata,
 			ended: this.handleEnded,
 			error: this.handleError,
+			seeking: this.handleSeeking,
+			seeked: this.handleSeeked,
+			ratechange: this.handleRateChanged,
 		}))
 			this.media.removeEventListener(event, handler);
 		this.media = null;
@@ -386,7 +535,7 @@ export function emptyState(): DeviceVideoPlayerStateV1 {
 		completedSourceIds: [],
 		playbackRate: 1,
 		floatingRect: null,
-		queueExpanded: true,
+		queueExpanded: false,
 	};
 }
 

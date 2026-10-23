@@ -70,4 +70,27 @@ describe("video player feature", () => {
 
 		feature.stop();
 	});
+
+	it("starts shared shadowing services before any player window is mounted", () => {
+		const app = {
+			workspace: { getLeavesOfType: () => [] },
+			vault: { adapter: {} },
+			loadLocalStorage: vi.fn(() => null),
+			saveLocalStorage: vi.fn(),
+		};
+		const fake = createFakeWorkbenchHost("videoPlayer", DEFAULT_SETTINGS, app);
+		const feature = createVideoPlayerFeature({
+			shadowing: {
+				transcribe: vi.fn(async () => []),
+				translate: vi.fn(async () => ""),
+				getTranscriptionSignature: async () => "configured",
+				getTranslationProfileId: () => "",
+				getTranslationSignature: () => "default",
+				listTranslationProfiles: () => [],
+			},
+		});
+		feature.render(fake.host);
+		expect(fake.views.has(VIEW_TYPE_VIDEO_PLAYER)).toBe(true);
+		feature.stop();
+	});
 });

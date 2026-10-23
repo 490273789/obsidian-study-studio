@@ -187,6 +187,9 @@ const defaultSettings: VideoPlayerSettings = {
 	enabled: true,
 	skipInterval: 10,
 	shortcuts: { togglePlayback: "Space", seekBackward: "ArrowLeft", seekForward: "ArrowRight" },
+	shadowTranscriptionProvider: "bailian",
+	shadowTranslationProfileId: "",
+	shadowVaultFolder: "Study Studio/影子跟读",
 };
 
 function createInteraction(runtime: VideoPlayerRuntime): PlayerViewInteraction {
@@ -291,9 +294,9 @@ describe("PlayerViewInteraction", () => {
 		expect(focusSurfaceEl.focus).toHaveBeenCalledOnce();
 		expect(activate).toHaveBeenCalledOnce();
 
-		view.act({ type: "set-queue-expanded", expanded: false });
-		expect(view.getSnapshot().queueExpanded).toBe(false);
-		expect(runtime.getSnapshot().queueExpanded).toBe(false);
+		view.act({ type: "set-queue-expanded", expanded: true });
+		expect(view.getSnapshot().queueExpanded).toBe(true);
+		expect(runtime.getSnapshot().queueExpanded).toBe(true);
 
 		view.act({ type: "enter-floating" });
 		await interaction.open(activate);

@@ -1,21 +1,8 @@
 import type { TransportErrorCode } from "../../../core/net/types";
 
-/** One structural problem in a subtitle draft; copy formats it with a 1-based cue index. */
-export type SubtitleProblem =
-	| { readonly kind: "no-cues" }
-	| { readonly kind: "bad-timing"; readonly cueIndex: number }
-	| { readonly kind: "out-of-range"; readonly cueIndex: number }
-	| { readonly kind: "needs-review"; readonly cueIndex: number }
-	| { readonly kind: "duplicate-id"; readonly cueIndex: number }
-	| { readonly kind: "empty-text"; readonly cueIndex: number }
-	| { readonly kind: "blank-line"; readonly cueIndex: number };
-
-/** Why a speech-service response could not be used. */
-export type ProviderFailureReason =
-	| "missing-word-timestamps"
-	| "incomplete-stream"
-	| "invalid-timing"
-	| "invalid-payload";
+import { MediaFailureError } from "../../../core/media/failures";
+import type { SubtitleProblem, ProviderFailureReason } from "../../../core/media/failures";
+export type { SubtitleProblem, ProviderFailureReason } from "../../../core/media/failures";
 
 /**
  * Typed audio-practice failure vocabulary crossing the domain/UI seam.
@@ -54,12 +41,8 @@ export type AudioFailure =
 
 export type AudioPracticeFailure = AudioFailure;
 
-export class AudioFailureError extends Error {
-	constructor(readonly failure: AudioFailure) {
-		super(failure.kind);
-		this.name = "AudioFailureError";
-	}
-}
+export const AudioFailureError = MediaFailureError<AudioFailure>;
+export type AudioFailureError = MediaFailureError<AudioFailure>;
 
 export function audioFailure(failure: AudioFailure): AudioFailureError {
 	return new AudioFailureError(failure);
