@@ -208,6 +208,18 @@ describe("favorite generation interaction", () => {
 		await request;
 	});
 
+	it("opens the source file using current edited path or explicit target path", async () => {
+		const { controller, file } = setup();
+		file.open.mockResolvedValue(true);
+
+		controller.setPath("custom/notes.md");
+		await controller.openSavedFile();
+		expect(file.open).toHaveBeenCalledWith("custom/notes.md");
+
+		await controller.openSavedFile("other/target.md");
+		expect(file.open).toHaveBeenCalledWith("other/target.md");
+	});
+
 	it("cannot let an old generation overwrite a reopened session's request", async () => {
 		const { controller, generate } = setup();
 		const old = deferred<FavoriteGeneratedDraft>();

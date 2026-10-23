@@ -654,6 +654,25 @@
 	}
 }
 
+.favoritePathRow {
+	display: flex;
+	align-items: center;
+	gap: var(--fc-space-2);
+
+	:global(.flashcard-input) {
+		flex: 1;
+		min-width: 0;
+	}
+}
+
+.favoriteMeaningInput {
+	height: 115px;
+}
+
+.favoriteNoteInput {
+	height: 320px;
+}
+
 .favoriteActions {
 	display: flex;
 	flex-wrap: wrap;

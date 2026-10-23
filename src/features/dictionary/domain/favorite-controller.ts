@@ -312,18 +312,19 @@ export class DictionaryFavoriteController {
 		this.publish();
 	}
 
-	async openSavedFile(): Promise<void> {
+	async openSavedFile(targetPath?: string): Promise<void> {
 		if (this.disposed || this.isBusy()) return;
 		const revision = this.lookupRevision;
+		const path = targetPath?.trim() || this.state.path.trim() || this.state.savedPath;
 		try {
-			const opened = await this.store.open(this.state.savedPath);
+			const opened = await this.store.open(path);
 			if (this.disposed || this.isBusy() || revision !== this.lookupRevision || opened)
 				return;
-			this.state.message = dictionaryText().favoriteFileMissing;
+			this.state.message = dictionaryText(this.ai.language()).favoriteFileMissing;
 			this.state.status = "error";
 		} catch {
 			if (this.disposed || this.isBusy() || revision !== this.lookupRevision) return;
-			this.state.message = dictionaryText().favoriteOpenFailed;
+			this.state.message = dictionaryText(this.ai.language()).favoriteOpenFailed;
 			this.state.status = "error";
 		}
 		this.publish();

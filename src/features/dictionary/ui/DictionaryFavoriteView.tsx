@@ -1,5 +1,5 @@
 import React, { useCallback, useSyncExternalStore } from "react";
-import { Eraser, Save, Sparkles } from "lucide-react";
+import { Eraser, ExternalLink, Save, Sparkles } from "lucide-react";
 import type { DictionaryFavoriteController } from "../domain/favorite-controller";
 import { dictionaryStrings } from "../strings/dictionary";
 import type { Language } from "../../../core/shared/types";
@@ -30,6 +30,27 @@ export function DictionaryFavoriteView({
 	const canSave = Boolean(state.word.trim() && state.path.trim()) && !busy;
 	const canGenerate = Boolean(state.word.trim()) && !busy;
 
+	const handleFormKeyDown = (event: React.KeyboardEvent<HTMLFormElement>) => {
+		if (event.nativeEvent.isComposing) return;
+		if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+			event.preventDefault();
+			if (canSave) void controller.save();
+		}
+	};
+
+	const handleWordKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+		if (event.nativeEvent.isComposing) return;
+		if (event.key === "Enter") {
+			if (event.ctrlKey || event.metaKey) {
+				event.preventDefault();
+				if (canSave) void controller.save();
+			} else if (!event.shiftKey && !event.altKey) {
+				event.preventDefault();
+				if (canGenerate) void controller.generateAi();
+			}
+		}
+	};
+
 	return (
 		<main
 			className={cls(
@@ -43,11 +64,13 @@ export function DictionaryFavoriteView({
 				<h2>{strings.favoriteSidebarTitle}</h2>
 			</header>
 
+			{/* oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Form keyboard shortcut for Ctrl+Enter submission */}
 			<form
 				className={cls(
 					"flashcard-dictionary-favorite-form fc-page__content",
 					styles.favoriteForm,
 				)}
+				onKeyDown={handleFormKeyDown}
 				onSubmit={(event) => {
 					event.preventDefault();
 					if (canSave) void controller.save();
@@ -64,22 +87,38 @@ export function DictionaryFavoriteView({
 						spellCheck={false}
 						disabled={busy}
 						onChange={(event) => controller.setWord(event.target.value)}
+						onKeyDown={handleWordKeyDown}
 					/>
 				</label>
 
 				<label htmlFor="dictionary-favorite-path">
 					<span>{strings.favoritePath}</span>
-					<FlashcardInput
-						id="dictionary-favorite-path"
-						value={state.path}
-						list="dictionary-favorite-path-suggestions"
-						placeholder={strings.favoritePathPlaceholder}
-						maxLength={500}
-						autoComplete="off"
-						spellCheck={false}
-						disabled={busy}
-						onChange={(event) => controller.setPath(event.target.value)}
-					/>
+					<div className={styles.favoritePathRow}>
+						<FlashcardInput
+							id="dictionary-favorite-path"
+							value={state.path}
+							list="dictionary-favorite-path-suggestions"
+							placeholder={strings.favoritePathPlaceholder}
+							maxLength={500}
+							autoComplete="off"
+							spellCheck={false}
+							disabled={busy}
+							onChange={(event) => controller.setPath(event.target.value)}
+						/>
+						<FlashcardButton
+							type="button"
+							preset="icon"
+							icon={ExternalLink}
+							title={strings.favoriteOpenSourceFile}
+							aria-label={strings.favoriteOpenSourceFile}
+							disabled={busy || !state.path.trim()}
+							onClick={(event) => {
+								event.preventDefault();
+								event.stopPropagation();
+								void controller.openSavedFile(state.path);
+							}}
+						/>
+					</div>
 				</label>
 				<datalist id="dictionary-favorite-path-suggestions">
 					{state.pathSuggestions.map((path) => (
@@ -93,10 +132,11 @@ export function DictionaryFavoriteView({
 					<span>{strings.favoriteMeaning}</span>
 					<FlashcardTextarea
 						id="dictionary-favorite-meaning"
+						className={styles.favoriteMeaningInput}
 						value={state.meaning}
 						placeholder={strings.favoriteMeaningPlaceholder}
 						maxLength={8000}
-						rows={3}
+						rows={5}
 						disabled={busy}
 						onChange={(event) => controller.setMeaning(event.target.value)}
 					/>
@@ -106,10 +146,11 @@ export function DictionaryFavoriteView({
 					<span>{strings.favoriteNote}</span>
 					<FlashcardTextarea
 						id="dictionary-favorite-note"
+						className={styles.favoriteNoteInput}
 						value={state.note}
 						placeholder={strings.favoriteNotePlaceholder}
 						maxLength={16000}
-						rows={5}
+						rows={10}
 						disabled={busy}
 						onChange={(event) => controller.setNote(event.target.value)}
 					/>
@@ -122,6 +163,7 @@ export function DictionaryFavoriteView({
 						type="button"
 						icon={Sparkles}
 						disabled={!canGenerate}
+						title={`${generating ? strings.favoriteAiGenerating : strings.favoriteAiGenerate} (Enter)`}
 						onClick={() => void controller.generateAi()}
 					>
 						{generating ? strings.favoriteAiGenerating : strings.favoriteAiGenerate}
@@ -131,6 +173,7 @@ export function DictionaryFavoriteView({
 						variant="primary"
 						icon={Save}
 						disabled={!canSave}
+						title={`${saving ? strings.favoriteSaving : strings.favoriteSave} (Ctrl+Enter)`}
 					>
 						{saving ? strings.favoriteSaving : strings.favoriteSave}
 					</FlashcardButton>

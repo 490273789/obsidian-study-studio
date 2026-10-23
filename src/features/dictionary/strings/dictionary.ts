@@ -63,6 +63,7 @@ const zh = {
 	favoriteOpenModeDescription: "选择在弹窗或右侧边栏中打开收藏表单。",
 	favoriteOpenModeModal: "弹窗",
 	favoriteOpenModeSidebar: "右侧边栏",
+	favoriteOpenSourceFile: "打开源文件",
 	favoritePath: "收藏保存路径",
 	favoritePathDescription:
 		"相对于当前仓库根目录；默认 word.md。可从已有 Markdown 文件提示中选择，保存后会记住本次路径。该文件使用与闪卡相同的 ?? / :: / ;; 格式，若位于被扫描的题库目录会被识别为题库。",
@@ -234,6 +235,7 @@ const en: typeof zh = {
 	favoriteOpenModeDescription: "Open the favorites form in a modal or the right sidebar.",
 	favoriteOpenModeModal: "Modal",
 	favoriteOpenModeSidebar: "Right sidebar",
+	favoriteOpenSourceFile: "Open source file",
 	favoritePath: "Favorites file path",
 	favoritePathDescription:
 		"Relative to the vault root; defaults to word.md. Suggestions come from existing Markdown files, and the path is remembered after saving. The file uses the same ?? / :: / ;; format as flashcards, so it is treated as a deck when it sits in a scanned tag folder.",
