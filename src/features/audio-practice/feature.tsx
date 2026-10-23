@@ -58,13 +58,7 @@ export function createAudioPracticeFeature(deps: {
 					source,
 					settings: {
 						read: () => readSettings().audioPractice,
-						readSecret: (id) => {
-							try {
-								return deps.net.readSecret(id);
-							} catch {
-								return null;
-							}
-						},
+						readSecret: (id) => deps.net.readSecret(id),
 					},
 					generation,
 				}),

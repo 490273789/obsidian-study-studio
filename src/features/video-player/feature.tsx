@@ -49,6 +49,7 @@ export interface VideoShadowingServices {
 	transcribe(
 		audio: ArrayBuffer,
 		provider: "bailian" | "openai-compatible",
+		signature: string,
 		signal: AbortSignal,
 	): Promise<readonly { start: number; end: number; text: string }[]>;
 	translate(
@@ -192,8 +193,14 @@ export function createVideoPlayerFeature(
 								throw new Error("转写配置已变化，请重新生成字幕。");
 							const signature = JSON.parse(task.config.serviceSignature) as {
 								provider: "bailian" | "openai-compatible";
+								transcription: string;
 							};
-							return shadowing.transcribe(audio, signature.provider, signal);
+							return shadowing.transcribe(
+								audio,
+								signature.provider,
+								signature.transcription,
+								signal,
+							);
 						},
 						translate: async (text, task, signal) => {
 							if (task.config.serviceSignature !== (await serviceSignature()))

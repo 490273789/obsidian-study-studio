@@ -27,8 +27,21 @@
 - 生成中的禁用（`preparing` / `transcribing` / `aligning` / `saving` 时禁止 add/select/remove/edit）继续由 view 从 runtime 快照推导；不要把生成状态复制进编辑会话。
 - 字幕草稿 review 对话框与播放器控件不在编辑会话范围内。
 
+## 转写配置
+
+`domain/transcriptionConfiguration.ts` 的 `TranscriptionConfiguration` 是设置解释的唯一 owner：
+provider 选择、workspace 密钥引用优先级、字段归一化和生成前校验都留在这里。
+选定的 workspace 密钥缺失或读取失败时不回退旧明文值。`AudioPracticeRuntime` 在读取音频前
+取得已校验的不可变配置，文件与草稿流程继续由 runtime 和字幕草稿引擎拥有。
+
+视频经 `features/index.ts` 借用同一个配置 module，在请求前匹配任务指纹并取得对应配置；
+异步计算指纹后还会核对当前设置，不能按旧签名执行新设置。仅读取指纹不要求 API 密钥可用，
+避免影响仅翻译导入字幕。指纹与旧草稿匹配仍使用 `core/media`，不另造版本或迁移规则。
+
 ## 测试
 
 - `ui/__tests__/materialEditSession.test.ts`：会话接口上的打开/字段/读取取消/提交失败/目录刷新/取消与 dispose。
 - `ui/__tests__/MaterialEditView.test.tsx`：view 只断言渲染与 intent 转发，并保留“发起对话框失败、其他视图 alert”的可见行为。
 - runtime、转写 provider 与草稿引擎的测试继续在 `domain/__tests__/` 覆盖；编辑会话测试不 mock React。
+- `domain/__tests__/transcriptionConfiguration.test.ts` 覆盖配置准备、密钥失败、任务匹配与异步变化；
+  `src/__tests__/mediaComposition.test.ts` 验证真实组合路径将已接受的配置用于请求。

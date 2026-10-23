@@ -1,8 +1,6 @@
 import type { Plugin } from "obsidian";
 import type { AiService } from "../core/ai";
 import { createTranscriptionProvider } from "../core/media/transcription/providers";
-import { transcriptionConfigFingerprint } from "../core/media/transcription/transcriptionConfig";
-import type { TranscriptionConfig } from "../core/media/transcriptionTypes";
 import type { WorkbenchStore } from "../core/storage/workbenchStore";
 import type { AnyWorkbenchModule } from "../core/host/workbench";
 import type { OutboundPort } from "../core/net";
@@ -13,6 +11,10 @@ import { createTranslationFeature } from "./translation/feature";
 import { createSelectionHelperModule } from "../core/selectionHelper/module";
 import { createVideoPlayerFeature, type VideoShadowingServices } from "./video-player/feature";
 import { createAudioPracticeFeature } from "./audio-practice/feature";
+import {
+	TranscriptionConfiguration,
+	TranscriptionConfigurationChangedError,
+} from "./audio-practice/domain/transcriptionConfiguration";
 import { translateYoudao } from "./translation/domain/youdao";
 import {
 	TranslationConfigurationChangedError,
@@ -29,42 +31,29 @@ interface WorkbenchModuleDeps {
 /** The composition seam borrows other features' configuration without sharing their runtimes. */
 function createVideoShadowingServices(deps: WorkbenchModuleDeps): VideoShadowingServices {
 	const transcribe = createTranscriptionProvider(deps.net);
+	const transcription = new TranscriptionConfiguration({
+		read: () => deps.store.getSettings().audioPractice,
+		readSecret: (id) => deps.net.readSecret(id),
+	});
 	const translation = new TranslationExecution({
 		ai: deps.ai,
 		readSettings: () => deps.store.getSettings().translation,
 		youdao: (connection, text, direction, signal) =>
 			translateYoudao(connection, text, direction, deps.net, signal),
 	});
-	const readConfig = (provider: "bailian" | "openai-compatible"): TranscriptionConfig => {
-		const settings = deps.store.getSettings().audioPractice;
-		if (provider === "openai-compatible") {
-			return {
-				provider,
-				baseUrl: settings.openaiBaseUrl,
-				secretId: settings.openaiSecretId,
-				model: settings.openaiModel,
-			};
-		}
-		let workspaceId = settings.bailianWorkspaceId;
-		if (settings.bailianWorkspaceSecretId) {
-			try {
-				workspaceId = deps.net.readSecret(settings.bailianWorkspaceSecretId) ?? "";
-			} catch {
-				workspaceId = "";
-			}
-		}
-		return {
-			provider,
-			workspaceId: workspaceId.trim(),
-			secretId: settings.bailianSecretId,
-			model: settings.bailianModel,
-		};
-	};
 	return {
-		async transcribe(audio, provider, signal) {
+		async transcribe(audio, provider, signature, signal) {
+			let config;
+			try {
+				config = await transcription.accept(provider, signature, signal);
+			} catch (error) {
+				if (error instanceof TranscriptionConfigurationChangedError)
+					throw new Error("转写配置已变化，请重新生成字幕。");
+				throw error;
+			}
 			const transcript = await transcribe(
 				{ index: 0, start: 0, end: 0, wav: audio },
-				readConfig(provider),
+				config,
 				signal,
 			);
 			return transcript.cues.flatMap((cue) =>
@@ -80,7 +69,7 @@ function createVideoShadowingServices(deps: WorkbenchModuleDeps): VideoShadowing
 			);
 		},
 		getTranscriptionSignature(provider) {
-			return transcriptionConfigFingerprint(readConfig(provider));
+			return transcription.signature(provider);
 		},
 		getTranslationProfileId(selected) {
 			return translation.prepare(selected, "en-zh").profileId;

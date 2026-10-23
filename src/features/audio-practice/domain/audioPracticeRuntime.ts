@@ -1,7 +1,6 @@
 import { audioFailure, type AudioFailure, toAudioFailure } from "./failures";
 import { emptyProgress, normalizeAudioPracticeData } from "./repository";
 import { parseSubtitles, serializeSrt, validateCues } from "./subtitles";
-import type { AudioPracticeSettings } from "../settings/slice";
 import type {
 	AudioSourceFiles,
 	GenerationInput,
@@ -10,7 +9,10 @@ import type {
 } from "./transcriptionTypes";
 import { MAX_AUDIO_BYTES } from "./transcriptionTypes";
 import { SubtitleDraftEngine, type SubtitleDraftAction } from "./subtitleDraftEngine";
-import { validateTranscriptionConfig } from "./transcription/transcriptionConfig";
+import {
+	TranscriptionConfiguration,
+	type TranscriptionSettingsReader,
+} from "./transcriptionConfiguration";
 import {
 	AUDIO_PLAYBACK_RATES,
 	type AudioMaterial,
@@ -30,16 +32,11 @@ import {
 	type SubtitleCue,
 } from "./types";
 
-interface AudioPracticeSettingsReader {
-	read(): AudioPracticeSettings;
-	readSecret(id: string): string | null;
-}
-
 interface AudioPracticeRuntimeOptions {
 	readonly repository: AudioPracticeRepository;
 	readonly files: AudioPracticeFiles;
 	readonly source?: AudioSourceFiles;
-	readonly settings?: AudioPracticeSettingsReader;
+	readonly settings?: TranscriptionSettingsReader;
 	readonly generation?: SubtitleDraftEngine;
 }
 
@@ -56,7 +53,7 @@ export class AudioPracticeRuntime {
 	private readonly repository: AudioPracticeRepository;
 	private readonly files: AudioPracticeFiles;
 	private readonly source?: AudioSourceFiles;
-	private readonly settings?: AudioPracticeSettingsReader;
+	private readonly transcription?: TranscriptionConfiguration;
 	private readonly generationService?: SubtitleDraftEngine;
 
 	private data: AudioPracticeData;
@@ -101,7 +98,9 @@ export class AudioPracticeRuntime {
 		this.repository = options.repository;
 		this.files = options.files;
 		this.source = options.source;
-		this.settings = options.settings;
+		this.transcription = options.settings
+			? new TranscriptionConfiguration(options.settings)
+			: undefined;
 		this.generationService = options.generation;
 
 		this.data = normalizeAudioPracticeData(this.repository.load());
@@ -1160,7 +1159,7 @@ export class AudioPracticeRuntime {
 	}
 	async generateSubtitles(force = false): Promise<boolean> {
 		if (this.disposed || this.savingDraft) return false;
-		if (!this.generationService || !this.settings || !this.source) return false;
+		if (!this.generationService || !this.transcription || !this.source) return false;
 		const genStatus = this.generationService.getSnapshot().status;
 		if (["preparing", "transcribing", "aligning"].includes(genStatus)) return false;
 		const material = this.currentMaterial();
@@ -1170,18 +1169,11 @@ export class AudioPracticeRuntime {
 			return false;
 		}
 		this.draftError = null;
-		const settings = this.settings.read();
-		const config = transcriptionConfig(settings, (id) => this.settings?.readSecret(id) ?? null);
+		let config: TranscriptionConfig;
 		try {
-			validateTranscriptionConfig(config);
+			config = this.transcription.prepare();
 		} catch (error) {
 			this.draftError = toAudioFailure(error);
-			this.publish();
-			return false;
-		}
-		const secret = this.settings.readSecret(config.secretId);
-		if (!secret) {
-			this.draftError = { kind: "config-invalid", field: "secret" };
 			this.publish();
 			return false;
 		}
@@ -1523,25 +1515,4 @@ function remapCueProgress(
 		},
 		invalidatedMarks: progress.difficultCueIds.length - marks.length,
 	};
-}
-
-function transcriptionConfig(
-	settings: AudioPracticeSettings,
-	readSecret: (id: string) => string | null,
-): TranscriptionConfig {
-	return settings.provider === "bailian"
-		? {
-				provider: "bailian",
-				workspaceId: settings.bailianWorkspaceSecretId
-					? (readSecret(settings.bailianWorkspaceSecretId)?.trim() ?? "")
-					: settings.bailianWorkspaceId.trim(),
-				secretId: settings.bailianSecretId,
-				model: settings.bailianModel.trim(),
-			}
-		: {
-				provider: "openai-compatible",
-				baseUrl: settings.openaiBaseUrl.trim(),
-				secretId: settings.openaiSecretId,
-				model: settings.openaiModel.trim(),
-			};
 }

@@ -27,6 +27,10 @@ video-player 只传递已接受的签名。每条排队字幕在发请求前重�
 保留已有译文并显示失败，重新选择配置后才继续补译。旧版不完整签名不能安全还原执行配置，
 因此续跑会要求重新生成；已保存字幕不会删除。
 
+转写配置由听说练习的 `TranscriptionConfiguration` 拥有，经同一组合 module 注入；
+视频传递任务已接受的转写指纹，由 owner 完成匹配并返回固定配置后再发请求。
+视频不解释百炼 workspace 密钥优先级，也不在指纹检查之后重新拼装当前设置。
+
 ## Presentation 状态
 
 - 持久化值（`queueExpanded`、`floatingRect`）属于 runtime/store；interaction 的 snapshot 直接读 runtime 的当前值。

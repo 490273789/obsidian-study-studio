@@ -83,7 +83,7 @@ function setup() {
 	composition.video.mockClear();
 	createWorkbenchModules({ ai, store, net, plugin: {} as never });
 	const services = composition.video.mock.calls[0]![0].shadowing as VideoShadowingServices;
-	return { ai, engine, store, services, request };
+	return { ai, engine, store, services, request, net };
 }
 
 describe("composed video translation", () => {
@@ -225,6 +225,80 @@ describe("composed video translation", () => {
 			expect(jobs.getSnapshot().translationFailures.video).toBeUndefined();
 		} finally {
 			jobs.dispose();
+			ai.dispose();
+		}
+	});
+});
+
+describe("composed video transcription", () => {
+	it("rejects configuration changes between a task's earlier check and actual transcription", async () => {
+		const { ai, store, services, request } = setup();
+		try {
+			const settings = store.getSettings();
+			await store.saveSettings({
+				...settings,
+				audioPractice: {
+					...settings.audioPractice,
+					provider: "openai-compatible",
+					openaiSecretId: "speech-key",
+					openaiModel: "original-model",
+				},
+			});
+			request.mockResolvedValue({
+				status: 200,
+				text: JSON.stringify({ segments: [{ start: 0, end: 1, text: "Hello" }] }),
+			});
+			const accepted = await services.getTranscriptionSignature("openai-compatible");
+			const current = store.getSettings();
+			await store.saveSettings({
+				...current,
+				audioPractice: { ...current.audioPractice, openaiModel: "replacement-model" },
+			});
+			await expect(
+				services.transcribe(
+					new ArrayBuffer(1),
+					"openai-compatible",
+					accepted,
+					new AbortController().signal,
+				),
+			).rejects.toThrow("转写配置已变化");
+			expect(request).not.toHaveBeenCalled();
+		} finally {
+			ai.dispose();
+		}
+	});
+
+	it("dispatches with the same configuration used for the accepted identity", async () => {
+		const { ai, store, services, request } = setup();
+		try {
+			const settings = store.getSettings();
+			await store.saveSettings({
+				...settings,
+				audioPractice: {
+					...settings.audioPractice,
+					openaiBaseUrl: "https://speech.example/v1",
+					openaiSecretId: "speech-key",
+					openaiModel: "speech-model",
+				},
+			});
+			request.mockResolvedValue({
+				status: 200,
+				text: JSON.stringify({ segments: [{ start: 0, end: 1, text: "Hello" }] }),
+			});
+			const accepted = await services.getTranscriptionSignature("openai-compatible");
+			await expect(
+				services.transcribe(
+					new ArrayBuffer(1),
+					"openai-compatible",
+					accepted,
+					new AbortController().signal,
+				),
+			).resolves.toEqual([{ start: 0, end: 1, text: "Hello" }]);
+			expect(request).toHaveBeenCalledOnce();
+			const sent = request.mock.calls[0]![0];
+			expect(sent.url).toBe("https://speech.example/v1/audio/transcriptions");
+			expect(new TextDecoder().decode(sent.body as ArrayBuffer)).toContain("speech-model");
+		} finally {
 			ai.dispose();
 		}
 	});

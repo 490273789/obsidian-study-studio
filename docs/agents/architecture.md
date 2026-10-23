@@ -50,6 +50,15 @@ translation settings. Changes to the selected engine's provider, model, endpoint
 reference, prompt, or thinking setting invalidate that identity. Legacy incomplete identities
 are rejected rather than inferred from today's settings; already saved subtitles remain.
 
+`src/features/audio-practice/domain/transcriptionConfiguration.ts` owns transcription settings
+interpretation, workspace-secret precedence, preflight validation, and matching video work to
+an accepted configuration. Audio practice prepares one immutable configuration before reading
+audio; the video composition adapter obtains the exact configuration admitted against its task
+identity, including a recheck after asynchronous fingerprinting. Both use the existing
+`core/media` protocol validation and fingerprints, preserving draft reuse and legacy matching.
+Reading an identity alone does not require an available API key. Draft/session ownership and
+cross-feature wiring remain unchanged.
+
 For selection-source registration, expiry, or delayed capture ordering, read
 [Selection helper sources](ui-and-obsidian.md#selection-helper-sources).
 
