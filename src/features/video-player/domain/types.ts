@@ -134,8 +134,7 @@ export interface ShadowingWorkspaceState {
 	}[];
 }
 
-export type ShadowingWorkspaceAction =
-	| { readonly type: "set-enabled"; readonly enabled: boolean }
+export type ShadowingWorkspaceViewAction =
 	| { readonly type: "generate" }
 	| { readonly type: "translate-imported" }
 	| { readonly type: "retry-translation" }
@@ -176,5 +175,4 @@ export type ShadowingWorkspaceAction =
 	| { readonly type: "continue-watching" }
 	| { readonly type: "mark-difficult" }
 	| { readonly type: "open-record"; readonly record: ShadowingRecordRow }
-	| { readonly type: "delete-record"; readonly record: ShadowingRecordRow }
-	| { readonly type: "relinquish-presenter" };
+	| { readonly type: "delete-record"; readonly record: ShadowingRecordRow };

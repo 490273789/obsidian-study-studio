@@ -29,7 +29,11 @@ import {
 } from "../../../core/ui/primitives/Sortable/Sortable";
 import { cls } from "../../../core/shared/classNames";
 import type { Language } from "../../../core/shared/types";
-import type { LocalVideoSource, VideoPlayerSnapshot } from "../domain/types";
+import type {
+	LocalVideoSource,
+	ShadowingWorkspaceViewAction,
+	VideoPlayerSnapshot,
+} from "../domain/types";
 import { VIDEO_PLAYBACK_RATES } from "../domain/types";
 import type { VideoPlayerRuntime } from "../domain/videoPlayerRuntime";
 import type { VideoPlayerSettings } from "../settings/slice";
@@ -43,15 +47,14 @@ import type {
 import {
 	ShadowingFloatingControls,
 	ShadowingWorkspace,
-	type ShadowingWorkspaceActions,
 	type ShadowingWorkspaceState,
 } from "./ShadowingWorkspace";
 
 export interface ShadowingViewBridge {
 	getSnapshot(): ShadowingWorkspaceState;
 	subscribe(listener: () => void): () => void;
-	setEnabled(enabled: boolean): void;
-	actions: ShadowingWorkspaceActions;
+	setEnabled(enabled: boolean): Promise<void>;
+	act(action: ShadowingWorkspaceViewAction): Promise<void>;
 }
 
 interface VideoPlayerViewProps {
@@ -269,7 +272,7 @@ export function VideoPlayerView({
 												type="checkbox"
 												checked={shadowEnabled}
 												onChange={(event) =>
-													shadowing.setEnabled(
+													void shadowing.setEnabled(
 														event.currentTarget.checked,
 													)
 												}
@@ -522,7 +525,7 @@ function ShadowingPane({
 			currentTime={currentTime}
 			duration={duration}
 			state={state}
-			actions={bridge.actions}
+			onAction={(action) => bridge.act(action)}
 		/>
 	);
 }
@@ -547,7 +550,7 @@ function ShadowingFloatingPane({
 			language={language}
 			currentCue={cue}
 			state={state}
-			actions={bridge.actions}
+			onAction={(action) => bridge.act(action)}
 		/>
 	);
 }

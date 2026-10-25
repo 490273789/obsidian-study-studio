@@ -2,14 +2,18 @@ import React, { useMemo, useState } from "react";
 import type { Language } from "../../../core/shared/types";
 import styles from "./ShadowingWorkspace.module.scss";
 
-import type { ShadowingCueRow, ShadowingRecordRow, ShadowingWorkspaceState } from "../domain/types";
-import type { ShadowingWorkspaceActions } from "../domain/shadowingWorkspaceSession";
+import type {
+	ShadowingCueRow,
+	ShadowingRecordRow,
+	ShadowingWorkspaceState,
+	ShadowingWorkspaceViewAction,
+} from "../domain/types";
 
 export type {
 	ShadowingCueRow,
 	ShadowingRecordRow,
 	ShadowingWorkspaceState,
-	ShadowingWorkspaceActions,
+	ShadowingWorkspaceViewAction,
 };
 
 export interface ShadowingWorkspaceProps {
@@ -17,7 +21,7 @@ export interface ShadowingWorkspaceProps {
 	currentTime: number;
 	duration: number | null;
 	state: ShadowingWorkspaceState;
-	actions: ShadowingWorkspaceActions;
+	onAction: (action: ShadowingWorkspaceViewAction) => Promise<void>;
 }
 
 function clock(seconds: number): string {
@@ -126,7 +130,7 @@ export function ShadowingWorkspace({
 	currentTime,
 	duration,
 	state,
-	actions,
+	onAction,
 }: ShadowingWorkspaceProps): React.ReactNode {
 	const t = copy[language];
 	const [tab, setTab] = useState<"subtitles" | "records" | "tasks">("subtitles");
@@ -164,7 +168,7 @@ export function ShadowingWorkspace({
 			setRangeEnd(cue.end);
 			setDraftText(cue.text);
 			setDraftTranslation(cue.translation ?? "");
-			actions.seekTo(cue.start);
+			void onAction({ type: "seek-to", seconds: cue.start });
 		}
 		setEditing(false);
 	};
@@ -212,23 +216,31 @@ export function ShadowingWorkspace({
 								accept=".srt,.vtt,text/vtt"
 								onChange={(event) => {
 									const file = event.target.files?.[0];
-									if (file) actions.importFile(file, importRole);
+									if (file)
+										void onAction({
+											type: "import-file",
+											file,
+											role: importRole,
+										});
 									event.target.value = "";
 								}}
 							/>
 						</label>
-						<button type="button" onClick={actions.generate}>
+						<button type="button" onClick={() => void onAction({ type: "generate" })}>
 							{t.generate}
 						</button>
 						<button
 							type="button"
 							disabled={!state.cues.length && !state.hasCandidate}
-							onClick={actions.translateImported}
+							onClick={() => void onAction({ type: "translate-imported" })}
 						>
 							{t.translateImported}
 						</button>
 						{state.hasCandidate && (
-							<button type="button" onClick={actions.adoptCandidate}>
+							<button
+								type="button"
+								onClick={() => void onAction({ type: "adopt-candidate" })}
+							>
 								{t.adopt}
 							</button>
 						)}
@@ -293,7 +305,12 @@ export function ShadowingWorkspace({
 								type="button"
 								disabled={!canStart}
 								onClick={() =>
-									actions.selectRange(rangeStart, rangeEnd, selectedText)
+									void onAction({
+										type: "select-range",
+										start: rangeStart,
+										end: rangeEnd,
+										text: selectedText,
+									})
 								}
 							>
 								{t.start}
@@ -325,11 +342,12 @@ export function ShadowingWorkspace({
 										type="button"
 										disabled={!draftText.trim()}
 										onClick={() => {
-											actions.editCue(
-												selected[0]!.id,
-												draftText,
-												draftTranslation,
-											);
+											void onAction({
+												type: "edit-cue",
+												cueId: selected[0]!.id,
+												text: draftText,
+												translation: draftTranslation,
+											});
 											setEditing(false);
 										}}
 									>
@@ -346,7 +364,10 @@ export function ShadowingWorkspace({
 					{state.records.length ? (
 						state.records.map((record) => (
 							<div key={record.id} className={styles.record}>
-								<button type="button" onClick={() => actions.openRecord(record)}>
+								<button
+									type="button"
+									onClick={() => void onAction({ type: "open-record", record })}
+								>
 									<span className={styles.time}>
 										{clock(record.start)}–{clock(record.end)}
 									</span>{" "}
@@ -355,7 +376,7 @@ export function ShadowingWorkspace({
 								<button
 									type="button"
 									aria-label={t.delete}
-									onClick={() => actions.deleteRecord(record)}
+									onClick={() => void onAction({ type: "delete-record", record })}
 								>
 									×
 								</button>
@@ -369,7 +390,12 @@ export function ShadowingWorkspace({
 							<span>
 								{t.failedSave} · {clock(take.start)}–{clock(take.end)} {take.text}
 							</span>
-							<button type="button" onClick={() => actions.retrySave(take.id)}>
+							<button
+								type="button"
+								onClick={() =>
+									void onAction({ type: "retry-save", takeId: take.id })
+								}
+							>
 								{t.retrySave}
 							</button>
 						</div>
@@ -387,32 +413,50 @@ export function ShadowingWorkspace({
 					</p>
 					<div className={styles.toolbar}>
 						{(state.status === "transcribing" || state.status === "translating") && (
-							<button type="button" onClick={actions.pauseGeneration}>
+							<button
+								type="button"
+								onClick={() => void onAction({ type: "pause-generation" })}
+							>
 								{t.pause}
 							</button>
 						)}
 						{(state.status === "paused" || state.status === "error") && (
-							<button type="button" onClick={actions.resumeGeneration}>
+							<button
+								type="button"
+								onClick={() => void onAction({ type: "resume-generation" })}
+							>
 								{t.resume}
 							</button>
 						)}
 						{state.translationFailed && (
-							<button type="button" onClick={actions.retryTranslation}>
+							<button
+								type="button"
+								onClick={() => void onAction({ type: "retry-translation" })}
+							>
 								{t.retryTranslation}
 							</button>
 						)}
 						{state.taskError && (
-							<button type="button" onClick={actions.reloadSubtitles}>
+							<button
+								type="button"
+								onClick={() => void onAction({ type: "reload-subtitles" })}
+							>
 								{t.reloadSubtitles}
 							</button>
 						)}
 						{state.hasCandidate && (
-							<button type="button" onClick={actions.adoptCandidate}>
+							<button
+								type="button"
+								onClick={() => void onAction({ type: "adopt-candidate" })}
+							>
 								{t.adopt}
 							</button>
 						)}
 						{state.hasPrevious && (
-							<button type="button" onClick={actions.restorePrevious}>
+							<button
+								type="button"
+								onClick={() => void onAction({ type: "restore-previous" })}
+							>
 								{t.restore}
 							</button>
 						)}
@@ -428,7 +472,10 @@ export function ShadowingWorkspace({
 						aria-label={t.continuous}
 						value={state.practiceMode}
 						onChange={(event) =>
-							actions.setMode(event.target.value as typeof state.practiceMode)
+							void onAction({
+								type: "set-mode",
+								mode: event.target.value as typeof state.practiceMode,
+							})
 						}
 					>
 						<option value="shadow">{t.continuous}</option>
@@ -442,7 +489,12 @@ export function ShadowingWorkspace({
 							max="60"
 							step="0.5"
 							value={state.restSeconds}
-							onChange={(event) => actions.setRestSeconds(Number(event.target.value))}
+							onChange={(event) =>
+								void onAction({
+									type: "set-rest-seconds",
+									seconds: Number(event.target.value),
+								})
+							}
 						/>
 					</label>
 					<label>
@@ -454,46 +506,61 @@ export function ShadowingWorkspace({
 							step="0.25"
 							value={state.responseMultiplier}
 							onChange={(event) =>
-								actions.setResponseMultiplier(Number(event.target.value))
+								void onAction({
+									type: "set-response-multiplier",
+									multiplier: Number(event.target.value),
+								})
 							}
 						/>
 					</label>
 					{state.countdown > 0 && <strong aria-live="polite">{state.countdown}</strong>}
 					{state.practicePhase === "resting" && (
-						<button type="button" onClick={actions.continueEarly}>
+						<button
+							type="button"
+							onClick={() => void onAction({ type: "continue-early" })}
+						>
 							{t.continueEarly}
 						</button>
 					)}
-					<button type="button" onClick={actions.startLoop}>
+					<button type="button" onClick={() => void onAction({ type: "start-loop" })}>
 						{t.start}
 					</button>
-					<button type="button" onClick={actions.stopPractice}>
+					<button type="button" onClick={() => void onAction({ type: "stop-practice" })}>
 						{t.stop}
 					</button>
-					<button type="button" onClick={actions.recordOnce}>
+					<button type="button" onClick={() => void onAction({ type: "record-once" })}>
 						{t.record}
 					</button>
 					{state.hasTemporaryTake && (
 						<>
-							<button type="button" onClick={actions.replayTake}>
+							<button
+								type="button"
+								onClick={() => void onAction({ type: "replay-take" })}
+							>
 								{t.playMine}
 							</button>
-							<button type="button" onClick={actions.replayOriginal}>
+							<button
+								type="button"
+								onClick={() => void onAction({ type: "replay-original" })}
+							>
 								{t.playOriginal}
 							</button>
 							<button
 								type="button"
 								disabled={state.savingTake}
-								onClick={actions.saveTake}
+								onClick={() => void onAction({ type: "save-take" })}
 							>
 								{t.save}
 							</button>
 						</>
 					)}
-					<button type="button" onClick={actions.markDifficult}>
+					<button type="button" onClick={() => void onAction({ type: "mark-difficult" })}>
 						{t.difficult}
 					</button>
-					<button type="button" onClick={actions.continueWatching}>
+					<button
+						type="button"
+						onClick={() => void onAction({ type: "continue-watching" })}
+					>
 						{t.continue}
 					</button>
 					{state.practiceError && <p role="alert">{state.practiceError}</p>}
@@ -507,12 +574,12 @@ export function ShadowingFloatingControls({
 	language,
 	currentCue,
 	state,
-	actions,
+	onAction,
 }: {
 	language: Language;
 	currentCue: ShadowingCueRow | null;
 	state: ShadowingWorkspaceState;
-	actions: ShadowingWorkspaceActions;
+	onAction: (action: ShadowingWorkspaceViewAction) => Promise<void>;
 }): React.ReactNode {
 	const t = copy[language];
 	return (
@@ -522,19 +589,19 @@ export function ShadowingFloatingControls({
 			<div className={styles.toolbar}>
 				<button
 					type="button"
-					onClick={actions.startLoop}
+					onClick={() => void onAction({ type: "start-loop" })}
 					disabled={state.practiceStart === null}
 				>
 					{t.start}
 				</button>
 				<button
 					type="button"
-					onClick={actions.recordOnce}
+					onClick={() => void onAction({ type: "record-once" })}
 					disabled={state.practiceStart === null}
 				>
 					{t.record}
 				</button>
-				<button type="button" onClick={actions.continueWatching}>
+				<button type="button" onClick={() => void onAction({ type: "continue-watching" })}>
 					{t.continue}
 				</button>
 			</div>

@@ -244,14 +244,14 @@ describe("video queue view", () => {
 	it("shows the right subtitle panel only when the current video switch is on", () => {
 		const h = harness();
 		let enabled = false;
-		const setEnabled = vi.fn((value: boolean) => {
+		const setEnabled = vi.fn(async (value: boolean) => {
 			enabled = value;
 		});
 		const bridge = {
 			getSnapshot: () => ({ enabled }),
 			subscribe: () => () => undefined,
 			setEnabled,
-			actions: {},
+			act: vi.fn(async () => undefined),
 		} as unknown as ShadowingViewBridge;
 		const off = h.render(bridge);
 		expect(

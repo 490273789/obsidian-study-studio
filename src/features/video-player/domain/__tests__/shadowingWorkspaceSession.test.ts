@@ -25,7 +25,7 @@ function setup(initialEnabled: readonly string[] = ["one", "two"]) {
 	);
 	const reloadSource = vi.fn(async () => undefined);
 	const restore = vi.fn(async () => undefined);
-	const play = vi.fn(async () => undefined);
+	const play = vi.fn(async (): Promise<void> => undefined);
 	const leave = vi.fn();
 	const retrySave = vi.fn(async () => undefined);
 	const record = {
@@ -139,19 +139,19 @@ describe("ShadowingWorkspaceSession", () => {
 		expect(state.session.getSnapshot().enabled).toBe(false);
 		expect(state.restore).not.toHaveBeenCalled();
 
-		await state.session.act({ type: "set-enabled", enabled: true });
+		await state.session.setEnabled(true);
 		expect(state.writeEnabled).toHaveBeenCalledWith("one", true);
 		await vi.waitFor(() => expect(state.restore).toHaveBeenCalledWith("one"));
 		state.setSource("two");
 		expect(state.session.getSnapshot().enabled).toBe(false);
 		expect(state.restore).not.toHaveBeenCalledWith("two");
 
-		await state.session.act({ type: "set-enabled", enabled: true });
+		await state.session.setEnabled(true);
 		await vi.waitFor(() => expect(state.restore).toHaveBeenCalledWith("two"));
 		state.setSource("one");
 		expect(state.session.getSnapshot().enabled).toBe(true);
 
-		await state.session.act({ type: "set-enabled", enabled: false });
+		await state.session.setEnabled(false);
 		expect(state.writeEnabled).toHaveBeenLastCalledWith("one", false);
 		expect(state.session.getSnapshot().enabled).toBe(false);
 		state.session.dispose();
@@ -160,7 +160,7 @@ describe("ShadowingWorkspaceSession", () => {
 	it("turning shadowing off keeps the current video time and resumes playback", async () => {
 		const state = setup();
 		state.setPracticeActive();
-		await state.session.act({ type: "set-enabled", enabled: false });
+		await state.session.setEnabled(false);
 		expect(state.leave).toHaveBeenCalledWith({ seekToEnd: false });
 		expect(state.play).toHaveBeenCalledOnce();
 		state.session.dispose();
@@ -199,7 +199,7 @@ describe("ShadowingWorkspaceSession", () => {
 
 	it("stops active practice and audio on presenter relinquishment", async () => {
 		const state = setup();
-		await state.session.act({ type: "relinquish-presenter" });
+		await state.session.stopForPresenterLoss();
 		expect(state.stopAudio).toHaveBeenCalled();
 		state.session.dispose();
 	});
@@ -209,6 +209,29 @@ describe("ShadowingWorkspaceSession", () => {
 		state.reloadSource.mockRejectedValueOnce(new Error("Disk failed"));
 		await state.session.act({ type: "reload-subtitles" });
 		expect(state.session.getSnapshot().taskError).toBe("Disk failed");
+		state.session.dispose();
+	});
+
+	it("waits for continue-watching playback before publishing its failure", async () => {
+		const state = setup();
+		let rejectPlay!: (error: Error) => void;
+		state.play.mockImplementationOnce(
+			() =>
+				new Promise<void>((_resolve, reject) => {
+					rejectPlay = reject;
+				}),
+		);
+		let settled = false;
+		const completion = state.session.act({ type: "continue-watching" });
+		void completion.then(() => {
+			settled = true;
+		});
+		await Promise.resolve();
+		expect(settled).toBe(false);
+		rejectPlay(new Error("Playback failed"));
+		await completion;
+		expect(settled).toBe(true);
+		expect(state.session.getSnapshot().taskError).toBe("Playback failed");
 		state.session.dispose();
 	});
 

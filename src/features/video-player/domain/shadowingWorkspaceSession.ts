@@ -8,7 +8,7 @@ import type {
 import type {
 	ShadowingCueRow,
 	ShadowingRecordRow,
-	ShadowingWorkspaceAction,
+	ShadowingWorkspaceViewAction,
 	ShadowingWorkspaceState,
 	TakeAudioPlayerPort,
 } from "./types";
@@ -24,39 +24,6 @@ export interface ShadowingWorkspaceSessionOptions {
 	writeEnabled(sourceId: string, enabled: boolean): void;
 	startGeneration(sourceId: string): Promise<void>;
 	translateImported(sourceId: string): Promise<void>;
-}
-
-export interface ShadowingWorkspaceActions {
-	generate: () => void;
-	translateImported: () => void;
-	retryTranslation: () => void;
-	reloadSubtitles: () => void;
-	pauseGeneration: () => void;
-	resumeGeneration: () => void;
-	importFile: (
-		file: File | { readonly name: string; text(): Promise<string> },
-		role: "original" | "translation" | "bilingual",
-	) => void;
-	adoptCandidate: () => void;
-	restorePrevious: () => void;
-	editCue: (id: string, text?: string, translation?: string) => void;
-	selectRange: (start: number, end: number, text?: string) => void;
-	seekTo: (seconds: number) => void;
-	setMode: (mode: "shadow" | "repeat-after") => void;
-	setRestSeconds: (seconds: number) => void;
-	setResponseMultiplier: (multiplier: number) => void;
-	continueEarly: () => void;
-	startLoop: () => void;
-	stopPractice: () => void;
-	recordOnce: () => void;
-	replayTake: () => void;
-	replayOriginal: () => void;
-	saveTake: () => void;
-	retrySave: (takeId: string) => void;
-	continueWatching: () => void;
-	markDifficult: () => void;
-	openRecord: (record: ShadowingRecordRow) => void;
-	deleteRecord: (record: ShadowingRecordRow) => void;
 }
 
 /**
@@ -112,46 +79,45 @@ export class ShadowingWorkspaceSession {
 		return () => this.listeners.delete(listener);
 	};
 
-	setEnabled(enabled: boolean): void {
-		void this.act({ type: "set-enabled", enabled });
+	async setEnabled(enabled: boolean): Promise<void> {
+		const id = this.sourceId;
+		if (!id || this.options.readEnabled(id) === enabled) return;
+		this.options.writeEnabled(id, enabled);
+		if (enabled) {
+			void this.loadSource(id);
+		} else {
+			this.loadToken++;
+			this.activityToken++;
+			this.audioPlayer?.stop();
+			if (this.session.getSnapshot().range) {
+				const wasPlaying = this.options.runtime.getSnapshot().playing;
+				this.session.leave({ seekToEnd: false });
+				if (wasPlaying) {
+					await this.options.runtime
+						.play()
+						.catch((error: unknown) => this.showError(error));
+				}
+			}
+			this.records = [];
+			this.error = null;
+		}
+		this.publish();
 	}
 
-	stopForPresenterLoss(): void {
-		void this.act({ type: "relinquish-presenter" });
+	async stopForPresenterLoss(): Promise<void> {
+		this.activityToken++;
+		const phase = this.session.getSnapshot().phase;
+		if (phase !== "idle" && phase !== "paused") this.session.stop();
+		this.audioPlayer?.stop();
 	}
 
 	async refreshRecords(sourceId: string): Promise<void> {
 		await this.reloadRecords(sourceId);
 	}
 
-	/** Single semantic action dispatch for every shadowing workspace interaction. */
-	async act(action: ShadowingWorkspaceAction): Promise<void> {
+	/** One view intent surface; completion includes immediate work, not an ongoing practice loop. */
+	async act(action: ShadowingWorkspaceViewAction): Promise<void> {
 		switch (action.type) {
-			case "set-enabled": {
-				const id = this.sourceId;
-				if (!id || this.options.readEnabled(id) === action.enabled) return;
-				this.options.writeEnabled(id, action.enabled);
-				if (action.enabled) {
-					void this.loadSource(id);
-				} else {
-					this.loadToken++;
-					this.activityToken++;
-					this.audioPlayer?.stop();
-					if (this.session.getSnapshot().range) {
-						const wasPlaying = this.options.runtime.getSnapshot().playing;
-						this.session.leave({ seekToEnd: false });
-						if (wasPlaying) {
-							await this.options.runtime
-								.play()
-								.catch((error: unknown) => this.showError(error));
-						}
-					}
-					this.records = [];
-					this.error = null;
-				}
-				this.publish();
-				return;
-			}
 			case "generate":
 				return this.run(async () => {
 					if (this.sourceId) await this.options.startGeneration(this.sourceId);
@@ -243,8 +209,7 @@ export class ShadowingWorkspaceSession {
 				return this.run(() => this.session.retrySave(action.takeId));
 			case "continue-watching":
 				this.session.leave();
-				void this.options.runtime.play().catch((error: unknown) => this.showError(error));
-				return;
+				return this.options.runtime.play().catch((error: unknown) => this.showError(error));
 			case "mark-difficult":
 				return this.run(async () => {
 					const range = this.session.getSnapshot().range;
@@ -265,49 +230,8 @@ export class ShadowingWorkspaceSession {
 					await this.options.records.remove(this.sourceId, action.record.id);
 					await this.reloadRecords(this.sourceId);
 				});
-			case "relinquish-presenter": {
-				this.activityToken++;
-				const phase = this.session.getSnapshot().phase;
-				if (phase !== "idle" && phase !== "paused") this.session.stop();
-				this.audioPlayer?.stop();
-				return;
-			}
 		}
 	}
-
-	/** Ergonomic facade projecting typed act calls to legacy action callbacks. */
-	readonly actions: ShadowingWorkspaceActions = {
-		generate: () => void this.act({ type: "generate" }),
-		translateImported: () => void this.act({ type: "translate-imported" }),
-		retryTranslation: () => void this.act({ type: "retry-translation" }),
-		reloadSubtitles: () => void this.act({ type: "reload-subtitles" }),
-		pauseGeneration: () => void this.act({ type: "pause-generation" }),
-		resumeGeneration: () => void this.act({ type: "resume-generation" }),
-		importFile: (file, role) => void this.act({ type: "import-file", file, role }),
-		adoptCandidate: () => void this.act({ type: "adopt-candidate" }),
-		restorePrevious: () => void this.act({ type: "restore-previous" }),
-		editCue: (cueId, text, translation) =>
-			void this.act({ type: "edit-cue", cueId, text, translation }),
-		selectRange: (start, end, text) =>
-			void this.act({ type: "select-range", start, end, text }),
-		seekTo: (seconds) => void this.act({ type: "seek-to", seconds }),
-		setMode: (mode) => void this.act({ type: "set-mode", mode }),
-		setRestSeconds: (seconds) => void this.act({ type: "set-rest-seconds", seconds }),
-		setResponseMultiplier: (multiplier) =>
-			void this.act({ type: "set-response-multiplier", multiplier }),
-		continueEarly: () => void this.act({ type: "continue-early" }),
-		startLoop: () => void this.act({ type: "start-loop" }),
-		stopPractice: () => void this.act({ type: "stop-practice" }),
-		recordOnce: () => void this.act({ type: "record-once" }),
-		replayTake: () => void this.act({ type: "replay-take" }),
-		replayOriginal: () => void this.act({ type: "replay-original" }),
-		saveTake: () => void this.act({ type: "save-take" }),
-		retrySave: (takeId) => void this.act({ type: "retry-save", takeId }),
-		continueWatching: () => void this.act({ type: "continue-watching" }),
-		markDifficult: () => void this.act({ type: "mark-difficult" }),
-		openRecord: (record) => void this.act({ type: "open-record", record }),
-		deleteRecord: (record) => void this.act({ type: "delete-record", record }),
-	};
 
 	dispose(): void {
 		this.loadToken++;

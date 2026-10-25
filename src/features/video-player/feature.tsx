@@ -278,7 +278,7 @@ export function createVideoPlayerFeature(
 						const unsubscribe = view.subscribe(() => {
 							const presenter = view.getSnapshot().role === "presenter";
 							if (wasPresenter && !presenter)
-								shadowingSession?.stopForPresenterLoss();
+								void shadowingSession?.stopForPresenterLoss();
 							if (!wasPresenter && presenter)
 								desktopWindow = rootEl.ownerDocument
 									.defaultView as typeof desktopWindow;
@@ -287,7 +287,7 @@ export function createVideoPlayerFeature(
 						return {
 							resource: view,
 							dispose: () => {
-								if (wasPresenter) shadowingSession?.stopForPresenterLoss();
+								if (wasPresenter) void shadowingSession?.stopForPresenterLoss();
 								unsubscribe();
 								view.dispose();
 							},
