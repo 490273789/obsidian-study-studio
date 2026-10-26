@@ -99,6 +99,10 @@ export function createFakeWorkbenchHost<TOwner extends FeatureSettingsOwner>(
 		settingsSection: (section: WorkbenchSettingsSection) => sections.set(section.id, section),
 		catalog: (entry: WorkbenchCatalogEntry) => catalog.set(entry.id, entry),
 		featureShortcuts,
+		configuredOpenShortcut: () =>
+			owner in document.featureOpenShortcuts
+				? document.featureOpenShortcuts[owner as keyof typeof document.featureOpenShortcuts]
+				: "",
 	} as unknown as WorkbenchHost<TOwner>;
 
 	return {

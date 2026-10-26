@@ -144,6 +144,7 @@ export function createSelectionHelperModule(
 					? new WebviewSelectionAdapter({
 							document: doc,
 							isEnabled: () => host.settings.read().selectionPopup.enabled,
+							getOpenShortcut: () => host.configuredOpenShortcut(),
 							openSource: () => helper.openSource(owner),
 							openDictionary: (source, candidate) => {
 								if (candidate && isEnglishWordOrPhrase(candidate.text))
@@ -220,7 +221,10 @@ export function createSelectionHelperModule(
 					}),
 				);
 				helper.refresh();
-				for (const entry of windows.values()) entry.listener.refresh();
+				for (const entry of windows.values()) {
+					entry.listener.refresh();
+					entry.web?.refreshShortcut();
+				}
 			};
 		},
 	});

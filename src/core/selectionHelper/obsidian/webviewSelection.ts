@@ -1,5 +1,6 @@
 import { isEnglishWordOrPhrase } from "../domain/selectionHelper";
 import type { SelectionSource, SelectionSourceLease } from "../domain/types";
+import { normalizeFeatureOpenShortcut } from "../../settings/featureOpenShortcuts";
 
 export type WebviewSelectionStatus = "idle" | "available" | "unavailable";
 
@@ -23,6 +24,7 @@ interface GuestEvent {
 	altKey: boolean;
 	shiftKey: boolean;
 	ctrlOrMetaKey: boolean;
+	openAssistant?: boolean;
 }
 
 interface Page {
@@ -50,6 +52,7 @@ interface WebviewSelectionOptions {
 	isDictionaryPopup(): boolean;
 	onStatus(status: WebviewSelectionStatus): void;
 	isEnabled(): boolean;
+	getOpenShortcut(): string;
 	openDictionary?(
 		source: SelectionSource,
 		candidate?: { text: string; x: number; y: number },
@@ -58,10 +61,11 @@ interface WebviewSelectionOptions {
 
 let nextPage = 0;
 const collectorKey = "__studyStudioSelectionCollector";
+const shortcutPlaceholder = "__STUDY_STUDIO_OPEN_SHORTCUT__";
 const removeCollector = `(() => { window.${collectorKey}?.dispose(); delete window.${collectorKey}; delete window.${collectorKey}_manualOrigin; })()`;
 
-// Fixed code only: no host objects, credentials, Node integration, or selected text
-// are interpolated into the guest's JavaScript context.
+// Only the validated shortcut is interpolated into the guest. No host objects,
+// credentials, Node integration, or selected text cross into that context.
 const installCollector = `(() => {
 	window.${collectorKey}?.dispose();
 	let sequence = 0;
@@ -69,13 +73,27 @@ const installCollector = `(() => {
 	let latest = null;
 	let origin = null;
 	let selectionIdentity = null;
+	let openShortcut = ${shortcutPlaceholder};
 	const handlers = [];
-	const record = (text, x, y, event, shouldDismiss = false, reposition = false) => {
+	const record = (text, x, y, event, shouldDismiss = false, reposition = false, openAssistant = false) => {
 		if (text && !reposition) captureSequence++;
 		latest = { sequence: ++sequence, captureSequence,
 			text, shouldDismiss, reposition, x, y, width: innerWidth, height: innerHeight,
 			altKey: !!event?.altKey, shiftKey: !!event?.shiftKey,
-			ctrlOrMetaKey: !!(event?.ctrlKey || event?.metaKey) };
+			ctrlOrMetaKey: !!(event?.ctrlKey || event?.metaKey), openAssistant };
+	};
+	const matchesShortcut = (event) => {
+		if (!openShortcut || event.isComposing || event.keyCode === 229 || event.repeat) return false;
+		const code = event.code || '';
+		const modified = event.ctrlKey || event.altKey || event.metaKey;
+		const key = modified && /^Digit[0-9]$/.test(code) ? code.slice(-1) :
+			modified && /^Key[A-Z]$/.test(code) ? code.slice(-1) : event.key;
+		const normalizedKey = key.length === 1 ? key.toUpperCase() : key;
+		const chord = [event.ctrlKey ? 'Ctrl' : null, event.altKey ? 'Alt' : null,
+			event.shiftKey ? 'Shift' : null, event.metaKey ? 'Meta' : null,
+			(normalizedKey === ' ' || normalizedKey === 'Spacebar') ? 'Space' : normalizedKey === '+' ? 'Plus' :
+			normalizedKey === '-' ? 'Minus' : normalizedKey].filter(Boolean).join('+');
+		return chord === openShortcut;
 	};
 	// Ordinary clears retain the displayed source node so later removal still expires it.
 	const clear = () => { record('', 0, 0); };
@@ -84,7 +102,7 @@ const installCollector = `(() => {
 		a.focusNode === b.focusNode && a.start === b.start && a.end === b.end && a.text === b.text;
 	// Losing focus suppresses selection replay, but the displayed snapshot still
 	// needs its origin tracked. Preserve pending expiry events as well.
-	const suppressSelection = () => { if (latest?.text) latest = null; };
+	const suppressSelection = () => { if (latest?.text || latest?.openAssistant) latest = null; };
 	const capture = (event) => {
 		if (!document.hasFocus()) return;
 		const active = document.activeElement;
@@ -146,12 +164,18 @@ const installCollector = `(() => {
 	bind('mousedown', clear);
 	bind('blur', suppressSelection);
 	bind('scroll', onScroll);
-	bind('keydown', (event) => { if (event.key === 'Escape') close(); });
+	bind('keydown', (event) => {
+		if (event.key === 'Escape') { close(); return; }
+		if (!matchesShortcut(event)) return;
+		event.preventDefault();
+		event.stopImmediatePropagation();
+		record('', 0, 0, event, false, false, true);
+	});
 	window.${collectorKey} = { read: () => {
 		if (origin?.isConnected === false) close();
 		if (!document.hasFocus()) suppressSelection();
 		return latest;
-	}, dispose: () => {
+	}, setOpenShortcut: (shortcut) => { openShortcut = shortcut; }, dispose: () => {
 		for (const [type, callback] of handlers) document.removeEventListener(type, callback, true);
 	} };
 	return true;
@@ -176,6 +200,7 @@ function guestEvent(value: unknown): GuestEvent | null {
 		(event.height as number) <= 0 ||
 		(event.shouldDismiss !== undefined && typeof event.shouldDismiss !== "boolean") ||
 		(event.reposition !== undefined && typeof event.reposition !== "boolean") ||
+		(event.openAssistant !== undefined && typeof event.openAssistant !== "boolean") ||
 		![event.altKey, event.shiftKey, event.ctrlOrMetaKey].every(
 			(item) => typeof item === "boolean",
 		)
@@ -254,6 +279,21 @@ export class WebviewSelectionAdapter {
 		this.sources.clear();
 		this.syncPolling();
 		this.publishStatus();
+	}
+
+	refreshShortcut(): void {
+		for (const source of this.sources.values()) {
+			const page = source.page;
+			if (!page.ready) continue;
+			void source.element
+				.executeJavaScript(
+					this.script(
+						`window.${collectorKey}?.setOpenShortcut(${JSON.stringify(this.openShortcut())})`,
+						page,
+					),
+				)
+				.catch(() => {});
+		}
 	}
 
 	/** Read the focused guest on explicit demand, even when automatic capture is off. */
@@ -386,8 +426,9 @@ export class WebviewSelectionAdapter {
 	}
 
 	private async install(source: Source): Promise<void> {
-		if (!this.registered(source) || !this.enabled || !this.options.isEnabled()) return;
+		if (!this.registered(source)) return;
 		const page = source.page;
+		const shortcut = this.openShortcut();
 		try {
 			if (typeof source.element.executeJavaScript !== "function")
 				throw new Error("Unavailable webview API");
@@ -400,6 +441,7 @@ export class WebviewSelectionAdapter {
 			}
 			page.ready = installed === true;
 			page.failed = !page.ready;
+			if (page.ready && shortcut !== this.openShortcut()) this.refreshShortcut();
 		} catch {
 			if (!page.lease.active) return;
 			page.failed = true;
@@ -415,7 +457,7 @@ export class WebviewSelectionAdapter {
 			this.enabled = enabled;
 			for (const source of this.sources.values()) {
 				if (!source.page.manualOrigin && !source.page.manualRead) this.invalidate(source);
-				if (enabled && !source.page.ready) void this.install(source);
+				if (!source.page.ready) void this.install(source);
 			}
 		}
 		if (document.visibilityState === "hidden") return;
@@ -426,7 +468,12 @@ export class WebviewSelectionAdapter {
 				source.page.manualRead
 			)
 				continue;
-			if (!this.options.isEnabled() && !source.page.manualOrigin) continue;
+			if (
+				!this.options.isEnabled() &&
+				!source.page.manualOrigin &&
+				(!this.openShortcut() || document.activeElement !== source.element)
+			)
+				continue;
 			if (!this.visibleRect(source)) continue;
 			void this.read(source);
 		}
@@ -452,6 +499,15 @@ export class WebviewSelectionAdapter {
 			if (!event || event.sequence <= page.sequence) return;
 			// Consume rejected events too, so returning focus cannot revive them.
 			page.sequence = event.sequence;
+			if (event.openAssistant) {
+				if (
+					read.isCurrent() &&
+					this.options.document.visibilityState !== "hidden" &&
+					this.options.document.activeElement === source.element
+				)
+					this.openDictionary();
+				return;
+			}
 			const rect = this.visibleRect(source);
 			if (
 				!rect ||
@@ -517,7 +573,13 @@ export class WebviewSelectionAdapter {
 	}
 
 	private script(template: string, page: Page): string {
-		return template.replaceAll(collectorKey, page.key);
+		return template
+			.replaceAll(collectorKey, page.key)
+			.replaceAll(shortcutPlaceholder, JSON.stringify(this.openShortcut()));
+	}
+
+	private openShortcut(): string {
+		return normalizeFeatureOpenShortcut(this.options.getOpenShortcut()) ?? "";
 	}
 
 	private visibleRect(source: Source): DOMRect | null {

@@ -2,7 +2,11 @@ import type { App, Command, Editor, Hotkey, ItemView, Plugin, WorkspaceLeaf } fr
 import type { LucideIcon } from "lucide-react";
 import type { SettingsPresentation } from "../settings/presentation";
 import type { FlashcardSettings, Language } from "../shared/types";
-import { featureOpenHotkeys, type FeatureOpenShortcutKey } from "../settings/featureOpenShortcuts";
+import {
+	FEATURE_OPEN_SHORTCUT_KEYS,
+	featureOpenHotkeys,
+	type FeatureOpenShortcutKey,
+} from "../settings/featureOpenShortcuts";
 import {
 	authorizeSettingsPatch,
 	changedSettingsOwners,
@@ -165,6 +169,8 @@ export interface WorkbenchHost<TOwner extends FeatureSettingsOwner> {
 	catalog(entry: WorkbenchCatalogEntry): void;
 	/** Read projection of the other features, ordered and filtered for a landing page. */
 	featureShortcuts(): readonly WorkbenchFeatureShortcut[];
+	/** Host-owned open shortcut for this module, without exposing the settings document. */
+	configuredOpenShortcut(): string;
 }
 
 export interface Workbench {
@@ -388,6 +394,12 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 			},
 
 			featureShortcuts: () => featureShortcutsFor(moduleId),
+			configuredOpenShortcut: () =>
+				FEATURE_OPEN_SHORTCUT_KEYS.includes(moduleId as FeatureOpenShortcutKey)
+					? options.readSettings().featureOpenShortcuts[
+							moduleId as FeatureOpenShortcutKey
+						]
+					: "",
 		} satisfies WorkbenchHost<TOwner>;
 
 		hostsByModule.set(moduleId, host);

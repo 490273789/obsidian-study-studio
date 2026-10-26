@@ -21,6 +21,7 @@ vi.mock("../obsidian/webviewSelection", () => ({
 		start = vi.fn();
 		stop = vi.fn();
 		openDictionary = vi.fn(() => false);
+		refreshShortcut = vi.fn();
 		constructor(public deps: any) {
 			instances.webs.push(this);
 		}

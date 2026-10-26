@@ -81,6 +81,7 @@ function setup() {
 	});
 	const onStatus = vi.fn();
 	const isEnabled = vi.fn(() => true);
+	let openShortcut = "Alt+1";
 	const openSource = vi.fn(() => helper.openSource({}));
 	const adapter = new WebviewSelectionAdapter({
 		document: document as unknown as Document,
@@ -93,6 +94,7 @@ function setup() {
 		},
 		onStatus,
 		isEnabled,
+		getOpenShortcut: () => openShortcut,
 	});
 	return {
 		adapter,
@@ -108,6 +110,10 @@ function setup() {
 		onStatus,
 		isEnabled,
 		openSource,
+		setOpenShortcut: (value: string) => {
+			openShortcut = value;
+			adapter.refreshShortcut();
+		},
 		remove: () => {
 			elements = [];
 			mutate();
@@ -235,6 +241,107 @@ describe("WebviewSelectionAdapter", () => {
 		env.adapter.stop();
 	});
 
+	it.each([true, false])(
+		"opens the lookup assistant with Option+1 while a web page has focus (automatic capture: %s)",
+		async (enabled) => {
+			const env = setup();
+			env.isEnabled.mockReturnValue(enabled);
+			const handlers = new Map<string, (event: unknown) => void>();
+			const guest = {
+				window: {
+					getSelection: () => ({
+						toString: () => "hello",
+						anchorNode: { isConnected: true },
+						rangeCount: 1,
+						getRangeAt: () => ({
+							getBoundingClientRect: () => ({ left: 20, bottom: 40 }),
+						}),
+					}),
+				},
+				innerWidth: 200,
+				innerHeight: 150,
+				document: {
+					activeElement: null,
+					hasFocus: vi.fn(() => true),
+					addEventListener: (type: string, callback: (event: unknown) => void) =>
+						handlers.set(type, callback),
+					removeEventListener: vi.fn(),
+				},
+			};
+			env.executeJavaScript.mockImplementation(async (code) => runInNewContext(code, guest));
+			env.document.hasFocus.mockReturnValue(false);
+			env.adapter.start();
+			await flush();
+			const keydown = {
+				key: "¡",
+				code: "Digit1",
+				altKey: true,
+				ctrlKey: false,
+				shiftKey: false,
+				metaKey: false,
+				preventDefault: vi.fn(),
+				stopImmediatePropagation: vi.fn(),
+			};
+			handlers.get("keydown")?.(keydown);
+			await vi.advanceTimersByTimeAsync(150);
+			expect(keydown.preventDefault).toHaveBeenCalledOnce();
+			expect(keydown.stopImmediatePropagation).toHaveBeenCalledOnce();
+			expect(env.helper.getSnapshot()).toMatchObject({
+				visible: true,
+				mode: "dictionary",
+				target: { text: "hello", x: 70, y: 140 },
+			});
+			env.helper.dismiss();
+			env.setOpenShortcut("Ctrl+K");
+			await flush();
+			keydown.preventDefault.mockClear();
+			handlers.get("keydown")?.(keydown);
+			await vi.advanceTimersByTimeAsync(150);
+			expect(keydown.preventDefault).not.toHaveBeenCalled();
+			expect(env.helper.getSnapshot().visible).toBe(false);
+			const reboundKeydown = {
+				...keydown,
+				key: "k",
+				code: "KeyK",
+				altKey: false,
+				ctrlKey: true,
+				preventDefault: vi.fn(),
+			};
+			handlers.get("keydown")?.(reboundKeydown);
+			await vi.advanceTimersByTimeAsync(150);
+			expect(reboundKeydown.preventDefault).toHaveBeenCalledOnce();
+			expect(env.helper.getSnapshot().visible).toBe(true);
+			env.helper.dismiss();
+			handlers.get("keydown")?.(reboundKeydown);
+			guest.document.hasFocus.mockReturnValue(false);
+			await vi.advanceTimersByTimeAsync(150);
+			expect(env.helper.getSnapshot().visible).toBe(false);
+			env.adapter.stop();
+		},
+	);
+
+	it.each(["host interaction", "webview focus change"])(
+		"discards a pending web shortcut after %s",
+		async (interruption) => {
+			const env = setup();
+			env.adapter.start();
+			await flush();
+			let finish!: (value: unknown) => void;
+			env.executeJavaScript.mockReturnValueOnce(
+				new Promise((resolve) => {
+					finish = resolve;
+				}),
+			);
+			await vi.advanceTimersByTimeAsync(150);
+			if (interruption === "host interaction") env.hostHandlers.get("mousedown")?.();
+			else env.document.activeElement = null;
+			finish({ ...event, text: "", openAssistant: true });
+			await flush();
+			expect(env.helper.getSnapshot().visible).toBe(false);
+			env.adapter.stop();
+		},
+	);
+
 	it("reads focused webview selections and converts guest viewport coordinates", async () => {
 		const env = setup();
 		env.adapter.start();
@@ -256,7 +363,7 @@ describe("WebviewSelectionAdapter", () => {
 		env.adapter.stop();
 	});
 
-	it("stops probing hidden and disabled webviews", async () => {
+	it("skips hidden webviews and ignores automatic selections when disabled", async () => {
 		const env = setup();
 		env.adapter.start();
 		await flush();
@@ -266,12 +373,13 @@ describe("WebviewSelectionAdapter", () => {
 		env.document.visibilityState = "visible";
 		env.isEnabled.mockReturnValue(false);
 		await vi.advanceTimersByTimeAsync(150);
-		expect(env.executeJavaScript).toHaveBeenCalledTimes(2);
+		const disabledCalls = env.executeJavaScript.mock.calls.length;
 		await vi.advanceTimersByTimeAsync(300);
-		expect(env.executeJavaScript).toHaveBeenCalledTimes(2);
+		expect(env.executeJavaScript.mock.calls.length).toBeGreaterThan(disabledCalls);
+		expect(env.selections).toHaveLength(0);
 		env.isEnabled.mockReturnValue(true);
 		await vi.advanceTimersByTimeAsync(150);
-		expect(env.executeJavaScript).toHaveBeenCalledTimes(4);
+		expect(env.executeJavaScript.mock.calls.length).toBeGreaterThan(disabledCalls);
 		env.adapter.stop();
 	});
 
@@ -448,16 +556,16 @@ describe("WebviewSelectionAdapter", () => {
 		},
 	);
 
-	it("removes disabled collectors and does not revive their cached event", async () => {
+	it("replaces disabled collectors and does not revive their cached event", async () => {
 		const env = setup();
 		env.adapter.start();
 		await flush();
 		const oldReadScript = env.executeJavaScript.mock.calls[0]![0];
 		env.isEnabled.mockReturnValue(false);
 		await vi.advanceTimersByTimeAsync(150);
-		expect(env.executeJavaScript).toHaveBeenLastCalledWith(
-			expect.stringContaining("delete window."),
-		);
+		expect(
+			env.executeJavaScript.mock.calls.some(([code]) => code.includes("delete window.")),
+		).toBe(true);
 		env.executeJavaScript.mockResolvedValue(true);
 		env.isEnabled.mockReturnValue(true);
 		await vi.advanceTimersByTimeAsync(150);

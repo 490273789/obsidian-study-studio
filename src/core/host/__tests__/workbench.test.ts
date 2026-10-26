@@ -520,7 +520,7 @@ describe("workbench", () => {
 			...DEFAULT_SETTINGS,
 			featureOpenShortcuts: { ...DEFAULT_SETTINGS.featureOpenShortcuts },
 		};
-		const { commands, plugin, workbench } = setup(
+		const { commands, plugin, workbench, host } = setup(
 			[
 				feature("flashcards", (host) =>
 					host.catalog({
@@ -549,6 +549,7 @@ describe("workbench", () => {
 		);
 
 		workbench.refresh();
+		expect(host("selectionHelper").configuredOpenShortcut()).toBe("Alt+1");
 		expect(commands.get("open-flashcards")?.hotkeys).toEqual([
 			{ modifiers: ["Alt"], key: "4" },
 		]);
@@ -566,6 +567,7 @@ describe("workbench", () => {
 			},
 		};
 		workbench.settingsChanged(previous, settings);
+		expect(host("selectionHelper").configuredOpenShortcut()).toBe("Ctrl+K");
 		expect(commands.get("open-flashcards")?.hotkeys).toEqual([]);
 		expect(commands.get("open-selection-dictionary-assistant")?.hotkeys).toEqual([
 			{ modifiers: ["Ctrl"], key: "K" },
