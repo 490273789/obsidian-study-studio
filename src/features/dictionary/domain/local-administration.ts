@@ -1,3 +1,4 @@
+import type { DataAdapter } from "obsidian";
 import type {
 	CompiledDictionarySettings,
 	DictionarySettingsStore,
@@ -5,7 +6,12 @@ import type {
 	LocalDictionaryAdministrationState,
 	LocalDictionarySettings,
 } from "./types";
-import { isCompiledPackageCompatible, type CompiledPackageSourceFormat } from "./compiled-package";
+import {
+	inspectCompiledPackage,
+	isCompiledPackageCompatible,
+	type CompiledPackageSourceFormat,
+	type CompiledPackageStatus,
+} from "./compiled-package";
 import { MAX_EUDIC_DICTIONARY_BYTES } from "./eudic-image";
 import type {
 	LocalDictionaryStorageAdapter,
@@ -31,9 +37,25 @@ export interface LocalDictionaryListItem {
 		readonly status: "ready";
 	};
 	readonly requiresReimport: boolean;
+	/** Present only while a mobile settings surface observes package sync. */
+	readonly compiledSyncStatus?: CompiledPackageStatus | "checking";
 }
 
 export type LocalDictionarySnapshot = readonly LocalDictionaryListItem[];
+
+interface LocalDictionaryPackageInspection {
+	readonly adapter: DataAdapter;
+	readonly dictionaryRoot: string;
+}
+
+interface PackageInspectionEntry {
+	readonly identity: string;
+	readonly status: CompiledPackageStatus | "checking";
+}
+
+interface PackageInspectionListener {
+	readonly notify: () => void;
+}
 
 export type LocalDictionaryAdministrationFailureCode =
 	| "unsupported"
@@ -405,8 +427,22 @@ function toSnapshot(
 function copySnapshot(snapshot: LocalDictionarySnapshot): LocalDictionarySnapshot {
 	return snapshot.map((dictionary) => ({
 		...dictionary,
+		...(dictionary.compiled ? { compiled: { ...dictionary.compiled } } : {}),
 		files: dictionary.files.map((file) => ({ ...file })),
 	}));
+}
+
+function compiledIdentity(compiled: Readonly<CompiledDictionarySettings>): string {
+	return JSON.stringify([
+		compiled.formatVersion,
+		compiled.engineVersion,
+		compiled.manifestPath,
+		compiled.manifestSha256,
+		compiled.sourceFingerprint,
+		compiled.entryCount,
+		compiled.fileCount,
+		compiled.totalBytes,
+	]);
 }
 
 function stateWithCatalog(
@@ -486,11 +522,14 @@ export class LocalDictionaryAdministrationModule implements LocalDictionaryAdmin
 	private degraded = false;
 	private queue: Promise<void> = Promise.resolve();
 	private snapshot: LocalDictionarySnapshot;
+	private readonly packageListeners = new Set<PackageInspectionListener>();
+	private readonly packageStatus = new Map<string, PackageInspectionEntry>();
 
 	constructor(
 		private readonly settings: DictionarySettingsStore,
 		private readonly storage: LocalDictionaryStorageAdapter,
 		private readonly invalidateRuntimeCache: () => void = () => undefined,
+		private readonly packageInspection?: LocalDictionaryPackageInspection,
 	) {
 		this.snapshot = toSnapshot(
 			settings.getLocalDictionaryAdministrationState().localDictionaries,
@@ -498,7 +537,42 @@ export class LocalDictionaryAdministrationModule implements LocalDictionaryAdmin
 	}
 
 	list(): LocalDictionarySnapshot {
-		return copySnapshot(this.snapshot);
+		return copySnapshot(
+			this.snapshot.map((dictionary) => {
+				const status = this.packageListeners.size
+					? this.packageStatus.get(dictionary.id)?.status
+					: undefined;
+				return status ? { ...dictionary, compiledSyncStatus: status } : dictionary;
+			}),
+		);
+	}
+
+	/** A settings-surface lease; each fresh opening rechecks synced mobile files. */
+	watchCompiledPackages(listener: () => void): () => void {
+		if (!this.packageInspection) return () => undefined;
+		const first = this.packageListeners.size === 0;
+		const lease: PackageInspectionListener = { notify: listener };
+		this.packageListeners.add(lease);
+		if (first) {
+			this.reconcilePackageInspections(true);
+			void this.refreshCatalog();
+		}
+		return () => {
+			if (!this.packageListeners.delete(lease)) return;
+			if (this.packageListeners.size === 0) {
+				// A pending adapter read may settle after the settings surface closes.
+				this.packageStatus.clear();
+			}
+		};
+	}
+
+	/** Apply externally committed catalog changes after any in-flight catalog transaction. */
+	refreshCatalog(): Promise<void> {
+		return this.enqueue(async () => {
+			this.replaceSnapshot(
+				toSnapshot(this.settings.getLocalDictionaryAdministrationState().localDictionaries),
+			);
+		});
 	}
 
 	importFiles(
@@ -519,6 +593,63 @@ export class LocalDictionaryAdministrationModule implements LocalDictionaryAdmin
 
 	cancelActiveOperations(): void {
 		this.storage.cancelActive();
+		this.packageStatus.clear();
+		this.packageListeners.clear();
+	}
+
+	private notifyPackageListeners(): void {
+		for (const listener of this.packageListeners) {
+			try {
+				listener.notify();
+			} catch {
+				// A settings refresh cannot undo an already committed catalog transaction.
+			}
+		}
+	}
+
+	private reconcilePackageInspections(force = false, notify = true): void {
+		if (!this.packageInspection || this.packageListeners.size === 0) return;
+		const eligible = new Set<string>();
+		let changed = false;
+		for (const dictionary of this.snapshot) {
+			if (!dictionary.compiled || dictionary.requiresReimport) continue;
+			eligible.add(dictionary.id);
+			const identity = compiledIdentity(dictionary.compiled);
+			if (!force && this.packageStatus.get(dictionary.id)?.identity === identity) continue;
+			const entry: PackageInspectionEntry = { identity, status: "checking" };
+			this.packageStatus.set(dictionary.id, entry);
+			changed = true;
+			void inspectCompiledPackage({
+				adapter: this.packageInspection.adapter,
+				dictionaryRoot: `${this.packageInspection.dictionaryRoot}/${dictionary.id}`,
+				expected: dictionary.compiled,
+			})
+				.then((status) => this.completePackageInspection(dictionary.id, entry, status))
+				.catch(() => this.completePackageInspection(dictionary.id, entry, "corrupt"));
+		}
+		for (const id of this.packageStatus.keys()) {
+			if (eligible.has(id)) continue;
+			this.packageStatus.delete(id);
+			changed = true;
+		}
+		if (changed && notify) this.notifyPackageListeners();
+	}
+
+	private completePackageInspection(
+		id: string,
+		entry: PackageInspectionEntry,
+		status: CompiledPackageStatus,
+	): void {
+		if (this.packageListeners.size === 0 || this.packageStatus.get(id) !== entry) return;
+		this.packageStatus.set(id, { ...entry, status });
+		this.notifyPackageListeners();
+	}
+
+	private replaceSnapshot(next: LocalDictionarySnapshot): void {
+		if (JSON.stringify(this.snapshot) === JSON.stringify(next)) return;
+		this.snapshot = next;
+		this.reconcilePackageInspections(false, false);
+		this.notifyPackageListeners();
 	}
 
 	private enqueue<T>(operation: () => Promise<T>): Promise<T> {
@@ -556,8 +687,8 @@ export class LocalDictionaryAdministrationModule implements LocalDictionaryAdmin
 	}
 
 	private commitSnapshot(): LocalDictionarySnapshot {
-		this.snapshot = toSnapshot(
-			this.settings.getLocalDictionaryAdministrationState().localDictionaries,
+		this.replaceSnapshot(
+			toSnapshot(this.settings.getLocalDictionaryAdministrationState().localDictionaries),
 		);
 		this.invalidateCache();
 		return this.list();

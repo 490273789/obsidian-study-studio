@@ -1,6 +1,5 @@
 import { Notice, Platform } from "obsidian";
 import type { AiService } from "../../../core/ai";
-import { inspectCompiledPackage, type CompiledPackageStatus } from "../domain/compiled-package";
 import {
 	DEFAULT_DICTIONARY_FAVORITE_PATH,
 	normalizeDictionaryFavoritePath,
@@ -12,7 +11,6 @@ import { dictionaryStrings, type DictionaryStrings } from "../strings/dictionary
 import type { Language } from "../../../core/shared/types";
 import {
 	buildDictionarySettingsViewModel,
-	formatDictionaryBytes,
 	type DictionarySettingsEditorActions,
 } from "../settings/viewModel";
 import type { SettingsPresentation } from "../../../core/settings/presentation";
@@ -47,18 +45,17 @@ function dictionaryImportErrorMessage(
  *
  * It holds no settings draft: the committed `DictionarySettingsStore` stays the
  * authority and every control commits through `DictionaryRuntime.updateSettings`.
- * The editor only tracks in-flight activity and the mobile compiled-v2 probe.
+ * The editor only tracks in-flight settings activity; the local catalog owns
+ * the mobile compiled-v2 inspection state.
  */
 export class DictionarySettingsEditor {
 	private deleting = false;
 	private importing = false;
 	private saving = false;
 	private testing = false;
-	private visible = false;
 	private unsubscribeRuntime: (() => void) | null = null;
 	private unsubscribeAi: (() => void) | null = null;
-	private readonly compiledStatus: Record<string, string> = {};
-	private readonly probed = new Set<string>();
+	private unsubscribePackages: (() => void) | null = null;
 
 	constructor(
 		private readonly runtime: DictionaryRuntime,
@@ -68,18 +65,22 @@ export class DictionarySettingsEditor {
 	) {}
 
 	activate(): void {
-		this.visible = true;
 		this.unsubscribeRuntime ??= this.runtime.query.subscribe(this.refresh);
 		this.unsubscribeAi ??= this.ai.subscribe(this.refresh);
-		this.probeCompiledPackages();
+		if (!Platform.isDesktopApp) {
+			this.unsubscribePackages ??= this.runtime.administration.watchCompiledPackages(
+				this.refresh,
+			);
+		}
 	}
 
 	hide(): void {
-		this.visible = false;
 		this.unsubscribeRuntime?.();
 		this.unsubscribeRuntime = null;
 		this.unsubscribeAi?.();
 		this.unsubscribeAi = null;
+		this.unsubscribePackages?.();
+		this.unsubscribePackages = null;
 	}
 
 	presentation(): SettingsPresentation {
@@ -88,7 +89,6 @@ export class DictionarySettingsEditor {
 				settings: this.runtime.settings.getDictionarySettings(),
 				aiSnapshot: this.ai.getSnapshot(),
 				localDictionaries: this.runtime.administration.list(),
-				compiledStatus: { ...this.compiledStatus },
 				desktop: Platform.isDesktopApp,
 				importing: this.importing,
 				saving: this.saving || this.deleting,
@@ -282,62 +282,6 @@ export class DictionarySettingsEditor {
 			this.refresh();
 		}
 	}
-
-	/**
-	 * Mobile cannot compile dictionaries, so it can only report whether the
-	 * synced compiled-v2 package is fully present. Desktop reads the local files
-	 * directly, where the catalog snapshot is already authoritative.
-	 */
-	private probeCompiledPackages(): void {
-		if (Platform.isDesktopApp) return;
-		const strings = dictionaryStrings(this.language());
-		for (const local of this.runtime.administration.list()) {
-			const compiled = local.compiled;
-			if (!compiled || local.requiresReimport || this.probed.has(local.id)) continue;
-			this.probed.add(local.id);
-			this.compiledStatus[local.id] = strings.compiledChecking;
-			const dictionaryRoot = `${this.runtime.dictionaryRoot}/${local.id}`;
-			void inspectCompiledPackage({
-				adapter: this.runtime.app.vault.adapter,
-				dictionaryRoot,
-				expected: compiled,
-			})
-				.then((status) => {
-					this.compiledStatus[local.id] = compiledStatusText(status, compiled, strings);
-					this.refreshIfVisible();
-					return undefined;
-				})
-				.catch(() => {
-					this.compiledStatus[local.id] = strings.compiledCorrupt;
-					this.refreshIfVisible();
-				});
-		}
-	}
-
-	private refreshIfVisible(): void {
-		if (this.visible) this.refresh();
-	}
-}
-
-function compiledStatusText(
-	status: CompiledPackageStatus,
-	compiled: {
-		readonly engineVersion: string;
-		readonly entryCount: number;
-		readonly totalBytes: number;
-	},
-	strings: DictionaryStrings,
-): string {
-	if (status === "ready") {
-		return strings.compiledReady(
-			compiled.entryCount,
-			formatDictionaryBytes(compiled.totalBytes),
-			compiled.engineVersion,
-		);
-	}
-	if (status === "incomplete" || status === "missing") return strings.compiledIncomplete;
-	if (status === "incompatible") return strings.compiledReimportRequired;
-	return strings.compiledCorrupt;
 }
 
 /** In-place array move shared by the reorderable source list. */

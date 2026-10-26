@@ -90,6 +90,10 @@ export class DictionaryRuntime {
 			options.settings,
 			new LocalDictionaryImporter(options.app, options.plugin),
 			() => this.handleLocalDictionariesChanged(),
+			{
+				adapter: options.app.vault.adapter,
+				dictionaryRoot: this.dictionaryRoot,
+			},
 		);
 		this.applySettings();
 	}
@@ -97,6 +101,7 @@ export class DictionaryRuntime {
 	/** Re-reads committed settings and re-applies them to both stateful modules. */
 	applySettings(): void {
 		if (this.disposed) return;
+		void this.administration.refreshCatalog();
 		this.dropRemovedLocalSources();
 		void this.query.send({ type: "settings-changed" });
 		this.favoriteController.refreshSettings();

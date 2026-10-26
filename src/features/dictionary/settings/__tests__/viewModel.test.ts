@@ -29,7 +29,6 @@ function setup() {
 			testing: [],
 		},
 		localDictionaries: [],
-		compiledStatus: {},
 		desktop: true,
 		importing: false,
 		saving: false,
@@ -112,6 +111,42 @@ describe("favorite open mode settings", () => {
 });
 
 describe("local dictionary settings", () => {
+	it("renders mobile package status in the current language", () => {
+		const { state, actions } = setup();
+		state.desktop = false;
+		state.localDictionaries = [
+			{
+				compiled: {
+					engineVersion: "2.0.6",
+					entryCount: 1,
+					fileCount: 2,
+					formatVersion: 2,
+					manifestPath: "compiled-v2/manifest.json",
+					manifestSha256: "a".repeat(64),
+					sourceFingerprint: "b".repeat(64),
+					status: "ready",
+					totalBytes: 1024,
+				},
+				compiledSyncStatus: "checking",
+				files: [],
+				id: "sample",
+				name: "Sample",
+				requiresReimport: false,
+			},
+		];
+		const description = (language: "zh" | "en") =>
+			buildDictionarySettingsViewModel(state, actions, language)
+				.snapshot.groups.flatMap((group) => group.rows)
+				.find((row) => row.name === "Sample")?.description;
+		expect(description("zh")).toContain(dictionaryStrings("zh").compiledChecking);
+		expect(description("en")).toContain(dictionaryStrings("en").compiledChecking);
+		state.localDictionaries = [
+			{ ...state.localDictionaries[0]!, compiledSyncStatus: "incomplete" },
+		];
+		expect(description("zh")).toContain(dictionaryStrings("zh").compiledIncomplete);
+		expect(description("en")).toContain(dictionaryStrings("en").compiledIncomplete);
+	});
+
 	it("offers rename and delete actions for each imported desktop dictionary", async () => {
 		const { state, actions } = setup();
 		state.localDictionaries = [

@@ -20,8 +20,6 @@ export interface DictionarySettingsEditorState {
 	settings: DictionarySettings;
 	aiSnapshot: AiSnapshot;
 	localDictionaries: readonly LocalDictionaryListItem[];
-	/** Per-dictionary compiled-v2 status text from the non-desktop sync probe. */
-	compiledStatus: Readonly<Record<string, string>>;
 	desktop: boolean;
 	importing: boolean;
 	saving: boolean;
@@ -59,13 +57,12 @@ function sourceKindLabel(kind: DictionarySourceKind, t: DictionaryStrings): stri
 }
 
 /** Compiled status line for one catalog entry, preferring a probe result. */
-function localDictionaryStatusText(
-	local: LocalDictionaryListItem,
-	compiledStatus: Readonly<Record<string, string>>,
-	t: DictionaryStrings,
-): string {
-	const probed = compiledStatus[local.id];
-	if (probed) return probed;
+function localDictionaryStatusText(local: LocalDictionaryListItem, t: DictionaryStrings): string {
+	const status = local.compiledSyncStatus;
+	if (status === "checking") return t.compiledChecking;
+	if (status === "incomplete" || status === "missing") return t.compiledIncomplete;
+	if (status === "incompatible") return t.compiledReimportRequired;
+	if (status === "corrupt") return t.compiledCorrupt;
 	const compiled = local.compiled;
 	if (compiled && !local.requiresReimport) {
 		return t.compiledReady(
@@ -279,7 +276,7 @@ export function buildDictionarySettingsViewModel(
 			for (const local of state.localDictionaries) {
 				const description = [
 					...local.files.map((file) => file.name),
-					localDictionaryStatusText(local, state.compiledStatus, t),
+					localDictionaryStatusText(local, t),
 				].join(" · ");
 				if (state.desktop) {
 					group.row(

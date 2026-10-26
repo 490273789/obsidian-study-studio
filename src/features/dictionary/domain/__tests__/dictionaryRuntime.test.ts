@@ -7,6 +7,7 @@ vi.mock("../compiled-source", () => ({ CompiledDictionarySource: class {} }));
 vi.mock("../importer", () => ({ LocalDictionaryImporter: class {} }));
 vi.mock("../local-administration", () => ({
 	LocalDictionaryAdministrationModule: class {
+		refreshCatalog() {}
 		cancelActiveOperations() {}
 	},
 }));
