@@ -1,10 +1,10 @@
 import { normalizeDictionaryFavoritePath, normalizeDictionaryQuery } from "./configuration";
 import type { CardSourceOperation, SourceCard } from "../../../core/shared/cardSourceMutation";
+import type { FavoriteCategoryFiles } from "./favorite-categories";
+import { favoriteCategoryPathSuggestions } from "./favorite-categories";
 
 export const DICTIONARY_FAVORITE_MEANING_MAX_LENGTH = 8_000;
 export const DICTIONARY_FAVORITE_NOTE_MAX_LENGTH = 16_000;
-export const DICTIONARY_FAVORITE_PATH_MAX_LENGTH = 500;
-export const DICTIONARY_FAVORITE_SUGGESTION_LIMIT = 300;
 
 type FavoriteSaveFailure =
 	| "migration-required"
@@ -33,9 +33,7 @@ export interface StoredDictionaryFavorite {
 	word: string;
 }
 
-export interface DictionaryFavoriteStore {
-	/** Suggestions relative to `currentPath`; `query` is the draft path being typed. */
-	suggestions(currentPath: string, query?: string): string[];
+export interface DictionaryFavoriteStore extends FavoriteCategoryFiles {
 	save(entry: DictionaryFavoriteEntry): Promise<string>;
 	find(path: string, word: string): Promise<StoredDictionaryFavorite | null>;
 	open(path: string): Promise<boolean>;
@@ -176,48 +174,33 @@ export function findDictionaryFavorite(
 	return found;
 }
 
-/** Normalizes typed input for matching without appending a `.md` extension. */
-function normalizeSuggestionQuery(value: string): string {
-	return value.trim().replaceAll("\\", "/").replace(/^\/+/, "").toLocaleLowerCase("en-US");
-}
-
-/**
- * Pins the committed path and `word.md`, then offers existing markdown paths
- * relevant to the typed text. Matching happens before the result limit so a
- * large vault cannot crowd out the paths under the typed folder; prefix matches
- * rank above paths that merely contain the typed text.
- */
-export function dictionaryFavoriteSuggestions(
-	currentPath: string,
-	markdownPaths: readonly string[],
-	query = "",
-): string[] {
-	const pinned = [...new Set([normalizeDictionaryFavoritePath(currentPath), "word.md"])];
-	const paths = new Set<string>(markdownPaths);
-	for (const path of pinned) paths.delete(path);
-	// oxlint-disable-next-line unicorn/no-array-sort -- sorts a fresh array copied from the set.
-	const existing = [...paths].sort((left, right) => left.localeCompare(right));
-	const candidates = [...pinned, ...existing];
-	const normalizedQuery = normalizeSuggestionQuery(query);
-	if (!normalizedQuery) return candidates.slice(0, DICTIONARY_FAVORITE_SUGGESTION_LIMIT);
-	const prefixMatches: string[] = [];
-	const otherMatches: string[] = [];
-	for (const path of candidates) {
-		const normalizedPath = path.toLocaleLowerCase("en-US");
-		if (normalizedPath.startsWith(normalizedQuery)) prefixMatches.push(path);
-		else if (normalizedPath.includes(normalizedQuery)) otherMatches.push(path);
-	}
-	return [...prefixMatches, ...otherMatches].slice(0, DICTIONARY_FAVORITE_SUGGESTION_LIMIT);
-}
-
 /** Pure in-memory dictionary favorite store for tests and fallback execution. */
 export function createMemoryDictionaryFavoriteStore(
 	initialFiles: Record<string, string> = {},
 ): DictionaryFavoriteStore {
 	const files = new Map<string, string>(Object.entries(initialFiles));
 	return {
-		suggestions(currentPath: string, query = ""): string[] {
-			return dictionaryFavoriteSuggestions(currentPath, [...files.keys()], query);
+		pathSuggestions(query: string): string[] {
+			return favoriteCategoryPathSuggestions([...files.keys()], query);
+		},
+		async ensureFile(path: string): Promise<() => Promise<void>> {
+			if (files.has(path)) return async () => undefined;
+			files.set(path, "");
+			return async () => {
+				if (files.get(path) !== "") throw new Error("Favorite file changed");
+				files.delete(path);
+			};
+		},
+		async moveFile(from: string, to: string): Promise<() => Promise<void>> {
+			if (!files.has(from) || files.has(to)) throw new Error("Cannot move favorite file");
+			files.set(to, files.get(from)!);
+			files.delete(from);
+			return async () => {
+				if (!files.has(to) || files.has(from))
+					throw new Error("Cannot restore favorite file");
+				files.set(from, files.get(to)!);
+				files.delete(to);
+			};
 		},
 		async save(entry: DictionaryFavoriteEntry): Promise<string> {
 			const path = normalizeDictionaryFavoritePath(entry.path, "");

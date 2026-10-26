@@ -24,7 +24,9 @@ function setup() {
 		favoriteAiConfigId: "favorite",
 	});
 	const file = {
-		suggestions: vi.fn(() => ["words.md"]),
+		pathSuggestions: vi.fn(() => [] as string[]),
+		ensureFile: vi.fn(async () => async () => undefined),
+		moveFile: vi.fn(async () => async () => undefined),
 		find: vi.fn(async (): Promise<StoredDictionaryFavorite | null> => null),
 		save: vi.fn(async () => "words.md"),
 		open: vi.fn(async () => true),
@@ -39,7 +41,7 @@ function setup() {
 	const generate = vi.fn(
 		async (_word: string, _config: string, _signal: AbortSignal) => generated,
 	);
-	const controller = new DictionaryFavoriteController(store, file, vi.fn(), {
+	const controller = new DictionaryFavoriteController(store, file, {
 		generator: { generate },
 		engineKey: () => "connection",
 		language: () => "zh",

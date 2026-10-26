@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { ObsidianDictionaryFavoriteStore } from "../favoriteStore";
 import { FavoriteSaveError, formatDictionaryFavorite } from "../../domain/favorite-file";
 import type { App } from "obsidian";
-import { TFile } from "obsidian";
+import { TFile, TFolder } from "obsidian";
 import type {
 	CardSourceMutation,
 	CardSourcePreparation,
@@ -49,6 +49,76 @@ function fileSetup(source: string, preparation: CardSourcePreparation = { kind: 
 }
 
 describe("ObsidianDictionaryFavoriteStore persistence", () => {
+	it("suggests existing Markdown files and folders without reading their contents", () => {
+		const folder = Object.assign(new TFolder(), { path: "Words/Grammar" });
+		const markdown = Object.assign(new TFile(), {
+			path: "Words/Grammar/verbs.md",
+			extension: "md",
+		});
+		const image = Object.assign(new TFile(), {
+			path: "Words/Grammar/image.png",
+			extension: "png",
+		});
+		const getAllLoadedFiles = vi.fn(() => [folder, markdown, image]);
+		const read = vi.fn();
+		const favorite = new ObsidianDictionaryFavoriteStore({
+			vault: { getAllLoadedFiles, read },
+		} as unknown as App);
+		expect(favorite.pathSuggestions("grammar")).toEqual([
+			"Words/Grammar/",
+			"Words/Grammar/verbs.md",
+		]);
+		expect(read).not.toHaveBeenCalled();
+	});
+
+	it("does not roll back a replacement file placed at the same path", async () => {
+		const files = new Map<string, TFile>();
+		const created = Object.assign(new TFile(), { path: "new.md", extension: "md" });
+		const replacement = Object.assign(new TFile(), { path: "new.md", extension: "md" });
+		const remove = vi.fn(async (file: TFile) => {
+			files.delete(file.path);
+		});
+		const app = {
+			vault: {
+				getAbstractFileByPath: (path: string) => files.get(path) ?? null,
+				getFileByPath: (path: string) => files.get(path) ?? null,
+				create: vi.fn(async () => {
+					files.set("new.md", created);
+					return created;
+				}),
+				read: vi.fn(async () => ""),
+				delete: remove,
+			},
+		} as unknown as App;
+		const undo = await new ObsidianDictionaryFavoriteStore(app).ensureFile("new.md");
+		files.set("new.md", replacement);
+		await expect(undo()).rejects.toThrow("changed");
+		expect(remove).not.toHaveBeenCalled();
+		expect(files.get("new.md")).toBe(replacement);
+	});
+
+	it("does not move a replacement file during rollback", async () => {
+		const old = Object.assign(new TFile(), { path: "old.md", extension: "md" });
+		const replacement = Object.assign(new TFile(), { path: "new.md", extension: "md" });
+		const files = new Map<string, TFile>([["old.md", old]]);
+		const renameFile = vi.fn(async (file: TFile, path: string) => {
+			files.delete(file.path);
+			file.path = path;
+			files.set(path, file);
+		});
+		const app = {
+			vault: {
+				getAbstractFileByPath: (path: string) => files.get(path) ?? null,
+				getFileByPath: (path: string) => files.get(path) ?? null,
+			},
+			fileManager: { renameFile },
+		} as unknown as App;
+		const undo = await new ObsidianDictionaryFavoriteStore(app).moveFile("old.md", "new.md");
+		files.set("new.md", replacement);
+		await expect(undo()).rejects.toThrow("restore");
+		expect(renameFile).toHaveBeenCalledTimes(1);
+		expect(files.get("new.md")).toBe(replacement);
+	});
 	it("passes the complete note to card validation instead of truncating it at a reserved marker", async () => {
 		const source = formatDictionaryFavorite(entry("apple"));
 		const setup = fileSetup(source, {

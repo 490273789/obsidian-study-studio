@@ -510,7 +510,8 @@ describe("DEFAULT_DICTIONARY_SETTINGS", () => {
 		expect(DEFAULT_DICTIONARY_SETTINGS).toMatchObject({
 			ai: { configId: null },
 			enabled: false,
-			favoritePath: "word.md",
+			favoriteCategories: [{ id: "default", name: "默认收藏", path: "word.md" }],
+			selectedFavoriteCategoryId: "default",
 			favoriteOpenMode: "modal",
 			history: [],
 			localDictionaries: [],

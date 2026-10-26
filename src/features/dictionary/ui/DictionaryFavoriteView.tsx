@@ -5,17 +5,20 @@ import { dictionaryStrings } from "../strings/dictionary";
 import type { Language } from "../../../core/shared/types";
 import { FlashcardButton } from "../../../core/ui/primitives/Button";
 import { FlashcardInput, FlashcardTextarea } from "../../../core/ui/primitives/Input";
+import { FlashcardSelect } from "../../../core/ui/primitives/Select";
 import { cls } from "../../../core/shared/classNames";
 import styles from "./Dictionary.module.scss";
 
 interface DictionaryFavoriteViewProps {
 	controller: DictionaryFavoriteController;
 	language: Language;
+	onCreateCategory?: () => void;
 }
 
 export function DictionaryFavoriteView({
 	controller,
 	language,
+	onCreateCategory,
 }: DictionaryFavoriteViewProps): React.ReactElement {
 	const subscribe = useCallback(
 		(listener: () => void) => controller.subscribe(listener),
@@ -27,7 +30,7 @@ export function DictionaryFavoriteView({
 	const saving = state.status === "saving";
 	const generating = state.status === "generating";
 	const busy = saving || generating;
-	const canSave = Boolean(state.word.trim() && state.path.trim()) && !busy;
+	const canSave = Boolean(state.word.trim() && state.selectedCategoryId) && !busy;
 	const canGenerate = Boolean(state.word.trim()) && !busy;
 
 	const handleFormKeyDown = (event: React.KeyboardEvent<HTMLFormElement>) => {
@@ -91,20 +94,27 @@ export function DictionaryFavoriteView({
 					/>
 				</label>
 
-				<label htmlFor="dictionary-favorite-path">
-					<span>{strings.favoritePath}</span>
+				<label htmlFor="dictionary-favorite-category">
+					<span>{strings.favoriteCategory}</span>
 					<div className={styles.favoritePathRow}>
-						<FlashcardInput
-							id="dictionary-favorite-path"
-							value={state.path}
-							list="dictionary-favorite-path-suggestions"
-							placeholder={strings.favoritePathPlaceholder}
-							maxLength={500}
-							autoComplete="off"
-							spellCheck={false}
+						<FlashcardSelect
+							id="dictionary-favorite-category"
+							value={state.selectedCategoryId}
 							disabled={busy}
-							onChange={(event) => controller.setPath(event.target.value)}
-						/>
+							onChange={(event) => {
+								if (event.target.value === "__new__") {
+									event.currentTarget.value = state.selectedCategoryId;
+									onCreateCategory?.();
+								} else void controller.selectCategory(event.target.value);
+							}}
+						>
+							{state.categories.map((category) => (
+								<option key={category.id} value={category.id}>
+									{category.name}
+								</option>
+							))}
+							<option value="__new__">{strings.favoriteCategoryCreate}</option>
+						</FlashcardSelect>
 						<FlashcardButton
 							type="button"
 							preset="icon"
@@ -120,13 +130,6 @@ export function DictionaryFavoriteView({
 						/>
 					</div>
 				</label>
-				<datalist id="dictionary-favorite-path-suggestions">
-					{state.pathSuggestions.map((path) => (
-						<option key={path} value={path}>
-							{path}
-						</option>
-					))}
-				</datalist>
 
 				<label htmlFor="dictionary-favorite-meaning">
 					<span>{strings.favoriteMeaning}</span>

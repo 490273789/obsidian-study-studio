@@ -1,12 +1,7 @@
-import {
-	DICTIONARY_QUERY_MAX_LENGTH,
-	normalizeDictionaryFavoritePath,
-	normalizeDictionaryQuery,
-} from "./configuration";
+import { DICTIONARY_QUERY_MAX_LENGTH, normalizeDictionaryQuery } from "./configuration";
 import {
 	DICTIONARY_FAVORITE_MEANING_MAX_LENGTH,
 	DICTIONARY_FAVORITE_NOTE_MAX_LENGTH,
-	DICTIONARY_FAVORITE_PATH_MAX_LENGTH,
 	FavoriteSaveError,
 	type DictionaryFavoriteStore,
 } from "./favorite-file";
@@ -16,6 +11,7 @@ import { aiErrorText } from "../../../core/i18n/ai";
 import type { Language } from "../../../core/shared/types";
 import { dictionaryText } from "./messages";
 import type { DictionaryFavoriteViewState, DictionarySettingsStore } from "./types";
+import { FavoriteCategoryError, FavoriteCategoryManager } from "./favorite-categories";
 
 interface FavoriteAiOptions {
 	readonly generator: FavoriteDraftGenerator;
@@ -31,8 +27,8 @@ interface FavoriteAiOptions {
 export class DictionaryFavoriteController {
 	private lookupRevision = 0;
 	private sessionRevision = 0;
-	private pathDirty = false;
 	private contentDirty = false;
+	readonly categories: FavoriteCategoryManager;
 	private generation: { controller: AbortController; engineKey: string } | null = null;
 	private state: DictionaryFavoriteViewState;
 	private snapshot: DictionaryFavoriteViewState;
@@ -42,17 +38,24 @@ export class DictionaryFavoriteController {
 	constructor(
 		private readonly settings: DictionarySettingsStore,
 		private readonly store: DictionaryFavoriteStore,
-		private readonly notify: (message: string) => void,
 		private readonly ai: FavoriteAiOptions,
+		categories?: FavoriteCategoryManager,
 	) {
-		const path = settings.getDictionarySettings().favoritePath;
+		this.categories =
+			categories ??
+			new FavoriteCategoryManager(settings, store, () => this.refreshSettings());
+		const dictionary = settings.getDictionarySettings();
+		const path =
+			dictionary.favoriteCategories.find(
+				(item) => item.id === dictionary.selectedFavoriteCategoryId,
+			)?.path ?? dictionary.favoriteCategories[0]!.path;
 		this.state = {
+			categories: [...dictionary.favoriteCategories],
+			selectedCategoryId: dictionary.selectedFavoriteCategoryId,
 			meaning: "",
 			message: "",
 			note: "",
 			path,
-			pathSuggestions: store.suggestions(path, path),
-			savedPath: path,
 			status: "idle",
 			word: "",
 		};
@@ -107,15 +110,16 @@ export class DictionaryFavoriteController {
 		void this.loadExisting(true);
 	}
 
-	setPath(value: string): void {
-		if (this.disposed || this.state.status === "saving") return;
-		this.cancelGeneration();
-		this.pathDirty = true;
-		this.state.path = value.slice(0, DICTIONARY_FAVORITE_PATH_MAX_LENGTH);
-		this.state.pathSuggestions = this.store.suggestions(this.state.savedPath, this.state.path);
-		this.resetMessage();
-		this.publish();
-		void this.loadExisting(false);
+	async selectCategory(id: string): Promise<void> {
+		if (this.disposed || this.isBusy()) return;
+		this.lookupRevision += 1;
+		try {
+			await this.categories.select(id);
+		} catch {
+			this.state.message = dictionaryText(this.ai.language()).favoriteCategorySaveFailed;
+			this.state.status = "error";
+			this.publish();
+		}
 	}
 
 	setMeaning(value: string): void {
@@ -218,7 +222,7 @@ export class DictionaryFavoriteController {
 			this.publish();
 			return;
 		}
-		const path = normalizeDictionaryFavoritePath(this.state.path, "");
+		const path = this.state.path;
 		if (!path) {
 			this.state.message = dictionaryText().favoriteSaveFailed;
 			this.state.status = "error";
@@ -231,16 +235,10 @@ export class DictionaryFavoriteController {
 		this.state.message = dictionaryText().favoriteSaving;
 		this.state.status = "saving";
 		this.publish();
-		const previousPath = this.settings.getDictionarySettings().favoritePath;
 		try {
-			if (path !== previousPath && !(await this.persistFavoritePath(path))) {
-				this.notify(dictionaryText().saveFailed);
-				throw new Error("favorite-path-persist-failed");
-			}
-			const savedPath = await this.store.save(entry);
+			const savedPath = await this.categories.saveFavorite(() => this.store.save(entry));
 			if (this.disposed || revision !== this.sessionRevision) return;
 			this.contentDirty = false;
-			this.pathDirty = false;
 			this.applySettings();
 			this.state.word = word;
 			this.state.message = dictionaryText().favoriteSaved(savedPath);
@@ -257,7 +255,9 @@ export class DictionaryFavoriteController {
 			this.state.message =
 				error instanceof FavoriteSaveError
 					? messages[error.reason]
-					: strings.favoriteSaveFailed;
+					: error instanceof FavoriteCategoryError && error.reason === "busy"
+						? strings.favoriteCategoryBusy
+						: strings.favoriteSaveFailed;
 			this.state.status = "error";
 			this.applySettings();
 		}
@@ -269,12 +269,9 @@ export class DictionaryFavoriteController {
 		this.cancelGeneration();
 		this.contentDirty = false;
 		this.lookupRevision += 1;
-		this.pathDirty = false;
 		this.state.meaning = "";
 		this.state.message = "";
 		this.state.note = "";
-		this.state.path = this.state.savedPath;
-		this.state.pathSuggestions = this.store.suggestions(this.state.savedPath, this.state.path);
 		this.state.status = "idle";
 		this.state.word = "";
 		this.publish();
@@ -293,7 +290,7 @@ export class DictionaryFavoriteController {
 		}
 		this.publish();
 		if (previousPath !== this.state.path && !this.contentDirty && !this.isBusy())
-			void this.loadExisting(false);
+			void this.loadExisting(true);
 	}
 
 	resetSession(): void {
@@ -302,7 +299,6 @@ export class DictionaryFavoriteController {
 		this.cancelGeneration();
 		this.contentDirty = false;
 		this.lookupRevision += 1;
-		this.pathDirty = false;
 		this.state.meaning = "";
 		this.state.message = "";
 		this.state.note = "";
@@ -315,7 +311,7 @@ export class DictionaryFavoriteController {
 	async openSavedFile(targetPath?: string): Promise<void> {
 		if (this.disposed || this.isBusy()) return;
 		const revision = this.lookupRevision;
-		const path = targetPath?.trim() || this.state.path.trim() || this.state.savedPath;
+		const path = targetPath?.trim() || this.state.path.trim();
 		try {
 			const opened = await this.store.open(path);
 			if (this.disposed || this.isBusy() || revision !== this.lookupRevision || opened)
@@ -339,16 +335,6 @@ export class DictionaryFavoriteController {
 		this.listeners.clear();
 	}
 
-	private async persistFavoritePath(path: string): Promise<boolean> {
-		try {
-			return await this.settings.updateDictionarySettings((draft) => {
-				draft.favoritePath = path;
-			});
-		} catch {
-			return false;
-		}
-	}
-
 	private resetMessage(): void {
 		if (this.state.status === "saving") return;
 		this.state.message = "";
@@ -356,17 +342,22 @@ export class DictionaryFavoriteController {
 	}
 
 	private applySettings(): void {
-		const path = this.settings.getDictionarySettings().favoritePath;
-		this.state.savedPath = path;
-		if (!this.pathDirty) this.state.path = path;
-		this.state.pathSuggestions = this.store.suggestions(path, this.state.path);
+		const dictionary = this.settings.getDictionarySettings();
+		const category =
+			dictionary.favoriteCategories.find(
+				(item) => item.id === dictionary.selectedFavoriteCategoryId,
+			) ?? dictionary.favoriteCategories[0]!;
+		const path = category.path;
+		this.state.categories = [...dictionary.favoriteCategories];
+		this.state.selectedCategoryId = category.id;
+		this.state.path = path;
 	}
 
 	private async loadExisting(clearOnMissing: boolean): Promise<void> {
 		if (this.contentDirty || this.isBusy()) return;
 		const revision = ++this.lookupRevision;
 		const word = normalizeDictionaryQuery(this.state.word);
-		const path = normalizeDictionaryFavoritePath(this.state.path, "");
+		const path = this.state.path;
 		if (!word || !path) return;
 		try {
 			const existing = await this.store.find(path, word);
@@ -397,18 +388,18 @@ export class DictionaryFavoriteController {
 	}
 
 	private buildSnapshot(): DictionaryFavoriteViewState {
-		const pathSuggestions = [...this.state.pathSuggestions];
+		const categories = this.state.categories.map((category) => ({ ...category }));
 		const snapshot: DictionaryFavoriteViewState = {
+			categories,
+			selectedCategoryId: this.state.selectedCategoryId,
 			meaning: this.state.meaning,
 			message: this.state.message,
 			note: this.state.note,
 			path: this.state.path,
-			pathSuggestions,
-			savedPath: this.state.savedPath,
 			status: this.state.status,
 			word: this.state.word,
 		};
-		Object.freeze(pathSuggestions);
+		Object.freeze(categories);
 		return Object.freeze(snapshot);
 	}
 

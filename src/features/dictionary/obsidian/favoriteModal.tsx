@@ -18,6 +18,7 @@ export class DictionaryFavoriteModal extends Modal {
 		private readonly controller: DictionaryFavoriteController,
 		private readonly language: () => Language,
 		private readonly onClosing: () => void,
+		private readonly onCreateCategory: () => void = () => undefined,
 	) {
 		super(app);
 	}
@@ -40,7 +41,11 @@ export class DictionaryFavoriteModal extends Modal {
 					viewType="dictionary-favorite-modal"
 					message={strings.favoriteRenderFailed}
 				>
-					<DictionaryFavoriteView controller={this.controller} language={language} />
+					<DictionaryFavoriteView
+						controller={this.controller}
+						language={language}
+						onCreateCategory={this.onCreateCategory}
+					/>
 				</ReactViewErrorBoundary>
 			</I18nProvider>,
 		);

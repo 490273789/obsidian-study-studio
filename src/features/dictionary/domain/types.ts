@@ -188,10 +188,17 @@ export interface AiDictionarySettings {
 
 export type DictionaryFavoriteOpenMode = "modal" | "sidebar";
 
+export interface FavoriteCategory {
+	id: string;
+	name: string;
+	path: string;
+}
+
 export interface DictionarySettings {
 	ai: AiDictionarySettings;
 	enabled: boolean;
-	favoritePath: string;
+	favoriteCategories: FavoriteCategory[];
+	selectedFavoriteCategoryId: string;
 	favoriteOpenMode: DictionaryFavoriteOpenMode;
 	/** Independent shared engine selection for favorite draft generation. */
 	favoriteAiConfigId: string | null;
@@ -248,12 +255,12 @@ export interface DictionaryViewState {
 }
 
 export interface DictionaryFavoriteViewState {
+	categories: FavoriteCategory[];
+	selectedCategoryId: string;
 	meaning: string;
 	message: string;
 	note: string;
 	path: string;
-	pathSuggestions: string[];
-	savedPath: string;
 	status: "idle" | "generating" | "saving" | "success" | "error";
 	word: string;
 }

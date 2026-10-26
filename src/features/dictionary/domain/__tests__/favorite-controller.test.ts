@@ -25,7 +25,9 @@ function setup() {
 		favoritePath: "word.md",
 	});
 	const file = {
-		suggestions: vi.fn<(currentPath: string, query?: string) => string[]>(() => ["word.md"]),
+		pathSuggestions: vi.fn(() => [] as string[]),
+		ensureFile: vi.fn(async () => async () => undefined),
+		moveFile: vi.fn(async () => async () => undefined),
 		find: vi.fn(async (): Promise<StoredDictionaryFavorite | null> => null),
 		save: vi.fn(async () => "word.md"),
 		open: vi.fn(async () => true),
@@ -39,7 +41,7 @@ function setup() {
 			return true;
 		}),
 	} as unknown as DictionarySettingsStore;
-	const controller = new DictionaryFavoriteController(store, file, vi.fn(), {
+	const controller = new DictionaryFavoriteController(store, file, {
 		generator: { generate },
 		language: () => "zh",
 		engineKey: () => engine,
@@ -208,13 +210,12 @@ describe("favorite generation interaction", () => {
 		await request;
 	});
 
-	it("opens the source file using current edited path or explicit target path", async () => {
+	it("opens the current category file or explicit target path", async () => {
 		const { controller, file } = setup();
 		file.open.mockResolvedValue(true);
 
-		controller.setPath("custom/notes.md");
 		await controller.openSavedFile();
-		expect(file.open).toHaveBeenCalledWith("custom/notes.md");
+		expect(file.open).toHaveBeenCalledWith("word.md");
 
 		await controller.openSavedFile("other/target.md");
 		expect(file.open).toHaveBeenCalledWith("other/target.md");
@@ -249,7 +250,7 @@ describe("favorite generation interaction", () => {
 			await controller.prefill("exchange");
 			file.save.mockReturnValueOnce(saved.promise);
 			const request = controller.save();
-			settings.favoritePath = "new.md";
+			settings.favoriteCategories[0]!.path = "new.md";
 			controller.refreshSettings();
 			expect(controller.getSnapshot().status).toBe("saving");
 			if (outcome === "success") saved.resolve("word.md");
@@ -258,7 +259,6 @@ describe("favorite generation interaction", () => {
 			expect(controller.getSnapshot()).toMatchObject({
 				status: outcome === "success" ? "success" : "error",
 				path: "new.md",
-				savedPath: "new.md",
 			});
 		},
 	);
@@ -295,25 +295,22 @@ describe("favorite generation interaction", () => {
 	});
 });
 
-describe("favorite path suggestions", () => {
-	it("matches suggestions against the path being typed", () => {
-		const { controller, file } = setup();
-		file.suggestions.mockImplementation((_currentPath, query = "") =>
-			query ? [`1-English/${query}.md`] : ["word.md"],
+describe("favorite categories", () => {
+	it("remembers selection and preserves an edited draft while switching files", async () => {
+		const { controller, settings, file } = setup();
+		settings.favoriteCategories.push({ id: "second", name: "第二类", path: "second.md" });
+		controller.refreshSettings();
+		await controller.prefill("apple");
+		controller.setMeaning("草稿");
+		await controller.selectCategory("second");
+		expect(controller.getSnapshot()).toMatchObject({
+			selectedCategoryId: "second",
+			path: "second.md",
+			meaning: "草稿",
+		});
+		await controller.save();
+		expect(file.save).toHaveBeenCalledWith(
+			expect.objectContaining({ path: "second.md", meaning: "草稿" }),
 		);
-		controller.setPath("Grammar");
-		expect(file.suggestions).toHaveBeenLastCalledWith("word.md", "Grammar");
-		expect(controller.getSnapshot().pathSuggestions).toEqual(["1-English/Grammar.md"]);
-	});
-
-	it("restores committed suggestions after clearing the draft", () => {
-		const { controller, file } = setup();
-		file.suggestions.mockImplementation((currentPath, query = "") =>
-			query && query !== currentPath ? ["1-English/typed.md"] : [currentPath],
-		);
-		controller.setPath("1-English");
-		expect(controller.getSnapshot().pathSuggestions).toEqual(["1-English/typed.md"]);
-		controller.clear();
-		expect(controller.getSnapshot().pathSuggestions).toEqual(["word.md"]);
 	});
 });

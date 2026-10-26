@@ -56,6 +56,12 @@ vi.mock("../obsidian/favoriteModal", () => ({
 	},
 }));
 
+vi.mock("../obsidian/favoriteCategoryModal", () => ({
+	FavoriteCategoryModal: class {
+		open() {}
+	},
+}));
+
 vi.mock("../domain/dictionaryRuntime", () => ({
 	DictionaryRuntime: class {
 		readonly query = {

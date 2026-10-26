@@ -663,6 +663,10 @@
 		flex: 1;
 		min-width: 0;
 	}
+	:global(.flashcard-select-shell) {
+		flex: 1;
+		min-width: 0;
+	}
 }
 
 .favoriteMeaningInput {

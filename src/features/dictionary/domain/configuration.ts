@@ -3,6 +3,7 @@ import { isRecord } from "../../../core/shared/isRecord";
 import {
 	type CompiledDictionarySettings,
 	type DictionarySettings,
+	type FavoriteCategory,
 	type DictionarySourceKind,
 	type DictionarySourceSettings,
 	type LocalDictionaryFileSettings,
@@ -14,6 +15,8 @@ import {
 export const DICTIONARY_QUERY_MAX_LENGTH = 128;
 export const DICTIONARY_HISTORY_LIMIT = 50;
 export const DEFAULT_DICTIONARY_FAVORITE_PATH = "word.md";
+export const DEFAULT_FAVORITE_CATEGORY_ID = "default";
+export const DEFAULT_FAVORITE_CATEGORY_NAME = "默认收藏";
 export const DEFAULT_YOUDAO_DICTIONARIES = ["ec", "ce"] as const;
 
 export function normalizeDictionaryQuery(value: unknown): string {
@@ -54,6 +57,67 @@ export function normalizeDictionaryFavoritePath(
 	fallback = DEFAULT_DICTIONARY_FAVORITE_PATH,
 ): string {
 	return normalizeMarkdownPath(value, fallback);
+}
+
+/** Category destinations reject unsafe input instead of silently repairing it. */
+export function validatedFavoriteCategoryPath(value: unknown): string | null {
+	if (typeof value !== "string") return null;
+	const input = value.trim().replaceAll("\\", "/");
+	if (
+		!input ||
+		input.length > 500 ||
+		input.startsWith("/") ||
+		input.endsWith("/") ||
+		input
+			.split("/")
+			.some((part) => !part || part === "." || part === ".." || /[<>:"|?*]/u.test(part)) ||
+		(/\.[^/.]+$/u.test(input) && !/\.md$/iu.test(input))
+	)
+		return null;
+	return normalizeDictionaryFavoritePath(input, "");
+}
+
+function normalizeFavoriteCategories(value: unknown, legacyPath: unknown): FavoriteCategory[] {
+	const categories: FavoriteCategory[] = [];
+	const names = new Set<string>();
+	const paths = new Set<string>();
+	if (Array.isArray(value)) {
+		for (const item of value) {
+			if (
+				!isRecord(item) ||
+				typeof item.id !== "string" ||
+				typeof item.name !== "string" ||
+				typeof item.path !== "string"
+			)
+				continue;
+			const id = item.id.trim().slice(0, 200);
+			const name = item.name.trim().slice(0, 120);
+			const path = validatedFavoriteCategoryPath(item.path);
+			const nameKey = name.toLocaleLowerCase();
+			const pathKey = path?.toLocaleLowerCase() ?? "";
+			if (
+				!id ||
+				!name ||
+				!path ||
+				categories.some((category) => category.id === id) ||
+				names.has(nameKey) ||
+				paths.has(pathKey)
+			)
+				continue;
+			categories.push({ id, name, path });
+			names.add(nameKey);
+			paths.add(pathKey);
+		}
+	}
+	return categories.length
+		? categories
+		: [
+				{
+					id: DEFAULT_FAVORITE_CATEGORY_ID,
+					name: DEFAULT_FAVORITE_CATEGORY_NAME,
+					path: normalizeDictionaryFavoritePath(legacyPath),
+				},
+			];
 }
 
 function normalizeLocalDictionaryFiles(value: unknown): LocalDictionaryFileSettings[] {
@@ -275,7 +339,14 @@ function normalizeYoudao(value: unknown): PersistedYoudaoDictionarySettings {
 export const DEFAULT_DICTIONARY_SETTINGS: DictionarySettings = {
 	ai: { configId: null },
 	enabled: false,
-	favoritePath: DEFAULT_DICTIONARY_FAVORITE_PATH,
+	favoriteCategories: [
+		{
+			id: DEFAULT_FAVORITE_CATEGORY_ID,
+			name: DEFAULT_FAVORITE_CATEGORY_NAME,
+			path: DEFAULT_DICTIONARY_FAVORITE_PATH,
+		},
+	],
+	selectedFavoriteCategoryId: DEFAULT_FAVORITE_CATEGORY_ID,
 	favoriteOpenMode: "modal",
 	favoriteAiConfigId: null,
 	history: [],
@@ -303,6 +374,10 @@ export function normalizeDictionarySettings(value: unknown): DictionarySettings 
 	const candidate = isRecord(value) ? value : {};
 	const ai = isRecord(candidate.ai) ? candidate.ai : {};
 	const localDictionaries = normalizeLocalDictionaries(candidate.localDictionaries);
+	const favoriteCategories = normalizeFavoriteCategories(
+		candidate.favoriteCategories,
+		candidate.favoritePath,
+	);
 	return {
 		ai: {
 			configId:
@@ -316,10 +391,12 @@ export function normalizeDictionarySettings(value: unknown): DictionarySettings 
 				: null,
 		enabled: candidate.enabled === true,
 		favoriteOpenMode: candidate.favoriteOpenMode === "sidebar" ? "sidebar" : "modal",
-		favoritePath: normalizeDictionaryFavoritePath(
-			candidate.favoritePath,
-			DEFAULT_DICTIONARY_FAVORITE_PATH,
-		),
+		favoriteCategories,
+		selectedFavoriteCategoryId: favoriteCategories.some(
+			(category) => category.id === candidate.selectedFavoriteCategoryId,
+		)
+			? (candidate.selectedFavoriteCategoryId as string)
+			: favoriteCategories[0]!.id,
 		history: normalizeDictionaryWords(candidate.history, DICTIONARY_HISTORY_LIMIT),
 		localDictionaries,
 		sources: normalizeDictionarySources(candidate.sources, localDictionaries),

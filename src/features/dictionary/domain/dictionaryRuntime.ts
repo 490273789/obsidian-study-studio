@@ -9,6 +9,7 @@ import { CompiledDictionarySource } from "./compiled-source";
 import { createDictionaryQuerySession, type DictionaryQuerySession } from "./querySession";
 import { createFavoriteDraftGenerator } from "./favorite-ai";
 import { DictionaryFavoriteController } from "./favorite-controller";
+import { FavoriteCategoryManager } from "./favorite-categories";
 import { createMemoryDictionaryFavoriteStore, type DictionaryFavoriteStore } from "./favorite-file";
 import { HujiangDictionarySource } from "./hujiang";
 import { LocalDictionaryImporter } from "./importer";
@@ -47,6 +48,7 @@ export class DictionaryRuntime {
 	readonly settings: DictionarySettingsStore;
 	readonly query: DictionaryQuerySession;
 	readonly favoriteController: DictionaryFavoriteController;
+	readonly favoriteCategories: FavoriteCategoryManager;
 	readonly administration: LocalDictionaryAdministrationModule;
 	/** Plugin-relative root that holds every compiled dictionary package. */
 	readonly dictionaryRoot: string;
@@ -61,10 +63,13 @@ export class DictionaryRuntime {
 		this.app = options.app;
 		this.settings = options.settings;
 		this.dictionaryRoot = `${options.app.vault.configDir}/plugins/${options.plugin.manifest.id}/dictionaries`;
+		const favoriteStore = options.favoriteStore ?? createMemoryDictionaryFavoriteStore();
+		this.favoriteCategories = new FavoriteCategoryManager(options.settings, favoriteStore, () =>
+			this.applySettings(),
+		);
 		this.favoriteController = new DictionaryFavoriteController(
 			options.settings,
-			options.favoriteStore ?? createMemoryDictionaryFavoriteStore(),
-			options.notify,
+			favoriteStore,
 			{
 				generator: createFavoriteDraftGenerator(options.ai),
 				language: options.language,
@@ -76,6 +81,7 @@ export class DictionaryRuntime {
 					return config ? JSON.stringify(config) : null;
 				},
 			},
+			this.favoriteCategories,
 		);
 		this.unsubscribeFavoriteAi = options.ai.subscribe(() =>
 			this.favoriteController.refreshSettings(),

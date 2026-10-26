@@ -36,7 +36,9 @@ function setup() {
 	};
 	const actions: DictionarySettingsEditorActions = {
 		setEnabled: vi.fn(),
-		setFavoritePath: vi.fn(),
+		createFavoriteCategory: vi.fn(),
+		editFavoriteCategory: vi.fn(),
+		deleteFavoriteCategory: vi.fn(),
 		setFavoriteOpenMode: vi.fn(),
 		setFavoriteAiConfigId: vi.fn(),
 		setYoudaoAccessMode: vi.fn(),
@@ -68,6 +70,19 @@ function favoriteSelect(
 }
 
 describe("favorite open mode settings", () => {
+	it("exposes category create, edit and delete controls", async () => {
+		const { state, actions } = setup();
+		const presentation = buildDictionarySettingsViewModel(state, actions, "zh");
+		const rows = presentation.snapshot.groups.flatMap((group) => group.rows);
+		const create = rows.find((row) => row.name === dictionaryStrings("zh").favoriteCategory)
+			?.controls[0];
+		const category = rows.find((row) => row.name === "默认收藏");
+		expect(create?.kind).toBe("button");
+		expect(category?.controls.map((control) => control.kind)).toEqual(["button", "button"]);
+		if (create?.kind === "button")
+			await presentation.invoke({ action: create.action, value: undefined });
+		expect(actions.createFavoriteCategory).toHaveBeenCalledOnce();
+	});
 	it.each(["zh", "en"] as const)(
 		"presents localized modal and sidebar options in %s",
 		(language) => {

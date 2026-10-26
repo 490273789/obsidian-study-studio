@@ -73,7 +73,8 @@ class FakeSettingsStore implements DictionarySettingsStore {
 		return {
 			ai: { configId: null },
 			enabled: true,
-			favoritePath: "",
+			favoriteCategories: [{ id: "default", name: "默认收藏", path: "word.md" }],
+			selectedFavoriteCategoryId: "default",
 			favoriteOpenMode: "modal",
 			favoriteAiConfigId: null,
 			history: [],

@@ -1,9 +1,5 @@
 import { Notice, Platform } from "obsidian";
 import type { AiService } from "../../../core/ai";
-import {
-	DEFAULT_DICTIONARY_FAVORITE_PATH,
-	normalizeDictionaryFavoritePath,
-} from "../domain/configuration";
 import type { DictionaryRuntime } from "../domain/dictionaryRuntime";
 import type { LocalDictionaryAdministrationFailureCode } from "../domain/local-administration";
 import type { DictionarySettings } from "../domain/types";
@@ -16,6 +12,7 @@ import {
 import type { SettingsPresentation } from "../../../core/settings/presentation";
 import { pickLocalDictionaryFiles } from "./localDictionaryFilePicker";
 import { confirmLocalDictionaryDeletion, promptLocalDictionaryName } from "./modals";
+import { FavoriteCategoryModal, confirmFavoriteCategoryDelete } from "./favoriteCategoryModal";
 
 function dictionaryImportErrorMessage(
 	code: LocalDictionaryAdministrationFailureCode,
@@ -105,13 +102,40 @@ export class DictionarySettingsEditor {
 				this.patch((draft) => {
 					draft.enabled = enabled;
 				}),
-			setFavoritePath: (path) =>
-				this.patch((draft) => {
-					draft.favoritePath = normalizeDictionaryFavoritePath(
-						path,
-						DEFAULT_DICTIONARY_FAVORITE_PATH,
+			createFavoriteCategory: () =>
+				new FavoriteCategoryModal(
+					this.runtime.app,
+					this.runtime.favoriteCategories,
+					dictionaryStrings(this.language()),
+					{ kind: "create", select: false },
+					this.refresh,
+				).open(),
+			editFavoriteCategory: (id) => {
+				const category = this.runtime.favoriteCategories.categories.find(
+					(item) => item.id === id,
+				);
+				if (category)
+					new FavoriteCategoryModal(
+						this.runtime.app,
+						this.runtime.favoriteCategories,
+						dictionaryStrings(this.language()),
+						{ kind: "edit", category },
+						this.refresh,
+					).open();
+			},
+			deleteFavoriteCategory: (id) => {
+				const category = this.runtime.favoriteCategories.categories.find(
+					(item) => item.id === id,
+				);
+				if (category)
+					confirmFavoriteCategoryDelete(
+						this.runtime.app,
+						category,
+						this.runtime.favoriteCategories,
+						dictionaryStrings(this.language()),
+						this.refresh,
 					);
-				}),
+			},
 			setFavoriteOpenMode: (mode) =>
 				this.patch((draft) => {
 					draft.favoriteOpenMode = mode;

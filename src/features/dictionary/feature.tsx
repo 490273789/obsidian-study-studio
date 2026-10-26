@@ -12,6 +12,7 @@ import { FlashcardButton } from "../../core/ui/primitives/Button";
 import { DictionaryFavoriteView, DictionaryView } from "./ui";
 import { playDictionaryAudio, stopDictionaryAudio } from "./ui/audio";
 import { DictionaryFavoriteModal } from "./obsidian/favoriteModal";
+import { FavoriteCategoryModal } from "./obsidian/favoriteCategoryModal";
 import { DictionaryFavoritePresentation } from "./obsidian/favoritePresentation";
 import { ObsidianDictionaryFavoriteStore } from "./obsidian/favoriteStore";
 import { DictionarySettingsEditor } from "./obsidian/settingsEditor";
@@ -198,6 +199,13 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 							dictionary.favoriteController,
 							() => host.settings.read().language,
 							onClosing,
+							() =>
+								new FavoriteCategoryModal(
+									host.app,
+									dictionary.favoriteCategories,
+									dictionaryStrings(host.settings.read().language),
+									{ kind: "create", select: true },
+								).open(),
 						),
 					reportOpenFailure: (error) => {
 						console.error("Failed to open the dictionary favorite form:", error);
@@ -296,6 +304,14 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 							<DictionaryFavoriteView
 								controller={dictionary.favoriteController}
 								language={language}
+								onCreateCategory={() =>
+									new FavoriteCategoryModal(
+										host.app,
+										dictionary.favoriteCategories,
+										dictionaryStrings(language),
+										{ kind: "create", select: true },
+									).open()
+								}
 							/>
 						)),
 				}),

@@ -6,6 +6,7 @@ import type { DictionaryFavoriteController } from "../../domain/favorite-control
 import type { DictionaryFavoriteViewState } from "../../domain/types";
 import { FlashcardButton } from "../../../../core/ui/primitives/Button";
 import { FlashcardInput } from "../../../../core/ui/primitives/Input";
+import { FlashcardSelect } from "../../../../core/ui/primitives/Select";
 
 vi.mock("react", async (original) => ({
 	...(await original<typeof import("react")>()),
@@ -79,14 +80,66 @@ function findForm(
 }
 
 describe("DictionaryFavoriteView", () => {
+	it("shows new category last and routes selection and creation separately", () => {
+		const snapshot: DictionaryFavoriteViewState = {
+			categories: [
+				{ id: "default", name: "默认收藏", path: "word.md" },
+				{ id: "second", name: "第二类", path: "second.md" },
+			],
+			selectedCategoryId: "default",
+			meaning: "",
+			message: "",
+			note: "",
+			path: "word.md",
+			status: "idle",
+			word: "apple",
+		};
+		const selectCategory = vi.fn();
+		const onCreateCategory = vi.fn();
+		const controller = {
+			subscribe: vi.fn(() => () => undefined),
+			getSnapshot: () => snapshot,
+			selectCategory,
+		} as unknown as DictionaryFavoriteController;
+		const tree = DictionaryFavoriteView({ controller, language: "zh", onCreateCategory });
+		const found: React.ReactElement<React.ComponentProps<typeof FlashcardSelect>>[] = [];
+		function visit(node: React.ReactNode): void {
+			React.Children.forEach(node, (child) => {
+				if (!React.isValidElement(child)) return;
+				if (child.type === FlashcardSelect)
+					found.push(
+						child as React.ReactElement<React.ComponentProps<typeof FlashcardSelect>>,
+					);
+				visit((child.props as { children?: React.ReactNode }).children);
+			});
+		}
+		visit(tree);
+		const select = found[0]!;
+		expect(
+			React.Children.toArray(select.props.children).map((child) =>
+				React.isValidElement(child) ? (child.props as { value: string }).value : "",
+			),
+		).toEqual(["default", "second", "__new__"]);
+		const target = { value: "__new__" };
+		select.props.onChange?.({
+			target,
+			currentTarget: target,
+		} as React.ChangeEvent<HTMLSelectElement>);
+		expect(onCreateCategory).toHaveBeenCalledOnce();
+		expect(target.value).toBe("default");
+		select.props.onChange?.({
+			target: { value: "second" },
+		} as React.ChangeEvent<HTMLSelectElement>);
+		expect(selectCategory).toHaveBeenCalledWith("second");
+	});
 	it("renders open-source-file button and triggers controller.openSavedFile on click", () => {
 		const snapshot: DictionaryFavoriteViewState = {
+			categories: [{ id: "default", name: "默认收藏", path: "1-English/Word.md" }],
+			selectedCategoryId: "default",
 			meaning: "测试释义",
 			message: "",
 			note: "测试笔记",
 			path: "1-English/Word.md",
-			pathSuggestions: [],
-			savedPath: "word.md",
 			status: "idle",
 			word: "test",
 		};
@@ -124,12 +177,12 @@ describe("DictionaryFavoriteView", () => {
 
 	it("disables the open-source-file button when path is empty", () => {
 		const snapshot: DictionaryFavoriteViewState = {
+			categories: [{ id: "default", name: "默认收藏", path: "word.md" }],
+			selectedCategoryId: "default",
 			meaning: "",
 			message: "",
 			note: "",
 			path: "   ",
-			pathSuggestions: [],
-			savedPath: "word.md",
 			status: "idle",
 			word: "test",
 		};
@@ -157,12 +210,12 @@ describe("DictionaryFavoriteView", () => {
 
 	it("triggers AI generation on Enter in word input", () => {
 		const snapshot: DictionaryFavoriteViewState = {
+			categories: [{ id: "default", name: "默认收藏", path: "word.md" }],
+			selectedCategoryId: "default",
 			meaning: "",
 			message: "",
 			note: "",
 			path: "word.md",
-			pathSuggestions: [],
-			savedPath: "word.md",
 			status: "idle",
 			word: "apple",
 		};
@@ -203,12 +256,12 @@ describe("DictionaryFavoriteView", () => {
 
 	it("does not trigger AI generation on Enter if composing in IME", () => {
 		const snapshot: DictionaryFavoriteViewState = {
+			categories: [{ id: "default", name: "默认收藏", path: "word.md" }],
+			selectedCategoryId: "default",
 			meaning: "",
 			message: "",
 			note: "",
 			path: "word.md",
-			pathSuggestions: [],
-			savedPath: "word.md",
 			status: "idle",
 			word: "apple",
 		};
@@ -247,12 +300,12 @@ describe("DictionaryFavoriteView", () => {
 
 	it("triggers save on Ctrl+Enter in word input and form", () => {
 		const snapshot: DictionaryFavoriteViewState = {
+			categories: [{ id: "default", name: "默认收藏", path: "word.md" }],
+			selectedCategoryId: "default",
 			meaning: "苹果",
 			message: "",
 			note: "",
 			path: "word.md",
-			pathSuggestions: [],
-			savedPath: "word.md",
 			status: "idle",
 			word: "apple",
 		};

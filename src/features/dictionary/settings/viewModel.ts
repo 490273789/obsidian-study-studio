@@ -28,7 +28,9 @@ export interface DictionarySettingsEditorState {
 
 export interface DictionarySettingsEditorActions {
 	setEnabled: (enabled: boolean) => SettingsActionResult;
-	setFavoritePath: (path: string) => SettingsActionResult;
+	createFavoriteCategory: () => SettingsActionResult;
+	editFavoriteCategory: (id: string) => SettingsActionResult;
+	deleteFavoriteCategory: (id: string) => SettingsActionResult;
 	setFavoriteOpenMode: (mode: DictionaryFavoriteOpenMode) => SettingsActionResult;
 	setFavoriteAiConfigId: (configId: string | null) => SettingsActionResult;
 	setYoudaoAccessMode: (mode: YoudaoAccessMode) => SettingsActionResult;
@@ -98,16 +100,37 @@ export function buildDictionarySettingsViewModel(
 					onChange: actions.setEnabled,
 				},
 			);
-			group.text(
-				"favorite-path",
-				{ name: t.favoritePath, description: t.favoritePathDescription },
+			group.button(
+				"favorite-category-create",
+				{ name: t.favoriteCategory, description: t.favoriteCategoryDescription },
 				{
-					value: settings.favoritePath,
-					placeholder: t.favoritePathPlaceholder,
-					disabled: state.saving,
-					onChange: actions.setFavoritePath,
+					label: t.favoriteCategoryCreate,
+					disabled: busy,
+					onPress: actions.createFavoriteCategory,
 				},
 			);
+			for (const category of settings.favoriteCategories) {
+				group.row(
+					`favorite-category-${settingsKey(category.id)}`,
+					{
+						name: category.name,
+						description: category.path,
+					},
+					(row) => {
+						row.button("edit", {
+							label: t.favoriteCategoryEdit,
+							disabled: busy,
+							onPress: () => actions.editFavoriteCategory(category.id),
+						});
+						row.button("delete", {
+							label: t.favoriteCategoryDelete,
+							disabled: busy || settings.favoriteCategories.length === 1,
+							tone: "warning",
+							onPress: () => actions.deleteFavoriteCategory(category.id),
+						});
+					},
+				);
+			}
 			group.select(
 				"favorite-open-mode",
 				{ name: t.favoriteOpenMode, description: t.favoriteOpenModeDescription },
