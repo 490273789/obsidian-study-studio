@@ -192,7 +192,7 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 			const openBatchFavorite = (): void => {
 				if (batchModal) return;
 				const controller = new FavoriteBatchController({
-					categories: dictionary.favoriteCategories,
+					session: dictionary.favorites,
 					settings: dictionary.settings,
 					source: new ObsidianFavoriteBatchSource(host.app),
 					store: favoriteStore,
@@ -214,7 +214,7 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 			lifetime.defer(() => batchModal?.forceClose());
 			const favorites = lifetime.own(
 				new DictionaryFavoritePresentation({
-					controller: dictionary.favoriteController,
+					session: dictionary.favorites,
 					mode: () => host.settings.read().dictionary.favoriteOpenMode,
 					sidebar: {
 						open: () =>
@@ -225,13 +225,13 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 					createModal: (onClosing) =>
 						new DictionaryFavoriteModal(
 							host.app,
-							dictionary.favoriteController,
+							dictionary.favorites,
 							() => host.settings.read().language,
 							onClosing,
 							() =>
 								new FavoriteCategoryModal(
 									host.app,
-									dictionary.favoriteCategories,
+									dictionary.favorites,
 									dictionaryStrings(host.settings.read().language),
 									{ kind: "create", select: true },
 								).open(),
@@ -332,12 +332,12 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 					render: ({ language }) =>
 						renderDictionaryBody(host, language, () => (
 							<DictionaryFavoriteView
-								controller={dictionary.favoriteController}
+								session={dictionary.favorites}
 								language={language}
 								onCreateCategory={() =>
 									new FavoriteCategoryModal(
 										host.app,
-										dictionary.favoriteCategories,
+										dictionary.favorites,
 										dictionaryStrings(language),
 										{ kind: "create", select: true },
 									).open()

@@ -11,8 +11,8 @@ vi.mock("../local-administration", () => ({
 		cancelActiveOperations() {}
 	},
 }));
-vi.mock("../favorite-controller", () => ({
-	DictionaryFavoriteController: class {
+vi.mock("../favoriteSession", () => ({
+	DictionaryFavoriteSession: class {
 		refreshSettings() {}
 		dispose() {}
 	},

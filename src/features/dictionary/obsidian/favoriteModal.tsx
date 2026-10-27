@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { ReactViewErrorBoundary } from "../../../core/host/reactItemView";
 import { I18nProvider } from "../../../core/ui/context/I18nContext";
 import type { Language } from "../../../core/shared/types";
-import type { DictionaryFavoriteController } from "../domain/favorite-controller";
+import type { DictionaryFavoriteSession } from "../domain/favoriteSession";
 import { dictionaryStrings } from "../strings/dictionary";
 import { DictionaryFavoriteView } from "../ui/DictionaryFavoriteView";
 import styles from "../ui/Dictionary.module.scss";
@@ -15,7 +15,7 @@ export class DictionaryFavoriteModal extends Modal {
 
 	constructor(
 		app: App,
-		private readonly controller: DictionaryFavoriteController,
+		private readonly session: DictionaryFavoriteSession,
 		private readonly language: () => Language,
 		private readonly onClosing: () => void,
 		private readonly onCreateCategory: () => void = () => undefined,
@@ -42,7 +42,7 @@ export class DictionaryFavoriteModal extends Modal {
 					message={strings.favoriteRenderFailed}
 				>
 					<DictionaryFavoriteView
-						controller={this.controller}
+						session={this.session}
 						language={language}
 						onCreateCategory={this.onCreateCategory}
 					/>

@@ -1,12 +1,16 @@
 import { Modal, Setting, type App } from "obsidian";
-import {
-	FavoriteCategoryError,
-	type FavoriteCategoryFailure,
-	type FavoriteCategoryManager,
-} from "../domain/favorite-categories";
+import { FavoriteCategoryError, type FavoriteCategoryFailure } from "../domain/favorite-categories";
 import type { FavoriteCategory } from "../domain/types";
 import type { DictionaryStrings } from "../strings/dictionary";
 import { PathInputSuggest } from "./pathInputSuggest";
+
+export interface DictionaryFavoriteCategoryOperator {
+	readonly categories?: readonly FavoriteCategory[];
+	pathSuggestions(query: string): string[];
+	create(rawName: string, rawPath: string, select: boolean): Promise<FavoriteCategory>;
+	edit(id: string, rawName: string, rawPath: string): Promise<void>;
+	remove(id: string): Promise<void>;
+}
 
 type CategoryModalMode =
 	| { kind: "create"; select: boolean }
@@ -42,7 +46,7 @@ export class FavoriteCategoryModal extends Modal {
 
 	constructor(
 		app: App,
-		private readonly manager: FavoriteCategoryManager,
+		private readonly manager: DictionaryFavoriteCategoryOperator,
 		private readonly strings: DictionaryStrings,
 		private readonly mode: CategoryModalMode,
 		private readonly onSaved: () => void = () => undefined,
@@ -145,7 +149,7 @@ class FavoriteCategoryDeleteModal extends Modal {
 	constructor(
 		app: App,
 		private readonly category: FavoriteCategory,
-		private readonly manager: FavoriteCategoryManager,
+		private readonly manager: DictionaryFavoriteCategoryOperator,
 		private readonly t: DictionaryStrings,
 		private readonly onSaved: () => void,
 	) {
@@ -190,7 +194,7 @@ class FavoriteCategoryDeleteModal extends Modal {
 export function confirmFavoriteCategoryDelete(
 	app: App,
 	category: FavoriteCategory,
-	manager: FavoriteCategoryManager,
+	manager: DictionaryFavoriteCategoryOperator,
 	strings: DictionaryStrings,
 	onSaved: () => void,
 ): void {

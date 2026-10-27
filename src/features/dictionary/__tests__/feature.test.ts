@@ -83,11 +83,17 @@ vi.mock("../domain/dictionaryRuntime", () => ({
 			send: vi.fn().mockResolvedValue(undefined),
 			dispose: vi.fn(),
 		};
-		readonly favoriteController = {
+		readonly favorites = {
 			prefill: vi.fn(),
 			resetSession: vi.fn(),
 			getSnapshot: () => ({ status: "idle" }),
 			subscribe: vi.fn(() => vi.fn()),
+			categories: [],
+			selectCategory: vi.fn(),
+			editCategory: vi.fn(),
+			createCategory: vi.fn(),
+			deleteCategory: vi.fn(),
+			runExclusive: vi.fn((action: () => unknown) => action()),
 		};
 		readonly dispose = vi.fn();
 		readonly applySettings = vi.fn();
@@ -215,7 +221,7 @@ describe("dictionary feature", () => {
 			theme: "dark",
 		} as never) as React.ReactElement<DictionaryViewProps>;
 		const runtime = runtimeSpies.instances[0] as {
-			favoriteController: {
+			favorites: {
 				prefill: ReturnType<typeof vi.fn>;
 				resetSession: ReturnType<typeof vi.fn>;
 			};
@@ -223,7 +229,7 @@ describe("dictionary feature", () => {
 
 		await view.props.onOpenFavorite("overlap");
 		await view.props.onOpenFavorite("word");
-		expect(runtime.favoriteController.prefill.mock.calls).toEqual([["overlap"], ["word"]]);
+		expect(runtime.favorites.prefill.mock.calls).toEqual([["overlap"], ["word"]]);
 		expect(fake.activateView).not.toHaveBeenCalled();
 		expect(favoriteModalSpies.instances).toHaveLength(1);
 		expect(favoriteModalSpies.instances[0]!.open).toHaveBeenCalledOnce();
@@ -231,7 +237,7 @@ describe("dictionary feature", () => {
 		expect(favoriteModalSpies.instances[0]!.updateSettings).toHaveBeenCalledOnce();
 
 		favoriteModalSpies.instances[0]!.close();
-		expect(runtime.favoriteController.resetSession).toHaveBeenCalledOnce();
+		expect(runtime.favorites.resetSession).toHaveBeenCalledOnce();
 		await feature.selectionAdapter.openFavorite?.("again");
 		expect(favoriteModalSpies.instances).toHaveLength(2);
 		feature.stop();
@@ -258,14 +264,14 @@ describe("dictionary feature", () => {
 			language: "zh",
 			theme: "dark",
 		} as never) as React.ReactElement<DictionaryViewProps>;
-		const controller = (
+		const favorites = (
 			runtimeSpies.instances[0] as {
-				favoriteController: {
+				favorites: {
 					prefill: ReturnType<typeof vi.fn>;
 					resetSession: ReturnType<typeof vi.fn>;
 				};
 			}
-		).favoriteController;
+		).favorites;
 
 		const sidebar = viewSpies.definitions.get(VIEW_TYPE_DICTIONARY_FAVORITE)!;
 		const first = sidebar.acquire!({} as never);
@@ -276,15 +282,15 @@ describe("dictionary feature", () => {
 			[VIEW_TYPE_DICTIONARY_FAVORITE, { rightSidebar: true }],
 			[VIEW_TYPE_DICTIONARY_FAVORITE, { rightSidebar: true }],
 		]);
-		expect(controller.prefill.mock.calls).toEqual([["sidebar word"], ["another word"]]);
+		expect(favorites.prefill.mock.calls).toEqual([["sidebar word"], ["another word"]]);
 		expect(favoriteModalSpies.instances).toHaveLength(0);
 
 		first.dispose();
-		expect(controller.resetSession).not.toHaveBeenCalled();
+		expect(favorites.resetSession).not.toHaveBeenCalled();
 		second.dispose();
 		// The workspace may still list a leaf while its old view is closing.
 		expect(leaves).toHaveLength(1);
-		expect(controller.resetSession).toHaveBeenCalledOnce();
+		expect(favorites.resetSession).toHaveBeenCalledOnce();
 		feature.stop();
 	});
 

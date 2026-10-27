@@ -1,4 +1,4 @@
-import type { DictionaryFavoriteController } from "../domain/favorite-controller";
+import type { DictionaryFavoriteSession } from "../domain/favoriteSession";
 import type { DictionaryFavoriteOpenMode, DictionaryFavoriteViewState } from "../domain/types";
 
 interface DictionaryFavoriteModalHandle {
@@ -7,8 +7,9 @@ interface DictionaryFavoriteModalHandle {
 	updateSettings(): void;
 }
 
-interface DictionaryFavoritePresentationOptions {
-	controller: DictionaryFavoriteController;
+export interface DictionaryFavoritePresentationOptions {
+	session?: DictionaryFavoriteSession;
+	controller?: DictionaryFavoriteSession;
 	mode(): DictionaryFavoriteOpenMode;
 	sidebar: {
 		open(): Promise<void>;
@@ -20,6 +21,7 @@ interface DictionaryFavoritePresentationOptions {
 
 /** Coordinates both favorite surfaces without becoming a second draft authority. */
 export class DictionaryFavoritePresentation {
+	private readonly session: DictionaryFavoriteSession;
 	private modal: DictionaryFavoriteModalHandle | null = null;
 	private readonly sidebars = new Set<object>();
 	private openRevision = 0;
@@ -28,11 +30,13 @@ export class DictionaryFavoritePresentation {
 	private readonly unsubscribe: () => void;
 
 	constructor(private readonly options: DictionaryFavoritePresentationOptions) {
-		this.previousStatus = options.controller.getSnapshot().status;
-		this.unsubscribe = options.controller.subscribe(() => {
-			const status = options.controller.getSnapshot().status;
+		const session = options.session ?? options.controller!;
+		this.session = session;
+		this.previousStatus = session.getSnapshot().status;
+		this.unsubscribe = session.subscribe(() => {
+			const status = session.getSnapshot().status;
 			const saved = this.previousStatus === "saving" && status === "success";
-			// Closing the last surface resets the controller synchronously.
+			// Closing the last surface resets the session synchronously.
 			this.previousStatus = status;
 			if (!this.disposed && saved) this.modal?.close();
 		});
@@ -55,7 +59,7 @@ export class DictionaryFavoritePresentation {
 				this.modal = modal;
 				modal.open();
 			}
-			if (this.isCurrent(revision)) await this.options.controller.prefill(word);
+			if (this.isCurrent(revision)) await this.session.prefill(word);
 		} catch (error) {
 			if (this.isCurrent(revision)) this.options.reportOpenFailure(error);
 		}
@@ -87,7 +91,7 @@ export class DictionaryFavoritePresentation {
 		try {
 			modal?.close();
 		} finally {
-			this.options.controller.resetSession();
+			this.session.resetSession();
 		}
 	}
 
@@ -98,6 +102,6 @@ export class DictionaryFavoritePresentation {
 	private releaseIfHidden(): void {
 		if (this.disposed || this.modal || this.sidebars.size > 0) return;
 		this.openRevision += 1;
-		this.options.controller.resetSession();
+		this.session.resetSession();
 	}
 }

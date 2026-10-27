@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { App } from "obsidian";
-import type { DictionaryFavoriteController } from "../../domain/favorite-controller";
+import type { DictionaryFavoriteSession } from "../../domain/favoriteSession";
 import { DictionaryFavoriteModal } from "../favoriteModal";
 
 const root = vi.hoisted(() => ({ render: vi.fn(), unmount: vi.fn() }));
@@ -29,7 +29,7 @@ describe("favorite modal adapter", () => {
 		const closing = vi.fn();
 		const modal = new DictionaryFavoriteModal(
 			{} as App,
-			{} as DictionaryFavoriteController,
+			{} as DictionaryFavoriteSession,
 			() => language,
 			closing,
 		);

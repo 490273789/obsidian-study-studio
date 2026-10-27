@@ -1,6 +1,6 @@
 import React, { useCallback, useSyncExternalStore } from "react";
 import { Eraser, ExternalLink, Save, Sparkles } from "lucide-react";
-import type { DictionaryFavoriteController } from "../domain/favorite-controller";
+import type { DictionaryFavoriteSession } from "../domain/favoriteSession";
 import { dictionaryStrings } from "../strings/dictionary";
 import type { Language } from "../../../core/shared/types";
 import { FlashcardButton } from "../../../core/ui/primitives/Button";
@@ -9,22 +9,18 @@ import { FlashcardSelect } from "../../../core/ui/primitives/Select";
 import { cls } from "../../../core/shared/classNames";
 import styles from "./Dictionary.module.scss";
 
-interface DictionaryFavoriteViewProps {
-	controller: DictionaryFavoriteController;
+export interface DictionaryFavoriteViewProps {
+	session?: DictionaryFavoriteSession;
+	controller?: DictionaryFavoriteSession;
 	language: Language;
 	onCreateCategory?: () => void;
 }
 
-export function DictionaryFavoriteView({
-	controller,
-	language,
-	onCreateCategory,
-}: DictionaryFavoriteViewProps): React.ReactElement {
-	const subscribe = useCallback(
-		(listener: () => void) => controller.subscribe(listener),
-		[controller],
-	);
-	const getSnapshot = useCallback(() => controller.getSnapshot(), [controller]);
+export function DictionaryFavoriteView(props: DictionaryFavoriteViewProps): React.ReactElement {
+	const session = props.session ?? props.controller!;
+	const { language, onCreateCategory } = props;
+	const subscribe = useCallback((listener: () => void) => session.subscribe(listener), [session]);
+	const getSnapshot = useCallback(() => session.getSnapshot(), [session]);
 	const state = useSyncExternalStore(subscribe, getSnapshot);
 	const strings = dictionaryStrings(language);
 	const saving = state.status === "saving";
@@ -37,7 +33,7 @@ export function DictionaryFavoriteView({
 		if (event.nativeEvent.isComposing) return;
 		if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
 			event.preventDefault();
-			if (canSave) void controller.save();
+			if (canSave) void session.save();
 		}
 	};
 
@@ -46,10 +42,10 @@ export function DictionaryFavoriteView({
 		if (event.key === "Enter") {
 			if (event.ctrlKey || event.metaKey) {
 				event.preventDefault();
-				if (canSave) void controller.save();
+				if (canSave) void session.save();
 			} else if (!event.shiftKey && !event.altKey) {
 				event.preventDefault();
-				if (canGenerate) void controller.generateAi();
+				if (canGenerate) void session.generateAi();
 			}
 		}
 	};
@@ -76,7 +72,7 @@ export function DictionaryFavoriteView({
 				onKeyDown={handleFormKeyDown}
 				onSubmit={(event) => {
 					event.preventDefault();
-					if (canSave) void controller.save();
+					if (canSave) void session.save();
 				}}
 			>
 				<label htmlFor="dictionary-favorite-word">
@@ -89,7 +85,7 @@ export function DictionaryFavoriteView({
 						autoComplete="off"
 						spellCheck={false}
 						disabled={busy}
-						onChange={(event) => controller.setWord(event.target.value)}
+						onChange={(event) => session.setWord(event.target.value)}
 						onKeyDown={handleWordKeyDown}
 					/>
 				</label>
@@ -105,7 +101,7 @@ export function DictionaryFavoriteView({
 								if (event.target.value === "__new__") {
 									event.currentTarget.value = state.selectedCategoryId;
 									onCreateCategory?.();
-								} else void controller.selectCategory(event.target.value);
+								} else void session.selectCategory(event.target.value);
 							}}
 						>
 							{state.categories.map((category) => (
@@ -125,7 +121,7 @@ export function DictionaryFavoriteView({
 							onClick={(event) => {
 								event.preventDefault();
 								event.stopPropagation();
-								void controller.openSavedFile(state.path);
+								void session.openSavedFile(state.path);
 							}}
 						/>
 					</div>
@@ -141,7 +137,7 @@ export function DictionaryFavoriteView({
 						maxLength={8000}
 						rows={5}
 						disabled={busy}
-						onChange={(event) => controller.setMeaning(event.target.value)}
+						onChange={(event) => session.setMeaning(event.target.value)}
 					/>
 				</label>
 
@@ -155,7 +151,7 @@ export function DictionaryFavoriteView({
 						maxLength={16000}
 						rows={10}
 						disabled={busy}
-						onChange={(event) => controller.setNote(event.target.value)}
+						onChange={(event) => session.setNote(event.target.value)}
 					/>
 				</label>
 
@@ -167,7 +163,7 @@ export function DictionaryFavoriteView({
 						icon={Sparkles}
 						disabled={!canGenerate}
 						title={`${generating ? strings.favoriteAiGenerating : strings.favoriteAiGenerate} (Enter)`}
-						onClick={() => void controller.generateAi()}
+						onClick={() => void session.generateAi()}
 					>
 						{generating ? strings.favoriteAiGenerating : strings.favoriteAiGenerate}
 					</FlashcardButton>
@@ -184,7 +180,7 @@ export function DictionaryFavoriteView({
 						type="button"
 						icon={Eraser}
 						disabled={busy}
-						onClick={() => controller.clear()}
+						onClick={() => session.clear()}
 					>
 						{strings.favoriteClear}
 					</FlashcardButton>

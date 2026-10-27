@@ -8,8 +8,7 @@ import { CambridgeDictionarySource } from "./cambridge";
 import { CompiledDictionarySource } from "./compiled-source";
 import { createDictionaryQuerySession, type DictionaryQuerySession } from "./querySession";
 import { createFavoriteDraftGenerator } from "./favorite-ai";
-import { DictionaryFavoriteController } from "./favorite-controller";
-import { FavoriteCategoryManager } from "./favorite-categories";
+import { DictionaryFavoriteSession } from "./favoriteSession";
 import { createMemoryDictionaryFavoriteStore, type DictionaryFavoriteStore } from "./favorite-file";
 import { HujiangDictionarySource } from "./hujiang";
 import { LocalDictionaryImporter } from "./importer";
@@ -47,8 +46,7 @@ export class DictionaryRuntime {
 	readonly app: App;
 	readonly settings: DictionarySettingsStore;
 	readonly query: DictionaryQuerySession;
-	readonly favoriteController: DictionaryFavoriteController;
-	readonly favoriteCategories: FavoriteCategoryManager;
+	readonly favorites: DictionaryFavoriteSession;
 	readonly administration: LocalDictionaryAdministrationModule;
 	/** Plugin-relative root that holds every compiled dictionary package. */
 	readonly dictionaryRoot: string;
@@ -64,10 +62,7 @@ export class DictionaryRuntime {
 		this.settings = options.settings;
 		this.dictionaryRoot = `${options.app.vault.configDir}/plugins/${options.plugin.manifest.id}/dictionaries`;
 		const favoriteStore = options.favoriteStore ?? createMemoryDictionaryFavoriteStore();
-		this.favoriteCategories = new FavoriteCategoryManager(options.settings, favoriteStore, () =>
-			this.applySettings(),
-		);
-		this.favoriteController = new DictionaryFavoriteController(
+		this.favorites = new DictionaryFavoriteSession(
 			options.settings,
 			favoriteStore,
 			{
@@ -81,11 +76,9 @@ export class DictionaryRuntime {
 					return config ? JSON.stringify(config) : null;
 				},
 			},
-			this.favoriteCategories,
+			() => this.applySettings(),
 		);
-		this.unsubscribeFavoriteAi = options.ai.subscribe(() =>
-			this.favoriteController.refreshSettings(),
-		);
+		this.unsubscribeFavoriteAi = options.ai.subscribe(() => this.favorites.refreshSettings());
 		this.query = createDictionaryQuerySession({
 			settings: options.settings,
 			resolveSource: (source) => this.resolveSource(source),
@@ -110,7 +103,7 @@ export class DictionaryRuntime {
 		void this.administration.refreshCatalog();
 		this.dropRemovedLocalSources();
 		void this.query.send({ type: "settings-changed" });
-		this.favoriteController.refreshSettings();
+		this.favorites.refreshSettings();
 	}
 
 	/** Drops cached compiled sources and refreshes lookups after a catalog change. */
@@ -124,7 +117,7 @@ export class DictionaryRuntime {
 	resetSession(): void {
 		this.closeLocalSources();
 		void this.query.send({ type: "clear" });
-		this.favoriteController.resetSession();
+		this.favorites.resetSession();
 	}
 
 	/** Creates an isolated, short-lived lookup session for the 工作台's 选区助手. */
@@ -217,7 +210,7 @@ export class DictionaryRuntime {
 		this.administration.cancelActiveOperations();
 		this.query.dispose();
 		this.unsubscribeFavoriteAi();
-		this.favoriteController.dispose();
+		this.favorites.dispose();
 	}
 
 	private aiEngineInfo(): { readonly configId: string | null; readonly name: string | null } {

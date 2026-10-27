@@ -6,7 +6,7 @@ import { isFavoriteAiWord, type FavoriteDraftGenerator } from "./favorite-ai";
 import { FavoriteCategoryError, type FavoriteCategoryManager } from "./favorite-categories";
 import { FavoriteSaveError, favoriteWordKey, type DictionaryFavoriteEntry } from "./favorite-file";
 import { dictionaryText } from "./messages";
-import type { DictionarySettingsStore } from "./types";
+import type { DictionarySettingsStore, FavoriteCategory } from "./types";
 
 export type FavoriteBatchErrorReason =
 	| "source-missing"
@@ -84,8 +84,14 @@ export interface FavoriteBatchSnapshot {
 	readonly failures: readonly FavoriteBatchFailure[];
 }
 
-interface FavoriteBatchOptions {
-	readonly categories: FavoriteCategoryManager;
+export interface FavoriteBatchExclusiveLock {
+	runExclusive<T>(action: () => Promise<T>): Promise<T>;
+	readonly categories: readonly FavoriteCategory[];
+}
+
+export interface FavoriteBatchOptions {
+	readonly session?: FavoriteBatchExclusiveLock;
+	readonly categories?: FavoriteCategoryManager;
 	readonly settings: DictionarySettingsStore;
 	readonly source: FavoriteBatchSource;
 	readonly store: FavoriteBatchStore;
@@ -96,6 +102,7 @@ interface FavoriteBatchOptions {
 
 /** One modal's sequential batch; the category lease spans generation and writes. */
 export class FavoriteBatchController {
+	private readonly lock: FavoriteBatchExclusiveLock;
 	private snapshot: FavoriteBatchSnapshot = {
 		status: "idle",
 		targetPath: "",
@@ -112,7 +119,12 @@ export class FavoriteBatchController {
 	private job: { abort: AbortController; stopRequested: boolean } | null = null;
 	private disposed = false;
 
-	constructor(private readonly options: FavoriteBatchOptions) {}
+	constructor(private readonly options: FavoriteBatchOptions) {
+		this.lock = options.session ?? {
+			runExclusive: (action) => options.categories!.saveFavorite(action),
+			categories: options.categories!.categories,
+		};
+	}
 
 	getSnapshot(): FavoriteBatchSnapshot {
 		return this.snapshot;
@@ -123,8 +135,8 @@ export class FavoriteBatchController {
 		return () => this.listeners.delete(listener);
 	}
 
-	get categories() {
-		return this.options.categories.categories;
+	get categories(): readonly FavoriteCategory[] {
+		return this.lock.categories;
 	}
 
 	get selectedCategoryId(): string {
@@ -165,7 +177,7 @@ export class FavoriteBatchController {
 				this.patch({ message: t.favoriteAiConfigRequired });
 				return;
 			}
-			await this.options.categories.saveFavorite(async () => {
+			await this.lock.runExclusive(async () => {
 				const content = await this.options.source.read(path);
 				if (job.stopRequested) return;
 				const lines = parseFavoriteBatchLines(content);

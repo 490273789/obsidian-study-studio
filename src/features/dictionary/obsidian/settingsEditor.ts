@@ -105,33 +105,29 @@ export class DictionarySettingsEditor {
 			createFavoriteCategory: () =>
 				new FavoriteCategoryModal(
 					this.runtime.app,
-					this.runtime.favoriteCategories,
+					this.runtime.favorites,
 					dictionaryStrings(this.language()),
 					{ kind: "create", select: false },
 					this.refresh,
 				).open(),
 			editFavoriteCategory: (id) => {
-				const category = this.runtime.favoriteCategories.categories.find(
-					(item) => item.id === id,
-				);
+				const category = this.runtime.favorites.categories.find((item) => item.id === id);
 				if (category)
 					new FavoriteCategoryModal(
 						this.runtime.app,
-						this.runtime.favoriteCategories,
+						this.runtime.favorites,
 						dictionaryStrings(this.language()),
 						{ kind: "edit", category },
 						this.refresh,
 					).open();
 			},
 			deleteFavoriteCategory: (id) => {
-				const category = this.runtime.favoriteCategories.categories.find(
-					(item) => item.id === id,
-				);
+				const category = this.runtime.favorites.categories.find((item) => item.id === id);
 				if (category)
 					confirmFavoriteCategoryDelete(
 						this.runtime.app,
 						category,
-						this.runtime.favoriteCategories,
+						this.runtime.favorites,
 						dictionaryStrings(this.language()),
 						this.refresh,
 					);

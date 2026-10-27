@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { DictionaryFavoriteController } from "../../domain/favorite-controller";
+import { DictionaryFavoriteSession } from "../../domain/favoriteSession";
 import { normalizeDictionarySettings } from "../../domain/configuration";
 import type { FavoriteGeneratedDraft } from "../../domain/favorite-ai";
 import type { StoredDictionaryFavorite } from "../../domain/favorite-file";
@@ -41,7 +41,7 @@ function setup() {
 	const generate = vi.fn(
 		async (_word: string, _config: string, _signal: AbortSignal) => generated,
 	);
-	const controller = new DictionaryFavoriteController(store, file, {
+	const controller = new DictionaryFavoriteSession(store, file, {
 		generator: { generate },
 		engineKey: () => "connection",
 		language: () => "zh",

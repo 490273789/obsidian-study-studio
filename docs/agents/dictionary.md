@@ -41,14 +41,10 @@ Read this guide before changing anything under `src/features/dictionary/domain/*
 
 The selection adapter hands the 选区助手 one opaque `DictionarySelectionResultHandle` per successful source (the whole `DictionaryResult`, the active section index, and the looked-up word) as `result`. `SelectionHelper` owns the query lifetime and every lookup action: its snapshot is a pure read model (`lookup`, no live session), and `lookup` / `selectSource` / `selectSection` / `retryActiveSource` / `generateAi` translate into `SelectionLookupIntent`s sent through the adapter's narrow handle. The adapter is the one translation point to `DictionaryQueryIntent`; the popup card only renders the snapshot and forwards callbacks. The helper keeps the “AI source retry means generate” rule, while the success body still comes from the renderer injected by `src/features/index.ts`. Do not narrow the result mirror in core, leak `DictionaryQueryIntent` into core, or reimplement AI sense markup in the helper.
 
-## Favorite presentation
+## Favorite session and presentation
 
-`src/features/dictionary/obsidian/favoritePresentation.ts` owns the shared
-`DictionaryFavoritePresentation` module. `feature.tsx` registers its lifetime and
-connects the modal and sidebar adapters. Opening requests, sidebar close signals,
-and settings refreshes cross this module's interface; adapters own mounting,
-focus, and host operations. `DictionaryFavoriteController` remains the sole draft,
-AI generation, and save authority.
+- `src/features/dictionary/domain/favoriteSession.ts` is the resident deep module (`DictionaryFavoriteSession`) owning word draft state, AI generation, category administration CRUD (with file creation/move/rollback), single-word persistence, and file write serialization (`runExclusive`). Both single-word saves and batch favorite runs share its mutex lock to prevent concurrent writes to category files (ADR 0010, ADR 0011).
+- `src/features/dictionary/obsidian/favoritePresentation.ts` is the UI presentation adapter (`DictionaryFavoritePresentation`). `feature.tsx` connects the modal and sidebar adapters to it. Opening requests, sidebar close signals, and settings refreshes cross this presentation adapter; adapters own mounting, focus, and host operations. The deep session remains the sole state and mutation authority.
 
 - Modal and sidebar share one draft. Reopening the same word preserves edits;
   opening another word loads that word's favorite. The last opening request wins,

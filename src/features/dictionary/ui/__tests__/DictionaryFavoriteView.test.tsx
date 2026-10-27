@@ -2,7 +2,7 @@
 import React from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { DictionaryFavoriteView } from "../DictionaryFavoriteView";
-import type { DictionaryFavoriteController } from "../../domain/favorite-controller";
+import type { DictionaryFavoriteSession } from "../../domain/favoriteSession";
 import type { DictionaryFavoriteViewState } from "../../domain/types";
 import { FlashcardButton } from "../../../../core/ui/primitives/Button";
 import { FlashcardInput } from "../../../../core/ui/primitives/Input";
@@ -100,7 +100,7 @@ describe("DictionaryFavoriteView", () => {
 			subscribe: vi.fn(() => () => undefined),
 			getSnapshot: () => snapshot,
 			selectCategory,
-		} as unknown as DictionaryFavoriteController;
+		} as unknown as DictionaryFavoriteSession;
 		const tree = DictionaryFavoriteView({ controller, language: "zh", onCreateCategory });
 		const found: React.ReactElement<React.ComponentProps<typeof FlashcardSelect>>[] = [];
 		function visit(node: React.ReactNode): void {
@@ -155,7 +155,7 @@ describe("DictionaryFavoriteView", () => {
 			save: vi.fn(),
 			clear: vi.fn(),
 			generateAi: vi.fn(),
-		} as unknown as DictionaryFavoriteController;
+		} as unknown as DictionaryFavoriteSession;
 
 		const tree = DictionaryFavoriteView({ controller, language: "zh" });
 		const buttons = findButtons(tree);
@@ -198,7 +198,7 @@ describe("DictionaryFavoriteView", () => {
 			save: vi.fn(),
 			clear: vi.fn(),
 			generateAi: vi.fn(),
-		} as unknown as DictionaryFavoriteController;
+		} as unknown as DictionaryFavoriteSession;
 
 		const tree = DictionaryFavoriteView({ controller, language: "zh" });
 		const buttons = findButtons(tree);
@@ -231,7 +231,7 @@ describe("DictionaryFavoriteView", () => {
 			save: vi.fn(),
 			clear: vi.fn(),
 			generateAi: vi.fn(),
-		} as unknown as DictionaryFavoriteController;
+		} as unknown as DictionaryFavoriteSession;
 
 		const tree = DictionaryFavoriteView({ controller, language: "zh" });
 		const inputs = findInputs(tree);
@@ -277,7 +277,7 @@ describe("DictionaryFavoriteView", () => {
 			save: vi.fn(),
 			clear: vi.fn(),
 			generateAi: vi.fn(),
-		} as unknown as DictionaryFavoriteController;
+		} as unknown as DictionaryFavoriteSession;
 
 		const tree = DictionaryFavoriteView({ controller, language: "zh" });
 		const inputs = findInputs(tree);
@@ -321,7 +321,7 @@ describe("DictionaryFavoriteView", () => {
 			save: vi.fn(),
 			clear: vi.fn(),
 			generateAi: vi.fn(),
-		} as unknown as DictionaryFavoriteController;
+		} as unknown as DictionaryFavoriteSession;
 
 		const tree = DictionaryFavoriteView({ controller, language: "zh" });
 		const inputs = findInputs(tree);
