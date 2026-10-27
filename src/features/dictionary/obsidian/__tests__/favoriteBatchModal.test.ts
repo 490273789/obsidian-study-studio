@@ -7,6 +7,12 @@ const ui = vi.hoisted(() => ({
 	buttons: [] as { label: string; disabled: boolean; click: () => void }[],
 	texts: [] as { value: string; disabled: boolean; change: (value: string) => void }[],
 	paragraphs: [] as { text: string }[],
+	suggests: [] as {
+		inputEl: unknown;
+		query: (q: string) => string[];
+		select: (v: string) => void;
+		closed: boolean;
+	}[],
 	closes: 0,
 }));
 
@@ -47,6 +53,10 @@ vi.mock("obsidian", () => {
 		Modal: class {
 			modalEl = { addClass: vi.fn() };
 			contentEl = element();
+			app = {} as App;
+			constructor(app: App) {
+				this.app = app;
+			}
 			setTitle() {}
 			open() {
 				this.onOpen();
@@ -57,6 +67,31 @@ vi.mock("obsidian", () => {
 			}
 			onOpen() {}
 			onClose() {}
+		},
+		AbstractInputSuggest: class {
+			constructor(_app: unknown, inputEl: unknown) {
+				const self = this as unknown as {
+					getSuggestions: (query: string) => string[];
+					selectSuggestion: (val: string, evt: unknown) => void;
+				};
+				ui.suggests.push({
+					inputEl,
+					query: (q: string) => self.getSuggestions(q),
+					select: (v: string) => self.selectSuggestion(v, {} as MouseEvent),
+					closed: false,
+				});
+			}
+			setValue(value: string) {
+				const text = ui.texts[ui.texts.length - 1];
+				if (text) text.value = value;
+			}
+			getValue() {
+				return ui.texts[ui.texts.length - 1]?.value ?? "";
+			}
+			close() {
+				const current = ui.suggests[ui.suggests.length - 1];
+				if (current) current.closed = true;
+			}
 		},
 		Setting: class {
 			constructor(_parent: unknown) {}
@@ -167,6 +202,7 @@ describe("batch favorite modal", () => {
 		ui.buttons.length = 0;
 		ui.texts.length = 0;
 		ui.paragraphs.length = 0;
+		ui.suggests.length = 0;
 		ui.closes = 0;
 	});
 
@@ -175,6 +211,8 @@ describe("batch favorite modal", () => {
 		const dismissed = vi.fn();
 		const modal = new DictionaryFavoriteBatchModal({} as App, fake, () => "zh", dismissed);
 		modal.open();
+		expect(ui.suggests).toHaveLength(1);
+		expect(ui.suggests[0]!.query("list")).toEqual(["list.txt"]);
 		expect(ui.buttons[0]!.disabled).toBe(true);
 		ui.texts[0]!.change("list.txt");
 		expect(ui.buttons[0]!.disabled).toBe(false);
@@ -217,6 +255,7 @@ describe("batch favorite modal", () => {
 		await vi.waitFor(() => expect(spies.openTarget).toHaveBeenCalledOnce());
 		modal.close();
 		expect(ui.closes).toBe(1);
+		expect(ui.suggests[0]!.closed).toBe(true);
 		expect(dismissed).toHaveBeenCalledOnce();
 	});
 });

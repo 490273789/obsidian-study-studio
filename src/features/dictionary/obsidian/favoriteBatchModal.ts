@@ -9,6 +9,7 @@ import {
 import type { Language } from "../../../core/shared/types";
 import { FavoriteBatchController } from "../domain/favorite-batch";
 import { dictionaryStrings } from "../strings/dictionary";
+import { PathInputSuggest } from "./pathInputSuggest";
 import styles from "../ui/Dictionary.module.scss";
 
 /** Native vault-path form and progress surface for one batch task. */
@@ -16,6 +17,7 @@ export class DictionaryFavoriteBatchModal extends Modal {
 	private sourcePath = "";
 	private categoryId = "";
 	private sourceInput: TextComponent | null = null;
+	private sourceSuggest: PathInputSuggest | null = null;
 	private categoryDropdown: DropdownComponent | null = null;
 	private targetSetting: Setting | null = null;
 	private startButton: ButtonComponent | null = null;
@@ -43,15 +45,6 @@ export class DictionaryFavoriteBatchModal extends Modal {
 		this.setTitle(t.favoriteBatchOpen);
 		this.modalEl.addClass(styles.batchModal);
 		this.categoryId = this.controller.selectedCategoryId;
-		const suggestionsId = `favorite-batch-source-${crypto.randomUUID()}`;
-		const suggestions = this.contentEl.createEl("datalist", {
-			attr: { id: suggestionsId },
-		});
-		const updateSuggestions = () => {
-			suggestions.empty();
-			for (const path of this.controller.pathSuggestions(this.sourcePath))
-				suggestions.createEl("option", { attr: { value: path } });
-		};
 		new Setting(this.contentEl)
 			.setName(t.favoriteBatchSource)
 			.setDesc(t.favoriteBatchSourceHint)
@@ -59,13 +52,19 @@ export class DictionaryFavoriteBatchModal extends Modal {
 				this.sourceInput = text;
 				text.setValue(this.sourcePath).onChange((value) => {
 					this.sourcePath = value;
-					updateSuggestions();
 					this.render();
 				});
-				text.inputEl.setAttribute("list", suggestionsId);
+				this.sourceSuggest = new PathInputSuggest(
+					this.app,
+					text.inputEl,
+					(query) => this.controller.pathSuggestions(query),
+					(selected) => {
+						this.sourcePath = selected;
+						this.render();
+					},
+				);
 				text.inputEl.focus();
 			});
-		updateSuggestions();
 		new Setting(this.contentEl).setName(t.favoriteCategory).addDropdown((dropdown) => {
 			this.categoryDropdown = dropdown;
 			for (const category of this.controller.categories)
@@ -124,6 +123,8 @@ export class DictionaryFavoriteBatchModal extends Modal {
 	}
 
 	override onClose(): void {
+		this.sourceSuggest?.close();
+		this.sourceSuggest = null;
 		this.unsubscribe?.();
 		this.unsubscribe = null;
 		this.controller.dispose();

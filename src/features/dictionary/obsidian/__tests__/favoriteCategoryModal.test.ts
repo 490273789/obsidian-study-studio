@@ -12,14 +12,24 @@ const ui = vi.hoisted(() => ({
 	buttons: [] as { label: string; disabled: boolean; click: () => void }[],
 	texts: [] as { value: string; change: (value: string) => void }[],
 	errors: [] as { text: string }[],
+	createdTags: [] as string[],
+	inputAttrs: [] as Record<string, string>[],
+	suggests: [] as {
+		inputEl: unknown;
+		query: (q: string) => string[];
+		select: (v: string) => void;
+		closed: boolean;
+	}[],
 	closes: 0,
 }));
 
 vi.mock("obsidian", () => {
-	function element() {
+	function element(tag = "div") {
 		return {
-			createEl(_tag: string, options?: { attr?: { role?: string } }) {
-				const child = element();
+			tag,
+			createEl(childTag: string, options?: { attr?: { role?: string; id?: string } }) {
+				ui.createdTags.push(childTag);
+				const child = element(childTag);
 				if (options?.attr?.role === "alert") ui.errors.push(child);
 				return child;
 			},
@@ -33,6 +43,10 @@ vi.mock("obsidian", () => {
 	return {
 		Modal: class {
 			contentEl = element();
+			app = {} as App;
+			constructor(app: App) {
+				this.app = app;
+			}
 			setTitle() {}
 			open() {
 				this.onOpen();
@@ -44,6 +58,31 @@ vi.mock("obsidian", () => {
 			onOpen() {}
 			onClose() {}
 		},
+		AbstractInputSuggest: class {
+			constructor(_app: unknown, inputEl: unknown) {
+				const self = this as unknown as {
+					getSuggestions: (query: string) => string[];
+					selectSuggestion: (val: string, evt: unknown) => void;
+				};
+				ui.suggests.push({
+					inputEl,
+					query: (q: string) => self.getSuggestions(q),
+					select: (v: string) => self.selectSuggestion(v, {} as MouseEvent),
+					closed: false,
+				});
+			}
+			setValue(value: string) {
+				const text = ui.texts[ui.texts.length - 1];
+				if (text) text.value = value;
+			}
+			getValue() {
+				return ui.texts[ui.texts.length - 1]?.value ?? "";
+			}
+			close() {
+				const current = ui.suggests[ui.suggests.length - 1];
+				if (current) current.closed = true;
+			}
+		},
 		Setting: class {
 			constructor(_parent: unknown) {}
 			setName() {
@@ -53,6 +92,8 @@ vi.mock("obsidian", () => {
 				return this;
 			}
 			addText(callback: (control: unknown) => void) {
+				const attrs: Record<string, string> = {};
+				ui.inputAttrs.push(attrs);
 				const item = { value: "", change: (_value: string): void => undefined };
 				ui.texts.push(item);
 				callback({
@@ -64,7 +105,14 @@ vi.mock("obsidian", () => {
 						item.change = change;
 						return this;
 					},
-					inputEl: { focus() {}, setAttribute() {}, maxLength: 0 },
+					inputEl: {
+						focus() {},
+						setAttribute(name: string, val: string) {
+							attrs[name] = val;
+						},
+						dispatchEvent() {},
+						maxLength: 0,
+					},
 				});
 				return this;
 			}
@@ -107,7 +155,25 @@ describe("favorite category modal", () => {
 		ui.buttons.length = 0;
 		ui.texts.length = 0;
 		ui.errors.length = 0;
+		ui.createdTags.length = 0;
+		ui.inputAttrs.length = 0;
+		ui.suggests.length = 0;
 		ui.closes = 0;
+	});
+
+	it("uses Obsidian input suggest instead of HTML datalist to avoid native popup loop", () => {
+		const categories = manager();
+		const modal = new FavoriteCategoryModal({} as App, categories, dictionaryStrings("zh"), {
+			kind: "create",
+			select: true,
+		});
+		modal.open();
+		expect(ui.createdTags).not.toContain("datalist");
+		expect(ui.inputAttrs.some((attr) => "list" in attr)).toBe(false);
+		expect(ui.suggests).toHaveLength(1);
+		expect(ui.suggests[0]!.query("words")).toEqual(["folder/", "folder/words.md"]);
+		modal.close();
+		expect(ui.suggests[0]!.closed).toBe(true);
 	});
 
 	it("saves both fields, closes on success and selects when opened from the form", async () => {

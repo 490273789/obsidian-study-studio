@@ -20,6 +20,7 @@ vi.mock("obsidian", () => ({
 	ItemView: class {},
 	WorkspaceLeaf: class {},
 	Modal: class {},
+	AbstractInputSuggest: class {},
 	Notice: vi.fn(),
 	Platform: { isDesktopApp: true },
 }));

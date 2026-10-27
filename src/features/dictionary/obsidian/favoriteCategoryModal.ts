@@ -6,6 +6,7 @@ import {
 } from "../domain/favorite-categories";
 import type { FavoriteCategory } from "../domain/types";
 import type { DictionaryStrings } from "../strings/dictionary";
+import { PathInputSuggest } from "./pathInputSuggest";
 
 type CategoryModalMode =
 	| { kind: "create"; select: boolean }
@@ -37,6 +38,7 @@ function categoryError(reason: FavoriteCategoryFailure, t: DictionaryStrings): s
 /** Shared native form for creating and editing favorite categories. */
 export class FavoriteCategoryModal extends Modal {
 	private saving = false;
+	private pathSuggest: PathInputSuggest | null = null;
 
 	constructor(
 		app: App,
@@ -55,13 +57,6 @@ export class FavoriteCategoryModal extends Modal {
 		);
 		let name = this.mode.kind === "edit" ? this.mode.category.name : "";
 		let path = this.mode.kind === "edit" ? this.mode.category.path : "";
-		const listId = `favorite-category-path-${crypto.randomUUID()}`;
-		const suggestions = this.contentEl.createEl("datalist", { attr: { id: listId } });
-		const showSuggestions = () => {
-			suggestions.empty();
-			for (const suggestion of this.manager.pathSuggestions(path))
-				suggestions.createEl("option", { attr: { value: suggestion } });
-		};
 		new Setting(this.contentEl).setName(t.favoriteCategoryName).addText((text) => {
 			text.setValue(name).onChange((value) => {
 				name = value;
@@ -76,13 +71,19 @@ export class FavoriteCategoryModal extends Modal {
 			.addText((text) => {
 				text.setValue(path).onChange((value) => {
 					path = value;
-					showSuggestions();
 					updateSave();
 				});
 				text.inputEl.maxLength = 500;
-				text.inputEl.setAttribute("list", listId);
+				this.pathSuggest = new PathInputSuggest(
+					this.app,
+					text.inputEl,
+					(query) => this.manager.pathSuggestions(query),
+					(selected) => {
+						path = selected;
+						updateSave();
+					},
+				);
 			});
-		showSuggestions();
 		const errorEl = this.contentEl.createEl("p", { attr: { role: "alert" } });
 		let cancelButton: { setDisabled(disabled: boolean): unknown } | null = null;
 		let saveButton: { setDisabled(disabled: boolean): unknown } | null = null;
@@ -134,6 +135,8 @@ export class FavoriteCategoryModal extends Modal {
 	}
 
 	override onClose(): void {
+		this.pathSuggest?.close();
+		this.pathSuggest = null;
 		this.contentEl.empty();
 	}
 }
