@@ -19,7 +19,7 @@ function entry(word: string, meaning = "释义", note = "笔记") {
 }
 
 function fileSetup(source: string, preparation: CardSourcePreparation = { kind: "unmanaged" }) {
-	const file = Object.assign(new TFile(), { path: "word.md" });
+	const file = Object.assign(new TFile(), { path: "word.md", extension: "md" });
 	let content = source;
 	const process = vi.fn(async (_file, update: (current: string) => string) => {
 		content = update(content);
@@ -27,6 +27,7 @@ function fileSetup(source: string, preparation: CardSourcePreparation = { kind: 
 	const app = {
 		vault: {
 			getAbstractFileByPath: vi.fn(() => file),
+			getFileByPath: vi.fn(() => file),
 			read: vi.fn(async () => content),
 			process,
 			create: vi.fn(),
@@ -49,6 +50,78 @@ function fileSetup(source: string, preparation: CardSourcePreparation = { kind: 
 }
 
 describe("ObsidianDictionaryFavoriteStore persistence", () => {
+	it("inspects an editable destination without writing and rejects a missing destination", async () => {
+		const original = formatDictionaryFavorite(entry("Apple"));
+		const setup = fileSetup(original);
+		await expect(setup.favorite.inspect("word.md")).resolves.toEqual(["Apple"]);
+		expect(setup.sourceEdits.prepare).toHaveBeenCalledWith("word.md", original);
+		expect(setup.process).not.toHaveBeenCalled();
+		const missing = new ObsidianDictionaryFavoriteStore({
+			vault: { getFileByPath: () => null },
+		} as unknown as App);
+		await expect(missing.inspect("missing.md")).rejects.toMatchObject({
+			reason: "target-missing",
+		});
+	});
+
+	it("only appends a new unmanaged favorite and preserves existing content", async () => {
+		const original = `# My notes\r\n\r\n${formatDictionaryFavorite(entry("apple"))}`;
+		const setup = fileSetup(original);
+		await expect(setup.favorite.saveNew(entry("APPLE", "replacement"))).resolves.toBe(
+			"skipped",
+		);
+		expect(setup.content()).toBe(original);
+		expect(setup.process).not.toHaveBeenCalled();
+		await expect(setup.favorite.saveNew(entry("banana"))).resolves.toBe("saved");
+		expect(setup.content()).toBe(`${original}\n${formatDictionaryFavorite(entry("banana"))}`);
+	});
+
+	it("skips a word added after the batch's initial destination inspection", async () => {
+		const setup = fileSetup("");
+		await expect(setup.favorite.inspect("word.md")).resolves.toEqual([]);
+		const later = formatDictionaryFavorite(entry("banana", "manual note"));
+		setup.replace(later);
+		await expect(setup.favorite.saveNew(entry("banana", "AI meaning"))).resolves.toBe(
+			"skipped",
+		);
+		expect(setup.content()).toBe(later);
+		expect(setup.process).not.toHaveBeenCalled();
+	});
+
+	it("refuses to overwrite an unmanaged destination changed after the fresh read", async () => {
+		const setup = fileSetup("# notes\n");
+		setup.process.mockImplementationOnce(async (_file, update) => {
+			setup.replace(update("external change\n"));
+		});
+		await expect(setup.favorite.saveNew(entry("banana"))).rejects.toMatchObject({
+			reason: "source-changing",
+		});
+		expect(setup.content()).toBe("external change\n");
+	});
+
+	it("adds a new favorite to a managed deck through identity-aware source edits", async () => {
+		const setup = fileSetup("#deck\n", { kind: "ready", cards: [] });
+		await expect(setup.favorite.saveNew(entry("banana"))).resolves.toBe("saved");
+		expect(setup.sourceEdits.change).toHaveBeenCalledWith({
+			path: "word.md",
+			expectedContent: "#deck\n",
+			changes: [
+				{ kind: "add", content: { front: "## banana", back: "释义", explanation: "笔记" } },
+			],
+		});
+		expect(setup.process).not.toHaveBeenCalled();
+	});
+
+	it("preserves a managed deck when its source changes before the add", async () => {
+		const setup = fileSetup("#deck\n", { kind: "ready", cards: [] });
+		setup.sourceEdits.change.mockResolvedValueOnce({ kind: "source-changing" });
+		await expect(setup.favorite.saveNew(entry("banana"))).rejects.toMatchObject({
+			reason: "source-changing",
+		});
+		expect(setup.content()).toBe("#deck\n");
+		expect(setup.process).not.toHaveBeenCalled();
+	});
+
 	it("suggests existing Markdown files and folders without reading their contents", () => {
 		const folder = Object.assign(new TFolder(), { path: "Words/Grammar" });
 		const markdown = Object.assign(new TFile(), {

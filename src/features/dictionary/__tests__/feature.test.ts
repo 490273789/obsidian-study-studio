@@ -29,6 +29,9 @@ const favoriteModalSpies = vi.hoisted(() => ({
 		updateSettings: ReturnType<typeof vi.fn>;
 	}[],
 }));
+const batchModalSpies = vi.hoisted(() => ({
+	instances: [] as { open: ReturnType<typeof vi.fn>; forceClose: ReturnType<typeof vi.fn> }[],
+}));
 const viewSpies = vi.hoisted(() => ({
 	definitions: new Map<string, ReactViewOptions<{ language: "zh" | "en" }>>(),
 }));
@@ -52,6 +55,16 @@ vi.mock("../obsidian/favoriteModal", () => ({
 			private onClosed: () => void,
 		) {
 			favoriteModalSpies.instances.push(this);
+		}
+	},
+}));
+
+vi.mock("../obsidian/favoriteBatchModal", () => ({
+	DictionaryFavoriteBatchModal: class {
+		readonly open = vi.fn();
+		readonly forceClose = vi.fn();
+		constructor() {
+			batchModalSpies.instances.push(this);
 		}
 	},
 }));
@@ -105,6 +118,7 @@ describe("dictionary feature", () => {
 		runtimeSpies.instances.length = 0;
 		editorSpies.instances.length = 0;
 		favoriteModalSpies.instances.length = 0;
+		batchModalSpies.instances.length = 0;
 		viewSpies.definitions.clear();
 		noticeSpy.mockClear();
 	});
@@ -165,6 +179,26 @@ describe("dictionary feature", () => {
 		await Promise.resolve(fake.catalog.get("dictionary")!.open());
 		expect(focus).toHaveBeenCalledTimes(2);
 		feature.stop();
+	});
+
+	it("wires one batch modal to the dictionary search action and closes it on stop", () => {
+		const feature = createDictionaryFeature({
+			ai: {} as never,
+			net: {} as never,
+			plugin: {} as never,
+		});
+		const fake = createFakeWorkbenchHost("dictionary", enabledSettings);
+		feature.render(fake.host);
+		const view = viewSpies.definitions.get("flashcard-dictionary-view")!.render({
+			language: "zh",
+			theme: "dark",
+		} as never) as React.ReactElement<DictionaryViewProps>;
+		view.props.onOpenBatchFavorite();
+		view.props.onOpenBatchFavorite();
+		expect(batchModalSpies.instances).toHaveLength(1);
+		expect(batchModalSpies.instances[0]!.open).toHaveBeenCalledOnce();
+		feature.stop();
+		expect(batchModalSpies.instances[0]!.forceClose).toHaveBeenCalledOnce();
 	});
 
 	it("opens favorites in one modal without activating a sidebar and closes it on stop", async () => {

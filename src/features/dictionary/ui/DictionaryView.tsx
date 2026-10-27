@@ -1,5 +1,15 @@
 import React, { useCallback, useRef, useState, useSyncExternalStore } from "react";
-import { Bookmark, Copy, Play, RotateCcw, Search, Settings2, Sparkles, Trash2 } from "lucide-react";
+import {
+	Bookmark,
+	Copy,
+	ListPlus,
+	Play,
+	RotateCcw,
+	Search,
+	Settings2,
+	Sparkles,
+	Trash2,
+} from "lucide-react";
 import type { DictionaryQuerySession } from "../domain/querySession";
 import type { DictionarySourceState } from "../domain/types";
 import { dictionaryStrings, type DictionaryStrings } from "../strings/dictionary";
@@ -19,6 +29,7 @@ export interface DictionaryViewProps {
 	searchInputRef?: React.Ref<HTMLInputElement>;
 	language: Language;
 	onOpenFavorite: (word: string) => Promise<void>;
+	onOpenBatchFavorite: () => void;
 	onOpenSettings: () => void;
 	onPlayAudio: (url: string) => Promise<void>;
 	/** Obsidian theme, seeded before the sandbox document loads. */
@@ -82,6 +93,7 @@ export function DictionaryView({
 	searchInputRef,
 	language,
 	onOpenFavorite,
+	onOpenBatchFavorite,
 	onOpenSettings,
 	onPlayAudio,
 	theme,
@@ -167,6 +179,14 @@ export function DictionaryView({
 										value: event.target.value,
 									})
 								}
+							/>
+							<FlashcardButton
+								type="button"
+								preset="icon"
+								icon={ListPlus}
+								title={strings.favoriteBatchOpen}
+								aria-label={strings.favoriteBatchOpen}
+								onClick={onOpenBatchFavorite}
 							/>
 							<FlashcardButton
 								preset="icon"

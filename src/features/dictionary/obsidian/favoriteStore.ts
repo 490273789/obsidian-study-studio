@@ -1,23 +1,32 @@
 import { normalizePath, TFile, TFolder, type App } from "obsidian";
-import type { CardSourceMutation } from "../../../core/shared/cardSourceMutation";
+import type {
+	CardSourceMutation,
+	CardSourcePreparation,
+	SourceCard,
+} from "../../../core/shared/cardSourceMutation";
 import { normalizeDictionaryFavoritePath } from "../domain/configuration";
 import {
 	FavoriteSaveError,
+	appendDictionaryFavorite,
 	favoriteSourceChanges,
 	findDictionaryFavorite,
 	formatDictionaryFavorite,
+	parseDictionaryFavorites,
 	upsertDictionaryFavorite,
 	type DictionaryFavoriteEntry,
 	type DictionaryFavoriteStore,
 	type StoredDictionaryFavorite,
 } from "../domain/favorite-file";
+import { FavoriteBatchError, type FavoriteBatchStore } from "../domain/favorite-batch";
 import { favoriteCategoryPathSuggestions } from "../domain/favorite-categories";
 
 /**
  * Obsidian Vault adapter for dictionary favorites.
  * Handles Vault reading, writing, atomic processing, folder creation, and note opening.
  */
-export class ObsidianDictionaryFavoriteStore implements DictionaryFavoriteStore {
+export class ObsidianDictionaryFavoriteStore
+	implements DictionaryFavoriteStore, FavoriteBatchStore
+{
 	constructor(
 		private readonly app: App,
 		private readonly sourceEdits?: CardSourceMutation,
@@ -90,26 +99,11 @@ export class ObsidianDictionaryFavoriteStore implements DictionaryFavoriteStore 
 		}
 		if (!(existing instanceof TFile)) throw new Error("Favorite path is not a file");
 		const expectedContent = await this.app.vault.read(existing);
-		const preparation = this.sourceEdits
-			? await this.sourceEdits.prepare(path, expectedContent)
-			: { kind: "unmanaged" as const };
+		const preparation = await this.prepareFavoriteSource(path, expectedContent);
 		if (preparation.kind === "ready") {
-			const outcome = await this.sourceEdits!.change({
-				path,
-				expectedContent,
-				changes: favoriteSourceChanges(expectedContent, entry, preparation.cards),
-			});
-			if (outcome.kind === "applied") return path;
-			if (outcome.kind === "blocked") throw new FavoriteSaveError(outcome.reason);
-			if (outcome.kind === "source-changing") throw new FavoriteSaveError("source-changing");
-			if (outcome.kind === "validation-failed") {
-				throw new FavoriteSaveError("invalid-card-content");
-			}
-			throw new Error("Favorite source update failed");
+			await this.changeManagedFavorite(path, expectedContent, entry, preparation.cards);
+			return path;
 		}
-		if (preparation.kind === "blocked") throw new FavoriteSaveError(preparation.reason);
-		if (preparation.kind === "source-changing") throw new FavoriteSaveError("source-changing");
-		if (preparation.kind === "failed") throw new Error("Favorite source preparation failed");
 		let written = false;
 		await this.app.vault.process(existing, (current) => {
 			if (current !== expectedContent) return current;
@@ -119,6 +113,74 @@ export class ObsidianDictionaryFavoriteStore implements DictionaryFavoriteStore 
 		});
 		if (!written) throw new FavoriteSaveError("source-changing");
 		return path;
+	}
+
+	async inspect(path: string): Promise<readonly string[]> {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file || file.extension.toLowerCase() !== "md")
+			throw new FavoriteBatchError("target-missing");
+		const content = await this.app.vault.read(file);
+		await this.prepareFavoriteSource(path, content);
+		return parseDictionaryFavorites(content).map((favorite) => favorite.word);
+	}
+
+	async saveNew(entry: DictionaryFavoriteEntry): Promise<"saved" | "skipped"> {
+		const path = normalizePath(normalizeDictionaryFavoritePath(entry.path, ""));
+		const file = path ? this.app.vault.getFileByPath(path) : null;
+		if (!file || file.extension.toLowerCase() !== "md")
+			throw new FavoriteBatchError("target-missing");
+		const expectedContent = await this.app.vault.read(file);
+		const preparation = await this.prepareFavoriteSource(path, expectedContent);
+		if (findDictionaryFavorite(expectedContent, entry.word)) return "skipped";
+		if (preparation.kind === "ready") {
+			await this.changeManagedFavorite(path, expectedContent, entry, preparation.cards);
+			return "saved";
+		}
+		const favorite = formatDictionaryFavorite(entry);
+		let result: "saved" | "skipped" | "changed" = "changed";
+		await this.app.vault.process(file, (current) => {
+			if (current !== expectedContent) return current;
+			if (findDictionaryFavorite(current, entry.word)) {
+				result = "skipped";
+				return current;
+			}
+			result = "saved";
+			return appendDictionaryFavorite(current, favorite);
+		});
+		if (result === "changed") throw new FavoriteSaveError("source-changing");
+		return result;
+	}
+
+	private async prepareFavoriteSource(
+		path: string,
+		content: string,
+	): Promise<Extract<CardSourcePreparation, { kind: "ready" | "unmanaged" }>> {
+		const preparation = this.sourceEdits
+			? await this.sourceEdits.prepare(path, content)
+			: { kind: "unmanaged" as const };
+		if (preparation.kind === "blocked") throw new FavoriteSaveError(preparation.reason);
+		if (preparation.kind === "source-changing") throw new FavoriteSaveError("source-changing");
+		if (preparation.kind === "failed") throw new Error("Favorite source preparation failed");
+		return preparation;
+	}
+
+	private async changeManagedFavorite(
+		path: string,
+		expectedContent: string,
+		entry: DictionaryFavoriteEntry,
+		cards: readonly SourceCard[],
+	): Promise<void> {
+		const outcome = await this.sourceEdits!.change({
+			path,
+			expectedContent,
+			changes: favoriteSourceChanges(expectedContent, entry, cards),
+		});
+		if (outcome.kind === "applied") return;
+		if (outcome.kind === "blocked") throw new FavoriteSaveError(outcome.reason);
+		if (outcome.kind === "source-changing") throw new FavoriteSaveError("source-changing");
+		if (outcome.kind === "validation-failed")
+			throw new FavoriteSaveError("invalid-card-content");
+		throw new Error("Favorite source update failed");
 	}
 
 	async find(path: string, word: string): Promise<StoredDictionaryFavorite | null> {

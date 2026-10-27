@@ -109,12 +109,35 @@ async function setup() {
 		theme: "dark",
 		onOpenSettings: vi.fn(),
 		onOpenFavorite: vi.fn(),
+		onOpenBatchFavorite: vi.fn(),
 		onPlayAudio: vi.fn(),
 	};
 	return { query, props };
 }
 
 describe("dictionary result presentation", () => {
+	it("opens the batch favorite modal from the search controls", async () => {
+		const { props } = await setup();
+		let action: (() => void) | null = null;
+		function visit(node: React.ReactNode): void {
+			React.Children.forEach(node, (child) => {
+				if (!React.isValidElement(child)) return;
+				const element = child as React.ReactElement<{
+					children?: React.ReactNode;
+					"aria-label"?: string;
+					onClick?: () => void;
+				}>;
+				if (element.props["aria-label"] === "批量收藏单词")
+					action = element.props.onClick ?? null;
+				visit(element.props.children);
+			});
+		}
+		visit(DictionaryView(props));
+		expect(action).not.toBeNull();
+		(action as (() => void) | null)?.();
+		expect(props.onOpenBatchFavorite).toHaveBeenCalledOnce();
+	});
+
 	it("keeps section props stable across input and source selection, including hidden sources", async () => {
 		const { query, props } = await setup();
 		const initial = contents(props);

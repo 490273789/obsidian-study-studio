@@ -66,7 +66,7 @@ export function appendDictionaryFavorite(current: string, favorite: string): str
 	return `${current}${separator}${favorite}`;
 }
 
-function favoriteWordKey(word: string): string {
+export function favoriteWordKey(word: string): string {
 	return normalizeDictionaryQuery(word).toLocaleLowerCase("en-US");
 }
 

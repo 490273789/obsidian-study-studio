@@ -5,6 +5,8 @@ import type { AiService } from "../../core/ai";
 import type { OutboundPort } from "../../core/net";
 import { normalizeDictionarySettings } from "./domain/configuration";
 import { DictionaryRuntime } from "./domain/dictionaryRuntime";
+import { FavoriteBatchController } from "./domain/favorite-batch";
+import { createFavoriteDraftGenerator } from "./domain/favorite-ai";
 import { dictionaryStrings } from "./strings/dictionary";
 import type { Language } from "../../core/shared/types";
 import type { CardSourceMutation } from "../../core/shared/cardSourceMutation";
@@ -12,6 +14,8 @@ import { FlashcardButton } from "../../core/ui/primitives/Button";
 import { DictionaryFavoriteView, DictionaryView } from "./ui";
 import { playDictionaryAudio, stopDictionaryAudio } from "./ui/audio";
 import { DictionaryFavoriteModal } from "./obsidian/favoriteModal";
+import { DictionaryFavoriteBatchModal } from "./obsidian/favoriteBatchModal";
+import { ObsidianFavoriteBatchSource } from "./obsidian/favoriteBatchSource";
 import { FavoriteCategoryModal } from "./obsidian/favoriteCategoryModal";
 import { DictionaryFavoritePresentation } from "./obsidian/favoritePresentation";
 import { ObsidianDictionaryFavoriteStore } from "./obsidian/favoriteStore";
@@ -163,10 +167,11 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 	const module = defineFeatureLifetime({
 		id: "dictionary",
 		start: (host, lifetime) => {
+			const favoriteStore = new ObsidianDictionaryFavoriteStore(host.app, deps.sourceEdits);
 			const dictionary = lifetime.own(
 				new DictionaryRuntime({
 					sourceEdits: deps.sourceEdits,
-					favoriteStore: new ObsidianDictionaryFavoriteStore(host.app, deps.sourceEdits),
+					favoriteStore,
 					app: host.app,
 					plugin: deps.plugin,
 					settings: createDictionarySettingsStore({
@@ -183,6 +188,30 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 					notify: (message) => new Notice(message),
 				}),
 			);
+			let batchModal: DictionaryFavoriteBatchModal | null = null;
+			const openBatchFavorite = (): void => {
+				if (batchModal) return;
+				const controller = new FavoriteBatchController({
+					categories: dictionary.favoriteCategories,
+					settings: dictionary.settings,
+					source: new ObsidianFavoriteBatchSource(host.app),
+					store: favoriteStore,
+					generator: createFavoriteDraftGenerator(deps.ai),
+					hasAiConfig: (id) =>
+						deps.ai.getSnapshot().settings.configs.some((config) => config.id === id),
+					language: () => host.settings.read().language,
+				});
+				batchModal = new DictionaryFavoriteBatchModal(
+					host.app,
+					controller,
+					() => host.settings.read().language,
+					() => {
+						batchModal = null;
+					},
+				);
+				batchModal.open();
+			};
+			lifetime.defer(() => batchModal?.forceClose());
 			const favorites = lifetime.own(
 				new DictionaryFavoritePresentation({
 					controller: dictionary.favoriteController,
@@ -278,6 +307,7 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 								searchInputRef={resource}
 								language={language}
 								onOpenFavorite={(word) => favorites.open(word)}
+								onOpenBatchFavorite={openBatchFavorite}
 								onOpenSettings={() => openSettings(host)}
 								onPlayAudio={async (url) => {
 									if (!(await playDictionaryAudio(url))) {
