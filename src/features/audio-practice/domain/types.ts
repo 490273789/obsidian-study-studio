@@ -117,5 +117,4 @@ export interface AudioPracticeSnapshot extends AudioPracticeData {
 	readonly loading: boolean;
 	readonly failure: AudioFailure | null;
 	readonly invalidatedMarks: number;
-	readonly draft: AudioPracticeDraftSnapshot;
 }

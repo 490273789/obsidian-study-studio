@@ -1,7 +1,6 @@
 import React, { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
 	AudioLines,
-	Captions,
 	CircleAlert,
 	ChevronDown,
 	EyeOff,
@@ -37,7 +36,6 @@ import { PlaybackRateControl } from "../../../core/ui/primitives/PlaybackRate";
 import { FlashcardSelect } from "../../../core/ui/primitives/Select";
 import { FlashcardSlider } from "../../../core/ui/primitives/Slider";
 import type {
-	AudioMaterial,
 	AudioPracticeCatalog,
 	AudioPracticeDraftSnapshot,
 	AudioPracticeFiles,
@@ -46,14 +44,52 @@ import type {
 } from "../domain/types";
 import { AUDIO_PLAYBACK_RATES } from "../domain/types";
 import type { AudioPracticeRuntime } from "../domain/audioPracticeRuntime";
+import type { SubtitleDraftEngine, SubtitleDraftSnapshot } from "../domain/subtitleDraftEngine";
 import { audioFailureCopy } from "../strings/failures";
 import { audioPracticeStrings } from "../strings/audioPractice";
 import type { AudioPracticeStrings } from "../strings/audioPractice";
 import { MaterialEditSession, type MaterialEditSessionSnapshot } from "./materialEditSession";
+import { PracticeViewInteraction } from "./practiceViewInteraction";
+import { ReviewDialog } from "./ReviewDialog";
 import styles from "./AudioPractice.module.scss";
+
+export { ReviewDialog as DraftReviewDialog, DraftReviewBody } from "./ReviewDialog";
+
+const EMPTY_DRAFT: SubtitleDraftSnapshot = {
+	status: "idle",
+	cues: [],
+	completedChunks: 0,
+	totalChunks: 0,
+	duration: 0,
+	failure: null,
+	error: null,
+	notice: null,
+	taskKey: null,
+	hasReviewWordTimings: false,
+};
+
+const DEFAULT_DRAFT_ENGINE: Pick<
+	SubtitleDraftEngine,
+	| "subscribe"
+	| "getSnapshot"
+	| "generateForMaterial"
+	| "commitForMaterial"
+	| "cancel"
+	| "dismissFailure"
+	| "act"
+> = {
+	subscribe: () => () => {},
+	getSnapshot: () => EMPTY_DRAFT,
+	generateForMaterial: async () => false,
+	commitForMaterial: async () => false,
+	cancel: () => {},
+	dismissFailure: () => {},
+	act: () => {},
+};
 
 interface AudioPracticeViewProps {
 	runtime: AudioPracticeRuntime;
+	draftEngine?: SubtitleDraftEngine;
 	files: AudioPracticeFiles;
 	catalog: AudioPracticeCatalog;
 	language: Language;
@@ -61,11 +97,26 @@ interface AudioPracticeViewProps {
 }
 
 export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNode {
-	const { runtime, files, catalog, language, onOpenSettings } = props;
+	const { runtime, draftEngine, files, catalog, language, onOpenSettings } = props;
 	const snapshot = useSyncExternalStore(
 		(listener) => runtime.subscribe(listener),
 		() => runtime.getSnapshot(),
 	);
+	const activeDraftEngine =
+		draftEngine ?? (DEFAULT_DRAFT_ENGINE as unknown as SubtitleDraftEngine);
+	const readDraft = () =>
+		draftEngine
+			? activeDraftEngine.getSnapshot()
+			: ((snapshot as unknown as { draft?: AudioPracticeDraftSnapshot }).draft ??
+				activeDraftEngine.getSnapshot());
+	const draft = useSyncExternalStore(activeDraftEngine.subscribe, readDraft, readDraft);
+	const media = useRef<HTMLAudioElement>(null);
+	const practiceRef = useRef<HTMLElement>(null);
+	const interaction = useMemo(
+		() => new PracticeViewInteraction({ runtime, containerRef: practiceRef }),
+		[runtime],
+	);
+	useEffect(() => () => interaction.dispose(), [interaction]);
 	const editSession = useMemo(
 		() => new MaterialEditSession({ runtime, files, catalog }),
 		[runtime, files, catalog],
@@ -77,8 +128,6 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 		editSession.getSnapshot,
 	);
 	const t = audioPracticeStrings(language);
-	const media = useRef<HTMLAudioElement>(null);
-	const practiceRef = useRef<HTMLElement>(null);
 	const [reviewOpen, setReviewOpen] = useState(false);
 	const [materialToolsOpen, setMaterialToolsOpen] = useState(false);
 	const [libraryCollapsed, setLibraryCollapsed] = useState(false);
@@ -86,7 +135,6 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 	const libraryId = useId();
 	const materialActionsId = useId();
 	const playerOptionsId = useId();
-	const draft = snapshot.draft;
 	const operation = snapshot.materialOperation;
 	const materialBusy = operation.status === "pending" || snapshot.loading;
 	const busy =
@@ -106,30 +154,11 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 	useEffect(() => {
 		const audio = media.current;
 		if (!audio) return;
-		const release = runtime.bindMedia(audio);
-		const pause = () => {
-			if (audio.ownerDocument.hidden) runtime.pause();
-		};
-		audio.ownerDocument.addEventListener("visibilitychange", pause);
-		return () => {
-			audio.ownerDocument.removeEventListener("visibilitychange", pause);
-			release();
-		};
-	}, [runtime]);
+		return interaction.bindMedia(audio);
+	}, [interaction]);
 	useEffect(() => {
-		const container = practiceRef.current;
-		const cueId = snapshot.currentCueId;
-		if (!container || !cueId) return;
-		const active = container.querySelector<HTMLElement>('[data-current-cue="true"]');
-		if (!active) return;
-		const reduceMotion =
-			active.ownerDocument.defaultView?.matchMedia?.("(prefers-reduced-motion: reduce)")
-				.matches ?? false;
-		active.scrollIntoView({
-			block: "nearest",
-			behavior: reduceMotion ? "auto" : "smooth",
-		});
-	}, [snapshot.currentCueId, snapshot.playing]);
+		interaction.syncCueScroll(snapshot.currentCueId, practiceRef.current);
+	}, [snapshot.currentCueId, snapshot.playing, interaction]);
 	return (
 		<div className={cls("fc-page fc-page--fill", styles.page)}>
 			<FlashcardHeader
@@ -241,7 +270,15 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 									<Button
 										icon={Sparkles}
 										disabled={busy || generating}
-										onClick={() => void runtime.generateSubtitles(true)}
+										onClick={() => {
+											if (material)
+												void activeDraftEngine.generateForMaterial(
+													material,
+													{
+														force: true,
+													},
+												);
+										}}
 									>
 										{snapshot.cues.length ? t.regenerate : t.generate}
 									</Button>
@@ -280,7 +317,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 									{generating && (
 										<Button
 											size="sm"
-											onClick={() => runtime.cancelSubtitleGeneration()}
+											onClick={() => activeDraftEngine.cancel()}
 										>
 											{t.cancel}
 										</Button>
@@ -292,9 +329,12 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 												size="sm"
 												icon={RotateCcw}
 												disabled={busy}
-												onClick={() =>
-													void runtime.generateSubtitles(false)
-												}
+												onClick={() => {
+													if (material)
+														void activeDraftEngine.generateForMaterial(
+															material,
+														);
+												}}
 											>
 												{t.retry}
 											</Button>
@@ -314,6 +354,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 								snapshot={snapshot}
 								t={t}
 								surfaceRef={practiceRef}
+								onKeyDown={interaction.handleKeyDown}
 								playerOptionsOpen={playerOptionsOpen}
 								playerOptionsId={playerOptionsId}
 								onTogglePlayerOptions={() => setPlayerOptionsOpen((open) => !open)}
@@ -454,21 +495,17 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 				/>
 			)}
 			{reviewOpen && reviewReady && material && (
-				<DraftReviewDialog
+				<ReviewDialog
 					draft={draft}
 					material={material}
-					runtime={runtime}
+					engine={activeDraftEngine}
+					onPreview={(start, end) => runtime.preview(start, end)}
 					t={t}
 					busy={busy}
 					error={draft.error ? audioFailureCopy(language, draft.error).message : null}
 					onRequestClose={() => {
 						setReviewOpen(false);
 					}}
-					onSave={() =>
-						void runtime.saveSubtitleDraft().then((applied) => {
-							if (applied) setReviewOpen(false);
-						})
-					}
 				/>
 			)}
 		</div>
@@ -631,237 +668,6 @@ function MaterialForm(props: MaterialDialogProps): React.ReactNode {
 	);
 }
 
-interface DraftReviewBodyProps {
-	draft: AudioPracticeDraftSnapshot;
-	material: AudioMaterial;
-	runtime: Pick<AudioPracticeRuntime, "preview" | "actOnSubtitleDraft">;
-	t: AudioPracticeStrings;
-	busy: boolean;
-	error: string | null;
-	titleId: string;
-	hintId: string;
-	initialFocusProps?: { "data-modal-initial-focus": string };
-	requestClose(): void;
-	onSave(): void;
-}
-
-function DraftReviewDialog(
-	props: Omit<DraftReviewBodyProps, "titleId" | "hintId" | "requestClose"> & {
-		onRequestClose(): void;
-	},
-): React.ReactNode {
-	const titleId = useId();
-	const hintId = useId();
-	return (
-		<ModalSurface
-			className={styles.reviewDialog}
-			labelledBy={titleId}
-			describedBy={hintId}
-			onRequestClose={() => props.onRequestClose()}
-			isDismissible={!props.busy}
-		>
-			{({ requestClose, initialFocusProps }) => (
-				<DraftReviewBody
-					{...props}
-					titleId={titleId}
-					hintId={hintId}
-					initialFocusProps={initialFocusProps}
-					requestClose={requestClose}
-				/>
-			)}
-		</ModalSurface>
-	);
-}
-
-export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
-	const { draft, material, runtime, t, busy, error } = props;
-	const pending = draft.cues.filter((cue) => cue.needsReview).length;
-	return (
-		<>
-			<div className="flashcard-modal-header">
-				<div className="flashcard-modal-heading">
-					<span id={props.titleId} className="flashcard-modal-title">
-						<Captions size={17} />
-						{t.review}
-					</span>
-					<span id={props.hintId} className="flashcard-modal-subtitle">
-						{material.title} · {t.reviewHint}
-					</span>
-				</div>
-				<Button
-					preset="icon"
-					icon={X}
-					disabled={busy}
-					aria-label={t.close}
-					title={t.close}
-					onClick={() => props.requestClose()}
-				/>
-			</div>
-			<div className={cls("flashcard-modal-body", styles.reviewBody)}>
-				<div className={styles.reviewSummary}>
-					<span>{t.reviewSummary(pending, draft.cues.length)}</span>
-					<Button
-						size="sm"
-						icon={ListChecks}
-						disabled={busy || pending === 0}
-						onClick={() => runtime.actOnSubtitleDraft({ type: "confirm-all-cues" })}
-					>
-						{t.markAllReviewed}
-					</Button>
-				</div>
-				{error && (
-					<p role="alert" className={styles.alert}>
-						{error}
-					</p>
-				)}
-				<ol className={styles.draftList}>
-					{draft.cues.map((cue, index) => {
-						const invalid =
-							cue.start === null || cue.end === null || cue.end <= cue.start;
-						const wordFallback = draft.hasReviewWordTimings && !cue.highlightable;
-						return (
-							<li key={cue.id} className={styles.draftCue}>
-								<div className={styles.draftCueHeader}>
-									<span className={styles.draftCueIndex}>
-										{String(index + 1).padStart(2, "0")}
-									</span>
-									<FlashcardCheckbox
-										checked={!cue.needsReview}
-										onChange={(event) =>
-											runtime.actOnSubtitleDraft({
-												type: "edit-cue",
-												id: cue.id,
-												patch: {
-													needsReview: !event.target.checked,
-												},
-											})
-										}
-										label={cue.needsReview ? t.pending : t.checked}
-									/>
-									<span className={styles.draftCueTime}>
-										{cue.start === null ? "—" : timeLabel(cue.start)}
-										<span aria-hidden="true">–</span>
-										{cue.end === null ? "—" : timeLabel(cue.end)}
-									</span>
-									<Button
-										preset="icon"
-										size="sm"
-										icon={Trash2}
-										className={styles.draftDelete}
-										aria-label={`${t.deleteCue} ${index + 1}`}
-										title={t.deleteCue}
-										onClick={() =>
-											runtime.actOnSubtitleDraft({
-												type: "remove-cue",
-												id: cue.id,
-											})
-										}
-									/>
-								</div>
-								<FlashcardTextarea
-									value={cue.text}
-									onChange={(event) =>
-										runtime.actOnSubtitleDraft({
-											type: "edit-cue",
-											id: cue.id,
-											patch: {
-												text: event.target.value,
-											},
-										})
-									}
-									aria-label={`${t.cueText} ${index + 1}`}
-									rows={2}
-									{...(index === 0 ? props.initialFocusProps : undefined)}
-								/>
-								{wordFallback && (
-									<p className={styles.draftWordFallback}>
-										{t.wordTimingFallback}
-									</p>
-								)}
-								<div className={styles.draftTimeRow}>
-									<label className={styles.timeField}>
-										<span>{t.start}</span>
-										<FlashcardInput
-											type="number"
-											min="0"
-											step="0.01"
-											inputSize="sm"
-											fullWidth={false}
-											value={cue.start ?? ""}
-											onChange={(event) =>
-												runtime.actOnSubtitleDraft({
-													type: "edit-cue",
-													id: cue.id,
-													patch: {
-														start:
-															event.target.value === ""
-																? null
-																: Number(event.target.value),
-													},
-												})
-											}
-										/>
-									</label>
-									<label className={styles.timeField}>
-										<span>{t.end}</span>
-										<FlashcardInput
-											type="number"
-											min="0"
-											step="0.01"
-											inputSize="sm"
-											fullWidth={false}
-											value={cue.end ?? ""}
-											onChange={(event) =>
-												runtime.actOnSubtitleDraft({
-													type: "edit-cue",
-													id: cue.id,
-													patch: {
-														end:
-															event.target.value === ""
-																? null
-																: Number(event.target.value),
-													},
-												})
-											}
-										/>
-									</label>
-									<Button
-										size="sm"
-										icon={Play}
-										disabled={invalid}
-										onClick={() => {
-											if (cue.start !== null && cue.end !== null)
-												runtime.preview(cue.start, cue.end);
-										}}
-									>
-										{t.audition}
-									</Button>
-								</div>
-							</li>
-						);
-					})}
-				</ol>
-			</div>
-			<div className={cls("flashcard-modal-footer", styles.dialogFooter)}>
-				<Button
-					icon={Plus}
-					onClick={() => runtime.actOnSubtitleDraft({ type: "add-cue" })}
-					disabled={busy}
-				>
-					{t.addCue}
-				</Button>
-				<span className={styles.footerSpacer} />
-				<Button onClick={() => props.requestClose()} disabled={busy}>
-					{t.close}
-				</Button>
-				<Button variant="primary" disabled={busy} onClick={() => props.onSave()}>
-					{busy ? t.busy : t.saveDraft}
-				</Button>
-			</div>
-		</>
-	);
-}
-
 function renderTimedCueText(
 	text: string,
 	words: readonly TimedTextWord[] | undefined,
@@ -903,6 +709,7 @@ export function PracticeSurface({
 	snapshot,
 	t,
 	surfaceRef,
+	onKeyDown,
 	playerOptionsOpen = false,
 	playerOptionsId = "audio-practice-player-options",
 	onTogglePlayerOptions,
@@ -911,6 +718,7 @@ export function PracticeSurface({
 	snapshot: AudioPracticeSnapshot;
 	t: AudioPracticeStrings;
 	surfaceRef?: React.Ref<HTMLElement>;
+	onKeyDown?: (event: React.KeyboardEvent<HTMLElement>) => void;
 	playerOptionsOpen?: boolean;
 	playerOptionsId?: string;
 	onTogglePlayerOptions?: () => void;
@@ -924,6 +732,34 @@ export function PracticeSurface({
 	const offset = snapshot.currentMaterial
 		? (snapshot.progress[snapshot.currentMaterial.id]?.offset ?? 0)
 		: 0;
+	const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+		if (onKeyDown) {
+			onKeyDown(event);
+			return;
+		}
+		if (
+			event.defaultPrevented ||
+			event.altKey ||
+			event.ctrlKey ||
+			event.metaKey ||
+			event.nativeEvent?.isComposing ||
+			(event.target as HTMLElement).closest?.(
+				"button,input,textarea,select,[contenteditable=true]",
+			)
+		) {
+			return;
+		}
+		if (event.key === " ") {
+			event.preventDefault();
+			runtime.togglePlayback();
+		} else if (event.key === "ArrowLeft") {
+			event.preventDefault();
+			runtime.previous();
+		} else if (event.key === "ArrowRight") {
+			event.preventDefault();
+			runtime.next();
+		}
+	};
 	return (
 		// The practice panel is a composite keyboard surface with its own focus target.
 		/* oxlint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */
@@ -932,29 +768,7 @@ export function PracticeSurface({
 			className={cls("fc-panel fc-focus-ring", styles.practice)}
 			aria-label={t.captions}
 			tabIndex={0}
-			onKeyDown={(event) => {
-				if (
-					event.defaultPrevented ||
-					event.altKey ||
-					event.ctrlKey ||
-					event.metaKey ||
-					event.nativeEvent.isComposing ||
-					(event.target as HTMLElement).closest(
-						"button,input,textarea,select,[contenteditable=true]",
-					)
-				)
-					return;
-				if (event.key === " ") {
-					event.preventDefault();
-					runtime.togglePlayback();
-				} else if (event.key === "ArrowLeft") {
-					event.preventDefault();
-					runtime.previous();
-				} else if (event.key === "ArrowRight") {
-					event.preventDefault();
-					runtime.next();
-				}
-			}}
+			onKeyDown={handleKeyDown}
 		>
 			<header className={styles.practiceHeader}>
 				<fieldset className={styles.modeSwitch} aria-label={t.mode}>

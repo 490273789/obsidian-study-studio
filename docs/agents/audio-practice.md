@@ -21,11 +21,17 @@
 
 `AudioPracticeCatalog`（`domain/types.ts`）只负责 `list(): { audioPaths, subtitlePaths, textPaths }` 与路径变化订阅；`AudioPracticeFiles` 保持单文件读取/存在/媒体 URL/字幕写入的语义。两者由 `obsidian/vaultFiles.ts` 的同一个 vault adapter 构造；domain 代码不接触 `app.vault`。
 
-## 不归编辑会话管的状态
+## 不归编辑会话管的状态与模块边界
 
-- 播放、材料选择/删除、字幕生成与草稿保存仍归 `AudioPracticeRuntime` 与 `SubtitleDraftEngine`；编辑会话只在提交时调用 `addMaterial` / `editMaterial`。
-- 生成中的禁用（`preparing` / `transcribing` / `aligning` / `saving` 时禁止 add/select/remove/edit）继续由 view 从 runtime 快照推导；不要把生成状态复制进编辑会话。
-- 字幕草稿 review 对话框与播放器控件不在编辑会话范围内。
+- 播放、材料切换/删除与字幕持久化归 `AudioPracticeRuntime`；字幕生成、对齐、草稿审核与编辑归 `SubtitleDraftEngine`。编辑会话只在提交时调用 `addMaterial` / `editMaterial`。
+- `AudioPracticeRuntime` 与 `SubtitleDraftEngine` 已解耦浅层传递接缝：
+    - `SubtitleDraftEngine` 是独立深模块，由 `feature.tsx` 的 feature lifetime 直接拥有，并通过回调接缝 `commitSubtitles: (id, cues, timings) => runtime.saveSubtitles(id, cues, timings)` 写回。
+    - `AudioPracticeRuntime` 不再代理草稿方法（不再暴露 `generateSubtitles` / `cancelSubtitleGeneration` / `saveSubtitleDraft` / `actOnSubtitleDraft` 等），其快照也不再混入 `draft`。
+    - 两者通过 `AudioPracticeMaterialObserver`（`onMaterialSelected` / `onMaterialDiscarded` / `onMaterialAudioChanged` / `isGenerating`）协同生命周期。
+- 视图交互与审核：
+    - `ReviewDialog`（`ui/ReviewDialog.tsx`）：独立审查对话框模块，直接与 `SubtitleDraftEngine` 交互。
+    - `PracticeViewInteraction`（`ui/practiceViewInteraction.ts`）：纯适配器类，收敛播放视图的快捷键（空格、左右箭头）、文档可见性隐藏暂停与字幕平滑居中滚动。
+- 生成中的禁用（`preparing` / `transcribing` / `aligning` / `saving` 时禁止 add/select/remove/edit）由 view 从 `draftEngine` 快照推导；不要把生成状态复制进编辑会话。
 
 ## 转写配置
 
@@ -40,8 +46,10 @@ provider 选择、workspace 密钥引用优先级、字段归一化和生成前�
 
 ## 测试
 
+- `ui/__tests__/practiceViewInteraction.test.tsx`：快捷键（空格播放暂停、左右箭头切句）、可见性隐藏暂停与字幕平滑滚动的适配器断言。
 - `ui/__tests__/materialEditSession.test.ts`：会话接口上的打开/字段/读取取消/提交失败/目录刷新/取消与 dispose。
 - `ui/__tests__/MaterialEditView.test.tsx`：view 只断言渲染与 intent 转发，并保留“发起对话框失败、其他视图 alert”的可见行为。
+- `domain/__tests__/subtitleDraftEngine.test.ts`：涵盖 Unicode 分词对齐、分块转写流水线、指纹校验及草稿单接缝编辑动作。
 - runtime、转写 provider 与草稿引擎的测试继续在 `domain/__tests__/` 覆盖；编辑会话测试不 mock React。
 - `domain/__tests__/transcriptionConfiguration.test.ts` 覆盖配置准备、密钥失败、任务匹配与异步变化；
   `src/__tests__/mediaComposition.test.ts` 验证真实组合路径将已接受的配置用于请求。

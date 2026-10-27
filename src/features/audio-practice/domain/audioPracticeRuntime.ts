@@ -1,19 +1,12 @@
 import { audioFailure, type AudioFailure, toAudioFailure } from "./failures";
 import { emptyProgress, normalizeAudioPracticeData } from "./repository";
 import { parseSubtitles, serializeSrt, validateCues } from "./subtitles";
-import type { AudioSourceFiles, TimedTextWord } from "./transcriptionTypes";
-import { SubtitleDraftEngine, type SubtitleDraftAction } from "./subtitleDraftEngine";
-import {
-	TranscriptionConfiguration,
-	type TranscriptionSettingsReader,
-} from "./transcriptionConfiguration";
+import type { TimedTextWord } from "./transcriptionTypes";
 import {
 	AUDIO_PLAYBACK_RATES,
 	type AudioMaterial,
 	type AudioMediaPort,
 	type AudioPracticeData,
-	type AudioPracticeDraftSnapshot,
-	type AudioPracticeDraftStatus,
 	type AudioPracticeFiles,
 	type AudioPracticeMode,
 	type AudioPracticeProgress,
@@ -26,12 +19,17 @@ import {
 	type SubtitleCue,
 } from "./types";
 
-interface AudioPracticeRuntimeOptions {
+export interface AudioPracticeMaterialObserver {
+	onMaterialSelected?(material: AudioMaterial | null): void;
+	onMaterialDiscarded?(id: string): Promise<void> | void;
+	onMaterialAudioChanged?(id: string): void;
+	isGenerating?(materialId: string): boolean;
+}
+
+export interface AudioPracticeRuntimeOptions {
 	readonly repository: AudioPracticeRepository;
 	readonly files: AudioPracticeFiles;
-	readonly source?: AudioSourceFiles;
-	readonly settings?: TranscriptionSettingsReader;
-	readonly generation?: SubtitleDraftEngine;
+	readonly observer?: AudioPracticeMaterialObserver;
 }
 
 interface MaterialEdit {
@@ -42,13 +40,11 @@ interface MaterialEdit {
 	invalidated: boolean;
 }
 
-/** Owns playback, synchronized learning metadata, and subtitle draft workflows. */
+/** Owns playback, synchronized learning metadata, and material catalog workflows. */
 export class AudioPracticeRuntime {
 	private readonly repository: AudioPracticeRepository;
 	private readonly files: AudioPracticeFiles;
-	private readonly source?: AudioSourceFiles;
-	private readonly transcription?: TranscriptionConfiguration;
-	private readonly generationService?: SubtitleDraftEngine;
+	private readonly observer?: AudioPracticeMaterialObserver;
 
 	private data: AudioPracticeData;
 	private cues: readonly SubtitleCue[] = [];
@@ -87,20 +83,7 @@ export class AudioPracticeRuntime {
 	constructor(options: AudioPracticeRuntimeOptions) {
 		this.repository = options.repository;
 		this.files = options.files;
-		this.source = options.source;
-		this.transcription = options.settings
-			? new TranscriptionConfiguration(options.settings)
-			: undefined;
-		this.generationService = options.generation;
-
-		if (this.generationService) {
-			this.generationService.bindHost?.({
-				source: this.source,
-				transcription: this.transcription,
-				commitSubtitles: (id, cues, timings) => this.saveSubtitles(id, cues, timings),
-			});
-			this.releases.push(this.generationService.subscribe(() => this.publish()));
-		}
+		this.observer = options.observer;
 
 		this.data = normalizeAudioPracticeData(this.repository.load());
 		this.releases.push(
@@ -113,11 +96,12 @@ export class AudioPracticeRuntime {
 				this.data = normalizeAudioPracticeData(this.repository.load());
 				const current = this.currentMaterial();
 				if (
-					previous?.id === current?.id &&
-					(previous?.audioPath !== current?.audioPath ||
-						previous?.originalText !== current?.originalText)
+					current &&
+					previous?.id === current.id &&
+					(previous?.audioPath !== current.audioPath ||
+						previous?.originalText !== current.originalText)
 				) {
-					this.generationService?.invalidateValidation();
+					this.observer?.onMaterialAudioChanged?.(current.id);
 				}
 				void this.loadMaterial();
 			}),
@@ -335,9 +319,7 @@ export class AudioPracticeRuntime {
 					} else this.scheduleBoundary();
 				}
 				if (draftSourceChanged) {
-					this.generationService?.invalidateValidation();
-					if (this.generationService?.getSnapshot().taskKey === id)
-						this.generationService.cancel();
+					this.observer?.onMaterialAudioChanged?.(id);
 				}
 				this.publish();
 			});
@@ -435,7 +417,7 @@ export class AudioPracticeRuntime {
 				},
 			);
 			try {
-				await this.generationService?.discard(id);
+				await this.observer?.onMaterialDiscarded?.(id);
 			} catch {}
 			if (wasCurrent) await this.loadMaterial();
 			else this.publish();
@@ -449,13 +431,7 @@ export class AudioPracticeRuntime {
 	): Promise<T> {
 		if (this.disposed) throw audioFailure({ kind: "cancelled" });
 		if (this.materialOperation.status === "pending") throw audioFailure({ kind: "busy" });
-		if (
-			kind === "edit" &&
-			this.generationService?.getSnapshot().taskKey === materialId &&
-			["preparing", "transcribing", "aligning"].includes(
-				this.generationService.getSnapshot().status,
-			)
-		)
+		if (kind === "edit" && this.observer?.isGenerating?.(materialId))
 			throw audioFailure({ kind: "busy" });
 		const id = this.materialOperation.id + 1;
 		this.materialOperation = {
@@ -570,7 +546,7 @@ export class AudioPracticeRuntime {
 		this.invalidatedMarks = invalidatedMarks;
 		this.loadMedia();
 		this.publish();
-		this.generationService?.syncWithMaterial(this.currentMaterial());
+		this.observer?.onMaterialSelected?.(this.currentMaterial());
 	}
 	private beginSubtitleOperation(id: string): {
 		token: number;
@@ -816,7 +792,6 @@ export class AudioPracticeRuntime {
 		this.pause();
 		this.disposed = true;
 		this.generation++;
-		this.generationService?.cancel();
 		this.unbindMedia();
 		this.releases.forEach((release) => release());
 		this.listeners.clear();
@@ -898,7 +873,7 @@ export class AudioPracticeRuntime {
 		this.loading = false;
 		this.loadMedia();
 		this.publish();
-		this.generationService?.syncWithMaterial(material);
+		this.observer?.onMaterialSelected?.(material);
 	}
 	private reconcileCues(next: readonly SubtitleCue[], persist = true): void {
 		const remapped = remapCueProgress(this.cues, next, this.progress());
@@ -1149,77 +1124,6 @@ export class AudioPracticeRuntime {
 		this.error = failure;
 		this.publish();
 	}
-	async generateSubtitles(force = false): Promise<boolean> {
-		if (this.disposed || !this.generationService) return false;
-		return this.generationService.generateForMaterial(this.currentMaterial(), { force });
-	}
-
-	cancelSubtitleGeneration(): void {
-		this.generationService?.cancel();
-	}
-
-	dismissFailure(): void {
-		this.error = null;
-		this.generationService?.dismissFailure();
-		this.publish();
-	}
-
-	async saveSubtitleDraft(): Promise<boolean> {
-		if (this.disposed || !this.generationService) return false;
-		return this.generationService.commitForMaterial(this.currentMaterial());
-	}
-
-	actOnSubtitleDraft(action: SubtitleDraftAction): void {
-		this.generationService?.act(action);
-	}
-
-	private getDraftSnapshot(): AudioPracticeDraftSnapshot {
-		if (!this.generationService) {
-			return {
-				status: "idle",
-				cues: [],
-				completedChunks: 0,
-				totalChunks: 0,
-				failure: null,
-				error: null,
-				notice: null,
-				hasReviewWordTimings: false,
-			};
-		}
-		const gen = this.generationService.getSnapshot();
-		if (!this.data.currentMaterialId) {
-			return {
-				status: "idle",
-				cues: [],
-				completedChunks: 0,
-				totalChunks: 0,
-				failure: null,
-				error: gen.error,
-				notice: null,
-				hasReviewWordTimings: false,
-			};
-		}
-		const isCurrent = gen.taskKey === this.data.currentMaterialId;
-		const sourceValid = this.generationService.isSourceValidated
-			? this.generationService.isSourceValidated()
-			: true;
-		const status: AudioPracticeDraftStatus =
-			!isCurrent ||
-			(!sourceValid &&
-				!["preparing", "transcribing", "aligning", "saving"].includes(gen.status))
-				? "idle"
-				: gen.status;
-		return {
-			status,
-			cues: isCurrent && sourceValid ? gen.cues : [],
-			completedChunks: isCurrent ? gen.completedChunks : 0,
-			totalChunks: isCurrent ? gen.totalChunks : 0,
-			failure: isCurrent && sourceValid ? gen.failure : null,
-			error: gen.error,
-			notice: isCurrent && sourceValid ? gen.notice : null,
-			hasReviewWordTimings: isCurrent && sourceValid ? gen.hasReviewWordTimings : false,
-		};
-	}
 
 	private publish(): void {
 		this.snapshot = {
@@ -1236,7 +1140,6 @@ export class AudioPracticeRuntime {
 			loading: this.loading,
 			failure: this.error,
 			invalidatedMarks: this.invalidatedMarks,
-			draft: this.getDraftSnapshot(),
 		};
 		for (const listener of this.listeners) listener();
 	}
@@ -1291,7 +1194,7 @@ export class AudioPracticeRuntime {
 			(contains(material.audioPath, change.path) ||
 				(change.kind === "rename" && contains(material.audioPath, change.nextPath)))
 		) {
-			this.generationService?.invalidateValidation();
+			this.observer?.onMaterialAudioChanged?.(material.id);
 		}
 		if (
 			material &&

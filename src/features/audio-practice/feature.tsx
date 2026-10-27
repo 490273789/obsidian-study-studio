@@ -8,6 +8,7 @@ import { FlashcardButton } from "../../core/ui/primitives/Button";
 import { ModalProvider } from "../../core/ui/primitives/Modal";
 import { AudioPracticeRuntime } from "./domain/audioPracticeRuntime";
 import { SubtitleDraftEngine, normalizeGenerationDraft } from "./domain/subtitleDraftEngine";
+import { TranscriptionConfiguration } from "./domain/transcriptionConfiguration";
 import { createBrowserAudioPreparation } from "./domain/transcription/browserAudio";
 import { createTranscriptionProvider } from "./domain/transcription/providers";
 import { createAudioSourceFiles } from "./obsidian/audioSourceFiles";
@@ -51,18 +52,33 @@ export function createAudioPracticeFeature(deps: {
 			);
 			const readSettings = () => host.settings.read();
 			const openSettings = () => host.settingsTab.open(SECTION);
+			const transcription = new TranscriptionConfiguration({
+				read: () => readSettings().audioPractice,
+				readSecret: (id) => deps.net.readSecret(id),
+			});
 			const runtime = lifetime.own(
 				new AudioPracticeRuntime({
 					repository: createAudioPracticeRepository(deps.store),
 					files,
-					source,
-					settings: {
-						read: () => readSettings().audioPractice,
-						readSecret: (id) => deps.net.readSecret(id),
+					observer: {
+						onMaterialSelected: (material) => generation.syncWithMaterial(material),
+						onMaterialDiscarded: async (id) => generation.discard(id),
+						onMaterialAudioChanged: () => generation.invalidateValidation(),
+						isGenerating: (id) => {
+							const snap = generation.getSnapshot();
+							return (
+								snap.taskKey === id &&
+								["preparing", "transcribing", "aligning"].includes(snap.status)
+							);
+						},
 					},
-					generation,
 				}),
 			);
+			generation.bindHost({
+				source,
+				transcription,
+				commitSubtitles: (id, cues, timings) => runtime.saveSubtitles(id, cues, timings),
+			});
 			host.registerView(
 				AUDIO_PRACTICE_VIEW,
 				createReactItemView({
@@ -77,7 +93,7 @@ export function createAudioPracticeFeature(deps: {
 							resource: undefined,
 							dispose: () => {
 								runtime.pause();
-								runtime.cancelSubtitleGeneration();
+								generation.cancel();
 							},
 						};
 					},
@@ -86,6 +102,7 @@ export function createAudioPracticeFeature(deps: {
 							<ModalProvider host={rootEl}>
 								<AudioPracticeView
 									runtime={runtime}
+									draftEngine={generation}
 									files={files}
 									catalog={catalog}
 									language={language}
@@ -133,7 +150,7 @@ export function createAudioPracticeFeature(deps: {
 			return () => {
 				if (!readSettings().audioPractice.enabled) {
 					runtime.pause();
-					runtime.cancelSubtitleGeneration();
+					generation.cancel();
 				}
 			};
 		},

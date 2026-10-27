@@ -8,6 +8,7 @@ import type {
 	AudioPracticeSnapshot,
 	MaterialOperationKind,
 } from "../../domain/types";
+import type { SubtitleDraftSnapshot } from "../../domain/subtitleDraftEngine";
 import { AudioPracticeView } from "../AudioPracticeView";
 
 const hooks = vi.hoisted(() => ({
@@ -103,16 +104,27 @@ function harness() {
 		failure: null,
 		invalidatedMarks: 0,
 		materialOperation: { id: 0, kind: null, materialId: null, status: "idle", failure: null },
-		draft: {
-			status: "idle",
-			cues: [],
-			hasReviewWordTimings: false,
-			completedChunks: 0,
-			totalChunks: 0,
-			failure: null,
-			error: null,
-			notice: null,
-		},
+	};
+	let draftSnapshot: SubtitleDraftSnapshot = {
+		status: "idle",
+		cues: [],
+		hasReviewWordTimings: false,
+		completedChunks: 0,
+		totalChunks: 0,
+		duration: 0,
+		failure: null,
+		error: null,
+		notice: null,
+		taskKey: null,
+	};
+	const draftEngine = {
+		subscribe: () => () => {},
+		getSnapshot: () => draftSnapshot,
+		generateForMaterial: async () => false,
+		commitForMaterial: async () => false,
+		cancel: () => {},
+		dismissFailure: () => {},
+		act: () => {},
 	};
 	let resolve!: () => void;
 	let reject!: (error: unknown) => void;
@@ -187,6 +199,7 @@ function harness() {
 		hooks.values = values;
 		return AudioPracticeView({
 			runtime: runtime as unknown as AudioPracticeRuntime,
+			draftEngine: draftEngine as never,
 			files: files as never,
 			catalog,
 			language: "en",
@@ -205,6 +218,9 @@ function harness() {
 		runtime,
 		view,
 		other,
+		setDraftStatus(status: SubtitleDraftSnapshot["status"]) {
+			draftSnapshot = { ...draftSnapshot, status };
+		},
 		clickEdit() {
 			click(view(), "Edit title and reference text");
 		},
@@ -321,7 +337,7 @@ describe("listening material operations view", () => {
 
 	it("allows add, selection and removal while generating and disables editing", () => {
 		const h = harness();
-		h.update({ draft: { ...h.snapshot().draft, status: "transcribing" } });
+		h.setDraftStatus("transcribing");
 		const tree = h.view();
 		const nodes = elements(tree);
 		expect(nodes.find((node) => node.props["aria-current"])!.props.disabled).toBe(false);
