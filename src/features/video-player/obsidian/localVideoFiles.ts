@@ -1,5 +1,5 @@
 import { Platform } from "obsidian";
-import type { LocalVideoSource } from "../domain/types";
+import type { LocalVideoSource, PickedVideoFile, VideoFilePickerPort } from "../domain/types";
 
 interface DesktopVideoFileSystem {
 	realpath(path: string): Promise<string>;
@@ -100,6 +100,7 @@ function getElectronWebUtils(document: Document): ElectronWebUtils | null {
 		return null;
 	}
 }
+
 function getDesktopFileSystem(document: Document): DesktopVideoFileSystem | null {
 	const requireModule = (
 		document.defaultView as (Window & { require?: (id: string) => unknown }) | null
@@ -113,4 +114,15 @@ function getDesktopFileSystem(document: Document): DesktopVideoFileSystem | null
 	} catch {
 		return null;
 	}
+}
+
+export function createDesktopVideoFilePicker(
+	dependencies: LocalVideoFilePickerDependencies = {},
+): VideoFilePickerPort {
+	return {
+		pickSources: async (label: string): Promise<readonly PickedVideoFile[]> => {
+			const sources = await pickLocalVideoSources(label, dependencies);
+			return sources.map((source) => ({ path: source.path, name: source.name }));
+		},
+	};
 }

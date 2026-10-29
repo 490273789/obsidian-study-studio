@@ -232,4 +232,150 @@ describe("VideoPlayerRuntime", () => {
 		media.emit("timeupdate");
 		expect(await result).toBe("completed");
 	});
+
+	describe("stable identity and picker seam", () => {
+		it("reuses remembered source ID and persists identity registry across re-additions", () => {
+			let savedRegistry: Record<string, string> = { "/videos/one.mp4": "stable-id-1" };
+			const identityStore = {
+				load: () => ({ ...savedRegistry }),
+				save: (reg: Record<string, string>) => {
+					savedRegistry = { ...reg };
+				},
+			};
+
+			const runtime = new VideoPlayerRuntime({
+				store: new MemoryStore(),
+				identityStore,
+				toMediaUrl: (path) => path,
+			});
+
+			runtime.addSources([{ path: "/videos/one.mp4", name: "one.mp4" }]);
+			expect(runtime.getSnapshot().sources).toEqual([
+				{ id: "stable-id-1", path: "/videos/one.mp4", name: "one.mp4" },
+			]);
+			expect(savedRegistry["/videos/one.mp4"]).toBe("stable-id-1");
+
+			// Remove source then re-add without id:
+			runtime.removeSource("stable-id-1");
+			expect(runtime.getSnapshot().sources).toEqual([]);
+
+			runtime.addSources([{ path: "/videos/one.mp4", name: "one.mp4" }]);
+			expect(runtime.getSnapshot().sources[0]?.id).toBe("stable-id-1");
+		});
+
+		it("pickAndAddSources imports picked files and publishes snapshot", async () => {
+			const picker = {
+				pickSources: vi.fn().mockResolvedValue([
+					{ path: "/videos/a.mp4", name: "a.mp4" },
+					{ path: "/videos/b.mp4", name: "b.mp4" },
+				]),
+			};
+			const runtime = new VideoPlayerRuntime({
+				store: new MemoryStore(),
+				picker,
+				toMediaUrl: (path) => path,
+			});
+
+			const success = await runtime.pickAndAddSources({
+				addVideos: "Add",
+				selectFailed: "Failed",
+			});
+			expect(success).toBe(true);
+			expect(runtime.getSnapshot().sources).toHaveLength(2);
+			expect(runtime.getSnapshot().sources[0]?.path).toBe("/videos/a.mp4");
+		});
+
+		it("pickAndAddSources returns false quietly on user cancellation", async () => {
+			const reportNotice = vi.fn();
+			const picker = {
+				pickSources: vi.fn().mockResolvedValue([]),
+			};
+			const runtime = new VideoPlayerRuntime({
+				store: new MemoryStore(),
+				picker,
+				reportNotice,
+				toMediaUrl: (path) => path,
+			});
+
+			const success = await runtime.pickAndAddSources({
+				addVideos: "Add",
+				selectFailed: "Failed",
+			});
+			expect(success).toBe(false);
+			expect(reportNotice).not.toHaveBeenCalled();
+		});
+
+		it("pickAndAddSources reports notice when picker throws", async () => {
+			const reportNotice = vi.fn();
+			const reportError = vi.fn();
+			const picker = {
+				pickSources: vi.fn().mockRejectedValue(new Error("dialog error")),
+			};
+			const runtime = new VideoPlayerRuntime({
+				store: new MemoryStore(),
+				picker,
+				reportNotice,
+				reportError,
+				toMediaUrl: (path) => path,
+			});
+
+			const success = await runtime.pickAndAddSources({
+				addVideos: "Add",
+				selectFailed: "Select failed notice",
+			});
+			expect(success).toBe(false);
+			expect(reportNotice).toHaveBeenCalledWith("Select failed notice");
+			expect(reportError).toHaveBeenCalled();
+		});
+
+		it("pickAndReplaceSource preserves ID and updates path, rejecting collisions", async () => {
+			const savedRegistry: Record<string, string> = {};
+			const identityStore = {
+				load: () => savedRegistry,
+				save: (reg: Record<string, string>) => Object.assign(savedRegistry, reg),
+			};
+			const picker = {
+				pickSources: vi.fn(),
+			};
+			const runtime = new VideoPlayerRuntime({
+				store: new MemoryStore(),
+				identityStore,
+				picker,
+				toMediaUrl: (path) => path,
+			});
+
+			runtime.addSources([
+				{ id: "id-1", path: "/videos/one.mp4", name: "one.mp4" },
+				{ id: "id-2", path: "/videos/two.mp4", name: "two.mp4" },
+			]);
+
+			// Collision test: try to replace id-1 with path of id-2
+			picker.pickSources.mockResolvedValueOnce([
+				{ path: "/videos/two.mp4", name: "two.mp4" },
+			]);
+			const collisionSuccess = await runtime.pickAndReplaceSource("id-1", {
+				replace: "Replace",
+				selectFailed: "Failed",
+			});
+			expect(collisionSuccess).toBe(false);
+			expect(runtime.getSnapshot().sources[0]?.path).toBe("/videos/one.mp4");
+
+			// Valid replacement:
+			picker.pickSources.mockResolvedValueOnce([
+				{ path: "/videos/one-new.mp4", name: "one-new.mp4" },
+			]);
+			const validSuccess = await runtime.pickAndReplaceSource("id-1", {
+				replace: "Replace",
+				selectFailed: "Failed",
+			});
+			expect(validSuccess).toBe(true);
+			expect(runtime.getSnapshot().sources[0]).toEqual({
+				id: "id-1",
+				path: "/videos/one-new.mp4",
+				name: "one-new.mp4",
+			});
+			expect(savedRegistry["/videos/one-new.mp4"]).toBe("id-1");
+			expect(savedRegistry["/videos/one.mp4"]).toBeUndefined();
+		});
+	});
 });

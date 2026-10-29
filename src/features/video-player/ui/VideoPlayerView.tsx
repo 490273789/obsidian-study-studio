@@ -29,11 +29,7 @@ import {
 } from "../../../core/ui/primitives/Sortable/Sortable";
 import { cls } from "../../../core/shared/classNames";
 import type { Language } from "../../../core/shared/types";
-import type {
-	LocalVideoSource,
-	ShadowingWorkspaceViewAction,
-	VideoPlayerSnapshot,
-} from "../domain/types";
+import type { ShadowingWorkspaceViewAction, VideoPlayerSnapshot } from "../domain/types";
 import { VIDEO_PLAYBACK_RATES } from "../domain/types";
 import type { VideoPlayerRuntime } from "../domain/videoPlayerRuntime";
 import type { VideoPlayerSettings } from "../settings/slice";
@@ -65,8 +61,6 @@ interface VideoPlayerViewProps {
 	settings: VideoPlayerSettings;
 	onFocusExisting: () => void;
 	onOpenSettings: () => void;
-	onPickVideos: () => Promise<readonly LocalVideoSource[]>;
-	onPickReplacement: (sourceId: string) => Promise<LocalVideoSource | null>;
 	shadowing?: ShadowingViewBridge;
 }
 
@@ -78,8 +72,6 @@ export function VideoPlayerView({
 	settings,
 	onFocusExisting,
 	onOpenSettings,
-	onPickVideos,
-	onPickReplacement,
 	shadowing,
 }: VideoPlayerViewProps): React.ReactNode {
 	const snapshot = useSyncExternalStore(
@@ -105,9 +97,11 @@ export function VideoPlayerView({
 	const shadowEnabled = shadowSnapshot?.enabled ?? false;
 
 	const addVideos = useCallback(async () => {
-		const sources = await onPickVideos();
-		runtime.addSources(sources);
-	}, [onPickVideos, runtime]);
+		await runtime.pickAndAddSources({
+			addVideos: t.addVideos,
+			selectFailed: t.selectFailed,
+		});
+	}, [runtime, t.addVideos, t.selectFailed]);
 
 	const currentIndex = snapshot.sources.findIndex(
 		(source) => source.id === snapshot.currentSourceId,
@@ -434,16 +428,14 @@ export function VideoPlayerView({
 																	className={styles.actionBtn}
 																	label={t.replace}
 																	onClick={async () => {
-																		const replacement =
-																			await onPickReplacement(
-																				source.id,
-																			);
-																		if (replacement) {
-																			runtime.replaceSource(
-																				source.id,
-																				replacement,
-																			);
-																		}
+																		await runtime.pickAndReplaceSource(
+																			source.id,
+																			{
+																				replace: t.replace,
+																				selectFailed:
+																					t.selectFailed,
+																			},
+																		);
 																	}}
 																/>
 																<IconButton

@@ -1,8 +1,6 @@
-import { Notice, type App } from "obsidian";
-import type { LocalVideoSource } from "../domain/types";
+import type { App } from "obsidian";
 import { VideoSubtitleJobs, type ShadowVideoSource } from "../domain/shadowSubtitlesJobs";
 import type { ShadowRecorderPort } from "../domain/shadowingSession";
-import { pickLocalVideoSources } from "./localVideoFiles";
 import {
 	createDesktopShadowAudioExtractor,
 	shadowVideoSourceSignature,
@@ -10,13 +8,11 @@ import {
 import { ShadowStorageRouter } from "./shadowStorageRouter";
 import { ShadowPracticeRecords } from "./shadowPracticeRecords";
 import { createShadowRecorder } from "./shadowRecorder";
-import { identifyShadowSources, relinkShadowSource } from "./shadowSourceIdentity";
 import type { VideoPlayerSettings } from "../settings/slice";
 import { ShadowingWorkspaceSession } from "../domain/shadowingWorkspaceSession";
 import { createBrowserTakeAudioPlayer } from "./browserTakeAudioPlayer";
 import type { VideoPlayerRuntime } from "../domain/videoPlayerRuntime";
 
-const SOURCE_IDS_KEY = "study-studio.shadowing.source-ids.v1";
 const SHADOW_ENABLED_KEY = "study-studio.shadowing.enabled-sources.v1";
 const FFMPEG_PATH_KEY = "study-studio.shadowing.ffmpeg-path.v1";
 
@@ -51,17 +47,6 @@ export interface VideoShadowingDesktopAdapterOptions {
 	readonly runtime: VideoPlayerRuntime;
 	readonly services?: VideoShadowingServices;
 	readonly initialWindow?: Window | null;
-	readonly reportNotice?: (message: string) => void;
-}
-
-export interface VideoPickStrings {
-	readonly addVideos: string;
-	readonly selectFailed: string;
-}
-
-export interface VideoReplaceStrings {
-	readonly replace: string;
-	readonly selectFailed: string;
 }
 
 export class VideoShadowingDesktopAdapter {
@@ -69,9 +54,7 @@ export class VideoShadowingDesktopAdapter {
 	private readonly readSettings: () => VideoPlayerSettings;
 	private readonly runtime: VideoPlayerRuntime;
 	private readonly services?: VideoShadowingServices;
-	private readonly reportNotice: (message: string) => void;
 
-	private readonly sourceIds: Record<string, string>;
 	private readonly enabledSources: Set<string>;
 	private ffmpegPath: string;
 
@@ -87,20 +70,6 @@ export class VideoShadowingDesktopAdapter {
 		this.readSettings = options.readSettings;
 		this.runtime = options.runtime;
 		this.services = options.services;
-		this.reportNotice = options.reportNotice ?? ((message) => new Notice(message));
-
-		const savedSourceIds = this.app.loadLocalStorage(SOURCE_IDS_KEY);
-		this.sourceIds =
-			savedSourceIds && typeof savedSourceIds === "object" && !Array.isArray(savedSourceIds)
-				? Object.fromEntries(
-						Object.entries(savedSourceIds).filter(
-							(entry): entry is [string, string] => typeof entry[1] === "string",
-						),
-					)
-				: {};
-		for (const source of this.runtime.getSnapshot().sources) {
-			this.sourceIds[source.path] = source.id;
-		}
 
 		const savedEnabled = this.app.loadLocalStorage(SHADOW_ENABLED_KEY);
 		this.enabledSources = new Set(
@@ -224,60 +193,6 @@ export class VideoShadowingDesktopAdapter {
 	setFfmpegPath(path: string): void {
 		this.ffmpegPath = path;
 		this.app.saveLocalStorage(FFMPEG_PATH_KEY, path);
-	}
-
-	async pickVideos(options: {
-		document: Document;
-		strings: VideoPickStrings;
-	}): Promise<readonly LocalVideoSource[]> {
-		try {
-			const picked = await pickLocalVideoSources(options.strings.addVideos, {
-				document: options.document,
-			});
-			const identified = identifyShadowSources(
-				this.sourceIds,
-				picked,
-				this.runtime.getSnapshot().sources,
-			);
-			this.app.saveLocalStorage(SOURCE_IDS_KEY, this.sourceIds);
-			return identified;
-		} catch (error) {
-			console.error("Failed to select local videos:", error);
-			this.reportNotice(options.strings.selectFailed);
-			return [];
-		}
-	}
-
-	async pickReplacement(options: {
-		sourceId: string;
-		document: Document;
-		strings: VideoReplaceStrings;
-	}): Promise<LocalVideoSource | null> {
-		try {
-			const [replacement] = await pickLocalVideoSources(options.strings.replace, {
-				document: options.document,
-			});
-			if (replacement) {
-				if (
-					this.runtime
-						.getSnapshot()
-						.sources.some(
-							(source) =>
-								source.id !== options.sourceId && source.path === replacement.path,
-						)
-				) {
-					return null;
-				}
-				const relinked = relinkShadowSource(this.sourceIds, options.sourceId, replacement);
-				this.app.saveLocalStorage(SOURCE_IDS_KEY, this.sourceIds);
-				return relinked;
-			}
-			return null;
-		} catch (error) {
-			console.error("Failed to replace a local video:", error);
-			this.reportNotice(options.strings.selectFailed);
-			return null;
-		}
 	}
 
 	private requireModule(id: string): unknown {

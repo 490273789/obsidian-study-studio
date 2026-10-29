@@ -1,15 +1,17 @@
 import { isRecord } from "../../../core/shared/isRecord";
 import type { App } from "obsidian";
-import type { VideoPlayerDocumentStore } from "../domain/types";
-import { emptyState } from "../domain/videoPlayerRuntime";
 import {
 	VIDEO_PLAYBACK_RATES,
 	type DeviceVideoPlayerStateV1,
 	type FloatingRect,
 	type LocalVideoSource,
+	type VideoPlayerDocumentStore,
+	type VideoSourceIdentityPort,
 } from "../domain/types";
+import { emptyState } from "../domain/videoPlayerRuntime";
 
 const LOCAL_VIDEO_PLAYER_STORAGE_KEY = "study-studio.local-video-player.v1";
+export const SOURCE_IDS_STORAGE_KEY = "study-studio.shadowing.source-ids.v1";
 
 /** Vault-scoped, device-local storage. Paths never reach plugin data.json. */
 export class ObsidianVideoPlayerStateStore implements VideoPlayerDocumentStore {
@@ -24,6 +26,28 @@ export class ObsidianVideoPlayerStateStore implements VideoPlayerDocumentStore {
 	}
 	clear(): void {
 		this.app.saveLocalStorage(LOCAL_VIDEO_PLAYER_STORAGE_KEY, null);
+	}
+}
+
+/** Device-local mapping between canonical video paths and stable source IDs. */
+export class ObsidianVideoSourceIdentityStore implements VideoSourceIdentityPort {
+	constructor(private readonly app: Pick<App, "loadLocalStorage" | "saveLocalStorage">) {}
+	load(): Record<string, string> {
+		const saved = this.app.loadLocalStorage(SOURCE_IDS_STORAGE_KEY);
+		if (saved && typeof saved === "object" && !Array.isArray(saved)) {
+			return Object.fromEntries(
+				Object.entries(saved).filter(
+					(entry): entry is [string, string] => typeof entry[1] === "string",
+				),
+			);
+		}
+		return {};
+	}
+	save(registry: Record<string, string>): void {
+		this.app.saveLocalStorage(SOURCE_IDS_STORAGE_KEY, registry);
+	}
+	clear(): void {
+		this.app.saveLocalStorage(SOURCE_IDS_STORAGE_KEY, null);
 	}
 }
 

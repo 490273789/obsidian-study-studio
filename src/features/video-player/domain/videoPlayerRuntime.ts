@@ -3,15 +3,27 @@ import {
 	type DeviceVideoPlayerStateV1,
 	type FloatingRect,
 	type LocalVideoSource,
+	type VideoFilePickerPort,
 	type VideoMediaPort,
+	type VideoPickStrings,
 	type VideoPlaybackRate,
 	type VideoPlayerDocumentStore,
 	type VideoPlayerSnapshot,
+	type VideoReplaceStrings,
+	type VideoSourceIdentityPort,
 } from "./types";
+import {
+	identifyVideoSources,
+	relinkVideoSource,
+	type CandidateVideoSource,
+} from "./videoSourceIdentity";
 
-interface VideoPlayerRuntimeOptions {
+export interface VideoPlayerRuntimeOptions {
 	readonly store: VideoPlayerDocumentStore;
 	readonly toMediaUrl: (path: string) => string;
+	readonly identityStore?: VideoSourceIdentityPort;
+	readonly picker?: VideoFilePickerPort;
+	readonly reportNotice?: (message: string) => void;
 	readonly now?: () => number;
 	readonly reportError?: (error: unknown) => void;
 }
@@ -41,10 +53,25 @@ export class VideoPlayerRuntime {
 	private readonly interruptionListeners = new Set<() => void>();
 	private internalMediaChange = false;
 	private suppressEnded = false;
+	private readonly identityRegistry: Record<string, string>;
 
 	constructor(private readonly options: VideoPlayerRuntimeOptions) {
 		this.state = options.store.load();
+		this.identityRegistry = options.identityStore?.load() ?? {};
+		for (const source of this.state.sources) {
+			if (!this.identityRegistry[source.path]) {
+				this.identityRegistry[source.path] = source.id;
+			}
+		}
 		this.publish();
+	}
+
+	getIdentityRegistry(): Record<string, string> {
+		return { ...this.identityRegistry };
+	}
+
+	private saveIdentityRegistry(): void {
+		this.options.identityStore?.save(this.identityRegistry);
 	}
 
 	getSnapshot = (): VideoPlayerSnapshot => this.snapshot;
@@ -83,10 +110,47 @@ export class VideoPlayerRuntime {
 		};
 	}
 
-	addSources(sources: readonly LocalVideoSource[]): void {
+	async pickAndAddSources(strings: VideoPickStrings): Promise<boolean> {
+		if (this.disposed || !this.options.picker) return false;
+		try {
+			const picked = await this.options.picker.pickSources(strings.addVideos);
+			if (!picked || picked.length === 0) return false;
+			this.addSources(picked);
+			return true;
+		} catch (error) {
+			this.options.reportError?.(error);
+			this.options.reportNotice?.(strings.selectFailed);
+			return false;
+		}
+	}
+
+	async pickAndReplaceSource(sourceId: string, strings: VideoReplaceStrings): Promise<boolean> {
+		if (this.disposed || !this.options.picker) return false;
+		try {
+			const [replacement] = await this.options.picker.pickSources(strings.replace);
+			if (!replacement) return false;
+			if (
+				this.state.sources.some(
+					(source) => source.id !== sourceId && source.path === replacement.path,
+				)
+			) {
+				return false;
+			}
+			this.replaceSource(sourceId, replacement);
+			return true;
+		} catch (error) {
+			this.options.reportError?.(error);
+			this.options.reportNotice?.(strings.selectFailed);
+			return false;
+		}
+	}
+
+	addSources(sources: readonly CandidateVideoSource[]): void {
 		if (this.disposed) return;
+		const identified = identifyVideoSources(this.identityRegistry, sources, this.state.sources);
+		this.saveIdentityRegistry();
 		const knownPaths = new Set(this.state.sources.map((source) => source.path));
-		const additions = sources.filter((source) => {
+		const additions = identified.filter((source) => {
 			if (knownPaths.has(source.path)) return false;
 			knownPaths.add(source.path);
 			return true;
@@ -102,7 +166,7 @@ export class VideoPlayerRuntime {
 		this.publish();
 	}
 
-	replaceSource(sourceId: string, replacement: LocalVideoSource): void {
+	replaceSource(sourceId: string, replacement: CandidateVideoSource): void {
 		if (this.disposed || !this.state.sources.some((source) => source.id === sourceId)) return;
 		if (
 			this.state.sources.some(
@@ -110,23 +174,19 @@ export class VideoPlayerRuntime {
 			)
 		)
 			return;
+		const relinked = relinkVideoSource(this.identityRegistry, sourceId, replacement);
+		this.saveIdentityRegistry();
 		this.pauseAndSave();
 		this.state = {
 			...this.state,
 			sources: this.state.sources.map((source) =>
-				source.id === sourceId ? replacement : source,
+				source.id === sourceId ? relinked : source,
 			),
 			currentSourceId:
-				this.state.currentSourceId === sourceId
-					? replacement.id
-					: this.state.currentSourceId,
-			progressBySource: renameRecordKey(
-				this.state.progressBySource,
-				sourceId,
-				replacement.id,
-			),
+				this.state.currentSourceId === sourceId ? relinked.id : this.state.currentSourceId,
+			progressBySource: renameRecordKey(this.state.progressBySource, sourceId, relinked.id),
 			completedSourceIds: this.state.completedSourceIds.map((id) =>
-				id === sourceId ? replacement.id : id,
+				id === sourceId ? relinked.id : id,
 			),
 		};
 		this.persist();

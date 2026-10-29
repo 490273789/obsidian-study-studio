@@ -10,7 +10,12 @@ import type {
 } from "../../core/host/workbench";
 import { VideoPlayerRuntime } from "./domain";
 import { validShadowVaultFolder } from "./domain/shadowVaultFolder";
-import { localVideoMediaUrl, ObsidianVideoPlayerStateStore } from "./obsidian";
+import {
+	createDesktopVideoFilePicker,
+	localVideoMediaUrl,
+	ObsidianVideoPlayerStateStore,
+	ObsidianVideoSourceIdentityStore,
+} from "./obsidian";
 import { buildVideoPlayerSettingsViewModel } from "./settings/viewModel";
 import { hasDuplicateShortcuts } from "./settings/keyboardShortcut";
 import type { VideoPlayerSettings } from "./settings/slice";
@@ -41,6 +46,9 @@ export function createVideoPlayerFeature(
 			const runtime = lifetime.own(
 				new VideoPlayerRuntime({
 					store: new ObsidianVideoPlayerStateStore(host.app),
+					identityStore: new ObsidianVideoSourceIdentityStore(host.app),
+					picker: createDesktopVideoFilePicker(),
+					reportNotice: (message) => new Notice(message),
 					toMediaUrl: localVideoMediaUrl,
 					reportError: (error) =>
 						console.error("Failed to save local video player state:", error),
@@ -137,19 +145,6 @@ export function createVideoPlayerFeature(
 								onFocusExisting={() => void open()}
 								onOpenSettings={() =>
 									host.settingsTab.open(VIDEO_PLAYER_SECTION_ID)
-								}
-								onPickVideos={() =>
-									desktopAdapter.pickVideos({
-										document: rootEl.ownerDocument,
-										strings,
-									})
-								}
-								onPickReplacement={(sourceId) =>
-									desktopAdapter.pickReplacement({
-										sourceId,
-										document: rootEl.ownerDocument,
-										strings,
-									})
 								}
 							/>
 						);

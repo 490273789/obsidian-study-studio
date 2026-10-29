@@ -87,7 +87,8 @@ function harness() {
 	const reorderSources = vi.fn();
 	const selectSource = vi.fn();
 	const addSources = vi.fn();
-	const onPickVideos = vi.fn(async () => [{ id: "fourth", name: "fourth", path: "fourth.mp4" }]);
+	const pickAndAddSources = vi.fn();
+	const pickAndReplaceSource = vi.fn();
 	let queueExpanded = true;
 	const act = vi.fn(() => ({ kind: "applied" as const }));
 	const snapshot: VideoPlayerSnapshot = {
@@ -113,6 +114,8 @@ function harness() {
 		reorderSources,
 		selectSource,
 		addSources,
+		pickAndAddSources,
+		pickAndReplaceSource,
 	} as unknown as VideoPlayerRuntime;
 	const view: PlayerViewMount = {
 		getSnapshot: () => ({
@@ -140,8 +143,6 @@ function harness() {
 			settings: normalizeVideoPlayerSettings(undefined),
 			onFocusExisting: vi.fn(),
 			onOpenSettings: vi.fn(),
-			onPickVideos,
-			onPickReplacement: vi.fn(async () => null),
 			shadowing,
 		});
 	let list: React.ReactElement<React.ComponentProps<typeof ReorderableList>>;
@@ -166,7 +167,8 @@ function harness() {
 		reorderSources,
 		selectSource,
 		addSources,
-		onPickVideos,
+		pickAndAddSources,
+		pickAndReplaceSource,
 		act,
 		setQueueExpanded: (expanded: boolean) => {
 			queueExpanded = expanded;
@@ -317,12 +319,7 @@ describe("video queue view", () => {
 		expect(add.props["aria-label"]).toBe(copy.addVideos);
 		expect(add.props.children).toBeUndefined();
 		add.props.onClick!({} as React.MouseEvent<HTMLButtonElement>);
-		await vi.waitFor(() =>
-			expect(h.addSources).toHaveBeenCalledExactlyOnceWith([
-				{ id: "fourth", name: "fourth", path: "fourth.mp4" },
-			]),
-		);
-		expect(h.onPickVideos).toHaveBeenCalledOnce();
+		await vi.waitFor(() => expect(h.pickAndAddSources).toHaveBeenCalledOnce());
 	});
 
 	it("passes source IDs and language to shared sorting and persists the moved order", () => {

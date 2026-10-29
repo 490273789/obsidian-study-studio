@@ -10,6 +10,30 @@ export interface LocalVideoSource {
 	readonly name: string;
 }
 
+export interface PickedVideoFile {
+	readonly path: string;
+	readonly name: string;
+}
+
+export interface VideoFilePickerPort {
+	pickSources(label: string): Promise<readonly PickedVideoFile[]>;
+}
+
+export interface VideoSourceIdentityPort {
+	load(): Record<string, string>;
+	save(registry: Record<string, string>): void;
+}
+
+export interface VideoPickStrings {
+	readonly addVideos: string;
+	readonly selectFailed: string;
+}
+
+export interface VideoReplaceStrings {
+	readonly replace: string;
+	readonly selectFailed: string;
+}
+
 export interface FloatingRect {
 	readonly x: number;
 	readonly y: number;

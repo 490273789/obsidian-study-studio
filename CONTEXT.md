@@ -149,6 +149,10 @@ A user-selected local video that can be played during study. A source has a
 stable identity independent of its current place in a queue.
 _Avoid_: Video file, media item
 
+**Video source identity (视频源稳定身份)**:
+The invariant binding between a canonical video path and its stable source ID, preserved across playlist removals and explicit relinks, ensuring vault-stored subtitles and recordings remain linked to the media.
+_Avoid_: File path ID, source ID cache, desktop picker mapping
+
 **Playback queue**:
 The ordered collection of video sources available to one player. Its order
 defines the previous and next source.

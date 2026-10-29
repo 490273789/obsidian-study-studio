@@ -18,11 +18,11 @@
 
 `VideoSubtitleJobs` 是插件生命周期的字幕任务 owner，字幕文档存在资料库，外部视频路径与任务检查点存在设备本地。`ShadowStorageRouter` 将 source ID 固定到第一次选定的资料库目录；`ShadowPracticeRecords` 管理难段和用户保留的录音。字幕冲突后通过 `reloadSource` 丢弃当前未保存草稿并重新读取资料库版本，不要让视图直接改 store。字幕、跟读和录音的边界记录在 [ADR 0009](../adr/0009-local-video-shadowing.md)。
 
-`src/features/video-player/obsidian/videoShadowingDesktopAdapter.ts`（`VideoShadowingDesktopAdapter`）是桌面环境的深宿主适配器：
+`src/features/video-player/obsidian/videoShadowingDesktopAdapter.ts`（`VideoShadowingDesktopAdapter`）是桌面环境的宿主适配器：
 
-- 拥有设备本地状态持久化：`SOURCE_IDS_KEY` 映射、`SHADOW_ENABLED_KEY` 启用列表与 `FFMPEG_PATH_KEY`；
+- 拥有桌面状态持久化：`SHADOW_ENABLED_KEY` 启用列表与 `FFMPEG_PATH_KEY`；稳定视频源身份映射收敛在 `VideoPlayerRuntime` 与 `ObsidianVideoSourceIdentityStore`；
 - 拥有桌面环境生命周期：通过 `bindPresenterWindow` 接管活动 presenter 窗口引用，平滑维护 Electron `require` 探测与麦克风录音器单例；
-- 拥有用户选取交互：`pickVideos` 与 `pickReplacement` 统一处理文件对话框、重名/重路径冲突检测与 Notice 提示；
+- 文件选取与稳定身份分配收敛为运行时的单一原子意图（`pickAndAddSources` / `pickAndReplaceSource`），经由平台 `VideoFilePickerPort` 完成，视图只渲染快照；
 - 装配并管理 `VideoSubtitleJobs` 与 `ShadowingWorkspaceSession`，向 `feature.tsx` 暴露紧凑高杠杆接口。
 
 `ShadowingSession` 拥有范围播放、停顿、录音、回听和失败保存队列；`VideoPlayerRuntime.playRange` 只实现有界播放。`ShadowingBridge` 发布视图所需的快照和意图，主视图与浮动视图共用同一实例。Presenter 交接时停止活动会话，关闭 view 不销毁插件生命周期的字幕任务。配置的跨功能借用只在 `src/features/index.ts`；`video-player` 不导入听说练习或翻译功能的内部模块。
