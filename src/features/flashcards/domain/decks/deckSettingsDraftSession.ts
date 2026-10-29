@@ -111,6 +111,7 @@ interface MutableSettingsDraft {
 class DefaultDeckSettingsDraftSession implements DeckSettingsDraftSession {
 	private readonly listeners = new Set<() => void>();
 	private draft: MutableSettingsDraft | null = null;
+	private snapshot: DeckSettingsDraftSnapshot | null = null;
 	private disposed = false;
 	private readonly unsubscribeRepo?: () => void;
 
@@ -123,13 +124,17 @@ class DefaultDeckSettingsDraftSession implements DeckSettingsDraftSession {
 					.find((candidate) => candidate.id === this.draft!.deckId);
 				if (!deck && !this.draft.isSaving) {
 					this.draft = null;
-					this.publish();
 				}
+				this.publish();
 			});
 		}
 	}
 
 	getSnapshot(): DeckSettingsDraftSnapshot | null {
+		return this.snapshot;
+	}
+
+	private buildSnapshot(): DeckSettingsDraftSnapshot | null {
 		const draft = this.draft;
 		if (!draft) return null;
 		const deck = this.options.repository
@@ -351,11 +356,14 @@ class DefaultDeckSettingsDraftSession implements DeckSettingsDraftSession {
 		this.disposed = true;
 		this.unsubscribeRepo?.();
 		this.draft = null;
+		this.snapshot = null;
 		this.listeners.clear();
 	}
 
 	private publish(): void {
 		if (this.disposed) return;
+		// React's external-store reader must retain its reference between publications.
+		this.snapshot = this.buildSnapshot();
 		for (const listener of this.listeners) {
 			listener();
 		}

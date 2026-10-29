@@ -61,12 +61,17 @@ describe("DeckSettingsDraftSession - Deep Domain Module", () => {
 	) {
 		let currentSettings = overrides.settings ?? createDefaultSettings();
 		let currentDecks = overrides.decks ?? [createMockDeck()];
+		const externalListeners = new Set<() => void>();
 		const saveSettingsPatch = vi.fn(overrides.saveSettingsPatch ?? (async () => {}));
 		const report = vi.fn();
 
 		const repository: DeckSettingsRepositoryPort = {
 			getAllDecks: () => currentDecks,
 			getSettings: () => currentSettings,
+			subscribeExternal: (listener) => {
+				externalListeners.add(listener);
+				return () => externalListeners.delete(listener);
+			},
 		};
 
 		const session = createDeckSettingsDraftSession({
@@ -82,9 +87,11 @@ describe("DeckSettingsDraftSession - Deep Domain Module", () => {
 			report,
 			setDecks: (decks: Deck[]) => {
 				currentDecks = decks;
+				for (const listener of externalListeners) listener();
 			},
 			setSettings: (settings: FlashcardStudySettings) => {
 				currentSettings = settings;
+				for (const listener of externalListeners) listener();
 			},
 		};
 	}
@@ -95,10 +102,75 @@ describe("DeckSettingsDraftSession - Deep Domain Module", () => {
 		expect(session.isLocked("deck-1", "owner-1")).toBe(false);
 	});
 
+	it("keeps the open draft snapshot stable between changes for React subscriptions", () => {
+		const { session } = setup();
+		session.open("deck-1", "owner-1");
+		const opened = session.getSnapshot();
+		expect(session.getSnapshot()).toBe(opened);
+		session.change("owner-1", { field: "dailyNewCards", value: 10 });
+		const changed = session.getSnapshot();
+		expect(changed).not.toBe(opened);
+		expect(changed?.dailyNewCards).toBe(10);
+		expect(opened?.dailyNewCards).toBe(20);
+		expect(session.getSnapshot()).toBe(changed);
+	});
+
 	it("rejects open when deck is missing", () => {
 		const { session } = setup();
 		const outcome = session.open("non-existent", "owner-1");
 		expect(outcome).toEqual({ kind: "rejected", reason: "deck-missing" });
+		expect(session.getSnapshot()).toBeNull();
+	});
+
+	it("publishes refreshed deck and global settings without losing local edits", () => {
+		const { session, setDecks, setSettings } = setup();
+		session.open("deck-1", "owner-1");
+		session.change("owner-1", { field: "dailyNewCards", value: 7 });
+		const beforeRefresh = session.getSnapshot();
+		const observed: unknown[] = [];
+		session.subscribe(() => observed.push(session.getSnapshot()));
+
+		setDecks([createMockDeck({ name: "Renamed", cards: [createMockCard("legacy")] })]);
+		const refreshed = session.getSnapshot();
+		expect(refreshed).not.toBe(beforeRefresh);
+		expect(refreshed).toMatchObject({
+			deckName: "Renamed",
+			totalCards: 1,
+			dailyNewCards: 7,
+			spelling: { hasStableIdentities: false },
+		});
+		expect(observed).toEqual([refreshed]);
+		expect(session.getSnapshot()).toBe(refreshed);
+
+		setSettings({ ...createDefaultSettings(), dailyNewCards: 30 });
+		const updated = session.getSnapshot();
+		expect(updated?.global.dailyNewCards).toBe(30);
+		expect(updated?.dailyNewCards).toBe(7);
+		expect(refreshed?.global.dailyNewCards).toBe(20);
+		expect(session.getSnapshot()).toBe(updated);
+
+		setDecks([]);
+		expect(session.getSnapshot()).toBeNull();
+		expect(observed).toHaveLength(3);
+	});
+
+	it("publishes stable saving and completion snapshots to subscribers", async () => {
+		let finish!: () => void;
+		const { session } = setup({
+			saveSettingsPatch: () =>
+				new Promise<void>((resolve) => {
+					finish = resolve;
+				}),
+		});
+		session.open("deck-1", "owner-1");
+		const opened = session.getSnapshot();
+		const save = session.save("owner-1");
+		const saving = session.getSnapshot();
+		expect(saving?.isSaving).toBe(true);
+		expect(opened?.isSaving).toBe(false);
+		expect(session.getSnapshot()).toBe(saving);
+		finish();
+		await save;
 		expect(session.getSnapshot()).toBeNull();
 	});
 
