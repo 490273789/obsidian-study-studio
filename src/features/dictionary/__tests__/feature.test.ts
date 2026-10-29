@@ -97,6 +97,14 @@ vi.mock("../domain/dictionaryRuntime", () => ({
 		};
 		readonly dispose = vi.fn();
 		readonly applySettings = vi.fn();
+		readonly settings = {
+			getDictionarySettings: vi.fn(() => ({
+				sources: [
+					{ id: "dict-1", label: "Dict 1", kind: "dictionary", enabled: true },
+					{ id: "dict-2", label: "Dict 2", kind: "ai", enabled: false },
+				],
+			})),
+		};
 		constructor(readonly options?: { net: unknown }) {
 			runtimeSpies.instances.push(this);
 		}
@@ -238,7 +246,14 @@ describe("dictionary feature", () => {
 
 		favoriteModalSpies.instances[0]!.close();
 		expect(runtime.favorites.resetSession).toHaveBeenCalledOnce();
-		await feature.selectionAdapter.openFavorite?.("again");
+		const slot = feature.renderLookupSlot({
+			word: "again",
+			onClose: () => {},
+			selectedDictionaries: [],
+			dictionaryOrder: [],
+			openMainShortcut: "Ctrl+Enter",
+		}) as React.ReactElement<{ openFavorite?: (word: string) => Promise<void> }>;
+		await slot.props.openFavorite?.("again");
 		expect(favoriteModalSpies.instances).toHaveLength(2);
 		feature.stop();
 		expect(favoriteModalSpies.instances[1]!.close).toHaveBeenCalledOnce();
@@ -294,16 +309,23 @@ describe("dictionary feature", () => {
 		feature.stop();
 	});
 
-	it("keeps its selection adapter inert before the feature lifetime starts", async () => {
+	it("keeps sources empty before start and exposes active sources and lookup slot", () => {
 		const feature = createDictionaryFeature({
 			ai: {} as never,
 			net: {} as never,
 			plugin: {} as never,
 		});
 
-		expect(feature.selectionAdapter.sources()).toEqual([]);
-		expect(feature.selectionAdapter.startLookup("term", [])).toBeNull();
-		await expect(feature.selectionAdapter.openInMainTab("term")).resolves.toBeUndefined();
+		expect(feature.sources()).toEqual([]);
+		expect(typeof feature.renderLookupSlot).toBe("function");
+
+		const fake = createFakeWorkbenchHost("dictionary", enabledSettings);
+		feature.render(fake.host);
+
+		expect(feature.sources()).toEqual([{ id: "dict-1", label: "Dict 1", kind: "dictionary" }]);
+
+		feature.stop();
+		expect(feature.sources()).toEqual([]);
 	});
 
 	it("registers its two views, its chrome, and its settings section", () => {

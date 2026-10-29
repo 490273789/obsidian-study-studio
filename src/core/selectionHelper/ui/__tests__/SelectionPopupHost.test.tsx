@@ -2,7 +2,7 @@ import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { SelectionPopupHost, type SelectionPopupHostProps } from "../SelectionPopupHost";
 import type { SelectionHelper } from "../../domain/selectionHelper";
-import type { SelectionHelperSnapshot } from "../../domain/types";
+import type { SelectionHelperSnapshot, SelectionLookupSlotProps } from "../../domain/types";
 import { selectionHelperStrings } from "../../strings/selectionPopup";
 
 // Simulate React's retained hooks; native listeners and positioning run unchanged.
@@ -81,37 +81,40 @@ function fixture() {
 		target: { source: { id: "source" }, text: "word", isEnglishWord: true, x: 100, y: 100 },
 		canLookup: true,
 		canTranslate: true,
-		lookup: {
-			query: "word",
-			activeSourceId: null,
-			sources: [],
-			aiEngineName: "",
-			status: "loading",
-		},
 	};
 	hooks.snapshot = state;
+	let lastSlotProps: SelectionLookupSlotProps | null = null;
+	const renderLookupSlot = vi.fn((slotProps: SelectionLookupSlotProps) => {
+		lastSlotProps = slotProps;
+		return <div data-testid="lookup-slot">Slot Content</div>;
+	});
 	const props: SelectionPopupHostProps = {
-		helper: {} as SelectionHelper,
+		helper: {
+			subscribe: () => () => {},
+			getSnapshot: () => state,
+			dismiss: vi.fn(),
+			selectedDictionaries: ["source-a"],
+			dictionaryOrder: ["source-a"],
+			openMainShortcut: "Ctrl+Enter",
+		} as unknown as SelectionHelper,
 		strings: selectionHelperStrings("zh"),
 		language: "zh",
 		theme: "light",
+		renderLookupSlot,
 	};
 	let cleanup: void | (() => void);
-	let pointerDown: React.PointerEventHandler<HTMLElement>;
-	function render() {
+	let pointerDown: React.PointerEventHandler<HTMLElement> | undefined;
+	function render(): React.ReactElement | null {
 		hooks.refIndex = 0;
-		const tree = SelectionPopupHost(props) as React.ReactElement<{
-			children: React.ReactElement<{
-				onHeaderPointerDown: React.PointerEventHandler<HTMLElement>;
-			}>;
-		}>;
+		lastSlotProps = null;
+		const tree = SelectionPopupHost(props) as React.ReactElement | null;
 		hooks.refs[0]!.current = element;
 		if (hooks.effect) {
 			cleanup?.();
 			cleanup = hooks.effect();
 			hooks.effect = null;
 		}
-		pointerDown = tree.props.children.props.onHeaderPointerDown;
+		pointerDown = (lastSlotProps as SelectionLookupSlotProps | null)?.onHeaderPointerDown;
 		return tree;
 	}
 	function start(
@@ -124,7 +127,7 @@ function fixture() {
 		} = {},
 	) {
 		const preventDefault = vi.fn();
-		pointerDown({
+		pointerDown?.({
 			button: 0,
 			isPrimary: true,
 			pointerId: 1,
@@ -154,6 +157,9 @@ function fixture() {
 		header,
 		viewport,
 		ownerWindow,
+		renderLookupSlot,
+		getLastSlotProps: () => lastSlotProps,
+		getPointerDown: () => pointerDown,
 		render,
 		start,
 		pointer,
@@ -164,6 +170,22 @@ function fixture() {
 }
 
 describe("selection dictionary popup dragging", () => {
+	it("renders lookup slot in dictionary mode and bubble in actions mode", () => {
+		const f = fixture();
+		expect(f.renderLookupSlot).toHaveBeenCalled();
+		expect(f.getLastSlotProps()).toMatchObject({
+			word: "word",
+			selectedDictionaries: ["source-a"],
+			openMainShortcut: "Ctrl+Enter",
+		});
+
+		f.renderLookupSlot.mockClear();
+		f.state.mode = "actions";
+		f.render();
+		expect(f.renderLookupSlot).not.toHaveBeenCalled();
+		f.unmount();
+	});
+
 	it("centers a manually opened blank card and keeps it draggable", () => {
 		const f = fixture();
 		f.state.target = { ...f.state.target!, text: "", trigger: "manual", x: 0, y: 0 };
@@ -205,12 +227,11 @@ describe("selection dictionary popup dragging", () => {
 		f.unmount();
 	});
 
-	it("preserves dragged position through source/entry changes and content measurement, resetting for a new selection", () => {
+	it("preserves dragged position through content measurement, resetting for a new selection", () => {
 		const f = fixture();
 		f.start();
 		f.pointer("pointermove", 310, 322);
 		f.pointer("pointerup", 310, 322);
-		f.state.lookup = { ...f.state.lookup!, query: "another", activeSourceId: "other" };
 		f.render();
 		f.element.offsetHeight = 300;
 		f.resizeContent();
@@ -220,6 +241,7 @@ describe("selection dictionary popup dragging", () => {
 		expect(hooks.position).toMatchObject({ left: 50, top: 52 });
 		f.unmount();
 	});
+
 	it("keeps the top-left corner when switching to taller or wider dictionary content", () => {
 		const f = fixture();
 		f.state.target = { ...f.state.target!, x: 650, y: 600 };
@@ -227,7 +249,6 @@ describe("selection dictionary popup dragging", () => {
 		f.render();
 		expect(hooks.position).toMatchObject({ left: 650, top: 612 });
 
-		f.state.lookup = { ...f.state.lookup!, activeSourceId: "other" };
 		f.render();
 		f.element.offsetWidth = 500;
 		f.element.offsetHeight = 500;
@@ -283,7 +304,8 @@ describe("selection dictionary popup dragging", () => {
 		f.ownerWindow.dispatchEvent(new Event("resize"));
 		expect(hooks.position).toMatchObject({ left: 284, top: 412 });
 		f.state.mode = "actions";
-		expect(f.render().props.children.props.onHeaderPointerDown).toBeUndefined();
+		f.render();
+		expect(f.getPointerDown()).toBeUndefined();
 		f.pointer("pointermove", 800, 600);
 		expect(hooks.position).toMatchObject({ left: 100, top: 112 });
 		f.unmount();

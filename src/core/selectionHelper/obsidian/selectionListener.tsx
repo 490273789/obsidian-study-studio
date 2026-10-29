@@ -1,10 +1,14 @@
 import { createRoot, type Root } from "react-dom/client";
 import type { Language } from "../../shared/types";
 import { isEnglishWordOrPhrase, type SelectionHelper } from "../domain/selectionHelper";
-import type { SelectionRead, SelectionSource, SelectionSourceLease } from "../domain/types";
+import type {
+	SelectionLookupSlotRenderer,
+	SelectionRead,
+	SelectionSource,
+	SelectionSourceLease,
+} from "../domain/types";
 import { selectionHelperStrings } from "../strings/selectionPopup";
 import { SelectionPopupHost } from "../ui/SelectionPopupHost";
-import type { SelectionResultContentRenderer } from "../ui/types";
 import {
 	captureSelection,
 	isAssistantElement,
@@ -19,7 +23,7 @@ interface SelectionListenerDeps {
 	document?: Document;
 	owner?: object;
 	isEnabled?: () => boolean;
-	renderResultContent?: SelectionResultContentRenderer;
+	renderLookupSlot?: SelectionLookupSlotRenderer;
 }
 
 interface DocumentBinding {
@@ -362,7 +366,7 @@ export class SelectionListener {
 				strings={selectionHelperStrings(this.deps.getLanguage())}
 				theme={this.deps.getTheme()}
 				language={this.deps.getLanguage()}
-				renderResultContent={this.deps.renderResultContent}
+				renderLookupSlot={this.deps.renderLookupSlot}
 			/>,
 		);
 	}

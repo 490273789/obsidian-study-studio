@@ -60,52 +60,8 @@ export interface SelectionDictionarySource {
 	kind: "ai" | "dictionary";
 }
 
-type SelectionLookupSourceStatus = "idle" | "loading" | "success" | "empty" | "error";
-
-interface SelectionLookupPronunciation {
-	label: string;
-	phonetic: string;
-}
-
-interface SelectionLookupSourceSnapshot {
-	id: string;
-	label: string;
-	kind: "ai" | "dictionary";
-	status: SelectionLookupSourceStatus;
-	error: string;
-	pronunciations: readonly SelectionLookupPronunciation[];
-	/** Opaque success body owned by the supplying feature; the helper never interprets it. */
-	result: object | null;
-}
-
-export interface SelectionLookupSnapshot {
-	query: string;
-	activeSourceId: string | null;
-	aiEngineName: string;
-	status: "idle" | "loading" | "ready" | "error";
-	sources: readonly SelectionLookupSourceSnapshot[];
-}
-
-/** Actions the helper may send to one lookup session; the adapter translates them. */
-export type SelectionLookupIntent =
-	| { readonly type: "lookup"; readonly query: string }
-	| { readonly type: "select-source"; readonly sourceId: string }
-	| { readonly type: "select-section"; readonly sourceId: string; readonly sectionIndex: number }
-	| { readonly type: "retry-source"; readonly sourceId: string }
-	| { readonly type: "generate-ai" };
-
-export interface SelectionLookupHandle {
-	getSnapshot(): SelectionLookupSnapshot;
-	subscribe(listener: () => void): () => void;
-	send(intent: SelectionLookupIntent): Promise<void>;
-	dispose(): void;
-}
-
-export interface SelectionDictionaryAdapter {
+export interface SelectionDictionarySourceProvider {
 	sources(): readonly SelectionDictionarySource[];
-	startLookup(query: string, sourceIds: readonly string[]): SelectionLookupHandle | null;
-	openInMainTab(query: string): Promise<void>;
-	openFavorite?(word: string): Promise<void>;
 }
 
 export interface SelectionTranslationAdapter {
@@ -113,11 +69,21 @@ export interface SelectionTranslationAdapter {
 	openPrefilled(text: string): Promise<void>;
 }
 
+export interface SelectionLookupSlotProps {
+	word: string;
+	onClose: () => void;
+	onHeaderPointerDown?: React.PointerEventHandler<HTMLElement>;
+	selectedDictionaries: readonly string[];
+	dictionaryOrder: readonly string[];
+	openMainShortcut: string;
+}
+
+export type SelectionLookupSlotRenderer = (props: SelectionLookupSlotProps) => React.ReactNode;
+
 export interface SelectionHelperSnapshot {
 	visible: boolean;
 	mode: "actions" | "dictionary";
 	target: SelectionTarget | null;
 	canLookup: boolean;
 	canTranslate: boolean;
-	lookup: SelectionLookupSnapshot | null;
 }

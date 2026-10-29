@@ -1,10 +1,9 @@
 import type {
 	SelectionCandidate,
-	SelectionDictionaryAdapter,
 	SelectionDictionarySource,
+	SelectionDictionarySourceProvider,
 	SelectionHelperSettings,
 	SelectionHelperSnapshot,
-	SelectionLookupHandle,
 	SelectionSource,
 	SelectionSourceLease,
 	SelectionTarget,
@@ -14,7 +13,7 @@ import { orderSelectionDictionaries } from "./dictionaryOrder";
 
 interface SelectionHelperOptions {
 	settings(): SelectionHelperSettings;
-	dictionary: SelectionDictionaryAdapter;
+	dictionary: SelectionDictionarySourceProvider;
 	translation: SelectionTranslationAdapter;
 }
 
@@ -25,12 +24,10 @@ interface SourceState {
 	revision: number;
 }
 
-/** Owns selection eligibility, popup state, query lifetime, and action ordering. */
+/** Owns selection eligibility, popup state, and action dispatching. */
 export class SelectionHelper {
 	private readonly listeners = new Set<() => void>();
 	private snapshot: SelectionHelperSnapshot = EMPTY_SNAPSHOT;
-	private lookupHandle: SelectionLookupHandle | null = null;
-	private lookupUnsubscribe: (() => void) | null = null;
 	private disposed = false;
 	private readonly sources = new Map<SelectionSource, SourceState>();
 	private interactionRevision = 0;
@@ -44,6 +41,14 @@ export class SelectionHelper {
 
 	get openMainShortcut(): string {
 		return this.options.settings().openMainShortcut;
+	}
+
+	get selectedDictionaries(): readonly string[] {
+		return this.options.settings().selectedDictionaries;
+	}
+
+	get dictionaryOrder(): readonly string[] {
+		return this.options.settings().dictionaryOrder;
 	}
 
 	subscribe(listener: () => void): () => void {
@@ -149,7 +154,6 @@ export class SelectionHelper {
 		}
 
 		this.explicitlyOpened = false;
-		this.releaseLookup();
 		const target: SelectionTarget = {
 			text,
 			isEnglishWord,
@@ -164,7 +168,6 @@ export class SelectionHelper {
 			target,
 			canLookup,
 			canTranslate,
-			lookup: null,
 		});
 		return true;
 	}
@@ -187,7 +190,6 @@ export class SelectionHelper {
 			this.explicitlyOpened = true;
 			return;
 		}
-		this.releaseLookup();
 		this.explicitlyOpened = true;
 		const target: SelectionTarget = {
 			source,
@@ -198,116 +200,20 @@ export class SelectionHelper {
 			trigger: valid ? undefined : "manual",
 		};
 		this.publish({
-			...EMPTY_SNAPSHOT,
 			visible: true,
 			mode: "dictionary",
 			target,
 			canLookup: true,
-			lookup: this.idleLookup(target.text),
+			canTranslate: this.options.translation.available(),
 		});
-		if (valid) this.lookup(target.text);
-	}
-
-	/** Query the explicit card only after the learner submits its input. */
-	lookup(query: string): void {
-		if (this.disposed || !this.snapshot.target) return;
-		const normalized = query.trim().replace(/\s+/g, " ");
-		if (!normalized) return;
-		if (this.lookupHandle) {
-			void this.lookupHandle.send({ type: "lookup", query: normalized });
-			return;
-		}
-		this.startLookup(normalized);
-	}
-
-	private idleLookup(query: string) {
-		const settings = this.options.settings();
-		const sources = selectedSources(
-			orderSelectionDictionaries(this.options.dictionary.sources(), settings.dictionaryOrder),
-			settings.selectedDictionaries,
-		);
-		return {
-			query,
-			activeSourceId: sources[0]?.id ?? null,
-			aiEngineName: "",
-			status: "idle" as const,
-			sources: sources.map((source) => ({
-				...source,
-				status: "idle" as const,
-				error: "",
-				pronunciations: [],
-				result: null,
-			})),
-		};
 	}
 
 	beginLookup(): void {
 		if (this.disposed || !this.snapshot.target || !this.snapshot.canLookup) return;
-		this.startLookup(this.snapshot.target.text);
-	}
-
-	private startLookup(query: string): void {
-		const settings = this.options.settings();
-		const sourceIds = selectedSources(
-			orderSelectionDictionaries(this.options.dictionary.sources(), settings.dictionaryOrder),
-			settings.selectedDictionaries,
-		).map((source) => source.id);
-		if (sourceIds.length === 0) {
-			this.publish({ ...this.snapshot, mode: "dictionary", lookup: this.idleLookup(query) });
-			return;
-		}
-		this.releaseLookup();
-		const handle = this.options.dictionary.startLookup(query, sourceIds);
-		if (!handle) {
-			this.publish({
-				...this.snapshot,
-				mode: "dictionary",
-				lookup: {
-					...this.idleLookup(query),
-					sources: [],
-					activeSourceId: null,
-				},
-			});
-			return;
-		}
-		this.lookupHandle = handle;
-		this.lookupUnsubscribe = handle.subscribe(() => {
-			if (this.lookupHandle === handle) this.publishLookup();
-		});
 		this.publish({
 			...this.snapshot,
 			mode: "dictionary",
-			lookup: handle.getSnapshot(),
 		});
-	}
-
-	selectSource(sourceId: string): void {
-		if (this.disposed || !this.snapshot.lookup) return;
-		void this.lookupHandle?.send({ type: "select-source", sourceId });
-	}
-
-	selectSection(sourceId: string, sectionIndex: number): void {
-		if (this.disposed || !this.snapshot.lookup) return;
-		void this.lookupHandle?.send({ type: "select-section", sourceId, sectionIndex });
-	}
-
-	async retryActiveSource(): Promise<void> {
-		const lookup = this.snapshot.lookup;
-		if (!lookup) return;
-		const active =
-			lookup.sources.find((source) => source.id === lookup.activeSourceId) ??
-			lookup.sources[0];
-		if (!active) return;
-		await this.lookupHandle?.send(
-			active.kind === "ai"
-				? { type: "generate-ai" }
-				: { type: "retry-source", sourceId: active.id },
-		);
-	}
-
-	async generateAi(): Promise<void> {
-		if (this.disposed || !this.snapshot.lookup) return;
-		await this.lookupHandle?.send({ type: "generate-ai" });
 	}
 
 	async translate(): Promise<void> {
@@ -315,24 +221,6 @@ export class SelectionHelper {
 		if (!text || !this.snapshot.canTranslate) return;
 		this.dismiss();
 		await this.options.translation.openPrefilled(text);
-	}
-
-	get canFavorite(): boolean {
-		return typeof this.options.dictionary.openFavorite === "function";
-	}
-
-	async openDictionaryInMainTab(): Promise<void> {
-		const query = this.snapshot.lookup?.query ?? this.snapshot.target?.text;
-		if (!query) return;
-		this.dismiss();
-		await this.options.dictionary.openInMainTab(query);
-	}
-
-	async openFavorite(word?: string): Promise<void> {
-		const targetWord = word ?? this.snapshot.lookup?.query ?? this.snapshot.target?.text;
-		if (!targetWord || !this.options.dictionary.openFavorite) return;
-		this.dismiss();
-		await this.options.dictionary.openFavorite(targetWord);
 	}
 
 	refresh(): void {
@@ -349,7 +237,6 @@ export class SelectionHelper {
 
 	private clearSelection(): void {
 		this.explicitlyOpened = false;
-		this.releaseLookup();
 		this.publish(EMPTY_SNAPSHOT);
 	}
 
@@ -359,22 +246,9 @@ export class SelectionHelper {
 		this.interrupt();
 		for (const source of this.sources.values()) source.active = false;
 		this.sources.clear();
-		this.releaseLookup();
 		this.snapshot = EMPTY_SNAPSHOT;
 		for (const listener of this.listeners) listener();
 		this.listeners.clear();
-	}
-
-	private publishLookup(): void {
-		if (!this.lookupHandle || !this.snapshot.visible) return;
-		this.publish({ ...this.snapshot, lookup: this.lookupHandle.getSnapshot() });
-	}
-
-	private releaseLookup(): void {
-		this.lookupUnsubscribe?.();
-		this.lookupUnsubscribe = null;
-		this.lookupHandle?.dispose();
-		this.lookupHandle = null;
 	}
 
 	private publish(snapshot: SelectionHelperSnapshot): void {
@@ -389,7 +263,6 @@ const EMPTY_SNAPSHOT: SelectionHelperSnapshot = Object.freeze({
 	target: null,
 	canLookup: false,
 	canTranslate: false,
-	lookup: null,
 });
 
 function modifierMatches(

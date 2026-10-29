@@ -4,7 +4,6 @@ import type { WorkbenchStore } from "../core/storage/workbenchStore";
 import type { AnyWorkbenchModule } from "../core/host/workbench";
 import type { OutboundPort } from "../core/net";
 import { createDictionaryFeature } from "./dictionary/feature";
-import { SelectionDictionaryResultContent } from "./dictionary/ui/SelectionDictionaryResultContent";
 import { createFlashcardFeature } from "./flashcards/feature";
 import { createTranslationFeature } from "./translation/feature";
 import { createSelectionHelperModule } from "../core/selectionHelper/module";
@@ -129,8 +128,10 @@ export function createWorkbenchModules(deps: WorkbenchModuleDeps): AnyWorkbenchM
 	const audioPractice = createAudioPracticeFeature({ store: deps.store, net: deps.net });
 
 	const selectionHelper = createSelectionHelperModule({
-		dictionary: dictionary.selectionAdapter,
-		renderResultContent: SelectionDictionaryResultContent,
+		dictionary: {
+			sources: dictionary.sources,
+		},
+		renderLookupSlot: dictionary.renderLookupSlot,
 		translation: translation.selectionAdapter,
 	});
 

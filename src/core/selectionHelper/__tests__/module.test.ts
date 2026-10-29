@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { DEFAULT_SETTINGS } from "../../host/settingsSlices";
 import { createFakeWorkbenchHost } from "../../host/__tests__/fakeWorkbenchHost";
-import type { SelectionDictionaryAdapter, SelectionTranslationAdapter } from "../domain/types";
+import type {
+	SelectionDictionarySourceProvider,
+	SelectionTranslationAdapter,
+} from "../domain/types";
 import { createSelectionHelperModule } from "../module";
 
 vi.mock("obsidian", () => ({ Platform: { isDesktopApp: true } }));
@@ -10,11 +13,12 @@ describe("selection helper workbench module", () => {
 	it.each([false, true])(
 		"locks dictionary edits while sorting persists and unlocks after settlement (failure: %s)",
 		async (failure) => {
-			const dictionary = dictionaryAdapter();
+			const dictionary = dictionaryProvider();
 			dictionary.sources = () =>
 				["a", "b"].map((id) => ({ id, label: id, kind: "dictionary" }));
 			const module = createSelectionHelperModule({
 				dictionary,
+				renderLookupSlot: () => null,
 				translation: translationAdapter(),
 			});
 			const fake = createFakeWorkbenchHost("selectionHelper");
@@ -56,7 +60,7 @@ describe("selection helper workbench module", () => {
 	);
 
 	it("persists popup sorting independently of dictionary selection and catalog order", async () => {
-		const dictionary = dictionaryAdapter();
+		const dictionary = dictionaryProvider();
 		const sources = ["a", "b", "c"].map((id) => ({
 			id,
 			label: id,
@@ -65,6 +69,7 @@ describe("selection helper workbench module", () => {
 		dictionary.sources = () => sources;
 		const module = createSelectionHelperModule({
 			dictionary,
+			renderLookupSlot: () => null,
 			translation: translationAdapter(),
 		});
 		const fake = createFakeWorkbenchHost("selectionHelper");
@@ -94,7 +99,8 @@ describe("selection helper workbench module", () => {
 
 	it("registers settings without contributing a feature catalog entry", () => {
 		const module = createSelectionHelperModule({
-			dictionary: dictionaryAdapter(),
+			dictionary: dictionaryProvider(),
+			renderLookupSlot: () => null,
 			translation: translationAdapter(),
 		});
 		const fakeHost = createFakeWorkbenchHost("selectionHelper", DEFAULT_SETTINGS);
@@ -110,7 +116,8 @@ describe("selection helper workbench module", () => {
 
 	it("saves and resets the main-tab shortcut from the selection helper settings", async () => {
 		const module = createSelectionHelperModule({
-			dictionary: dictionaryAdapter(),
+			dictionary: dictionaryProvider(),
+			renderLookupSlot: () => null,
 			translation: translationAdapter(),
 		});
 		const fake = createFakeWorkbenchHost("selectionHelper");
@@ -130,11 +137,9 @@ describe("selection helper workbench module", () => {
 	});
 });
 
-function dictionaryAdapter(): SelectionDictionaryAdapter {
+function dictionaryProvider(): SelectionDictionarySourceProvider {
 	return {
 		sources: () => [],
-		startLookup: () => null,
-		openInMainTab: vi.fn().mockResolvedValue(undefined),
 	};
 }
 

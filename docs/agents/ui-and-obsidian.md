@@ -42,12 +42,11 @@ assistant/query lifetime, and every lookup action. DOM and webview adapters acqu
 one source lease per document or page through `openSource(owner)`; navigation
 replaces the lease.
 
-- `SelectionHelperSnapshot` is a pure read model: it carries `lookup` but never a
-  live lookup session. Actions (`lookup`, `selectSource`, `selectSection`,
-  `retryActiveSource`, `generateAi`) are helper methods; they translate into
-  `SelectionLookupIntent`s and the dictionary adapter owns the single translation
-  to `DictionaryQueryIntent`. `SelectionDictCard` renders the snapshot and forwards
-  callbacks only; do not hand it a session or reimplement the AI-retry rule there.
+- `SelectionHelperSnapshot` is a pure read model for selection state (target, visible,
+  actions/dictionary mode, capabilities). The lookup card UI is owned by the 词典
+  feature (`LookupAssistantCard`, ADR-0014); the helper serves as a placement and
+  selection capture host via `SelectionLookupSlotRenderer`. Do not proxy dictionary
+  session intents through helper methods or duplicate dictionary read snapshots in core.
 - Capture a read token before starting asynchronous work or a touch delay. A token
   submits once and is rejected after its source closes, another selection wins,
   or a user interaction fences pending captures. Never capture a fresh token after

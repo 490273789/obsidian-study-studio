@@ -2,26 +2,25 @@ import React, { useCallback, useLayoutEffect, useRef, useState, useSyncExternalS
 import type { SelectionHelper } from "../domain/selectionHelper";
 import type { SelectionHelperStrings } from "../strings/selectionPopup";
 import { SelectionBubble } from "./SelectionBubble";
-import { SelectionDictCard } from "./SelectionDictCard";
 import styles from "./SelectionPopup.module.scss";
 import { PopupPlacementController, type PopupPositionSnapshot } from "./popupPlacementController";
 import type { Language } from "../../shared/types";
-import type { SelectionResultContentRenderer } from "./types";
+import type { SelectionLookupSlotRenderer } from "../domain/types";
 
 export interface SelectionPopupHostProps {
 	helper: SelectionHelper;
 	strings: SelectionHelperStrings;
 	language: Language;
 	theme: "dark" | "light";
-	renderResultContent?: SelectionResultContentRenderer;
+	renderLookupSlot?: SelectionLookupSlotRenderer;
 }
 
 export const SelectionPopupHost: React.FC<SelectionPopupHostProps> = ({
 	helper,
 	strings,
-	language,
-	theme,
-	renderResultContent,
+	language: _language,
+	theme: _theme,
+	renderLookupSlot,
 }) => {
 	const subscribe = useCallback((listener: () => void) => helper.subscribe(listener), [helper]);
 	const getSnapshot = useCallback(() => helper.getSnapshot(), [helper]);
@@ -36,11 +35,10 @@ export const SelectionPopupHost: React.FC<SelectionPopupHostProps> = ({
 		maxWidth: 570,
 		maxHeight: 420,
 	});
-	const startDragRef = useRef<React.PointerEventHandler<HTMLElement> | null>(null);
-	const onHeaderPointerDown = useCallback<React.PointerEventHandler<HTMLElement>>(
-		(event) => startDragRef.current?.(event),
-		[],
-	);
+	const controllerRef = useRef<PopupPlacementController | null>(null);
+	const onHeaderPointerDown = useCallback<React.PointerEventHandler<HTMLElement>>((event) => {
+		controllerRef.current?.onHeaderPointerDown?.(event);
+	}, []);
 
 	useLayoutEffect(() => {
 		const element = rootRef.current;
@@ -64,10 +62,10 @@ export const SelectionPopupHost: React.FC<SelectionPopupHostProps> = ({
 			},
 		});
 
-		startDragRef.current = controller.onHeaderPointerDown;
+		controllerRef.current = controller;
 
 		return () => {
-			startDragRef.current = null;
+			controllerRef.current = null;
 			controller.dispose();
 		};
 	}, [target, mode]);
@@ -97,30 +95,17 @@ export const SelectionPopupHost: React.FC<SelectionPopupHostProps> = ({
 					onTranslate={() => void helper.translate()}
 					onClose={() => helper.dismiss()}
 				/>
-			) : state.lookup ? (
-				<SelectionDictCard
-					query={state.lookup.query}
-					lookup={state.lookup}
-					onLookup={(query) => helper.lookup(query)}
-					onSelectSource={(sourceId) => helper.selectSource(sourceId)}
-					onSelectSection={(sourceId, sectionIndex) =>
-						helper.selectSection(sourceId, sectionIndex)
-					}
-					onRetry={() => void helper.retryActiveSource()}
-					onGenerateAi={() => void helper.generateAi()}
-					theme={theme}
-					language={language}
-					renderResultContent={renderResultContent}
-					strings={strings}
-					openMainShortcut={helper.openMainShortcut}
-					onOpenInMainTab={() => void helper.openDictionaryInMainTab()}
-					onFavorite={
-						helper.canFavorite ? (word) => void helper.openFavorite(word) : undefined
-					}
-					onClose={() => helper.dismiss()}
-					onHeaderPointerDown={onHeaderPointerDown}
-				/>
-			) : null}
+			) : (
+				/* oxlint-disable-next-line react/refs -- Slot renderer receives pointerdown forwarder for dragging */
+				renderLookupSlot?.({
+					word: target.text,
+					onClose: () => helper.dismiss(),
+					onHeaderPointerDown,
+					selectedDictionaries: helper.selectedDictionaries,
+					dictionaryOrder: helper.dictionaryOrder,
+					openMainShortcut: helper.openMainShortcut,
+				})
+			)}
 		</div>
 	);
 };

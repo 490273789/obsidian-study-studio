@@ -4,8 +4,9 @@ import type { WorkbenchHost, WorkbenchModule, WorkbenchSettingsSection } from ".
 import { isEnglishWordOrPhrase, SelectionHelper } from "./domain/selectionHelper";
 import { orderSelectionDictionaries } from "./domain/dictionaryOrder";
 import type {
-	SelectionDictionaryAdapter,
+	SelectionDictionarySourceProvider,
 	SelectionHelperSettings,
+	SelectionLookupSlotRenderer,
 	SelectionTranslationAdapter,
 } from "./domain/types";
 import { SelectionListener } from "./obsidian/selectionListener";
@@ -13,14 +14,13 @@ import { WebviewSelectionAdapter, type WebviewSelectionStatus } from "./obsidian
 import { buildSelectionHelperSettingsViewModel } from "./settings/viewModel";
 import { parseOpenMainShortcut } from "./settings/openMainShortcut";
 import { selectionHelperStrings } from "./strings/selectionPopup";
-import type { SelectionResultContentRenderer } from "./ui/types";
 
 const SELECTION_HELPER_SECTION_ID = "selectionPopup";
 
 interface SelectionHelperModuleDeps {
-	dictionary: SelectionDictionaryAdapter;
+	dictionary: SelectionDictionarySourceProvider;
 	translation: SelectionTranslationAdapter;
-	renderResultContent?: SelectionResultContentRenderer;
+	renderLookupSlot?: SelectionLookupSlotRenderer;
 }
 
 type SelectionHelperWorkbenchHost = WorkbenchHost<"selectionHelper">;
@@ -138,7 +138,7 @@ export function createSelectionHelperModule(
 					isEnabled: () => host.settings.read().selectionPopup.enabled,
 					getLanguage: () => host.settings.read().language,
 					getTheme: () => (host.app.isDarkMode() ? "dark" : "light"),
-					renderResultContent: deps.renderResultContent,
+					renderLookupSlot: deps.renderLookupSlot,
 				});
 				const web = Platform.isDesktopApp
 					? new WebviewSelectionAdapter({

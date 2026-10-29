@@ -59,9 +59,8 @@ describe("selection windows", () => {
 		const module = createSelectionHelperModule({
 			dictionary: {
 				sources: () => [],
-				startLookup: () => null,
-				openInMainTab: async () => {},
 			},
+			renderLookupSlot: () => null,
 			translation: { available: () => true, openPrefilled: async () => {} },
 		});
 		module.render(fake.host);

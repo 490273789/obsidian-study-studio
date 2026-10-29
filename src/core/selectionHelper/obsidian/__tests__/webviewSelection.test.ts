@@ -47,7 +47,6 @@ function setup() {
 			removeEventListener: vi.fn(),
 		},
 	};
-	const lookupDispose = vi.fn();
 	const helper = new SelectionHelper({
 		settings: () => ({
 			enabled: true,
@@ -58,19 +57,6 @@ function setup() {
 		}),
 		dictionary: {
 			sources: () => [{ id: "local", label: "Local", kind: "dictionary" }],
-			startLookup: () => ({
-				getSnapshot: () => ({
-					query: "hello",
-					activeSourceId: null,
-					aiEngineName: "",
-					status: "ready",
-					sources: [],
-				}),
-				subscribe: () => () => {},
-				send: async () => {},
-				dispose: lookupDispose,
-			}),
-			openInMainTab: async () => {},
 		},
 		translation: { available: () => true, openPrefilled: async () => {} },
 	});
@@ -106,7 +92,6 @@ function setup() {
 		executeJavaScript,
 		helper,
 		selections,
-		lookupDispose,
 		onStatus,
 		isEnabled,
 		openSource,
@@ -743,7 +728,6 @@ describe("WebviewSelectionAdapter", () => {
 		);
 		await vi.advanceTimersByTimeAsync(150);
 		env.helper.dismiss();
-		expect(env.lookupDispose).toHaveBeenCalledOnce();
 		resolve({ ...event, sequence: 2 });
 		await flush();
 		expect(env.helper.getSnapshot().visible).toBe(false);
@@ -826,7 +810,6 @@ describe("WebviewSelectionAdapter", () => {
 		env.executeJavaScript.mockResolvedValue({ ...event, sequence: 2, text: "" });
 		await vi.advanceTimersByTimeAsync(150);
 		expect(env.helper.getSnapshot()).toMatchObject({ visible: true, mode: "dictionary" });
-		expect(env.lookupDispose).not.toHaveBeenCalled();
 		env.executeJavaScript.mockResolvedValue({ ...event, sequence: 3, text: "world" });
 		await vi.advanceTimersByTimeAsync(150);
 		expect(env.helper.getSnapshot()).toMatchObject({
@@ -834,7 +817,6 @@ describe("WebviewSelectionAdapter", () => {
 			mode: "actions",
 			target: { text: "world" },
 		});
-		expect(env.lookupDispose).toHaveBeenCalledOnce();
 		env.adapter.stop();
 	});
 	it("keeps the dictionary popup when guest scrolling only repositions its selection", async () => {
@@ -852,7 +834,6 @@ describe("WebviewSelectionAdapter", () => {
 		});
 		await vi.advanceTimersByTimeAsync(150);
 		expect(env.helper.getSnapshot()).toMatchObject({ visible: true, mode: "dictionary" });
-		expect(env.lookupDispose).not.toHaveBeenCalled();
 		env.adapter.stop();
 	});
 	it("accepts a new guest selection even if it scrolls before the next poll", async () => {
@@ -876,7 +857,6 @@ describe("WebviewSelectionAdapter", () => {
 			mode: "actions",
 			target: { text: "world" },
 		});
-		expect(env.lookupDispose).toHaveBeenCalledOnce();
 		env.adapter.stop();
 	});
 	it("closes the dictionary popup when the guest reports Escape", async () => {
@@ -894,7 +874,6 @@ describe("WebviewSelectionAdapter", () => {
 		});
 		await vi.advanceTimersByTimeAsync(150);
 		expect(env.helper.getSnapshot().visible).toBe(false);
-		expect(env.lookupDispose).toHaveBeenCalledOnce();
 		env.adapter.stop();
 	});
 	it.each(["failure", "stop"])("releases an owned lookup on %s", async (reason) => {
@@ -909,7 +888,6 @@ describe("WebviewSelectionAdapter", () => {
 			env.executeJavaScript.mockRejectedValueOnce(new Error("gone"));
 			await vi.advanceTimersByTimeAsync(150);
 		}
-		expect(env.lookupDispose).toHaveBeenCalledOnce();
 		expect(env.helper.getSnapshot().visible).toBe(false);
 		env.adapter.stop();
 	});
@@ -1041,7 +1019,6 @@ describe("WebviewSelectionAdapter", () => {
 			expect(collector.read()).toMatchObject(initial);
 			await vi.advanceTimersByTimeAsync(150);
 			expect(env.helper.getSnapshot().target?.text).toBe("hello");
-			expect(env.lookupDispose).not.toHaveBeenCalled();
 			if (focus !== "focused") {
 				guest.document.hasFocus.mockReturnValue(false);
 				if (focus === "blurred" || focus === "refocused") handlers.get("blur")?.({});
@@ -1053,7 +1030,6 @@ describe("WebviewSelectionAdapter", () => {
 				}
 				expect(env.helper.getSnapshot().mode).toBe("dictionary");
 				expect(env.helper.getSnapshot().target?.text).toBe("hello");
-				expect(env.lookupDispose).not.toHaveBeenCalled();
 				expect(env.selections).toHaveLength(1);
 			}
 			handlers.get("mousedown")?.({});
@@ -1067,7 +1043,6 @@ describe("WebviewSelectionAdapter", () => {
 			expect(collector.read().sequence).toBe(cleared.sequence);
 			await vi.advanceTimersByTimeAsync(150);
 			expect(env.helper.getSnapshot().visible).toBe(false);
-			expect(env.lookupDispose).toHaveBeenCalledOnce();
 			env.adapter.stop();
 		},
 	);
@@ -1114,16 +1089,13 @@ describe("WebviewSelectionAdapter", () => {
 			.openSource({})
 			.capture()
 			.submit({ ...event, text: "new", eligibleContext: true });
-		expect(env.lookupDispose).toHaveBeenCalledOnce();
 		env.helper.beginLookup();
 		resolve();
 		await flush();
 		expect(env.helper.getSnapshot().target?.text).toBe("new");
 		expect(env.helper.getSnapshot().mode).toBe("dictionary");
-		expect(env.lookupDispose).toHaveBeenCalledOnce();
 		await vi.advanceTimersByTimeAsync(150);
 		expect(env.helper.getSnapshot().target?.text).toBe("new");
 		env.adapter.stop();
-		expect(env.lookupDispose).toHaveBeenCalledOnce();
 	});
 });

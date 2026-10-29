@@ -21,8 +21,11 @@ import { DictionaryFavoritePresentation } from "./obsidian/favoritePresentation"
 import { ObsidianDictionaryFavoriteStore } from "./obsidian/favoriteStore";
 import { DictionarySettingsEditor } from "./obsidian/settingsEditor";
 import { createDictionarySettingsStore } from "./obsidian/settingsStore";
-import { createDictionarySelectionAdapter } from "./selectionAdapter";
-import type { SelectionDictionaryAdapter } from "../../core/selectionHelper/domain/types";
+import { LookupAssistantCard } from "./ui/LookupAssistantCard";
+import type {
+	SelectionDictionarySource,
+	SelectionLookupSlotRenderer,
+} from "../../core/selectionHelper/domain/types";
 import { createReactItemView } from "../../core/host/reactItemView";
 import { defineFeatureLifetime } from "../../core/host/featureLifetime";
 import { cls } from "../../core/shared/classNames";
@@ -50,8 +53,9 @@ interface DictionaryFeatureDeps {
 	plugin: Plugin;
 }
 
-interface DictionaryFeature extends WorkbenchModule<"dictionary"> {
-	readonly selectionAdapter: SelectionDictionaryAdapter;
+export interface DictionaryFeature extends WorkbenchModule<"dictionary"> {
+	readonly sources: () => readonly SelectionDictionarySource[];
+	readonly renderLookupSlot: SelectionLookupSlotRenderer;
 }
 
 type DictionaryWorkbenchHost = WorkbenchHost<"dictionary">;
@@ -121,17 +125,36 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 		}
 	};
 
-	const selectionAdapter = createDictionarySelectionAdapter({
-		runtime: () => active?.runtime ?? null,
-		openInMainTab: async (query) => {
-			if (!active) return;
-			await openQuery(active.host, active.runtime, query, true);
-		},
-		openFavorite: async (word) => {
-			if (!active) return;
-			await active.favorites.open(word);
-		},
-	});
+	const sources = (): readonly SelectionDictionarySource[] => {
+		if (!active) return [];
+		return active.runtime.settings
+			.getDictionarySettings()
+			.sources.filter((s) => s.enabled)
+			.map((s) => ({
+				id: s.id,
+				label: s.label,
+				kind: s.kind === "ai" ? "ai" : "dictionary",
+			}));
+	};
+
+	const renderLookupSlot: SelectionLookupSlotRenderer = (props) => {
+		return (
+			<LookupAssistantCard
+				{...props}
+				runtime={active?.runtime ?? null}
+				openFavorite={async (word) => {
+					if (!active) return;
+					await active.favorites.open(word);
+				}}
+				openInMainTab={async (query) => {
+					if (!active) return;
+					await openQuery(active.host, active.runtime, query, true);
+				}}
+				getLanguage={() => active?.host.settings.read().language ?? "zh"}
+				getTheme={() => (document.body.classList.contains("theme-dark") ? "dark" : "light")}
+			/>
+		);
+	};
 	/**
 	 * The 词典 feature keeps both views registered while disabled: the previous
 	 * adapters rendered this placeholder instead of the lookup UI.
@@ -378,5 +401,5 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 		},
 	});
 
-	return { ...module, selectionAdapter };
+	return { ...module, sources, renderLookupSlot };
 }

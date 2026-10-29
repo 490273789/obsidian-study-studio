@@ -37,9 +37,9 @@ Read this guide before changing anything under `src/features/dictionary/domain/*
 
 ## Lookup assistant result presentation
 
-`src/features/dictionary/ui/resultPresentation/DictionarySectionContent.tsx` owns the shared AI sense, list, and sandbox document markup. Both `DictionaryView` and `SelectionDictionaryResultContent` render through it, so definition fields and section visibility cannot drift between surfaces.
+`src/features/dictionary/ui/resultPresentation/DictionarySectionContent.tsx` owns the shared AI sense, list, and sandbox document markup. Both `DictionaryView` and `LookupAssistantCard` render through it, so definition fields and section visibility cannot drift between surfaces.
 
-The selection adapter hands the 选区助手 one opaque `DictionarySelectionResultHandle` per successful source (the whole `DictionaryResult`, the active section index, and the looked-up word) as `result`. `SelectionHelper` owns the query lifetime and every lookup action: its snapshot is a pure read model (`lookup`, no live session), and `lookup` / `selectSource` / `selectSection` / `retryActiveSource` / `generateAi` translate into `SelectionLookupIntent`s sent through the adapter's narrow handle. The adapter is the one translation point to `DictionaryQueryIntent`; the popup card only renders the snapshot and forwards callbacks. The helper keeps the “AI source retry means generate” rule, while the success body still comes from the renderer injected by `src/features/index.ts`. Do not narrow the result mirror in core, leak `DictionaryQueryIntent` into core, or reimplement AI sense markup in the helper.
+The lookup assistant card UI is owned by the 词典 feature (`src/features/dictionary/ui/LookupAssistantCard.tsx`, ADR-0014). It directly holds the `DictionaryQuerySession` interaction lifecycle (input draft, source tabs, AI generation, and favorites/main tab shortcuts). The 选区助手 (`src/core/selectionHelper`) acts solely as a selection capture and placement host, exposing the slot renderer `SelectionLookupSlotRenderer`. Do not create shallow mirror state snapshots in core or proxy dictionary query intents across boundaries.
 
 ## Favorite session and presentation
 
