@@ -130,6 +130,10 @@ _Avoid_: Saved subtitles, reference text
 The deep domain module managing chunked audio transcription, reference text alignment, word-level timing matching, and atomic draft editing operations before subtitles are committed to a listening material.
 _Avoid_: Subtitle service, transcription manager
 
+**Media transcription engine (媒体转写引擎)**:
+The deep core module managing speech recognition provider execution, secret resolution, configuration drift detection, and cue timestamp hygiene for listening practice and video subtitles.
+_Avoid_: Transcription manager, speech service, audio composition adapter
+
 **Cue word alignment (片段词级对齐)**:
 The token-level timestamp matching that binds recognized spoken words to a practice segment's text for playback highlighting.
 _Avoid_: Acoustic forced alignment, speech recognition

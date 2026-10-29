@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { AudioFailureError, type AudioFailure } from "../failures";
 import { encodeMonoWav } from "../transcription/browserAudio";
-import { createBailianProvider, parseBailianResponse } from "../transcription/bailianProvider";
-import { transcriptionConfigFingerprint } from "../transcription/transcriptionConfig";
+import {
+	createBailianProvider,
+	parseBailianResponse,
+} from "../../../../core/media/transcription/bailianProvider";
+import { transcriptionConfigFingerprint } from "../../../../core/media/transcription/transcriptionConfig";
 import type { BailianTranscriptionConfig } from "../transcriptionTypes";
 import type { OutboundPort } from "../../../../core/net/types";
 

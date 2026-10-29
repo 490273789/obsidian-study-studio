@@ -20,7 +20,7 @@ import type { TranscriptionConfiguration } from "./transcriptionConfiguration";
 import {
 	matchesLegacyBailianFingerprint,
 	transcriptionConfigFingerprint,
-} from "./transcription/transcriptionConfig";
+} from "../../../core/media/transcription/transcriptionConfig";
 
 import {
 	tokenizeUnicodeWords,

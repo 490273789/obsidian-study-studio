@@ -10,7 +10,7 @@ import { AudioPracticeRuntime } from "./domain/audioPracticeRuntime";
 import { SubtitleDraftEngine, normalizeGenerationDraft } from "./domain/subtitleDraftEngine";
 import { TranscriptionConfiguration } from "./domain/transcriptionConfiguration";
 import { createBrowserAudioPreparation } from "./domain/transcription/browserAudio";
-import { createTranscriptionProvider } from "./domain/transcription/providers";
+import { createTranscriptionProvider } from "../../core/media/transcription/providers";
 import { createAudioSourceFiles } from "./obsidian/audioSourceFiles";
 import { createAudioPracticeRepository } from "./obsidian/repositoryAdapter";
 import { createAudioPracticeCatalog, createAudioPracticeFiles } from "./obsidian/vaultFiles";

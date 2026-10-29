@@ -24,6 +24,8 @@ export type MediaFailure =
 			readonly kind: "config-invalid";
 			readonly field: "workspace" | "base-url" | "model" | "secret" | "security";
 	  }
+	| { readonly kind: "config-drift" }
+	| { readonly kind: "cancelled" }
 	| {
 			readonly kind: "provider-failure";
 			readonly code: TransportErrorCode;

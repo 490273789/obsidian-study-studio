@@ -11,6 +11,7 @@ import type { SettingsSlice } from "../settings/slice";
 import type { HostSettings } from "../settings/hostSlice";
 import { videoPlayerSettingsSlice } from "../../features/video-player/settings/slice";
 import { audioPracticeSettingsSlice } from "../../features/audio-practice/settings/slice";
+import { mediaTranscriptionSettingsSlice } from "../media/transcription/settingsSlice";
 
 /**
  * Every slice of the persisted settings document, in normalization order.
@@ -28,7 +29,7 @@ export const SHARED_SETTINGS_SLICES = [hostSettingsSlice] as const;
 
 /** The canonical ownership map used for both static projections and runtime authorization. */
 const SETTINGS_SLICES_BY_OWNER = {
-	workbench: [aiSettingsSlice, featureOpenShortcutsSlice],
+	workbench: [aiSettingsSlice, featureOpenShortcutsSlice, mediaTranscriptionSettingsSlice],
 	flashcards: [flashcardSettingsSlice, pronunciationSettingsSlice],
 	translation: [translationSettingsSlice],
 	dictionary: [dictionarySettingsSlice],
@@ -169,6 +170,7 @@ export const DEFAULT_SETTINGS: FlashcardSettings = {
 	...pronunciationSettingsSlice.defaults(),
 	...aiSettingsSlice.defaults(),
 	...featureOpenShortcutsSlice.defaults(),
+	...mediaTranscriptionSettingsSlice.defaults(),
 	...translationSettingsSlice.defaults(),
 	...dictionarySettingsSlice.defaults(),
 	...selectionPopupSettingsSlice.defaults(),
@@ -188,6 +190,7 @@ export function normalizeSettingsDocument(raw: unknown): FlashcardSettings {
 		...pronunciationSettingsSlice.normalize(raw),
 		...aiSettingsSlice.normalize(raw),
 		...featureOpenShortcutsSlice.normalize(raw),
+		...mediaTranscriptionSettingsSlice.normalize(raw),
 		...translationSettingsSlice.normalize(raw),
 		...dictionarySettingsSlice.normalize(raw),
 		...selectionPopupSettingsSlice.normalize(raw),
@@ -207,6 +210,7 @@ export function cloneSettingsDocument(settings: FlashcardSettings): FlashcardSet
 		...pronunciationSettingsSlice.clone(settings),
 		...aiSettingsSlice.clone(settings),
 		...featureOpenShortcutsSlice.clone(settings),
+		...mediaTranscriptionSettingsSlice.clone(settings),
 		...translationSettingsSlice.clone(settings),
 		...dictionarySettingsSlice.clone(settings),
 		...selectionPopupSettingsSlice.clone(settings),

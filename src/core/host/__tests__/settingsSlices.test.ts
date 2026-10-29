@@ -38,6 +38,7 @@ describe("settings slices registry", () => {
 			"flashcardTags",
 			"fsrsParameters",
 			"language",
+			"mediaTranscription",
 			"practiceErrorMessages",
 			"practiceMessagesCustomized",
 			"practicePerfectMessages",

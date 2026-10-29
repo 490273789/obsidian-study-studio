@@ -6,6 +6,7 @@ import type { FlashcardStudySettings } from "../../features/flashcards/settings/
 import type { HostSettings } from "../settings/hostSlice";
 import type { VideoPlayerSettings } from "../../features/video-player/settings/slice";
 import type { AudioPracticeSettings } from "../../features/audio-practice/settings/slice";
+import type { MediaTranscriptionSettings } from "../media/transcription/mediaTranscriptionEngine";
 import type { FeatureOpenShortcuts } from "../settings/featureOpenShortcuts";
 import { Card } from "ts-fsrs";
 
@@ -80,6 +81,7 @@ export interface FlashcardSettings extends HostSettings, FlashcardStudySettings 
 	/** Availability of the desktop local-video feature; paths remain device-local. */
 	videoPlayer: VideoPlayerSettings;
 	audioPractice: AudioPracticeSettings;
+	mediaTranscription: MediaTranscriptionSettings;
 }
 
 /**
