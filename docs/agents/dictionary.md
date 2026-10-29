@@ -41,10 +41,12 @@ Read this guide before changing anything under `src/features/dictionary/domain/*
 
 The lookup assistant card UI is owned by the 词典 feature (`src/features/dictionary/ui/LookupAssistantCard.tsx`, ADR-0014). It directly holds the `DictionaryQuerySession` interaction lifecycle (input draft, source tabs, AI generation, and favorites/main tab shortcuts). The 选区助手 (`src/core/selectionHelper`) acts solely as a selection capture and placement host, exposing the slot renderer `SelectionLookupSlotRenderer`. Do not create shallow mirror state snapshots in core or proxy dictionary query intents across boundaries.
 
-## Favorite session and presentation
+## Favorite category management, session and presentation
 
-- `src/features/dictionary/domain/favoriteSession.ts` is the resident deep module (`DictionaryFavoriteSession`) owning word draft state, AI generation, category administration CRUD (with file creation/move/rollback), single-word persistence, and file write serialization (`runExclusive`). Both single-word saves and batch favorite runs share its mutex lock to prevent concurrent writes to category files (ADR 0010, ADR 0011).
-- `src/features/dictionary/obsidian/favoritePresentation.ts` is the UI presentation adapter (`DictionaryFavoritePresentation`). `feature.tsx` connects the modal and sidebar adapters to it. Opening requests, sidebar close signals, and settings refreshes cross this presentation adapter; adapters own mounting, focus, and host operations. The deep session remains the sole state and mutation authority.
+- `src/features/dictionary/domain/favorite-categories.ts` owns persistent category administration (`FavoriteCategoryManager`), category CRUD, vault Markdown file coordination (creation/move/rollback, ADR 0010), path suggestions, and the shared file mutex lock (`runExclusive`). Both single-word saves and batch favorite runs share its mutex lock to prevent concurrent writes to category files (ADR 0010, ADR 0011, ADR 0015).
+- `src/features/dictionary/domain/favoriteSession.ts` is the interactive draft session (`DictionaryFavoriteSession`) owning word draft state, AI generation, existing entry lookup, and single-word persistence. It delegates category storage and concurrency locking to `FavoriteCategoryManager` (ADR 0015).
+- Settings editor (`settingsEditor.ts`) and `FavoriteCategoryModal` operate directly on `FavoriteCategoryManager` without coupling to or mutating word draft state.
+- `src/features/dictionary/obsidian/favoritePresentation.ts` is the UI presentation adapter (`DictionaryFavoritePresentation`). `feature.tsx` connects the modal and sidebar adapters to it. Opening requests, sidebar close signals, and settings refreshes cross this presentation adapter; adapters own mounting, focus, and host operations. The deep session remains the sole state and mutation authority for word drafts.
 
 - Modal and sidebar share one draft. Reopening the same word preserves edits;
   opening another word loads that word's favorite. The last opening request wins,

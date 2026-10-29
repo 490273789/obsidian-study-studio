@@ -10,58 +10,53 @@ import { aiFailureCode } from "../../../core/ai";
 import { aiErrorText } from "../../../core/i18n/ai";
 import type { Language } from "../../../core/shared/types";
 import { dictionaryText } from "./messages";
-import type {
-	DictionaryFavoriteViewState,
-	DictionarySettingsStore,
-	FavoriteCategory,
-} from "./types";
-import { FavoriteCategoryError, favoriteCategoryPath } from "./favorite-categories";
+import type { DictionaryFavoriteViewState, FavoriteCategory } from "./types";
+import { FavoriteCategoryError, type FavoriteCategoryManager } from "./favorite-categories";
 
 export interface FavoriteAiOptions {
 	readonly generator: FavoriteDraftGenerator;
 	/** Null when selection is missing; changes when the selected connection changes. */
 	readonly engineKey: () => string | null;
+	readonly configId?: () => string | null;
 	readonly language: () => Language;
 }
 
 /**
- * Deep domain session for dictionary favorites.
- * Encapsulates favorite category lifecycle & file mutex (ADR-0010, ADR-0011),
- * single-word draft editing, AI generation, and persistent word saves (ADR-0003).
+ * Deep domain interaction session for dictionary favorites.
+ * Owns single-word draft editing, AI draft generation, existing entry lookup,
+ * and saving favorite entries to the active category (ADR-0003).
+ * Delegates persistent category administration and file mutex to FavoriteCategoryManager (ADR-0010, ADR-0011).
  */
 export class DictionaryFavoriteSession {
 	private lookupRevision = 0;
 	private sessionRevision = 0;
 	private contentDirty = false;
-	private busy = false;
 	private generation: { controller: AbortController; engineKey: string } | null = null;
 	private state: DictionaryFavoriteViewState;
 	private snapshot: DictionaryFavoriteViewState;
 	private readonly listeners = new Set<() => void>();
 	private disposed = false;
+	private readonly unsubscribeCategories: () => void;
 
 	constructor(
-		private readonly settings: DictionarySettingsStore,
+		private readonly categoriesManager: FavoriteCategoryManager,
 		private readonly store: DictionaryFavoriteStore,
 		private readonly ai: FavoriteAiOptions,
-		private readonly onSettingsChanged?: () => void,
 	) {
-		const dictionary = settings.getDictionarySettings();
-		const path =
-			dictionary.favoriteCategories.find(
-				(item) => item.id === dictionary.selectedFavoriteCategoryId,
-			)?.path ?? dictionary.favoriteCategories[0]!.path;
 		this.state = {
-			categories: [...dictionary.favoriteCategories],
-			selectedCategoryId: dictionary.selectedFavoriteCategoryId,
+			categories: [...categoriesManager.categories],
+			selectedCategoryId: categoriesManager.selectedCategoryId,
 			meaning: "",
 			message: "",
 			note: "",
-			path,
+			path: categoriesManager.path,
 			status: "idle",
 			word: "",
 		};
 		this.snapshot = this.buildSnapshot();
+		this.unsubscribeCategories = categoriesManager.subscribe(() => {
+			this.onCategoriesChanged();
+		});
 	}
 
 	getSnapshot(): DictionaryFavoriteViewState {
@@ -76,25 +71,16 @@ export class DictionaryFavoriteSession {
 	}
 
 	get categories(): readonly FavoriteCategory[] {
-		return this.state.categories;
+		return this.categoriesManager.categories;
 	}
 
 	pathSuggestions(query: string): string[] {
-		return this.store.pathSuggestions(query);
+		return this.categoriesManager.pathSuggestions(query);
 	}
 
-	/**
-	 * Executes an exclusive file or category operation serialized against
-	 * all other concurrent favorite writes and category file moves.
-	 */
+	/** Executes an action serialized against concurrent writes and file moves. */
 	async runExclusive<T>(action: () => Promise<T>): Promise<T> {
-		if (this.busy) throw new FavoriteCategoryError("busy");
-		this.busy = true;
-		try {
-			return await action();
-		} finally {
-			this.busy = false;
-		}
+		return this.categoriesManager.runExclusive(action);
 	}
 
 	/** Backwards-compatible alias for runExclusive. */
@@ -102,107 +88,17 @@ export class DictionaryFavoriteSession {
 		return this.runExclusive(action);
 	}
 
-	async createCategory(
-		rawName: string,
-		rawPath: string,
-		select = false,
-	): Promise<FavoriteCategory> {
-		return this.runExclusive(async () => {
-			const { name, path } = this.validateCategory(rawName, rawPath);
-			const category: FavoriteCategory = { id: crypto.randomUUID(), name, path };
-			let undo: () => Promise<void>;
-			try {
-				undo = await this.store.ensureFile(path);
-			} catch {
-				throw new FavoriteCategoryError("file-failed");
-			}
-			try {
-				await this.persistSettings((draft) => {
-					draft.favoriteCategories.push(category);
-					if (select) draft.selectedFavoriteCategoryId = category.id;
-				});
-			} catch (error) {
-				await this.rollbackCategory(undo);
-				throw error;
-			}
-			this.refreshSettings();
-			return category;
-		});
-	}
-
-	async editCategory(id: string, rawName: string, rawPath: string): Promise<void> {
-		await this.runExclusive(async () => {
-			const current = this.state.categories.find((item) => item.id === id);
-			if (!current) throw new FavoriteCategoryError("missing");
-			const { name, path } = this.validateCategory(rawName, rawPath, id);
-			if (name === current.name && path === current.path) return;
-			let undo: (() => Promise<void>) | null = null;
-			if (path !== current.path) {
-				try {
-					undo = await this.store.moveFile(current.path, path);
-				} catch {
-					throw new FavoriteCategoryError("file-failed");
-				}
-			}
-			try {
-				await this.persistSettings((draft) => {
-					const category = draft.favoriteCategories.find((item) => item.id === id);
-					if (category) {
-						category.name = name;
-						category.path = path;
-					}
-				});
-			} catch (error) {
-				if (undo) await this.rollbackCategory(undo);
-				throw error;
-			}
-			this.refreshSettings();
-		});
-	}
-
-	async deleteCategory(id: string): Promise<void> {
-		await this.runExclusive(async () => {
-			if (!this.state.categories.some((item) => item.id === id))
-				throw new FavoriteCategoryError("missing");
-			if (this.state.categories.length === 1)
-				throw new FavoriteCategoryError("last-category");
-			await this.persistSettings((draft) => {
-				draft.favoriteCategories = draft.favoriteCategories.filter(
-					(item) => item.id !== id,
-				);
-				if (draft.selectedFavoriteCategoryId === id)
-					draft.selectedFavoriteCategoryId = draft.favoriteCategories[0]!.id;
-			});
-			this.refreshSettings();
-		});
-	}
-
 	async selectCategory(id: string): Promise<void> {
 		if (this.disposed || this.isBusy()) return;
 		this.lookupRevision += 1;
 		try {
-			await this.runExclusive(async () => {
-				if (!this.state.categories.some((item) => item.id === id))
-					throw new FavoriteCategoryError("missing");
-				if (this.settings.getDictionarySettings().selectedFavoriteCategoryId === id) return;
-				await this.persistSettings((draft) => {
-					draft.selectedFavoriteCategoryId = id;
-				});
-				this.refreshSettings();
-			});
+			await this.categoriesManager.select(id);
 		} catch {
 			this.state.message = dictionaryText(this.ai.language()).favoriteCategorySaveFailed;
 			this.state.status = "error";
 			this.publish();
 		}
 	}
-
-	// Aliases for category operations matching FavoriteCategoryManager interface
-	create = (name: string, path: string, select = false) =>
-		this.createCategory(name, path, select);
-	edit = (id: string, name: string, path: string) => this.editCategory(id, name, path);
-	remove = (id: string) => this.deleteCategory(id);
-	select = (id: string) => this.selectCategory(id);
 
 	async prefill(word: string): Promise<void> {
 		if (this.disposed) return;
@@ -223,7 +119,9 @@ export class DictionaryFavoriteSession {
 		this.state.word = normalized;
 		this.state.message = "";
 		this.state.status = "idle";
-		this.applySettings();
+		this.state.categories = [...this.categoriesManager.categories];
+		this.state.selectedCategoryId = this.categoriesManager.selectedCategoryId;
+		this.state.path = this.categoriesManager.path;
 		this.publish();
 		await this.loadExisting(clearOnMissing);
 	}
@@ -263,7 +161,7 @@ export class DictionaryFavoriteSession {
 		if (this.disposed || this.isBusy()) return;
 		const strings = dictionaryText(this.ai.language());
 		const word = normalizeDictionaryQuery(this.state.word);
-		const configId = this.settings.getDictionarySettings().favoriteAiConfigId;
+		const configId = this.ai.configId ? this.ai.configId() : this.ai.engineKey();
 		const engineKey = this.ai.engineKey();
 		const error = !word
 			? strings.favoriteWordRequired
@@ -347,10 +245,11 @@ export class DictionaryFavoriteSession {
 		this.state.status = "saving";
 		this.publish();
 		try {
-			const savedPath = await this.runExclusive(() => this.store.save(entry));
+			const savedPath = await this.categoriesManager.runExclusive(() =>
+				this.store.save(entry),
+			);
 			if (this.disposed || revision !== this.sessionRevision) return;
 			this.contentDirty = false;
-			this.applySettings();
 			this.state.word = word;
 			this.state.message = dictionaryText().favoriteSaved(savedPath);
 			this.state.status = "success";
@@ -370,7 +269,6 @@ export class DictionaryFavoriteSession {
 						? strings.favoriteCategoryBusy
 						: strings.favoriteSaveFailed;
 			this.state.status = "error";
-			this.applySettings();
 		}
 		this.publish();
 	}
@@ -390,18 +288,10 @@ export class DictionaryFavoriteSession {
 
 	refreshSettings(): void {
 		if (this.disposed) return;
-		const previousPath = this.state.path;
 		if (this.generation && this.generation.engineKey !== this.ai.engineKey()) {
 			this.cancelGeneration();
 		}
-		this.applySettings();
-		if (previousPath !== this.state.path) {
-			this.cancelGeneration();
-			this.lookupRevision += 1;
-		}
-		this.publish();
-		if (previousPath !== this.state.path && !this.contentDirty && !this.isBusy())
-			void this.loadExisting(true);
+		this.onCategoriesChanged();
 	}
 
 	resetSession(): void {
@@ -415,7 +305,9 @@ export class DictionaryFavoriteSession {
 		this.state.note = "";
 		this.state.status = "idle";
 		this.state.word = "";
-		this.applySettings();
+		this.state.categories = [...this.categoriesManager.categories];
+		this.state.selectedCategoryId = this.categoriesManager.selectedCategoryId;
+		this.state.path = this.categoriesManager.path;
 		this.publish();
 	}
 
@@ -443,6 +335,7 @@ export class DictionaryFavoriteSession {
 		this.cancelGeneration();
 		this.disposed = true;
 		this.lookupRevision += 1;
+		this.unsubscribeCategories();
 		this.listeners.clear();
 	}
 
@@ -460,16 +353,20 @@ export class DictionaryFavoriteSession {
 		this.state.status = "idle";
 	}
 
-	private applySettings(): void {
-		const dictionary = this.settings.getDictionarySettings();
-		const category =
-			dictionary.favoriteCategories.find(
-				(item) => item.id === dictionary.selectedFavoriteCategoryId,
-			) ?? dictionary.favoriteCategories[0]!;
-		const path = category.path;
-		this.state.categories = [...dictionary.favoriteCategories];
-		this.state.selectedCategoryId = category.id;
-		this.state.path = path;
+	private onCategoriesChanged(): void {
+		if (this.disposed) return;
+		const previousPath = this.state.path;
+		this.state.categories = [...this.categoriesManager.categories];
+		this.state.selectedCategoryId = this.categoriesManager.selectedCategoryId;
+		this.state.path = this.categoriesManager.path;
+		if (previousPath !== this.state.path) {
+			this.cancelGeneration();
+			this.lookupRevision += 1;
+		}
+		this.publish();
+		if (previousPath !== this.state.path && !this.contentDirty && !this.isBusy()) {
+			void this.loadExisting(true);
+		}
 	}
 
 	private async loadExisting(clearOnMissing: boolean): Promise<void> {
@@ -504,45 +401,6 @@ export class DictionaryFavoriteSession {
 			this.state.status = "idle";
 		}
 		this.publish();
-	}
-
-	private validateCategory(
-		rawName: string,
-		rawPath: string,
-		exceptId?: string,
-	): { name: string; path: string } {
-		const name = rawName.trim();
-		if (!name || name.length > 120) throw new FavoriteCategoryError("invalid-name");
-		const path = favoriteCategoryPath(rawPath);
-		for (const category of this.state.categories) {
-			if (category.id === exceptId) continue;
-			if (category.name.toLocaleLowerCase() === name.toLocaleLowerCase())
-				throw new FavoriteCategoryError("duplicate-name");
-			if (category.path.toLocaleLowerCase() === path.toLocaleLowerCase())
-				throw new FavoriteCategoryError("duplicate-path");
-		}
-		return { name, path };
-	}
-
-	private async persistSettings(
-		mutate: Parameters<DictionarySettingsStore["updateDictionarySettings"]>[0],
-	): Promise<void> {
-		let saved = false;
-		try {
-			saved = await this.settings.updateDictionarySettings(mutate);
-		} catch {
-			/* Report the same error as a failed save. */
-		}
-		if (!saved) throw new FavoriteCategoryError("save-failed");
-		this.onSettingsChanged?.();
-	}
-
-	private async rollbackCategory(undo: () => Promise<void>): Promise<void> {
-		try {
-			await undo();
-		} catch {
-			throw new FavoriteCategoryError("recovery-incomplete");
-		}
 	}
 
 	private buildSnapshot(): DictionaryFavoriteViewState {

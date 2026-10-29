@@ -1,16 +1,8 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { DictionaryFavoriteSession } from "../favoriteSession";
 import { normalizeDictionarySettings } from "../configuration";
-import {
-	FavoriteSaveError,
-	createMemoryDictionaryFavoriteStore,
-	type StoredDictionaryFavorite,
-} from "../favorite-file";
-import {
-	FavoriteCategoryError,
-	favoriteCategoryPath,
-	favoriteCategoryPathSuggestions,
-} from "../favorite-categories";
+import { FavoriteSaveError, type StoredDictionaryFavorite } from "../favorite-file";
+import { FavoriteCategoryManager } from "../favorite-categories";
 import type { DictionarySettingsStore } from "../types";
 import type { FavoriteGeneratedDraft } from "../favorite-ai";
 import { TransportError } from "../../../../core/net/types";
@@ -36,12 +28,14 @@ function setupWordSession() {
 		favoritePath: "word.md",
 	});
 	const file = {
-		pathSuggestions: vi.fn(() => [] as string[]),
-		ensureFile: vi.fn(async () => async () => undefined),
-		moveFile: vi.fn(async () => async () => undefined),
-		find: vi.fn(async (): Promise<StoredDictionaryFavorite | null> => null),
-		save: vi.fn(async () => "word.md"),
-		open: vi.fn(async () => true),
+		pathSuggestions: vi.fn((_query: string) => [] as string[]),
+		ensureFile: vi.fn(async (_path: string) => async () => undefined),
+		moveFile: vi.fn(async (_from: string, _to: string) => async () => undefined),
+		find: vi.fn(
+			async (_path: string, _word: string): Promise<StoredDictionaryFavorite | null> => null,
+		),
+		save: vi.fn(async (_entry: unknown) => "word.md"),
+		open: vi.fn(async (_path: string) => true),
 	};
 	const generate = vi.fn(async (_word: string, _config: string, _signal: AbortSignal) => draft);
 	let engine: string | null = "favorite connection";
@@ -52,54 +46,21 @@ function setupWordSession() {
 			return true;
 		}),
 	} as unknown as DictionarySettingsStore;
-	const session = new DictionaryFavoriteSession(store, file, {
+	const categories = new FavoriteCategoryManager(store, file);
+	const session = new DictionaryFavoriteSession(categories, file, {
 		generator: { generate },
 		language: () => "zh",
+		configId: () => settings.favoriteAiConfigId,
 		engineKey: () => engine,
 	});
 	return {
 		session,
+		categories,
 		file,
 		generate,
 		settings,
 		setEngine: (key: string | null) => {
 			engine = key;
-		},
-	};
-}
-
-function setupCategorySession(
-	initialFiles: Record<string, string> = { "old.md": "## apple\n??\n苹果\n::\n\n;;\n" },
-) {
-	const settings = normalizeDictionarySettings({ favoritePath: "old.md" });
-	const files = createMemoryDictionaryFavoriteStore(initialFiles);
-	let fails = false;
-	const changed = vi.fn();
-	const store = {
-		getDictionarySettings: () => settings,
-		updateDictionarySettings: vi.fn(async (mutate: (draft: typeof settings) => void) => {
-			if (fails) return false;
-			mutate(settings);
-			return true;
-		}),
-	} as unknown as DictionarySettingsStore;
-	const session = new DictionaryFavoriteSession(
-		store,
-		files,
-		{
-			generator: { generate: async () => draft },
-			language: () => "zh",
-			engineKey: () => "test-engine",
-		},
-		changed,
-	);
-	return {
-		session,
-		files,
-		settings,
-		changed,
-		fail: () => {
-			fails = true;
 		},
 	};
 }
@@ -350,160 +311,47 @@ describe("DictionaryFavoriteSession - word draft and AI generation", () => {
 	});
 });
 
-describe("DictionaryFavoriteSession - category administration & file mutex", () => {
-	it("suggests matching folders and Markdown paths before applying the result limit", () => {
-		const hidden = Array.from({ length: 320 }, (_, index) => `.agents/${index}.md`);
-		const paths = [
-			...hidden,
-			"Words/",
-			"Words/Grammar/",
-			"Words/Grammar/verbs.md",
-			"archive/Words.md",
-		];
-		expect(favoriteCategoryPathSuggestions(paths, "WORDS\\")).toEqual([
-			"Words/",
-			"Words/Grammar/",
-			"Words/Grammar/verbs.md",
-		]);
-		expect(favoriteCategoryPathSuggestions(paths, "words")).toEqual([
-			"Words/",
-			"Words/Grammar/",
-			"Words/Grammar/verbs.md",
-			"archive/Words.md",
-		]);
-		expect(favoriteCategoryPathSuggestions(paths, "")).toHaveLength(300);
+describe("DictionaryFavoriteSession - integration with FavoriteCategoryManager", () => {
+	it("delegates selectCategory to the category manager", async () => {
+		const { session, categories, settings } = setupWordSession();
+		await categories.create("新分类", "words/new.md", false);
+		const targetId = settings.favoriteCategories[1]!.id;
+
+		await session.selectCategory(targetId);
+		expect(settings.selectedFavoriteCategoryId).toBe(targetId);
+		expect(session.getSnapshot().selectedCategoryId).toBe(targetId);
+		expect(session.getSnapshot().path).toBe("words/new.md");
 	});
 
-	it("migrates the legacy path without creating or moving its file", () => {
-		const settings = normalizeDictionarySettings({ favoritePath: "words/old.md" });
-		expect(settings.favoriteCategories).toEqual([
-			{ id: "default", name: "默认收藏", path: "words/old.md" },
-		]);
-		expect(settings.selectedFavoriteCategoryId).toBe("default");
-	});
-
-	it("creates a file and selects a new category from the favorite form", async () => {
-		const { session, files, settings } = setupCategorySession();
-		const created = await session.createCategory(" 四级 ", "Words/four", true);
-		expect(created).toMatchObject({ name: "四级", path: "Words/four.md" });
-		expect(settings.selectedFavoriteCategoryId).toBe(created.id);
-		expect(await files.open("Words/four.md")).toBe(true);
-	});
-
-	it("can associate an existing file from settings without changing the selection", async () => {
-		const { session, files, settings } = setupCategorySession({
-			"old.md": "",
-			"existing.md": "content",
+	it("automatically reloads existing word entry when category changes", async () => {
+		const { session, categories, file } = setupWordSession();
+		file.find.mockImplementation(async (path: string, word: string) => {
+			if (path === "words/second.md" && word === "apple") {
+				return { word: "apple", meaning: "在第二分类中的苹果", note: "笔记2", path };
+			}
+			return null;
 		});
-		const created = await session.createCategory("existing", "existing.md", false);
-		expect(settings.selectedFavoriteCategoryId).toBe("default");
-		expect(await files.open(created.path)).toBe(true);
-		expect(await files.find(created.path, "apple")).toBeNull();
-	});
 
-	it("rejects duplicate names, paths and invalid paths", async () => {
-		const { session } = setupCategorySession();
-		await expect(session.createCategory(" 默认收藏 ", "new.md", true)).rejects.toEqual(
-			new FavoriteCategoryError("duplicate-name"),
-		);
-		await expect(session.createCategory("other", "OLD.md", true)).rejects.toEqual(
-			new FavoriteCategoryError("duplicate-path"),
-		);
-		for (const path of ["../escape.md", "/absolute.md", "folder/", "notes.txt"])
-			expect(() => favoriteCategoryPath(path)).toThrow(FavoriteCategoryError);
-	});
-
-	it("rolls back a newly created file when settings cannot be saved", async () => {
-		const { session, files, fail } = setupCategorySession();
-		fail();
-		await expect(session.createCategory("new", "new.md", true)).rejects.toEqual(
-			new FavoriteCategoryError("save-failed"),
-		);
-		expect(await files.open("new.md")).toBe(false);
-	});
-
-	it("moves the file and updates its category when changing the path", async () => {
-		const { session, files, settings } = setupCategorySession();
-		await session.editCategory("default", "已改名", "words/renamed");
-		expect(settings.favoriteCategories[0]).toMatchObject({
-			name: "已改名",
-			path: "words/renamed.md",
-		});
-		expect(await files.open("words/renamed.md")).toBe(true);
-		expect(await files.open("old.md")).toBe(false);
-		expect(await files.find("words/renamed.md", "apple")).not.toBeNull();
-	});
-
-	it("preserves the original file when editing only the category name", async () => {
-		const { session, files, settings } = setupCategorySession();
-		await session.editCategory("default", "仅改名", "old.md");
-		expect(settings.favoriteCategories[0]).toMatchObject({ name: "仅改名", path: "old.md" });
-		expect(await files.open("old.md")).toBe(true);
-	});
-
-	it("moves the file back when saving updated settings fails", async () => {
-		const { session, files, fail } = setupCategorySession();
-		fail();
-		await expect(session.editCategory("default", "名", "rollback.md")).rejects.toEqual(
-			new FavoriteCategoryError("save-failed"),
-		);
-		expect(await files.open("old.md")).toBe(true);
-		expect(await files.open("rollback.md")).toBe(false);
-	});
-
-	it("retains the file and selects the first remaining category when deleting", async () => {
-		const { session, files, settings } = setupCategorySession({
-			"old.md": "old",
-			"words/other.md": "other",
-		});
-		const created = await session.createCategory("other", "words/other.md", false);
-		await session.selectCategory(created.id);
-		expect(settings.selectedFavoriteCategoryId).toBe(created.id);
-		await session.deleteCategory(created.id);
-		expect(settings.favoriteCategories).toHaveLength(1);
-		expect(settings.selectedFavoriteCategoryId).toBe("default");
-		expect(await files.open("words/other.md")).toBe(true);
-	});
-
-	it("prevents deleting the last category", async () => {
-		const { session } = setupCategorySession();
-		await expect(session.deleteCategory("default")).rejects.toEqual(
-			new FavoriteCategoryError("last-category"),
-		);
-	});
-
-	it("prevents concurrent category or favorite writes with busy error", async () => {
-		const { session } = setupCategorySession();
-		let release!: () => void;
-		const lock = new Promise<void>((yes) => (release = yes));
-		const pending = session.runExclusive(() => lock);
-		await expect(session.createCategory("other", "other.md", false)).rejects.toEqual(
-			new FavoriteCategoryError("busy"),
-		);
-		await expect(session.save()).resolves.toBeUndefined();
-		expect(session.getSnapshot().status).toBe("error");
-		release();
-		await pending;
-		await expect(session.createCategory("other", "other.md", false)).resolves.toMatchObject({
-			name: "other",
-		});
-	});
-
-	it("remembers selection and preserves an edited draft while switching files", async () => {
-		const { session, settings, file } = setupWordSession();
-		settings.favoriteCategories.push({ id: "second", name: "第二类", path: "second.md" });
-		session.refreshSettings();
 		await session.prefill("apple");
-		session.setMeaning("草稿");
-		await session.selectCategory("second");
-		expect(session.getSnapshot()).toMatchObject({
-			selectedCategoryId: "second",
-			path: "second.md",
-			meaning: "草稿",
-		});
-		await session.save();
-		expect(file.save).toHaveBeenCalledWith(
-			expect.objectContaining({ path: "second.md", meaning: "草稿" }),
-		);
+		expect(session.getSnapshot().meaning).toBe("");
+
+		const created = await categories.create("第二分类", "words/second.md", true);
+		await Promise.resolve();
+
+		expect(session.getSnapshot().selectedCategoryId).toBe(created.id);
+		expect(session.getSnapshot().path).toBe("words/second.md");
+		expect(session.getSnapshot().meaning).toBe("在第二分类中的苹果");
+	});
+
+	it("delegates runExclusive and pathSuggestions to the category manager", async () => {
+		const { session, categories, file } = setupWordSession();
+		file.pathSuggestions.mockReturnValue(["words/suggested.md"]);
+
+		expect(session.pathSuggestions("words")).toEqual(["words/suggested.md"]);
+
+		const runSpy = vi.spyOn(categories, "runExclusive");
+		const result = await session.runExclusive(async () => "executed");
+		expect(runSpy).toHaveBeenCalled();
+		expect(result).toBe("executed");
 	});
 });

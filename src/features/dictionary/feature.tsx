@@ -254,7 +254,7 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 							() =>
 								new FavoriteCategoryModal(
 									host.app,
-									dictionary.favorites,
+									dictionary.categories,
 									dictionaryStrings(host.settings.read().language),
 									{ kind: "create", select: true },
 								).open(),
@@ -360,7 +360,7 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 								onCreateCategory={() =>
 									new FavoriteCategoryModal(
 										host.app,
-										dictionary.favorites,
+										dictionary.categories,
 										dictionaryStrings(language),
 										{ kind: "create", select: true },
 									).open()

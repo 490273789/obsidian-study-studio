@@ -9,6 +9,7 @@ import { CompiledDictionarySource } from "./compiled-source";
 import { createDictionaryQuerySession, type DictionaryQuerySession } from "./querySession";
 import { createFavoriteDraftGenerator } from "./favorite-ai";
 import { DictionaryFavoriteSession } from "./favoriteSession";
+import { FavoriteCategoryManager } from "./favorite-categories";
 import { createMemoryDictionaryFavoriteStore, type DictionaryFavoriteStore } from "./favorite-file";
 import { HujiangDictionarySource } from "./hujiang";
 import { LocalDictionaryImporter } from "./importer";
@@ -46,6 +47,7 @@ export class DictionaryRuntime {
 	readonly app: App;
 	readonly settings: DictionarySettingsStore;
 	readonly query: DictionaryQuerySession;
+	readonly categories: FavoriteCategoryManager;
 	readonly favorites: DictionaryFavoriteSession;
 	readonly administration: LocalDictionaryAdministrationModule;
 	/** Plugin-relative root that holds every compiled dictionary package. */
@@ -62,22 +64,21 @@ export class DictionaryRuntime {
 		this.settings = options.settings;
 		this.dictionaryRoot = `${options.app.vault.configDir}/plugins/${options.plugin.manifest.id}/dictionaries`;
 		const favoriteStore = options.favoriteStore ?? createMemoryDictionaryFavoriteStore();
-		this.favorites = new DictionaryFavoriteSession(
-			options.settings,
-			favoriteStore,
-			{
-				generator: createFavoriteDraftGenerator(options.ai),
-				language: options.language,
-				engineKey: () => {
-					const id = options.settings.getDictionarySettings().favoriteAiConfigId;
-					const config = options.ai
-						.getSnapshot()
-						.settings.configs.find((item) => item.id === id);
-					return config ? JSON.stringify(config) : null;
-				},
-			},
-			() => this.applySettings(),
+		this.categories = new FavoriteCategoryManager(options.settings, favoriteStore, () =>
+			this.applySettings(),
 		);
+		this.favorites = new DictionaryFavoriteSession(this.categories, favoriteStore, {
+			generator: createFavoriteDraftGenerator(options.ai),
+			language: options.language,
+			configId: () => options.settings.getDictionarySettings().favoriteAiConfigId,
+			engineKey: () => {
+				const id = options.settings.getDictionarySettings().favoriteAiConfigId;
+				const config = options.ai
+					.getSnapshot()
+					.settings.configs.find((item) => item.id === id);
+				return config ? JSON.stringify(config) : null;
+			},
+		});
 		this.unsubscribeFavoriteAi = options.ai.subscribe(() => this.favorites.refreshSettings());
 		this.query = createDictionaryQuerySession({
 			settings: options.settings,

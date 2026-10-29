@@ -50,28 +50,64 @@ export function favoriteCategoryPathSuggestions(paths: readonly string[], query:
 /** Serializes category and selection writes against their vault file operations. */
 export class FavoriteCategoryManager {
 	private busy = false;
+	private readonly listeners = new Set<() => void>();
 
 	constructor(
 		private readonly settings: DictionarySettingsStore,
 		private readonly files: FavoriteCategoryFiles,
-		private readonly changed: () => void,
+		private readonly changed: () => void = () => undefined,
 	) {}
 
 	get categories(): readonly FavoriteCategory[] {
 		return this.settings.getDictionarySettings().favoriteCategories;
 	}
 
+	get selectedCategoryId(): string {
+		return this.settings.getDictionarySettings().selectedFavoriteCategoryId;
+	}
+
+	get selectedCategory(): FavoriteCategory {
+		const dictionary = this.settings.getDictionarySettings();
+		return (
+			dictionary.favoriteCategories.find(
+				(item) => item.id === dictionary.selectedFavoriteCategoryId,
+			) ?? dictionary.favoriteCategories[0]!
+		);
+	}
+
+	get path(): string {
+		return this.selectedCategory.path;
+	}
+
+	subscribe(listener: () => void): () => void {
+		this.listeners.add(listener);
+		return () => {
+			this.listeners.delete(listener);
+		};
+	}
+
 	pathSuggestions(query: string): string[] {
 		return this.files.pathSuggestions(query);
 	}
 
-	/** A favorite write and a category file move must never target the same file concurrently. */
-	async saveFavorite<T>(action: () => Promise<T>): Promise<T> {
-		return this.run(action);
+	/** Executes an action serialized against concurrent writes and file moves. */
+	async runExclusive<T>(action: () => Promise<T>): Promise<T> {
+		if (this.busy) throw new FavoriteCategoryError("busy");
+		this.busy = true;
+		try {
+			return await action();
+		} finally {
+			this.busy = false;
+		}
 	}
 
-	async create(rawName: string, rawPath: string, select: boolean): Promise<FavoriteCategory> {
-		return this.run(async () => {
+	/** Backwards-compatible alias for runExclusive. */
+	async saveFavorite<T>(action: () => Promise<T>): Promise<T> {
+		return this.runExclusive(action);
+	}
+
+	async create(rawName: string, rawPath: string, select = false): Promise<FavoriteCategory> {
+		return this.runExclusive(async () => {
 			const { name, path } = this.validate(rawName, rawPath);
 			const category = { id: crypto.randomUUID(), name, path };
 			let undo: () => Promise<void>;
@@ -94,7 +130,7 @@ export class FavoriteCategoryManager {
 	}
 
 	async edit(id: string, rawName: string, rawPath: string): Promise<void> {
-		await this.run(async () => {
+		await this.runExclusive(async () => {
 			const current = this.categories.find((item) => item.id === id);
 			if (!current) throw new FavoriteCategoryError("missing");
 			const { name, path } = this.validate(rawName, rawPath, id);
@@ -123,7 +159,7 @@ export class FavoriteCategoryManager {
 	}
 
 	async remove(id: string): Promise<void> {
-		await this.run(async () => {
+		await this.runExclusive(async () => {
 			if (!this.categories.some((item) => item.id === id))
 				throw new FavoriteCategoryError("missing");
 			if (this.categories.length === 1) throw new FavoriteCategoryError("last-category");
@@ -138,7 +174,7 @@ export class FavoriteCategoryManager {
 	}
 
 	async select(id: string): Promise<void> {
-		await this.run(async () => {
+		await this.runExclusive(async () => {
 			if (!this.categories.some((item) => item.id === id))
 				throw new FavoriteCategoryError("missing");
 			if (this.settings.getDictionarySettings().selectedFavoriteCategoryId === id) return;
@@ -147,6 +183,8 @@ export class FavoriteCategoryManager {
 			});
 		});
 	}
+
+	delete = (id: string) => this.remove(id);
 
 	private validate(
 		rawName: string,
@@ -177,6 +215,17 @@ export class FavoriteCategoryManager {
 		}
 		if (!saved) throw new FavoriteCategoryError("save-failed");
 		this.changed();
+		this.publish();
+	}
+
+	private publish(): void {
+		for (const listener of this.listeners) {
+			try {
+				listener();
+			} catch {
+				// Listeners must never fail category persistence.
+			}
+		}
 	}
 
 	private async rollback(undo: () => Promise<void>): Promise<void> {
@@ -184,16 +233,6 @@ export class FavoriteCategoryManager {
 			await undo();
 		} catch {
 			throw new FavoriteCategoryError("recovery-incomplete");
-		}
-	}
-
-	private async run<T>(action: () => Promise<T>): Promise<T> {
-		if (this.busy) throw new FavoriteCategoryError("busy");
-		this.busy = true;
-		try {
-			return await action();
-		} finally {
-			this.busy = false;
 		}
 	}
 }
