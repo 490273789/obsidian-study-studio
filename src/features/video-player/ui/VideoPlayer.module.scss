@@ -52,7 +52,7 @@
 
 .layout:not(.layoutWithShadow) .studyColumn {
 	width: 100%;
-	max-width: 1400px;
+	max-width: 1385px;
 	justify-self: center;
 }
 
@@ -101,16 +101,7 @@
 	min-height: 0;
 	height: 100%;
 	flex: 1 1 auto;
-	transition:
-		border-color 150ms ease,
-		box-shadow 150ms ease;
-
-	&:focus-within {
-		border-color: color-mix(in srgb, var(--interactive-accent) 72%, transparent);
-		box-shadow:
-			var(--shadow-s),
-			0 0 0 1px color-mix(in srgb, var(--interactive-accent) 72%, transparent);
-	}
+	box-shadow: var(--shadow-s);
 }
 
 .surface {
@@ -118,7 +109,9 @@
 	height: 100%;
 	min-height: 0;
 	flex-direction: column;
-	background: #08090b;
+	background: var(--fc-surface-card);
+	container: video-surface / inline-size;
+	position: relative;
 	outline: none;
 	border-radius: inherit;
 	overflow: hidden;
@@ -133,7 +126,7 @@
 	overflow: hidden;
 	position: relative;
 	width: 100%;
-	background: #08090b;
+	background: var(--fc-surface-section);
 }
 
 .video {
@@ -143,7 +136,7 @@
 	max-width: 100%;
 	max-height: 100%;
 	object-fit: contain;
-	background: #08090b;
+	background: var(--fc-surface-section);
 }
 
 .error {
@@ -151,7 +144,7 @@
 	padding: 8px 12px;
 	border-top: 1px solid var(--background-modifier-error);
 	color: var(--text-error);
-	background: color-mix(in srgb, var(--background-modifier-error) 18%, #08090b);
+	background: color-mix(in srgb, var(--background-modifier-error) 12%, var(--fc-surface-card));
 	font-size: var(--font-ui-small);
 }
 
@@ -160,19 +153,62 @@
 	grid-template-columns: auto minmax(0, 1fr) auto;
 	align-items: center;
 	gap: 12px;
-	padding: 10px 16px 2px;
-	color: #c4c8d0;
+	padding: 8px 20px 0;
+	flex: 0 0 auto;
+	color: var(--fc-muted);
 	font-variant-numeric: tabular-nums;
 	font-size: var(--font-ui-smaller);
 }
 
-.progress {
+.surface:focus-visible::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: 2;
+	border: 2px solid var(--interactive-accent);
+	border-radius: inherit;
+	pointer-events: none;
+}
+
+.surface .progress {
+	appearance: none;
 	width: 100% !important;
 	min-width: 0 !important;
 	max-width: 100% !important;
+	height: 24px;
 	margin: 0;
-	accent-color: var(--interactive-accent);
+	padding: 0;
+	background: transparent;
 	cursor: pointer;
+
+	&::-webkit-slider-runnable-track {
+		height: 3px;
+		border-radius: var(--fc-radius-pill);
+		background: linear-gradient(
+			to right,
+			var(--interactive-accent) var(--played),
+			var(--fc-line) var(--played)
+		);
+	}
+
+	&::-webkit-slider-thumb {
+		appearance: none;
+		width: 12px;
+		height: 12px;
+		box-sizing: border-box;
+		margin: -4.5px 0 0;
+		top: 0;
+		transform: none;
+		border: 2px solid var(--fc-surface-card);
+		border-radius: 50%;
+		background: var(--interactive-accent);
+		box-shadow: 0 0 0 1px var(--fc-line);
+	}
+
+	&:focus-visible {
+		outline: 2px solid var(--interactive-accent) !important;
+		outline-offset: 2px;
+	}
 
 	&:disabled {
 		cursor: default;
@@ -181,41 +217,29 @@
 }
 
 .controls {
-	display: flex;
-	flex-wrap: wrap;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
 	align-items: center;
-	justify-content: center;
-	gap: 10px;
-	padding: 12px 16px 16px;
-	color: #f5f6f8;
+	gap: 12px;
+	padding: 4px 20px 14px;
+	flex: 0 0 auto;
+	color: var(--fc-text);
 
-	// 控制条内的按钮在深色背景（#08090b）上保持高对比度与清晰度，适配亮色与暗色主题
 	:global(button.flashcard-btn) {
 		min-width: 36px;
 		min-height: 36px;
-		color: #e6edf3 !important;
+		color: var(--fc-muted) !important;
 		background: transparent !important;
 		border-color: transparent !important;
-		border-radius: var(--fc-radius-md, 6px);
+		border-radius: var(--fc-radius-md);
 		box-shadow: none !important;
 		transition:
-			color 140ms ease,
 			background-color 140ms ease,
-			transform 100ms ease;
-
-		svg {
-			stroke: currentColor;
-		}
+			color 140ms ease;
 
 		&:hover:not(:disabled) {
-			color: #ffffff !important;
-			background: rgba(255, 255, 255, 0.14) !important;
-			border-color: transparent !important;
-		}
-
-		&:active:not(:disabled) {
-			background: rgba(255, 255, 255, 0.22) !important;
-			transform: scale(0.96);
+			color: var(--fc-text) !important;
+			background: var(--fc-surface-hover) !important;
 		}
 
 		&:focus-visible {
@@ -224,51 +248,65 @@
 		}
 
 		&:disabled {
-			color: rgba(255, 255, 255, 0.28) !important;
-			opacity: 0.55 !important;
-			background: transparent !important;
+			opacity: 0.35 !important;
 			cursor: not-allowed;
-			transform: none;
+		}
+	}
+
+	:global(button.flashcard-btn).playBtn {
+		width: 44px !important;
+		height: 44px !important;
+		min-width: 44px !important;
+		min-height: 44px !important;
+		border-radius: 50% !important;
+		corner-shape: round;
+		background: var(--interactive-accent) !important;
+		color: var(--text-on-accent) !important;
+
+		&:hover:not(:disabled) {
+			background: var(--interactive-accent-hover) !important;
+			color: var(--text-on-accent) !important;
 		}
 	}
 }
 
-.playBtn {
-	width: 40px !important;
-	height: 40px !important;
-	min-width: 40px !important;
-	min-height: 40px !important;
-	border-radius: 50% !important;
-	background: var(--interactive-accent) !important;
-	border-color: var(--interactive-accent) !important;
-	color: #ffffff !important;
-	box-shadow: none !important;
+.transport,
+.utilities {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
 
-	svg {
-		stroke: #ffffff !important;
-	}
+.transport {
+	grid-column: 2;
+}
 
-	&:hover:not(:disabled) {
-		background: color-mix(in srgb, var(--interactive-accent) 85%, #ffffff) !important;
-		border-color: color-mix(in srgb, var(--interactive-accent) 85%, #ffffff) !important;
-		color: #ffffff !important;
-		transform: scale(1.06) !important;
-		box-shadow: none !important;
-	}
-
-	&:active:not(:disabled) {
-		transform: scale(0.94) !important;
-	}
-
-	&:focus-visible {
-		outline: 2px solid #ffffff !important;
-		outline-offset: 2px !important;
-	}
+.utilities {
+	grid-column: 3;
+	justify-self: end;
 }
 
 .rateControl {
 	flex: none;
-	margin-inline: 10px 4px;
+}
+
+@container video-surface (max-width: 540px) {
+	.controls {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 6px;
+		padding-inline: 12px;
+	}
+
+	.transport,
+	.utilities {
+		grid-column: 1;
+		justify-self: center;
+	}
+
+	.progressRow {
+		gap: 8px;
+		padding-inline: 12px;
+	}
 }
 
 .floatingPlaceholder {
@@ -343,7 +381,8 @@
 	min-width: 0;
 	flex: 1;
 	overflow: hidden;
-	color: var(--fc-muted);
+	color: var(--fc-text);
+	font-weight: var(--fc-weight-medium);
 	font-size: var(--fc-font-sm);
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -413,15 +452,15 @@
 	align-items: center;
 	gap: var(--fc-space-3);
 	padding: var(--fc-space-1) var(--fc-space-2);
-	border: 1px solid var(--fc-line-soft);
+	border: 1px solid transparent;
 	border-radius: var(--fc-radius-md);
-	background: var(--fc-surface-card);
+	background: transparent;
 	transition:
 		border-color var(--fc-motion-quick) ease,
 		background-color var(--fc-motion-quick) ease;
 
 	&:hover {
-		border-color: var(--fc-line);
+		border-color: transparent;
 		background: var(--fc-surface-hover);
 
 		.dragHandle {
@@ -442,7 +481,7 @@
 	}
 
 	&.active {
-		border-color: color-mix(in srgb, var(--fc-primary) 32%, var(--fc-line-soft));
+		border-color: transparent;
 		background: color-mix(in srgb, var(--fc-primary) 8%, var(--fc-surface-card));
 
 		&::before {
@@ -704,20 +743,10 @@
 	min-height: 240px;
 	flex-direction: column;
 	overflow: hidden;
-	border: 1px solid var(--fc-line-strong);
+	border: 1px solid var(--fc-line-soft);
 	border-radius: 12px;
 	background: var(--fc-surface-card);
 	box-shadow: var(--fc-shadow-overlay);
-	transition:
-		border-color 150ms ease,
-		box-shadow 150ms ease;
-
-	&:focus-within {
-		border-color: color-mix(in srgb, var(--fc-primary) 55%, var(--fc-line));
-		box-shadow:
-			var(--fc-shadow-overlay),
-			0 0 0 1px color-mix(in srgb, var(--fc-primary) 55%, transparent);
-	}
 
 	&.maximized {
 		top: 0 !important;
@@ -743,6 +772,12 @@
 	user-select: none;
 }
 
+.floatingHeaderActions :global(button.flashcard-btn):focus-visible,
+.floatingPlayer .resizeHandle:focus-visible {
+	outline: 2px solid var(--interactive-accent) !important;
+	outline-offset: -2px;
+}
+
 .floatingHeaderActions {
 	display: flex;
 	align-items: center;
@@ -750,8 +785,15 @@
 }
 
 .floatingBody {
+	display: flex;
+	flex-direction: column;
 	min-height: 0;
 	flex: 1;
+
+	.surface {
+		height: auto;
+		flex: 1 1 auto;
+	}
 
 	.mediaHost {
 		min-height: 0;
@@ -803,6 +845,65 @@
 
 @media (prefers-reduced-motion: reduce) {
 	.queueItem {
+		transition: none;
+	}
+}
+
+@container flashcard-pane (max-width: 600px) {
+	.queueHeader {
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.queueCurrentName {
+		order: 3;
+		flex-basis: 100%;
+		padding-inline: 8px;
+	}
+
+	.queueHeaderActions {
+		margin-inline-start: auto;
+	}
+}
+
+@media (pointer: coarse) {
+	.controls :global(button.flashcard-btn),
+	.queueItem .actionBtn,
+	.queueItem .dragHandle,
+	.floatingHeaderActions :global(button.flashcard-btn),
+	.page .queueHeading,
+	.page .queueAddBtn,
+	.page .queueItem .sourceContent,
+	.shadowToggle {
+		min-width: 40px !important;
+		min-height: 40px !important;
+	}
+
+	.queueItem {
+		flex-wrap: wrap;
+		gap: 4px;
+	}
+
+	.itemActions {
+		opacity: 1;
+		margin-inline-start: auto;
+	}
+
+	.surface .progress {
+		height: 40px;
+	}
+
+	.floatingPlayer .resizeHandle {
+		width: 40px;
+		height: 40px;
+		background-size: 18px 18px;
+		background-repeat: no-repeat;
+		background-position: bottom right;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.controls :global(button.flashcard-btn) {
 		transition: none;
 	}
 }

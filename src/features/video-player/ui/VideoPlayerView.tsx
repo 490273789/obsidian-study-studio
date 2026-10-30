@@ -604,47 +604,53 @@ function PlayerSurface({
 				onSeek={onSeek}
 			/>
 			<div className={styles.controls}>
-				<IconButton
-					icon={SkipBack}
-					label={t.previous}
-					disabled={!canPrevious}
-					onClick={onPrevious}
-				/>
-				<IconButton
-					icon={Rewind}
-					label={t.backward(settings.skipInterval)}
-					onClick={onBackward}
-				/>
-				<FlashcardButton
-					preset="icon"
-					variant="primary"
-					icon={playing ? Pause : Play}
-					iconSize={18}
-					className={styles.playBtn}
-					aria-label={playing ? t.pause : t.play}
-					title={playing ? t.pause : t.play}
-					onClick={onToggle}
-				/>
-				<IconButton
-					icon={FastForward}
-					label={t.forward(settings.skipInterval)}
-					onClick={onForward}
-				/>
-				<IconButton
-					icon={SkipForward}
-					label={t.next}
-					disabled={!canNext}
-					onClick={onNext}
-				/>
-				<PlaybackRateControl
-					className={styles.rateControl}
-					label={t.rate}
-					value={rate}
-					rates={VIDEO_PLAYBACK_RATES}
-					tone="dark"
-					onChange={(value) => onRate(value as (typeof VIDEO_PLAYBACK_RATES)[number])}
-				/>
-				{!floating && <IconButton icon={Minimize2} label={t.floating} onClick={onFloat} />}
+				<div className={styles.transport}>
+					<IconButton
+						icon={SkipBack}
+						label={t.previous}
+						disabled={!canPrevious}
+						onClick={onPrevious}
+					/>
+					<IconButton
+						icon={Rewind}
+						label={t.backward(settings.skipInterval)}
+						onClick={onBackward}
+					/>
+					<FlashcardButton
+						preset="icon"
+						variant="primary"
+						icon={playing ? Pause : Play}
+						iconSize={18}
+						className={styles.playBtn}
+						aria-label={playing ? t.pause : t.play}
+						title={playing ? t.pause : t.play}
+						onClick={onToggle}
+					/>
+					<IconButton
+						icon={FastForward}
+						label={t.forward(settings.skipInterval)}
+						onClick={onForward}
+					/>
+					<IconButton
+						icon={SkipForward}
+						label={t.next}
+						disabled={!canNext}
+						onClick={onNext}
+					/>
+				</div>
+				<div className={styles.utilities}>
+					<PlaybackRateControl
+						className={styles.rateControl}
+						label={t.rate}
+						value={rate}
+						rates={VIDEO_PLAYBACK_RATES}
+						tone="default"
+						onChange={(value) => onRate(value as (typeof VIDEO_PLAYBACK_RATES)[number])}
+					/>
+					{!floating && (
+						<IconButton icon={Minimize2} label={t.floating} onClick={onFloat} />
+					)}
+				</div>
 			</div>
 		</div>
 	);
@@ -685,6 +691,11 @@ function ProgressSlider({
 			<input
 				type="range"
 				className={styles.progress}
+				style={
+					{
+						"--played": `${maximum > 0 ? (displayed / maximum) * 100 : 0}%`,
+					} as React.CSSProperties
+				}
 				aria-label={label}
 				aria-valuetext={`${formatTime(displayed)} / ${formatTime(maximum)}`}
 				min={0}

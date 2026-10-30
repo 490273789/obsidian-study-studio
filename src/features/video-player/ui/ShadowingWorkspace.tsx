@@ -303,6 +303,7 @@ export function ShadowingWorkspace({
 							</div>
 							<button
 								type="button"
+								className={styles.primaryAction}
 								disabled={!canStart}
 								onClick={() =>
 									void onAction({
@@ -522,7 +523,11 @@ export function ShadowingWorkspace({
 							{t.continueEarly}
 						</button>
 					)}
-					<button type="button" onClick={() => void onAction({ type: "start-loop" })}>
+					<button
+						type="button"
+						className={styles.primaryAction}
+						onClick={() => void onAction({ type: "start-loop" })}
+					>
 						{t.start}
 					</button>
 					<button type="button" onClick={() => void onAction({ type: "stop-practice" })}>
@@ -589,6 +594,7 @@ export function ShadowingFloatingControls({
 			<div className={styles.toolbar}>
 				<button
 					type="button"
+					className={styles.primaryAction}
 					onClick={() => void onAction({ type: "start-loop" })}
 					disabled={state.practiceStart === null}
 				>

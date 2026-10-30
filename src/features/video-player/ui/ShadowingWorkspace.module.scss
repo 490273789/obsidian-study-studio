@@ -1,12 +1,12 @@
 .workspace {
 	display: flex;
 	flex-direction: column;
-	gap: 10px;
+	gap: 16px;
 	min-height: 0;
-	padding: 12px;
+	padding: 16px;
 	border: 1px solid var(--fc-line-soft);
 	border-radius: 12px;
-	background: var(--fc-surface-section);
+	background: var(--fc-surface-card);
 }
 
 .tabs,
@@ -28,27 +28,32 @@
 .fileButton,
 .floating button {
 	min-height: 34px;
+	max-width: 100%;
+	height: auto;
 	padding: 5px 9px;
 	border: 1px solid var(--fc-line);
-	border-radius: 6px;
-	background: var(--background-primary);
-	color: var(--text-normal);
+	border-radius: var(--fc-radius-md);
+	background: var(--fc-surface-control);
+	color: var(--fc-text);
+	box-shadow: none;
+	font-size: var(--fc-font-sm);
+	line-height: var(--fc-line-body);
+	white-space: normal;
 	cursor: pointer;
+
+	&:hover:not(:disabled) {
+		background: var(--fc-surface-hover);
+	}
 }
 
-.workspace button:hover,
-.floating button:hover,
-.fileButton:hover {
-	border-color: var(--interactive-accent);
-}
-
+// Keep focus visible through the host's form and button resets.
 .workspace button:focus-visible,
 .floating button:focus-visible,
 .workspace select:focus-visible,
 .workspace input:focus-visible,
 .workspace textarea:focus-visible,
 .fileButton:focus-within {
-	outline: 2px solid var(--interactive-accent);
+	outline: 2px solid var(--interactive-accent) !important;
 	outline-offset: 2px;
 }
 
@@ -58,16 +63,23 @@
 	cursor: default;
 }
 
-.tabs button[aria-current="page"] {
-	border-color: var(--interactive-accent);
-	color: var(--interactive-accent);
+.workspace .tabs button {
+	flex: 1 1 auto;
+	border-color: transparent;
+	background: transparent;
+	color: var(--fc-muted);
+
+	&[aria-current="page"] {
+		background: var(--fc-primary-bg);
+		color: var(--fc-text);
+		font-weight: var(--fc-weight-semibold);
+	}
 }
 
 .fileButton {
 	position: relative;
 	display: inline-flex;
 	align-items: center;
-	font-size: var(--font-ui-small);
 
 	input {
 		position: absolute;
@@ -86,55 +98,72 @@
 	flex-direction: column;
 	gap: 4px;
 	overflow: auto;
+	padding: 3px;
 }
 
-.cue,
-.record {
+.workspace .cue {
 	display: grid;
-	grid-template-columns: 64px minmax(0, 1fr);
-	gap: 4px 10px;
+	grid-template-columns: minmax(0, 1fr);
+	flex: 0 0 auto;
+	gap: 4px;
 	width: 100%;
+	padding: 12px;
+	border-color: transparent;
+	background: transparent;
 	text-align: left;
-}
+	line-height: var(--fc-line-reading);
 
-.cue.selected {
-	border-color: var(--interactive-accent);
-	background: color-mix(in srgb, var(--interactive-accent) 12%, var(--background-primary));
-}
+	&:hover:not(:disabled) {
+		background: var(--fc-surface-hover);
+	}
 
-.cue.current {
-	box-shadow: inset 3px 0 var(--interactive-accent);
+	&.selected {
+		background: var(--fc-primary-bg);
+	}
+
+	&.current {
+		// The root resets bare-button shadows with a more specific selector.
+		box-shadow: inset 3px 0 var(--interactive-accent) !important;
+	}
 }
 
 .time {
-	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
+	color: var(--fc-muted);
+	font-size: var(--fc-font-xs);
 	font-variant-numeric: tabular-nums;
 }
 
 .original,
-.translation {
-	grid-column: 2;
+.translation,
+.draft {
 	min-width: 0;
-	word-break: break-word;
+	overflow-wrap: anywhere;
+}
+
+.original {
+	color: var(--fc-text);
+	font-size: var(--fc-font-md);
 }
 
 .translation {
-	color: var(--text-muted);
+	color: var(--fc-muted);
 }
 
 .draft {
-	grid-column: 2;
 	color: var(--text-warning);
-	font-size: var(--font-ui-smaller);
+	font-size: var(--fc-font-xs);
 }
 
 .selection,
 .task,
 .practice {
-	padding: 9px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	padding: 12px;
 	border: 1px solid var(--fc-line-soft);
 	border-radius: 8px;
+	background: var(--fc-surface-section);
 }
 
 .rangeInputs,
@@ -146,12 +175,22 @@
 }
 
 .rangeInputs label,
-.editor label {
+.editor label,
+.practice label {
 	display: flex;
-	min-width: 100px;
+	min-width: 0;
+	max-width: 100%;
+	flex: 1 1 120px;
 	flex-direction: column;
 	gap: 4px;
-	font-size: var(--font-ui-smaller);
+	color: var(--fc-muted);
+	font-size: var(--fc-font-sm);
+}
+
+.workspace input,
+.workspace textarea {
+	max-width: 100%;
+	box-sizing: border-box;
 }
 
 .rangeInputs input {
@@ -159,52 +198,81 @@
 }
 
 .editor textarea {
-	min-width: 170px;
+	width: 100%;
+	min-width: 0;
 	min-height: 56px;
 }
 
 .task p,
 .empty {
 	margin: 4px 0;
-	color: var(--text-muted);
+	color: var(--fc-muted);
 }
 
 .record {
+	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto;
 	align-items: start;
+	gap: 8px;
+	width: 100%;
+	overflow-wrap: anywhere;
 }
 
 .record button:first-child {
 	text-align: left;
 }
 
+.workspace button.primaryAction,
+.floating button.primaryAction {
+	border-color: transparent;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	font-weight: var(--fc-weight-semibold);
+
+	&:hover:not(:disabled) {
+		background: var(--interactive-accent-hover);
+	}
+}
+
+.workspace [role="alert"] {
+	width: 100%;
+	margin: 0;
+	color: var(--text-error);
+	font-size: var(--fc-font-sm);
+	overflow-wrap: anywhere;
+}
+
 .floating {
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
-	padding: 8px 12px;
-	background: #111418;
-	color: #f5f6f8;
+	gap: 8px;
+	padding: 12px;
+	flex: 0 1 auto;
+	min-height: 0;
+	max-height: 40%;
+	overflow: auto;
+	border-top: 1px solid var(--fc-line-soft);
+	background: var(--fc-surface-card);
+	color: var(--fc-text);
 
 	p {
 		margin: 0;
+		overflow-wrap: anywhere;
+		line-height: var(--fc-line-reading);
 	}
 
 	p + p {
-		color: #c4c8d0;
-	}
-
-	button {
-		background: #20262e;
-		color: #f5f6f8;
+		color: var(--fc-muted);
 	}
 }
 
 @media (pointer: coarse) {
 	.workspace button,
 	.workspace select,
+	.workspace input,
 	.fileButton,
 	.floating button {
+		min-width: 40px;
 		min-height: 40px;
 	}
 }
