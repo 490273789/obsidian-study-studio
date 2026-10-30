@@ -14,11 +14,11 @@ import {
 } from "./video-player/feature";
 import { createAudioPracticeFeature } from "./audio-practice/feature";
 import { MediaTranscriptionEngine } from "../core/media/transcription/mediaTranscriptionEngine";
-import { MediaFailureError } from "../core/media/failures";
 import {
-	TranslationConfigurationChangedError,
-	TranslationExecution,
-} from "./translation/domain/translationExecution";
+	MediaSubtitlePipeline,
+	type SubtitleTranslationPort,
+} from "../core/media/subtitles/mediaSubtitlePipeline";
+import { TranslationExecution } from "./translation/domain/translationExecution";
 import { translateYoudao } from "./translation/domain/youdao";
 
 export type { VideoShadowingCue, VideoShadowingServices };
@@ -30,8 +30,8 @@ export interface VideoShadowingServicesDeps {
 }
 
 /**
- * Creates the video shadowing adapter combining the deep core media transcription
- * engine and translation execution without borrowing feature-internal runtimes (ADR-0012).
+ * Creates the video shadowing adapter combining the deep core media subtitle
+ * pipeline and translation execution without borrowing feature-internal runtimes (ADR-0012).
  */
 export function createVideoShadowingServices(
 	deps: VideoShadowingServicesDeps,
@@ -48,53 +48,22 @@ export function createVideoShadowingServices(
 			translateYoudao(connection, text, direction, deps.net, signal),
 	});
 
-	return {
-		async transcribe(audio, provider, signature, signal) {
-			try {
-				const result = await transcription.transcribe({
-					audio,
-					provider,
-					expectedSignature: signature,
-					signal,
-				});
-				return result.cues.flatMap((cue) =>
-					cue.start !== null && cue.end !== null
-						? [{ start: cue.start, end: cue.end, text: cue.text }]
-						: [],
-				);
-			} catch (error) {
-				if (error instanceof MediaFailureError && error.failure.kind === "config-drift") {
-					throw new Error("转写配置已变化，请重新生成字幕。");
-				}
-				throw error;
-			}
-		},
-		getTranscriptionSignature(provider) {
-			return transcription.getSignature(provider);
-		},
-		getTranslationProfileId(selected) {
-			return translation.prepare(selected, "en-zh").profileId;
-		},
-		getTranslationSignature(profileId) {
-			return translation.prepare(profileId, "en-zh").signature;
-		},
-		listTranslationProfiles() {
-			return translation.listProfiles();
-		},
-		async translate(text, profileId, signature, signal) {
-			try {
-				const output = await translation
-					.prepare(profileId, "en-zh")
-					.translate(text, signal, signature);
-				return output.text;
-			} catch (error) {
-				if (error instanceof TranslationConfigurationChangedError) {
-					throw new Error("翻译配置已变化，请重新生成字幕。");
-				}
-				throw error;
-			}
+	const translationPort: SubtitleTranslationPort = {
+		getProfileId: (selected) => translation.prepare(selected, "en-zh").profileId,
+		getSignature: (profileId) => translation.prepare(profileId, "en-zh").signature,
+		listProfiles: () => translation.listProfiles(),
+		translate: async (text, profileId, expectedSignature, signal) => {
+			const output = await translation
+				.prepare(profileId, "en-zh")
+				.translate(text, signal ?? new AbortController().signal, expectedSignature);
+			return output.text;
 		},
 	};
+
+	return new MediaSubtitlePipeline({
+		transcription,
+		translation: translationPort,
+	});
 }
 
 interface WorkbenchModuleDeps {

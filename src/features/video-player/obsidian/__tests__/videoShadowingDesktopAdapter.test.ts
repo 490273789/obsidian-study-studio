@@ -89,11 +89,9 @@ describe("VideoShadowingDesktopAdapter", () => {
 		const fakeWindow2 = { require: vi.fn() } as unknown as Window;
 
 		const services: VideoShadowingServices = {
-			transcribe: vi.fn(),
-			translate: vi.fn(),
-			getTranscriptionSignature: vi.fn().mockResolvedValue("trans-sig"),
-			getTranslationProfileId: vi.fn(() => "profile-1"),
-			getTranslationSignature: vi.fn(() => "trans-sig"),
+			transcribe: vi.fn().mockResolvedValue([{ start: 0, end: 1, text: "hello" }]),
+			translate: vi.fn().mockResolvedValue("你好"),
+			getSignature: vi.fn().mockResolvedValue("test-sig"),
 			listTranslationProfiles: vi.fn(() => []),
 		};
 
@@ -109,6 +107,72 @@ describe("VideoShadowingDesktopAdapter", () => {
 
 		// Change presenter window to fakeWindow2
 		adapter.bindPresenterWindow(fakeWindow2);
+
+		adapter.dispose();
+	});
+
+	it("delegates transcription and translation through pipeline services without JSON unpacking", async () => {
+		const fakeWindow = {
+			require: vi.fn(() => ({
+				stat: vi.fn().mockResolvedValue({ mtimeMs: 1000, size: 2000 }),
+			})),
+		} as unknown as Window;
+
+		const services: VideoShadowingServices = {
+			transcribe: vi.fn().mockResolvedValue([{ start: 0, end: 1.5, text: "hello world" }]),
+			translate: vi.fn().mockResolvedValue("你好世界"),
+			getSignature: vi.fn().mockResolvedValue("pipeline-sig-123"),
+			listTranslationProfiles: vi.fn(() => [{ id: "p1", name: "Profile 1" }]),
+		};
+
+		const settings = normalizeVideoPlayerSettings({
+			shadowTranscriptionProvider: "bailian",
+			shadowTranslationProfileId: "prof-a",
+		});
+
+		const adapter = new VideoShadowingDesktopAdapter({
+			app,
+			readSettings: () => settings,
+			runtime,
+			services,
+			initialWindow: fakeWindow,
+		});
+
+		expect(adapter.jobs).toBeDefined();
+
+		const source = sources[0]!;
+
+		// Trigger service signature generation via taskConfig
+		// @ts-expect-error accessing private taskConfig for verification
+		const config = await adapter.taskConfig(source);
+		expect(config.serviceSignature).toBe("pipeline-sig-123");
+		expect(services.getSignature).toHaveBeenCalledWith({
+			transcriptionProvider: "bailian",
+			translationProfileId: "prof-a",
+		});
+
+		// Verify jobs.ports transcribe and translate delegate directly to services
+		// @ts-expect-error accessing private ports on jobs
+		const ports = adapter.jobs.ports;
+		expect(ports.translate).toBeDefined();
+		const mockTask = {
+			source,
+			config: { serviceSignature: "opaque-sig-xyz", sourceSignature: "src-sig" },
+			nextOffset: 0,
+			totalDuration: 10,
+			status: "running" as const,
+			error: null,
+		};
+		const dummyBuffer = new ArrayBuffer(8);
+		const signal = new AbortController().signal;
+
+		const cues = await ports.transcribe(dummyBuffer, mockTask, signal);
+		expect(services.transcribe).toHaveBeenCalledWith(dummyBuffer, "opaque-sig-xyz", signal);
+		expect(cues).toEqual([{ start: 0, end: 1.5, text: "hello world" }]);
+
+		const translated = await ports.translate!("hello world", mockTask, signal);
+		expect(services.translate).toHaveBeenCalledWith("hello world", "opaque-sig-xyz", signal);
+		expect(translated).toBe("你好世界");
 
 		adapter.dispose();
 	});

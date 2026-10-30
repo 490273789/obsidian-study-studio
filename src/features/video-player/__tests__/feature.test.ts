@@ -83,9 +83,7 @@ describe("video player feature", () => {
 			shadowing: {
 				transcribe: vi.fn(async () => []),
 				translate: vi.fn(async () => ""),
-				getTranscriptionSignature: async () => "configured",
-				getTranslationProfileId: () => "",
-				getTranslationSignature: () => "default",
+				getSignature: vi.fn(async () => "configured"),
 				listTranslationProfiles: () => [],
 			},
 		});

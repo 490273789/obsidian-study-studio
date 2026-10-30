@@ -1,4 +1,8 @@
 import type { App } from "obsidian";
+import type {
+	VideoShadowingCue,
+	SubtitlePipelineSignatureOptions,
+} from "../../../core/media/subtitles/mediaSubtitlePipeline";
 import { VideoSubtitleJobs, type ShadowVideoSource } from "../domain/shadowSubtitlesJobs";
 import type { ShadowRecorderPort } from "../domain/shadowingSession";
 import {
@@ -16,28 +20,16 @@ import type { VideoPlayerRuntime } from "../domain/videoPlayerRuntime";
 const SHADOW_ENABLED_KEY = "study-studio.shadowing.enabled-sources.v1";
 const FFMPEG_PATH_KEY = "study-studio.shadowing.ffmpeg-path.v1";
 
-export interface VideoShadowingCue {
-	readonly start: number;
-	readonly end: number;
-	readonly text: string;
-}
+export type { VideoShadowingCue };
 
 export interface VideoShadowingServices {
 	transcribe(
 		audio: ArrayBuffer,
-		provider: "bailian" | "openai-compatible",
 		signature: string,
-		signal: AbortSignal,
+		signal?: AbortSignal,
 	): Promise<readonly VideoShadowingCue[]>;
-	translate(
-		text: string,
-		profileId: string,
-		signature: string,
-		signal: AbortSignal,
-	): Promise<string>;
-	getTranscriptionSignature(provider: "bailian" | "openai-compatible"): Promise<string>;
-	getTranslationProfileId(selected: string): string;
-	getTranslationSignature(profileId: string): string;
+	translate(text: string, signature: string, signal?: AbortSignal): Promise<string>;
+	getSignature(options: SubtitlePipelineSignatureOptions): Promise<string>;
 	listTranslationProfiles(): { id: string; name: string }[];
 }
 
@@ -116,39 +108,10 @@ export class VideoShadowingDesktopAdapter {
 						ffmpegPath: this.ffmpegPath || undefined,
 					})(source, offset, signal),
 				serviceSignature: this.serviceSignature.bind(this),
-				transcribe: async (audio, task, signal) => {
-					if (task.config.serviceSignature !== (await this.serviceSignature())) {
-						throw new Error("转写配置已变化，请重新生成字幕。");
-					}
-					const signature = JSON.parse(task.config.serviceSignature) as {
-						provider: "bailian" | "openai-compatible";
-						transcription: string;
-					};
-					return shadowing.transcribe(
-						audio,
-						signature.provider,
-						signature.transcription,
-						signal,
-					);
-				},
-				translate: async (text, task, signal) => {
-					if (task.config.serviceSignature !== (await this.serviceSignature())) {
-						throw new Error("翻译配置已变化，请重新生成字幕。");
-					}
-					const signature = JSON.parse(task.config.serviceSignature) as {
-						translationProfileId: string;
-						translation: string;
-					};
-					if (!signature.translationProfileId) {
-						throw new Error("请在影子跟读设置中启用翻译配置。");
-					}
-					return shadowing.translate(
-						text,
-						signature.translationProfileId,
-						signature.translation,
-						signal,
-					);
-				},
+				transcribe: (audio, task, signal) =>
+					shadowing.transcribe(audio, task.config.serviceSignature, signal),
+				translate: (text, task, signal) =>
+					shadowing.translate(text, task.config.serviceSignature, signal),
 			});
 
 			this.shadowingSession = new ShadowingWorkspaceSession({
@@ -229,16 +192,9 @@ export class VideoShadowingDesktopAdapter {
 	private async serviceSignature(): Promise<string> {
 		if (!this.services) return "";
 		const settings = this.readSettings();
-		const translationProfileId = this.services.getTranslationProfileId(
-			settings.shadowTranslationProfileId,
-		);
-		return JSON.stringify({
-			provider: settings.shadowTranscriptionProvider,
-			transcription: await this.services.getTranscriptionSignature(
-				settings.shadowTranscriptionProvider,
-			),
-			translationProfileId,
-			translation: this.services.getTranslationSignature(translationProfileId),
+		return this.services.getSignature({
+			transcriptionProvider: settings.shadowTranscriptionProvider,
+			translationProfileId: settings.shadowTranslationProfileId,
 		});
 	}
 
