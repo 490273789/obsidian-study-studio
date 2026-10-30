@@ -1,5 +1,5 @@
 import { stringArrayEquals } from "../../../../core/shared/utils";
-import { Card, State } from "ts-fsrs";
+import type { Card } from "ts-fsrs";
 import type {
 	Deck,
 	DeckStats,
@@ -10,11 +10,7 @@ import type {
 	StudyRating,
 	StudySettings,
 } from "../../../../core/shared/types";
-import {
-	DECK_INDEX_CACHE_VERSION,
-	type DeckIndexCache,
-	type DeckIndexCacheStore,
-} from "../../../../core/storage/deckIndexCache";
+import type { DeckIndexCacheStore } from "../../../../core/storage/deckIndexCache";
 import type { FlashcardStudySettings } from "../../settings/slice";
 import { FSRSScheduler, toFSRSRating } from "../sessions/scheduler";
 import type { StudyCardSchedule } from "../sessions/studySessionEngine";
@@ -73,6 +69,7 @@ import {
 	type PersistedDeckLearningState,
 	type SerializedDeck,
 } from "./persistenceTypes";
+import { DeckSourceIndex, LEARNING_PLACEHOLDER_DECK_ID } from "./deckSourceIndex";
 
 export type {
 	LearningStateDocument,
@@ -83,7 +80,7 @@ export type {
 	SerializedFSRSCard,
 } from "./persistenceTypes";
 
-const LEARNING_PLACEHOLDER_DECK_ID = "__markdown-rebuild__";
+export { LEARNING_PLACEHOLDER_DECK_ID };
 
 export type { SessionJournalTimer } from "./sessionJournal";
 
@@ -103,55 +100,6 @@ interface FlashcardRepositoryOptions {
 	journalTimer?: SessionJournalTimer;
 }
 
-interface CardIndexLocation {
-	deckId: string;
-	cardIndex: number;
-}
-
-/**
- * Finds the deck and position that hold one card identity. The index is the
- * fast path; the deck's own origin and a full scan keep moved or rebuilt decks
- * working without trusting a stale index entry.
- */
-function findCardLocation(
-	decks: ReadonlyMap<string, Deck>,
-	deckId: string,
-	cardId: string,
-	cardIndex?: ReadonlyMap<string, CardIndexLocation>,
-): { deckId: string; deck: Deck; cardIndex: number } | null {
-	if (cardIndex) {
-		const location = cardIndex.get(cardId);
-		if (location) {
-			const candidateDeck = decks.get(location.deckId);
-			const card = candidateDeck?.cards[location.cardIndex];
-			if (card && card.id === cardId) {
-				return {
-					deckId: location.deckId,
-					deck: candidateDeck!,
-					cardIndex: location.cardIndex,
-				};
-			}
-		}
-	}
-	const originDeck = decks.get(deckId);
-	const originIndex = originDeck?.cards.findIndex((card) => card.id === cardId) ?? -1;
-	if (originDeck && originIndex !== -1) {
-		return { deckId, deck: originDeck, cardIndex: originIndex };
-	}
-	for (const [candidateDeckId, deck] of decks) {
-		if (candidateDeckId === deckId) continue;
-		const cardIndexInDeck = deck.cards.findIndex((card) => card.id === cardId);
-		if (cardIndexInDeck !== -1) {
-			return {
-				deckId: candidateDeckId,
-				deck,
-				cardIndex: cardIndexInDeck,
-			};
-		}
-	}
-	return null;
-}
-
 /**
  * FlashcardRepository - the storage-internal persistence authority for the 闪卡
  * feature slice.
@@ -164,11 +112,10 @@ function findCardLocation(
 export class FlashcardRepository
 	implements DeckHomeRepository, SessionPersistencePort, FlashcardLearningActivityPort
 {
-	private readonly deckIndexCache: DeckIndexCacheStore<SerializedDeck> | null;
+	private readonly deckIndex: DeckSourceIndex;
 	private readonly journals: SessionJournalCoordinator;
 	private readonly documents: LearningDocumentStore;
 
-	private decks: Map<string, Deck> = new Map();
 	private scheduler: FSRSScheduler;
 	private settings: FlashcardStudySettings;
 	private studyHistory: StudyHistoryEntry[] = [];
@@ -178,26 +125,20 @@ export class FlashcardRepository
 	private spellingSnapshot: SpellingProgressSnapshot = Object.freeze({});
 	private challengeProgress: ChallengeProgress | null = null;
 	private challengeProgressRevision = 0;
-	private availableTags: string[] = [];
-	private hasAvailableTagsSnapshotValue = false;
 	private continuity: PersistedCardIdentityContinuityState = createEmptyContinuityState();
 
-	/** Bumped only when the derived deck index changes, never by scheduling commits. */
-	private deckStructureRevision = 0;
-	private cardIndex = new Map<string, CardIndexLocation>();
 	private readonly codec = new CardCodec();
 	private persistedCardStateCache = new WeakMap<FlashCard, PersistedCardLearningState>();
-	private deckDueTimes = new Map<string, number[]>();
-	private deckDueTimesValid = false;
 	private dataLoaded = false;
 	private loadPromise: Promise<void> | null = null;
 	private deckIndexRequested = false;
 	private deckIndexLoaded = false;
-	private cacheWriteTail: Promise<void> = Promise.resolve();
 	private disposed = false;
 
 	constructor(options: FlashcardRepositoryOptions) {
-		this.deckIndexCache = options.deckIndexCache ?? null;
+		this.deckIndex = new DeckSourceIndex({
+			deckIndexCache: options.deckIndexCache ?? null,
+		});
 		this.documents = new LearningDocumentStore({
 			authority: options.authority,
 			onAuthorityChange: (change) => this.handleAuthorityChange(change),
@@ -268,15 +209,14 @@ export class FlashcardRepository
 		if (this.deckIndexLoaded) return;
 		await this.documents.enqueueOperation(async () => {
 			if (this.deckIndexLoaded) return;
-			const cache = await this.deckIndexCache?.load();
+			const cache = await this.deckIndex.loadCache();
 			if (this.disposed) return;
 			if (cache) {
-				this.decks = new Map();
-				this.restoreDeckIndexCache(
+				this.deckIndex.restoreFromCache(
 					cache,
 					this.documents.getPersistedLearning() ?? emptyLearningState(),
 				);
-				this.refreshDerivedState();
+				this.deckIndex.refreshDerivedState();
 				// The cache was hydrated from the last merged learning document;
 				// reapply journal card states that have not been merged yet.
 				this.journals.applyPending(false);
@@ -295,7 +235,7 @@ export class FlashcardRepository
 	}
 
 	getDeckStructureRevision(): number {
-		return this.deckStructureRevision;
+		return this.deckIndex.getDeckStructureRevision();
 	}
 
 	subscribe(listener: () => void): () => void {
@@ -307,67 +247,27 @@ export class FlashcardRepository
 	}
 
 	getAllDecks(): Deck[] {
-		return Array.from(this.decks.values());
+		return this.deckIndex.getAllDecks();
 	}
 
 	getDeck(id: string): Deck | undefined {
-		return this.decks.get(id);
+		return this.deckIndex.getDeck(id);
 	}
 
 	getAvailableTags(): string[] {
-		return [...this.availableTags];
+		return this.deckIndex.getAvailableTags();
 	}
 
 	hasAvailableTagsSnapshot(): boolean {
-		return this.hasAvailableTagsSnapshotValue;
+		return this.deckIndex.hasAvailableTagsSnapshot();
 	}
 
 	getDeckStats(deck: Deck, now: Date = new Date()): DeckStats {
-		let newCards = 0;
-		let dueCards = 0;
-		let learningCards = 0;
-		let reviewCards = 0;
-		let relearningCards = 0;
-
-		for (const card of deck.cards) {
-			switch (card.fsrsCard.state) {
-				case State.New:
-					newCards++;
-					break;
-				case State.Learning:
-					learningCards++;
-					if (card.fsrsCard.due <= now) dueCards++;
-					break;
-				case State.Review:
-					reviewCards++;
-					if (card.fsrsCard.due <= now) dueCards++;
-					break;
-				case State.Relearning:
-					relearningCards++;
-					if (card.fsrsCard.due <= now) dueCards++;
-					break;
-			}
-		}
-
-		return {
-			totalCards: deck.cards.length,
-			newCards,
-			dueCards,
-			learningCards,
-			reviewCards,
-			relearningCards,
-		};
+		return this.deckIndex.getDeckStats(deck, now);
 	}
 
 	getNextDueTime(now: Date): number | null {
-		if (!this.deckDueTimesValid) this.rebuildDeckDueTimes();
-		const nowMs = now.getTime();
-		let min = Infinity;
-		for (const dueTimes of this.deckDueTimes.values()) {
-			const due = findFirstDueAfter(dueTimes, nowMs);
-			if (due !== null && due < min) min = due;
-		}
-		return min === Infinity ? null : min;
+		return this.deckIndex.getNextDueTime(now);
 	}
 
 	getEffectiveStudySettings(deckId: string): StudySettings {
@@ -389,22 +289,7 @@ export class FlashcardRepository
 	}
 
 	getCard(deckId: string, cardId: string): FlashCard | undefined {
-		// Session reads hit the current card several times per answer, so consult
-		// the maintained identity index before falling back to linear deck scans.
-		const location = this.cardIndex.get(cardId);
-		if (location) {
-			const indexedDeck = this.decks.get(location.deckId);
-			const indexedCard = indexedDeck?.cards[location.cardIndex];
-			if (indexedCard && indexedCard.id === cardId) return indexedCard;
-		}
-		const deck = this.decks.get(deckId);
-		const cardInOriginDeck = deck?.cards.find((card) => card.id === cardId);
-		if (cardInOriginDeck) return cardInOriginDeck;
-		for (const candidateDeck of this.decks.values()) {
-			const card = candidateDeck.cards.find((candidate) => candidate.id === cardId);
-			if (card) return card;
-		}
-		return undefined;
+		return this.deckIndex.getCard(deckId, cardId);
 	}
 
 	getStudyHistory(): StudyHistoryEntry[] {
@@ -484,7 +369,7 @@ export class FlashcardRepository
 		await this.loadDeckIndex();
 		const writeSet = formatSessionCommit(commit);
 		const missing = writeSet.cardUpdates.find(
-			(update) => !findCardLocation(this.decks, update.deckId, update.cardId, this.cardIndex),
+			(update) => !this.deckIndex.findCardLocation(update.deckId, update.cardId),
 		);
 		if (missing) {
 			return {
@@ -594,7 +479,7 @@ export class FlashcardRepository
 					true,
 				);
 			}
-			const nextDecks = cloneDecksForTransition(this.decks, transition, this.cardIndex);
+			const nextDecks = this.deckIndex.cloneDecksForTransition(transition);
 			const committedCards = this.getCommittedCardStates();
 			let nextCards = committedCards;
 			const nextSpellingProgress = cloneSpellingProgress(this.spellingProgress);
@@ -609,11 +494,10 @@ export class FlashcardRepository
 				transition.learningActivity?.occurredAt ?? transition.historyEntries[0]?.occurredAt;
 			const now = occurredAt === undefined ? new Date() : new Date(occurredAt);
 			for (const update of transition.cardUpdates) {
-				const location = findCardLocation(
-					nextDecks,
+				const location = this.deckIndex.findCardLocation(
 					update.deckId,
 					update.cardId,
-					this.cardIndex,
+					nextDecks,
 				);
 				if (!location) continue;
 				updatedDeckIds.add(location.deckId);
@@ -662,13 +546,13 @@ export class FlashcardRepository
 					Math.max(requestedJournalSeq, this.journals.watermark),
 				),
 				install: () => {
-					this.decks = nextDecks;
+					this.deckIndex.setDecks(nextDecks);
 					this.studyHistory = nextHistory;
 					this.spellingProgress = nextSpellingProgress;
 					this.dailyLearningActivity = nextActivity;
 					this.installChallengeProgress(nextChallengeProgress);
 					for (const deckId of updatedDeckIds) {
-						this.refreshDeckDueTimes(deckId, nextDecks);
+						this.deckIndex.refreshDeckDueTimes(deckId, nextDecks);
 					}
 				},
 			};
@@ -685,10 +569,10 @@ export class FlashcardRepository
 				await this.loadDeckIndex();
 				return {
 					configuredTags: [...this.settings.flashcardTags],
-					...(this.hasAvailableTagsSnapshotValue
-						? { availableTags: [...this.availableTags] }
+					...(this.deckIndex.hasAvailableTagsSnapshot()
+						? { availableTags: this.deckIndex.getAvailableTags() }
 						: {}),
-					decks: new Map(this.decks),
+					decks: new Map(this.deckIndex.getDecksMap()),
 					continuity: cloneContinuityState(this.continuity),
 				};
 			},
@@ -709,20 +593,26 @@ export class FlashcardRepository
 						]);
 						for (const deckId of nextDecks.keys()) {
 							if (touched.has(deckId)) continue;
-							const previous = this.decks.get(deckId);
+							const previous = this.deckIndex.getDeck(deckId);
 							if (previous) nextDecks.set(deckId, previous);
 						}
 					}
 					let cacheDecks: ReadonlyMap<string, Deck> | null = null;
 					let cacheTags: readonly string[] = [];
 					await this.commitAuthority(() => {
-						const nextAvailableTags = [...(state.availableTags ?? this.availableTags)];
+						const nextAvailableTags = [
+							...(state.availableTags ?? this.deckIndex.getAvailableTags()),
+						];
 						const nextSpellingProgress = cloneSpellingProgress(this.spellingProgress);
-						this.pruneSpellingProgress(this.decks, nextDecks, nextSpellingProgress);
+						this.pruneSpellingProgress(
+							this.deckIndex.getDecksMap(),
+							nextDecks,
+							nextSpellingProgress,
+						);
 						const nextContinuity = cloneContinuityState(state.continuity);
-						const previousDecks = this.decks;
-						const previousTags = this.availableTags;
-						const hadTagsSnapshot = this.hasAvailableTagsSnapshotValue;
+						const previousDecks = this.deckIndex.getDecksMap();
+						const previousTags = this.deckIndex.getAvailableTags();
+						const hadTagsSnapshot = this.deckIndex.hasAvailableTagsSnapshot();
 						const decksChanged = change
 							? change.changedDeckIds.length > 0 || change.removedDeckIds.length > 0
 							: !sameDeckObjects(previousDecks, nextDecks);
@@ -746,14 +636,13 @@ export class FlashcardRepository
 									? change.tagsChanged
 									: !hadTagsSnapshot ||
 										!stringArrayEquals(previousTags, nextAvailableTags);
-								this.decks = nextDecks;
+								this.deckIndex.installSynchronizedDecks(
+									nextDecks,
+									nextAvailableTags,
+									decksChanged,
+								);
 								this.spellingProgress = nextSpellingProgress;
-								this.availableTags = nextAvailableTags;
-								this.hasAvailableTagsSnapshotValue = true;
 								this.continuity = nextContinuity;
-								// Reusing deck objects keeps the derived index and due-time
-								// caches valid; only a real deck change invalidates them.
-								if (decksChanged) this.refreshDerivedState();
 								if (decksChanged || tagsChanged) {
 									cacheDecks = nextDecks;
 								}
@@ -762,7 +651,7 @@ export class FlashcardRepository
 						};
 					}, true);
 					this.publishRevision();
-					if (cacheDecks) this.scheduleDeckIndexCacheWrite(cacheDecks, cacheTags);
+					if (cacheDecks) this.deckIndex.scheduleCacheWrite(cacheDecks, cacheTags);
 				});
 			},
 		};
@@ -777,6 +666,7 @@ export class FlashcardRepository
 		}
 		this.journals.dispose();
 		this.documents.dispose();
+		this.deckIndex.dispose();
 	}
 
 	private handleAuthorityChange(change: FlashcardAuthorityChange): Promise<void> {
@@ -790,7 +680,7 @@ export class FlashcardRepository
 				this.settings = structuredClone(settings);
 				this.scheduler = new FSRSScheduler(this.settings);
 				// Eligibility and effective study settings derive from the slice.
-				this.deckStructureRevision++;
+				this.deckIndex.bumpDeckStructureRevision();
 				this.publishRevision();
 			});
 		}
@@ -823,14 +713,14 @@ export class FlashcardRepository
 		if (snapshot.content.kind === "legacy") {
 			this.restoreLegacyDocument(snapshot.content.document);
 			const learning = this.buildLearningState(
-				this.decks,
+				this.deckIndex.getDecksMap(),
 				this.studyHistory,
 				this.spellingProgress,
 				this.continuity,
 			);
 			try {
 				await this.documents.commitLegacy(learning);
-				this.documents.recordBaseline(learning, this.decks);
+				this.documents.recordBaseline(learning, this.deckIndex.getDecksMap());
 			} catch (error) {
 				throw new FlashcardPersistenceError(
 					"migration-failed",
@@ -840,7 +730,10 @@ export class FlashcardRepository
 				);
 			}
 			await this.journals.replay();
-			this.scheduleDeckIndexCacheWrite(this.decks, this.availableTags);
+			this.deckIndex.scheduleCacheWrite(
+				this.deckIndex.getDecksMap(),
+				this.deckIndex.getAvailableTags(),
+			);
 			return;
 		}
 
@@ -857,36 +750,40 @@ export class FlashcardRepository
 		this.documents.clearBaseline();
 		this.journals.reset(normalizeJournalSeq(learning.journalSeq));
 		this.deckIndexLoaded = false;
-		this.decks = new Map();
-		this.availableTags = [];
-		this.hasAvailableTagsSnapshotValue = false;
 		this.codec.reset();
+		this.deckIndex.clear();
 		this.persistedCardStateCache = new WeakMap();
-		this.deckDueTimes = new Map();
-		const cache = this.deckIndexRequested ? await this.deckIndexCache?.load() : null;
-		if (cache) this.restoreDeckIndexCache(cache, learning);
-		else this.restoreLearningPlaceholders(learning);
+		const cache = this.deckIndexRequested ? await this.deckIndex.loadCache() : null;
+		if (cache) this.deckIndex.restoreFromCache(cache, learning);
+		else this.deckIndex.restorePlaceholders(learning);
 		this.studyHistory = (learning.studyHistory ?? []).map((entry) => ({ ...entry }));
 		this.dailyLearningActivity = restoreDailyLearningActivity(learning.dailyLearningActivities);
 		this.spellingProgress = normalizeSpellingProgress(learning.spellingProgress);
 		this.installChallengeProgress(normalizeChallengeProgress(learning.challengeProgress));
 		this.continuity = cloneContinuityState(learning.continuity);
-		this.refreshDerivedState();
-		this.deckIndexLoaded = this.deckIndexRequested || !this.deckIndexCache;
+		this.deckIndex.refreshDerivedState();
+		this.deckIndexLoaded = this.deckIndexRequested || !this.deckIndex.hasCacheStore;
 	}
 
 	private restoreLegacyDocument(legacy: LegacyFlashcardDocument): void {
 		this.journals.reset(0);
-		this.decks = new Map(
-			Object.entries(legacy.decks).map(([id, deck]) => [id, this.codec.decodeDeck(deck)]),
-		);
+		const decodedDecks = Object.entries(legacy.decks).map(([id, deck]) => [
+			id,
+			this.codec.decodeDeck(deck),
+		]) as [string, Deck][];
+		this.deckIndex.restoreLegacyDecks(decodedDecks);
 		this.studyHistory = [...(legacy.studyHistory ?? [])];
 		this.dailyLearningActivity = restoreDailyLearningActivity(undefined);
 		this.spellingProgress = normalizeSpellingProgress(legacy.spellingProgress);
 		this.installChallengeProgress(null);
 		this.continuity = cloneContinuityState(legacy.continuity);
-		this.restoreAvailableTags(legacy.availableTags);
-		this.refreshDerivedState();
+		this.deckIndex.installSynchronizedDecks(
+			new Map(decodedDecks),
+			Array.isArray(legacy.availableTags)
+				? legacy.availableTags.filter((tag): tag is string => typeof tag === "string")
+				: [],
+			true,
+		);
 		this.deckIndexLoaded = true;
 	}
 
@@ -896,7 +793,7 @@ export class FlashcardRepository
 	): Promise<void> {
 		await this.documents.commit(build, {
 			skipUnchanged,
-			baselineDecks: () => this.decks,
+			baselineDecks: () => this.deckIndex.getDecksMap(),
 		});
 	}
 
@@ -914,7 +811,7 @@ export class FlashcardRepository
 	private async mergeJournalDocument(watermark: number): Promise<void> {
 		await this.commitAuthority(() => ({
 			learning: this.buildLearningState(
-				this.decks,
+				this.deckIndex.getDecksMap(),
 				this.studyHistory,
 				this.spellingProgress,
 				this.continuity,
@@ -967,38 +864,7 @@ export class FlashcardRepository
 		spellingAttempts: readonly { cardId: string; correct: boolean; attemptedAt: number }[],
 	): void {
 		if (cardUpdates.length > 0) {
-			const nextDecks = cloneDecksForTransition(
-				this.decks,
-				{
-					cardUpdates,
-					spellingAttempts: [],
-					incrementStudyCountFor: [],
-					historyEntries: [],
-				},
-				this.cardIndex,
-			);
-			const dueTimeChanges: DeckDueTimeChange[] = [];
-			for (const update of cardUpdates) {
-				const location = findCardLocation(
-					nextDecks,
-					update.deckId,
-					update.cardId,
-					this.cardIndex,
-				);
-				if (!location) continue;
-				const previous = location.deck.cards[location.cardIndex]!;
-				dueTimeChanges.push({
-					deckId: location.deckId,
-					previous: previous.fsrsCard,
-					next: update.fsrsCard,
-				});
-				location.deck.cards[location.cardIndex] = {
-					...previous,
-					fsrsCard: update.fsrsCard,
-				};
-			}
-			this.decks = nextDecks;
-			this.applyDeckDueTimeChanges(dueTimeChanges);
+			this.deckIndex.applyCardUpdates(cardUpdates);
 		}
 		if (spellingAttempts.length > 0) {
 			const nextSpellingProgress = cloneSpellingProgress(this.spellingProgress);
@@ -1026,7 +892,10 @@ export class FlashcardRepository
 	private getCommittedCardStates(): Record<string, PersistedCardLearningState> | undefined {
 		// A pending journal already advanced card states in memory, so the persisted
 		// baseline no longer describes this deck snapshot.
-		return this.documents.getCommittedCardStates(this.decks, this.journals.pendingCount > 0);
+		return this.documents.getCommittedCardStates(
+			this.deckIndex.getDecksMap(),
+			this.journals.pendingCount > 0,
+		);
 	}
 
 	private buildLearningState(
@@ -1080,155 +949,6 @@ export class FlashcardRepository
 		return state;
 	}
 
-	private scheduleDeckIndexCacheWrite(
-		decks: ReadonlyMap<string, Deck>,
-		availableTags: readonly string[],
-	): void {
-		this.cacheWriteTail = this.cacheWriteTail
-			.then(() =>
-				this.disposed ? undefined : this.writeDeckIndexCache(decks, availableTags),
-			)
-			.catch((error) => {
-				console.warn("Failed to update the rebuildable deck-index cache:", error);
-			});
-	}
-
-	private async writeDeckIndexCache(
-		decks: ReadonlyMap<string, Deck>,
-		availableTags: readonly string[],
-	): Promise<void> {
-		if (!this.deckIndexCache) return;
-		const serializedDecks: Record<string, SerializedDeck> = {};
-		for (const [id, deck] of decks) serializedDecks[id] = this.codec.deck(deck);
-		await this.deckIndexCache.save({
-			version: DECK_INDEX_CACHE_VERSION,
-			updatedAt: new Date().toISOString(),
-			availableTags: [...availableTags],
-			decks: serializedDecks,
-		});
-	}
-
-	private restoreDeckIndexCache(
-		cache: DeckIndexCache<SerializedDeck>,
-		learning: LearningStateDocument,
-	): void {
-		for (const [deckId, serializedDeck] of Object.entries(cache.decks)) {
-			const deck = this.codec.decodeDeck(serializedDeck);
-			const persistedDeck = learning.decks[deckId];
-			if (persistedDeck) {
-				deck.studyCount = persistedDeck.studyCount;
-				deck.lastStudied = persistedDeck.lastStudied;
-			}
-			for (const card of deck.cards) {
-				const persistedCard = learning.cards[card.id];
-				if (persistedCard)
-					card.fsrsCard = this.codec.decodeFsrsCard(persistedCard.fsrsCard);
-			}
-			this.decks.set(deckId, deck);
-		}
-		this.availableTags = [...cache.availableTags];
-		this.hasAvailableTagsSnapshotValue = true;
-	}
-
-	private restoreLearningPlaceholders(learning: LearningStateDocument): void {
-		const placeholder = (deckId: string): Deck => ({
-			id: deckId,
-			name: deckId.split("/").pop()?.replace(/\.md$/i, "") ?? deckId,
-			filePath: deckId,
-			tag: "",
-			cards: [],
-			studyCount: learning.decks[deckId]?.studyCount ?? 0,
-			lastStudied: learning.decks[deckId]?.lastStudied ?? null,
-		});
-		// Current learning cards need not retain source paths. Keep deck metadata
-		// separately so Markdown rebuilding can reattach it by path.
-		const decks = new Map(Object.keys(learning.decks).map((id) => [id, placeholder(id)]));
-		for (const [cardId, state] of Object.entries(learning.cards)) {
-			const deckId = state.sourceFile ?? LEARNING_PLACEHOLDER_DECK_ID;
-			let deck = decks.get(deckId);
-			if (!deck) {
-				deck = placeholder(deckId);
-				decks.set(deckId, deck);
-			}
-			deck.cards.push({
-				id: cardId,
-				front: "",
-				back: "",
-				fsrsCard: this.codec.decodeFsrsCard(state.fsrsCard),
-				sourceFile: state.sourceFile ?? "",
-				indexInFile: deck.cards.length,
-			});
-		}
-		this.decks = decks;
-	}
-
-	private restoreAvailableTags(value: unknown): void {
-		if (!Array.isArray(value)) return;
-		this.availableTags = Array.from(
-			new Set(value.filter((tag): tag is string => typeof tag === "string")),
-		);
-		this.hasAvailableTagsSnapshotValue = true;
-	}
-
-	private refreshDerivedState(): void {
-		this.deckStructureRevision++;
-		this.rebuildCardIndex();
-		this.deckDueTimesValid = false;
-	}
-
-	private rebuildCardIndex(): void {
-		this.cardIndex.clear();
-		for (const [deckId, deck] of this.decks) {
-			for (let index = 0; index < deck.cards.length; index++) {
-				const card = deck.cards[index]!;
-				if (!this.cardIndex.has(card.id)) {
-					this.cardIndex.set(card.id, { deckId, cardIndex: index });
-				}
-			}
-		}
-	}
-
-	private rebuildDeckDueTimes(decks: ReadonlyMap<string, Deck> = this.decks): void {
-		this.deckDueTimes.clear();
-		for (const [deckId, deck] of decks) {
-			const dueTimes = collectDeckDueTimes(deck);
-			if (dueTimes.length > 0) this.deckDueTimes.set(deckId, dueTimes);
-		}
-		this.deckDueTimesValid = true;
-	}
-
-	/**
-	 * Updates the cached sorted due times for the answered cards only. The journal
-	 * path runs on every answer, so re-sorting the whole deck there would make the
-	 * cache incremental in name only.
-	 */
-	private applyDeckDueTimeChanges(changes: readonly DeckDueTimeChange[]): void {
-		if (!this.deckDueTimesValid) return;
-		for (const change of changes) {
-			const previousDue =
-				change.previous.state === State.New ? null : change.previous.due.getTime();
-			const nextDue = change.next.state === State.New ? null : change.next.due.getTime();
-			if (previousDue === nextDue) continue;
-			const dueTimes = this.deckDueTimes.get(change.deckId) ?? [];
-			if (previousDue !== null) removeSortedValue(dueTimes, previousDue);
-			if (nextDue !== null) insertSortedValue(dueTimes, nextDue);
-			if (dueTimes.length === 0) this.deckDueTimes.delete(change.deckId);
-			else this.deckDueTimes.set(change.deckId, dueTimes);
-		}
-	}
-
-	private refreshDeckDueTimes(deckId: string, decks: ReadonlyMap<string, Deck>): void {
-		if (!this.deckDueTimesValid) return;
-		const deck = decks.get(deckId);
-		if (!deck) {
-			this.deckDueTimes.delete(deckId);
-			return;
-		}
-		const dueTimes = collectDeckDueTimes(deck);
-		if (dueTimes.length === 0) this.deckDueTimes.delete(deckId);
-		else this.deckDueTimes.set(deckId, dueTimes);
-	}
-
 	private pruneSpellingProgress(
 		previousDecks: ReadonlyMap<string, Deck>,
 		nextDecks: ReadonlyMap<string, Deck>,
@@ -1250,7 +970,10 @@ export class FlashcardRepository
 	}
 
 	private publishRevision(): void {
-		this.documents.publishRevision(this.deckStructureRevision, this.challengeProgressRevision);
+		this.documents.publishRevision(
+			this.deckIndex.getDeckStructureRevision(),
+			this.challengeProgressRevision,
+		);
 	}
 }
 
@@ -1353,72 +1076,6 @@ function normalizeSpellingProgress(
 		};
 	}
 	return normalized;
-}
-
-function cloneDecksForTransition(
-	decks: ReadonlyMap<string, Deck>,
-	transition: SessionWriteSet,
-	cardIndex: ReadonlyMap<string, CardIndexLocation>,
-): Map<string, Deck> {
-	const touched = new Set<string>();
-	for (const update of transition.cardUpdates) {
-		const location = findCardLocation(decks, update.deckId, update.cardId, cardIndex);
-		if (location) touched.add(location.deckId);
-	}
-	for (const deckId of transition.incrementStudyCountFor) touched.add(deckId);
-
-	const next = new Map<string, Deck>();
-	for (const [deckId, deck] of decks) {
-		if (!touched.has(deckId)) {
-			next.set(deckId, deck);
-			continue;
-		}
-		next.set(deckId, {
-			...deck,
-			cards: [...deck.cards],
-		});
-	}
-	return next;
-}
-
-interface DeckDueTimeChange {
-	readonly deckId: string;
-	readonly previous: Card;
-	readonly next: Card;
-}
-
-function removeSortedValue(values: number[], value: number): void {
-	const index = values.indexOf(value);
-	if (index >= 0) values.splice(index, 1);
-}
-
-function insertSortedValue(values: number[], value: number): void {
-	let low = 0;
-	let high = values.length;
-	while (low < high) {
-		const middle = low + Math.floor((high - low) / 2);
-		if (values[middle]! < value) low = middle + 1;
-		else high = middle;
-	}
-	values.splice(low, 0, value);
-}
-
-function collectDeckDueTimes(deck: Deck): number[] {
-	return deck.cards
-		.filter((card) => card.fsrsCard.state !== State.New)
-		.map((card) => card.fsrsCard.due.getTime())
-		.sort((left, right) => left - right);
-}
-
-function findFirstDueAfter(sortedDueTimes: readonly number[], now: number): number | null {
-	let low = 0;
-	let high = sortedDueTimes.length;
-	while (low < high) {
-		const middle = low + Math.floor((high - low) / 2);
-		if (sortedDueTimes[middle]! <= now) low = middle + 1;
-		else high = middle;
-	}
-	return sortedDueTimes[low] ?? null;
 }
 
 function cloneSpellingProgress(
