@@ -6,6 +6,8 @@ import {
 	SubtitleDraftEngine,
 	tokenizeUnicodeWords,
 } from "../subtitleDraftEngine";
+import type { SubtitleTranscriptionPort } from "../types";
+import { MediaFailureError } from "../../../../core/media/failures";
 import type {
 	AudioChunk,
 	AudioSourceFiles,
@@ -227,13 +229,18 @@ describe("SubtitleDraftEngine - Deep Module Lifecycle & Actions", () => {
 			],
 		}));
 
+		const transcription: SubtitleTranscriptionPort = {
+			getSignature: vi.fn(async () => "sig-test"),
+			transcribe: async (chunk: AudioChunk) => transcribe(chunk),
+		};
+
 		const engine = new SubtitleDraftEngine({
 			prepare,
-			transcribe,
+			transcription,
 			drafts: draftStore,
 		});
 
-		return { engine, prepare, transcribe, draftStore, savedDrafts };
+		return { engine, prepare, transcribe, transcription, draftStore, savedDrafts };
 	}
 
 	it("executes the full generation pipeline and delivers precomputed highlightable cues in snapshot", async () => {
@@ -258,33 +265,26 @@ describe("SubtitleDraftEngine - Deep Module Lifecycle & Actions", () => {
 		expect(snapshot.cues[1]!.highlightable).toBe(true);
 	});
 
-	it("reuses a complete legacy Bailian draft and replaces its plaintext fingerprint", async () => {
-		const { engine, prepare, transcribe, draftStore, savedDrafts } = setupEngine();
+	it("reuses a complete draft when fingerprint and signature match", async () => {
+		const { engine, prepare, transcribe, transcription, draftStore, savedDrafts } =
+			setupEngine();
 		const input: GenerationInput = {
 			audio: createMockAudio(),
 			name: "test.mp3",
-			taskKey: "legacy-complete",
-			config: mockConfig,
+			taskKey: "complete-reuse",
 		};
 		await engine.generate(input);
-		const saved = savedDrafts.get(input.taskKey)!;
-		savedDrafts.set(input.taskKey, {
-			...saved,
-			configFingerprint: `bailian|${mockConfig.workspaceId}|${mockConfig.model}`,
-		});
 		transcribe.mockClear();
-		const resumed = new SubtitleDraftEngine({ prepare, transcribe, drafts: draftStore });
+		const resumed = new SubtitleDraftEngine({ prepare, transcription, drafts: draftStore });
 		await resumed.generate(input);
 		expect(resumed.getSnapshot().status).toBe("review");
 		expect(transcribe).not.toHaveBeenCalled();
-		expect(savedDrafts.get(input.taskKey)?.configFingerprint).toBe(saved.configFingerprint);
-		expect(savedDrafts.get(input.taskKey)?.configFingerprint).not.toContain(
-			mockConfig.workspaceId,
-		);
+		expect(savedDrafts.get(input.taskKey)?.configFingerprint).toBe("sig-test");
 	});
 
-	it("continues an incomplete legacy Bailian draft from its first unfinished chunk", async () => {
-		const { engine, prepare, transcribe, draftStore, savedDrafts } = setupEngine();
+	it("continues an incomplete draft from its first unfinished chunk", async () => {
+		const { engine, prepare, transcribe, transcription, draftStore, savedDrafts } =
+			setupEngine();
 		prepare.mockResolvedValue({
 			duration: 20,
 			chunks: [
@@ -295,8 +295,7 @@ describe("SubtitleDraftEngine - Deep Module Lifecycle & Actions", () => {
 		const input: GenerationInput = {
 			audio: createMockAudio(),
 			name: "test.mp3",
-			taskKey: "legacy-incomplete",
-			config: mockConfig,
+			taskKey: "incomplete-resume",
 		};
 		await engine.generate(input);
 		const saved = savedDrafts.get(input.taskKey)!;
@@ -304,14 +303,13 @@ describe("SubtitleDraftEngine - Deep Module Lifecycle & Actions", () => {
 			...saved,
 			complete: false,
 			results: saved.results.slice(0, 1),
-			configFingerprint: `bailian|${mockConfig.workspaceId}|${mockConfig.model}`,
 		});
 		transcribe.mockClear();
-		const resumed = new SubtitleDraftEngine({ prepare, transcribe, drafts: draftStore });
+		const resumed = new SubtitleDraftEngine({ prepare, transcription, drafts: draftStore });
 		await resumed.generate(input);
 		expect(transcribe).toHaveBeenCalledOnce();
 		expect(transcribe.mock.calls[0]?.[0]).toMatchObject({ index: 1 });
-		expect(savedDrafts.get(input.taskKey)?.configFingerprint).toBe(saved.configFingerprint);
+		expect(savedDrafts.get(input.taskKey)?.configFingerprint).toBe("sig-test");
 	});
 
 	it("dispatches atomic draft actions through the single act() seam", async () => {
@@ -431,12 +429,13 @@ describe("SubtitleDraftEngine - Material Lifecycle Integration", () => {
 			readBinary: vi.fn(async () => options.audioBuffer ?? createMockAudio(100)),
 		};
 
-		const transcription = {
-			prepare: vi.fn(() => {
+		const transcription: SubtitleTranscriptionPort = {
+			getSignature: vi.fn(async () => {
 				if (options.prepareConfigError) throw options.prepareConfigError;
-				return mockConfig;
+				return "lifecycle-sig";
 			}),
-		} as unknown as import("../transcriptionConfiguration").TranscriptionConfiguration;
+			transcribe: async (chunk: AudioChunk) => transcribe(chunk),
+		};
 
 		const commitSubtitles = vi.fn(
 			async (
@@ -451,10 +450,9 @@ describe("SubtitleDraftEngine - Material Lifecycle Integration", () => {
 
 		const engine = new SubtitleDraftEngine({
 			prepare,
-			transcribe,
+			transcription,
 			drafts: draftStore,
 			source,
-			transcription,
 			commitSubtitles,
 		});
 
@@ -480,15 +478,25 @@ describe("SubtitleDraftEngine - Material Lifecycle Integration", () => {
 		};
 	}
 
-	it("bindHost binds source, transcription, and commitSubtitles dynamically", async () => {
-		const prepare = vi.fn(async () => ({ duration: 5, chunks: [] }));
-		const transcribe = vi.fn(async () => ({ cues: [], words: [] }));
-		const engine = new SubtitleDraftEngine({ prepare, transcribe });
-
-		const commit = vi.fn(async () => {});
-		engine.bindHost({ commitSubtitles: commit });
-		// Should not throw and options should be registered
-		expect(engine).toBeDefined();
+	it("fails generation with config-drift when transcription throws config-drift", async () => {
+		const prepare = vi.fn(async () => ({
+			duration: 5,
+			chunks: [{ index: 0, start: 0, end: 5, wav: createMockAudio() }],
+		}));
+		const transcription: SubtitleTranscriptionPort = {
+			getSignature: vi.fn(async () => "sig-1"),
+			transcribe: vi.fn(async () => {
+				throw new MediaFailureError({ kind: "config-drift" });
+			}),
+		};
+		const engine = new SubtitleDraftEngine({ prepare, transcription });
+		await engine.generate({
+			audio: createMockAudio(),
+			name: "test.mp3",
+			taskKey: "drift-test",
+		});
+		expect(engine.getSnapshot().status).toBe("error");
+		expect(engine.getSnapshot().failure).toEqual({ kind: "config-drift" });
 	});
 
 	it("generates for material and marks sourceValidated when audio matches", async () => {

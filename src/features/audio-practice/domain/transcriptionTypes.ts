@@ -3,20 +3,10 @@ import type {
 	Transcript,
 	DraftCue,
 	TimedWord,
-	TranscriptionConfig,
-} from "../../../core/media/transcriptionTypes";
-export type {
-	DraftCue,
-	TimedWord,
 	TimedTextWord,
-	Transcript,
-	AudioChunk,
 	TranscriptionProviderId,
-	BailianTranscriptionConfig,
-	OpenAiCompatibleTranscriptionConfig,
-	TranscriptionConfig,
-	TranscribeAudio,
 } from "../../../core/media/transcriptionTypes";
+export type { DraftCue, TimedWord, TimedTextWord, Transcript, AudioChunk, TranscriptionProviderId };
 
 interface PreparedAudio {
 	duration: number;
@@ -28,7 +18,7 @@ export interface GenerationInput {
 	name: string;
 	referenceText?: string;
 	taskKey: string;
-	config: TranscriptionConfig;
+	config?: unknown;
 }
 
 export type PrepareAudio = (audio: ArrayBuffer, signal: AbortSignal) => Promise<PreparedAudio>;

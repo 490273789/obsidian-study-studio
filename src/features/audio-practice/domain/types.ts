@@ -9,7 +9,17 @@ export interface MaterialOperationSnapshot {
 	readonly failure: AudioFailure | null;
 }
 import type { SubtitleCue } from "../../../core/media/subtitles";
+import type { AudioChunk, Transcript } from "../../../core/media/transcriptionTypes";
 export type { SubtitleCue } from "../../../core/media/subtitles";
+
+export interface SubtitleTranscriptionPort {
+	getSignature(): Promise<string>;
+	transcribe(
+		chunk: AudioChunk,
+		signal: AbortSignal,
+		expectedSignature?: string,
+	): Promise<Transcript>;
+}
 export const AUDIO_PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5] as const;
 export type AudioPlaybackRate = (typeof AUDIO_PLAYBACK_RATES)[number];
 export type AudioPracticeMode = "sentence" | "continuous";

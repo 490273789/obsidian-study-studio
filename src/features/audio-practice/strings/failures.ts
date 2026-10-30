@@ -44,6 +44,7 @@ const zh = {
 	persist: "练习进度保存失败，请稍后重试。",
 	subtitleWrite: "保存字幕失败，校对草稿已保留。",
 	cancelled: "操作已取消。",
+	configDrift: "转写配置已变化，请重新生成字幕。",
 	busy: "上一次操作尚未完成，请稍后再试。",
 	unknown: "操作失败，请重试。",
 	listSeparator: "；",
@@ -92,6 +93,7 @@ const en: typeof zh = {
 	persist: "Practice progress could not be saved. Retry later.",
 	subtitleWrite: "The subtitles could not be saved. Your review draft is preserved.",
 	cancelled: "The operation was cancelled.",
+	configDrift: "Transcription configuration changed; please regenerate subtitles.",
 	busy: "Another operation is still running. Try again in a moment.",
 	unknown: "The operation failed. Retry.",
 	listSeparator: "; ",
@@ -197,6 +199,8 @@ function message(copy: typeof zh, failure: AudioPracticeFailure): string {
 			return copy.persist;
 		case "subtitle-write-failed":
 			return copy.subtitleWrite;
+		case "config-drift":
+			return copy.configDrift;
 		case "cancelled":
 			return copy.cancelled;
 		case "busy":
@@ -216,6 +220,7 @@ function action(failure: AudioPracticeFailure): FailureAction | null {
 		case "no-speech":
 		case "subtitle-invalid":
 		case "source-changed":
+		case "config-drift":
 			return "regenerate";
 		case "config-invalid":
 			return "open-settings";

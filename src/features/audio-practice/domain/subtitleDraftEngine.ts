@@ -1,5 +1,5 @@
 import { audioFailure, toAudioFailure, type AudioFailure, type SubtitleProblem } from "./failures";
-import type { AudioMaterial, SubtitleCue } from "./types";
+import type { AudioMaterial, SubtitleCue, SubtitleTranscriptionPort } from "./types";
 import {
 	MAX_AUDIO_BYTES,
 	MAX_AUDIO_DURATION_SECONDS,
@@ -13,14 +13,8 @@ import {
 	type PrepareAudio,
 	type TimedTextWord,
 	type TimedWord,
-	type TranscribeAudio,
 	type Transcript,
 } from "./transcriptionTypes";
-import type { TranscriptionConfiguration } from "./transcriptionConfiguration";
-import {
-	matchesLegacyBailianFingerprint,
-	transcriptionConfigFingerprint,
-} from "../../../core/media/transcription/transcriptionConfig";
 
 import {
 	tokenizeUnicodeWords,
@@ -161,10 +155,9 @@ export type SubtitleDraftCommitHandler = (
 
 export interface SubtitleDraftEngineOptions {
 	readonly prepare: PrepareAudio;
-	readonly transcribe: TranscribeAudio;
+	readonly transcription: SubtitleTranscriptionPort;
 	readonly drafts?: GenerationDraftStore;
 	readonly source?: AudioSourceFiles;
-	readonly transcription?: TranscriptionConfiguration;
 	readonly commitSubtitles?: SubtitleDraftCommitHandler;
 }
 
@@ -191,7 +184,6 @@ export class SubtitleDraftEngine {
 		hasReviewWordTimings: false,
 	};
 	private readonly listeners = new Set<() => void>();
-	private readonly hostOptions: Partial<SubtitleDraftEngineOptions> = {};
 	private sourceValidated = true;
 	private validationToken = 0;
 	private saving = false;
@@ -206,23 +198,15 @@ export class SubtitleDraftEngine {
 	constructor(private readonly options: SubtitleDraftEngineOptions) {}
 
 	private get source(): AudioSourceFiles | undefined {
-		return this.hostOptions.source ?? this.options.source;
+		return this.options.source;
 	}
 
-	private get transcription(): TranscriptionConfiguration | undefined {
-		return this.hostOptions.transcription ?? this.options.transcription;
+	private get transcription(): SubtitleTranscriptionPort {
+		return this.options.transcription;
 	}
 
 	private get commitSubtitles(): SubtitleDraftCommitHandler | undefined {
-		return this.hostOptions.commitSubtitles ?? this.options.commitSubtitles;
-	}
-
-	bindHost(
-		host: Partial<
-			Pick<SubtitleDraftEngineOptions, "source" | "transcription" | "commitSubtitles">
-		>,
-	): void {
-		Object.assign(this.hostOptions, host);
+		return this.options.commitSubtitles;
 	}
 
 	isSourceValidated(): boolean {
@@ -330,9 +314,8 @@ export class SubtitleDraftEngine {
 		}
 		if (!transcription || !source) return false;
 		this.draftError = null;
-		let config: import("./transcriptionTypes").TranscriptionConfig;
 		try {
-			config = transcription.prepare();
+			await transcription.getSignature();
 		} catch (error) {
 			this.draftError = toAudioFailure(error);
 			this.publish({});
@@ -356,7 +339,6 @@ export class SubtitleDraftEngine {
 				name: material.audioPath.split("/").slice(-1)[0] || "audio",
 				taskKey: material.id,
 				referenceText: material.originalText,
-				config,
 			};
 			const token = ++this.validationToken;
 			this.sourceValidated = false;
@@ -516,7 +498,7 @@ export class SubtitleDraftEngine {
 			if (input.audio.byteLength > MAX_AUDIO_BYTES)
 				throw audioFailure({ kind: "audio-too-large", maxBytes: MAX_AUDIO_BYTES });
 			const fingerprint = await sourceFingerprint(input.audio, input.referenceText ?? "");
-			const configFingerprint = await transcriptionConfigFingerprint(input.config);
+			const configFingerprint = await this.options.transcription.getSignature();
 			await this.writes.catch(() => {});
 			const saved = options.force
 				? null
@@ -531,12 +513,8 @@ export class SubtitleDraftEngine {
 					kind: "audio-too-long",
 					maxSeconds: MAX_AUDIO_DURATION_SECONDS,
 				});
-			const legacyReuse =
-				saved?.fingerprint === fingerprint &&
-				matchesLegacyBailianFingerprint(saved.configFingerprint, input.config);
 			const reuse =
-				saved?.fingerprint === fingerprint &&
-				(saved.configFingerprint === configFingerprint || legacyReuse);
+				saved?.fingerprint === fingerprint && saved.configFingerprint === configFingerprint;
 			const results: Transcript[] = reuse && saved ? [...saved.results] : [];
 			this.draft = {
 				taskKey: input.taskKey,
@@ -550,7 +528,6 @@ export class SubtitleDraftEngine {
 			};
 			if (reuse && saved?.complete) {
 				this.draft = { ...saved, configFingerprint };
-				if (legacyReuse) await this.persist();
 				this.publish({
 					status: "review",
 					duration: prepared.duration,
@@ -561,7 +538,6 @@ export class SubtitleDraftEngine {
 				});
 				return;
 			}
-			if (legacyReuse) await this.persist();
 			this.publish({
 				status: "transcribing",
 				duration: prepared.duration,
@@ -571,7 +547,11 @@ export class SubtitleDraftEngine {
 			for (let index = results.length; index < prepared.chunks.length; index++) {
 				const chunk = prepared.chunks[index];
 				if (!chunk) continue;
-				const result = await this.options.transcribe(chunk, input.config, signal);
+				const result = await this.options.transcription.transcribe(
+					chunk,
+					signal,
+					configFingerprint,
+				);
 				signal.throwIfAborted();
 				results.push(result);
 				this.draft.cues = mergeTranscripts(results, prepared.chunks).cues;

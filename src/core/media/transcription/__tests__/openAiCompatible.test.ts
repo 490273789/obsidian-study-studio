@@ -1,19 +1,19 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { AudioFailureError, type AudioFailure } from "../failures";
-import { TransportError } from "../../../../core/net/types";
-import type { OutboundPort } from "../../../../core/net/types";
-import { buildMultipartBody } from "../../../../core/media/transcription/multipart";
+import { MediaFailureError, type MediaFailure } from "../../failures";
+import { TransportError } from "../../../net/types";
+import type { OutboundPort } from "../../../net/types";
+import { buildMultipartBody } from "../multipart";
 import {
 	createOpenAiCompatibleProvider,
 	parseOpenAiCompatibleResponse,
-} from "../../../../core/media/transcription/openAiCompatibleProvider";
-import { createTranscriptionProvider } from "../../../../core/media/transcription/providers";
+} from "../openAiCompatibleProvider";
+import { createTranscriptionProvider } from "../providers";
 import {
 	openAiCompatibleAudioUrl,
 	transcriptionConfigFingerprint,
 	validateTranscriptionConfig,
-} from "../../../../core/media/transcription/transcriptionConfig";
-import type { OpenAiCompatibleTranscriptionConfig } from "../transcriptionTypes";
+} from "../transcriptionConfig";
+import type { OpenAiCompatibleTranscriptionConfig } from "../../transcriptionTypes";
 
 const chunk = {
 	index: 0,
@@ -35,11 +35,11 @@ function contains(bytes: Uint8Array, needle: readonly number[]): boolean {
 	return false;
 }
 
-function failureOf(run: () => unknown): AudioFailure {
+function failureOf(run: () => unknown): MediaFailure {
 	try {
 		run();
 	} catch (error) {
-		if (error instanceof AudioFailureError) return error.failure;
+		if (error instanceof MediaFailureError) return error.failure;
 		throw error;
 	}
 	throw new Error("Expected an audio failure");
@@ -62,6 +62,7 @@ describe("OpenAI-compatible transcription", () => {
 		]);
 		expect(transcript.words).toHaveLength(2);
 	});
+
 	it("flattens word timestamps nested inside segments", () => {
 		const transcript = parseOpenAiCompatibleResponse(
 			JSON.stringify({
@@ -81,6 +82,7 @@ describe("OpenAI-compatible transcription", () => {
 		);
 		expect(transcript.words.map((word) => word.text)).toEqual(["Hello", "world."]);
 	});
+
 	it("builds cues from word timestamps when the service omits segments", () => {
 		const transcript = parseOpenAiCompatibleResponse(
 			JSON.stringify({
@@ -95,6 +97,7 @@ describe("OpenAI-compatible transcription", () => {
 		);
 		expect(transcript.cues.map((cue) => cue.text)).toEqual(["Hello world.", "Next one"]);
 	});
+
 	it("rejects responses without any timing instead of inventing subtitles", () => {
 		expect(
 			failureOf(() => parseOpenAiCompatibleResponse(JSON.stringify({ text: "Hello" }))),
@@ -104,6 +107,7 @@ describe("OpenAI-compatible transcription", () => {
 			reason: "missing-word-timestamps",
 		});
 	});
+
 	it("never exposes raw malformed response fragments", () => {
 		expect(
 			failureOf(() => parseOpenAiCompatibleResponse('{"private-key":"sensitive" broken')),
@@ -113,6 +117,7 @@ describe("OpenAI-compatible transcription", () => {
 			reason: "invalid-payload",
 		});
 	});
+
 	it("posts a binary multipart body to the standard endpoint", async () => {
 		const request = vi.fn().mockResolvedValue({
 			text: JSON.stringify({
@@ -137,6 +142,7 @@ describe("OpenAI-compatible transcription", () => {
 		expect(text).toContain('name="file"; filename="chunk.wav"');
 		expect((text.match(/name="timestamp_granularities\[\]"/g) ?? []).length).toBe(2);
 	});
+
 	it("keeps multipart framing intact around the audio bytes", () => {
 		const body = buildMultipartBody(
 			[{ name: "model", value: "whisper-1" }],
@@ -153,6 +159,7 @@ describe("OpenAI-compatible transcription", () => {
 		expect(text.endsWith("--B--\r\n")).toBe(true);
 		expect(contains(new Uint8Array(body), [0x80, 0xff, 0x00])).toBe(true);
 	});
+
 	it("fails before any request when the secret is missing", async () => {
 		const request = vi.fn();
 		const port = { request, readSecret: () => null } as unknown as OutboundPort;
@@ -163,6 +170,7 @@ describe("OpenAI-compatible transcription", () => {
 		});
 		expect(request).not.toHaveBeenCalled();
 	});
+
 	it("maps transport failures without leaking response bodies", async () => {
 		const request = vi
 			.fn()
@@ -184,6 +192,7 @@ describe("transcription configuration", () => {
 			"http://127.0.0.1:8080/v1/audio/transcriptions",
 		);
 	});
+
 	it("allows https and loopback http but rejects other plaintext endpoints", () => {
 		expect(() => validateTranscriptionConfig(config)).not.toThrow();
 		expect(() =>
@@ -196,6 +205,7 @@ describe("transcription configuration", () => {
 			validateTranscriptionConfig({ ...config, baseUrl: "http://api.example.test/v1" }),
 		).toThrow();
 	});
+
 	it("rejects incomplete or malformed configurations", () => {
 		expect(
 			failureOf(() => validateTranscriptionConfig({ ...config, model: " " })),
@@ -207,6 +217,7 @@ describe("transcription configuration", () => {
 			failureOf(() => validateTranscriptionConfig({ ...config, baseUrl: "not-a-url" })),
 		).toMatchObject({ kind: "config-invalid", field: "base-url" });
 	});
+
 	it("changes the fingerprint when the provider or model changes", async () => {
 		expect(await transcriptionConfigFingerprint(config)).not.toBe(
 			await transcriptionConfigFingerprint({ ...config, model: "gpt-4o-transcribe" }),

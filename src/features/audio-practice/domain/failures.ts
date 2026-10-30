@@ -36,6 +36,7 @@ export type AudioFailure =
 	| { readonly kind: "draft-save-failed" }
 	| { readonly kind: "persist-failed" }
 	| { readonly kind: "subtitle-write-failed" }
+	| { readonly kind: "config-drift" }
 	| { readonly kind: "cancelled" }
 	| { readonly kind: "unknown" };
 

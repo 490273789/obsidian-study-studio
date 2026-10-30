@@ -49,6 +49,17 @@ describe("audio failure copy", () => {
 		).toContain("词级时间戳");
 	});
 
+	it("formats config-drift failure and suggests regeneration", () => {
+		expect(audioFailureCopy("zh", { kind: "config-drift" })).toEqual({
+			message: "转写配置已变化，请重新生成字幕。",
+			action: "regenerate",
+		});
+		expect(audioFailureCopy("en", { kind: "config-drift" })).toEqual({
+			message: "Transcription configuration changed; please regenerate subtitles.",
+			action: "regenerate",
+		});
+	});
+
 	it("exposes one recovery action per failure kind", () => {
 		const cases: [AudioFailure, string | null][] = [
 			[{ kind: "missing-file" }, "choose-file"],

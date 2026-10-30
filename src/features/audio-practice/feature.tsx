@@ -8,9 +8,12 @@ import { FlashcardButton } from "../../core/ui/primitives/Button";
 import { ModalProvider } from "../../core/ui/primitives/Modal";
 import { AudioPracticeRuntime } from "./domain/audioPracticeRuntime";
 import { SubtitleDraftEngine, normalizeGenerationDraft } from "./domain/subtitleDraftEngine";
-import { TranscriptionConfiguration } from "./domain/transcriptionConfiguration";
+import type { SubtitleTranscriptionPort } from "./domain/types";
 import { createBrowserAudioPreparation } from "./domain/transcription/browserAudio";
-import { createTranscriptionProvider } from "../../core/media/transcription/providers";
+import {
+	MediaTranscriptionEngine,
+	type MediaTranscriptionSettings,
+} from "../../core/media/transcription/mediaTranscriptionEngine";
 import { createAudioSourceFiles } from "./obsidian/audioSourceFiles";
 import { createAudioPracticeRepository } from "./obsidian/repositoryAdapter";
 import { createAudioPracticeCatalog, createAudioPracticeFiles } from "./obsidian/vaultFiles";
@@ -34,10 +37,38 @@ export function createAudioPracticeFeature(deps: {
 			const catalog = createAudioPracticeCatalog(host.app);
 			const source = createAudioSourceFiles(host.app);
 			let mediaWindow: Window = window;
+			const readSettings = () => host.settings.read();
+			const readMediaSettings = () => deps.store.getSettings().mediaTranscription;
+			const openSettings = () => host.settingsTab.open(SECTION);
+
+			const transcriptionEngine = new MediaTranscriptionEngine({
+				readSettings: readMediaSettings,
+				readSecret: (id) => deps.net.readSecret(id),
+				outbound: deps.net,
+			});
+			const transcription: SubtitleTranscriptionPort = {
+				getSignature: () => transcriptionEngine.getSignature(),
+				transcribe: async (chunk, signal, expectedSignature) => {
+					const result = await transcriptionEngine.transcribe({
+						audio: chunk,
+						signal,
+						expectedSignature,
+					});
+					return {
+						cues: [...result.cues],
+						words: [...result.words],
+					};
+				},
+			};
+
+			let runtime!: AudioPracticeRuntime;
 			const generation = lifetime.own(
 				new SubtitleDraftEngine({
 					prepare: createBrowserAudioPreparation(() => mediaWindow),
-					transcribe: createTranscriptionProvider(deps.net),
+					transcription,
+					source,
+					commitSubtitles: (id, cues, timings) =>
+						runtime.saveSubtitles(id, cues, timings),
 					drafts: {
 						load: async (key) =>
 							normalizeGenerationDraft(host.app.loadLocalStorage(DRAFT_PREFIX + key)),
@@ -50,13 +81,7 @@ export function createAudioPracticeFeature(deps: {
 					},
 				}),
 			);
-			const readSettings = () => host.settings.read();
-			const openSettings = () => host.settingsTab.open(SECTION);
-			const transcription = new TranscriptionConfiguration({
-				read: () => readSettings().audioPractice,
-				readSecret: (id) => deps.net.readSecret(id),
-			});
-			const runtime = lifetime.own(
+			runtime = lifetime.own(
 				new AudioPracticeRuntime({
 					repository: createAudioPracticeRepository(deps.store),
 					files,
@@ -74,11 +99,6 @@ export function createAudioPracticeFeature(deps: {
 					},
 				}),
 			);
-			generation.bindHost({
-				source,
-				transcription,
-				commitSubtitles: (id, cues, timings) => runtime.saveSubtitles(id, cues, timings),
-			});
 			host.registerView(
 				AUDIO_PRACTICE_VIEW,
 				createReactItemView({
@@ -136,16 +156,62 @@ export function createAudioPracticeFeature(deps: {
 				id: SECTION,
 				order: 5,
 				label: (language) => audioPracticeStrings(language).title,
-				presentation: (language) =>
-					audioPracticeSettingsPresentation(
-						readSettings().audioPractice,
+				presentation: (language) => {
+					const currentMedia = readMediaSettings();
+					const combinedSettings: AudioPracticeSettings = {
+						...readSettings().audioPractice,
+						provider: currentMedia.provider,
+						bailianWorkspaceId: currentMedia.bailianWorkspaceId,
+						bailianWorkspaceSecretId: currentMedia.bailianWorkspaceSecretId,
+						bailianSecretId: currentMedia.bailianSecretId,
+						bailianModel: currentMedia.bailianModel,
+						openaiBaseUrl: currentMedia.openaiBaseUrl,
+						openaiSecretId: currentMedia.openaiSecretId,
+						openaiModel: currentMedia.openaiModel,
+					};
+					return audioPracticeSettingsPresentation(
+						combinedSettings,
 						async (patch: Partial<AudioPracticeSettings>) => {
+							const audioPatch: Partial<AudioPracticeSettings> = {};
+							const mediaPatch: Partial<MediaTranscriptionSettings> = {};
+							if ("enabled" in patch) audioPatch.enabled = patch.enabled;
+							if ("provider" in patch) mediaPatch.provider = patch.provider;
+							if ("bailianWorkspaceId" in patch)
+								mediaPatch.bailianWorkspaceId = patch.bailianWorkspaceId;
+							if ("bailianWorkspaceSecretId" in patch)
+								mediaPatch.bailianWorkspaceSecretId =
+									patch.bailianWorkspaceSecretId;
+							if ("bailianSecretId" in patch)
+								mediaPatch.bailianSecretId = patch.bailianSecretId;
+							if ("bailianModel" in patch)
+								mediaPatch.bailianModel = patch.bailianModel;
+							if ("openaiBaseUrl" in patch)
+								mediaPatch.openaiBaseUrl = patch.openaiBaseUrl;
+							if ("openaiSecretId" in patch)
+								mediaPatch.openaiSecretId = patch.openaiSecretId;
+							if ("openaiModel" in patch) mediaPatch.openaiModel = patch.openaiModel;
+
 							await host.settings.update({
-								audioPractice: { ...readSettings().audioPractice, ...patch },
+								audioPractice: {
+									...readSettings().audioPractice,
+									...patch,
+									...audioPatch,
+								},
 							});
+							if (Object.keys(mediaPatch).length > 0) {
+								const allSettings = deps.store.getSettings();
+								await deps.store.saveSettings({
+									...allSettings,
+									mediaTranscription: {
+										...allSettings.mediaTranscription,
+										...mediaPatch,
+									},
+								});
+							}
 						},
 						language,
-					),
+					);
+				},
 			});
 			return () => {
 				if (!readSettings().audioPractice.enabled) {

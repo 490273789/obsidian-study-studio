@@ -1,13 +1,9 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { AudioFailureError, type AudioFailure } from "../failures";
-import { encodeMonoWav } from "../transcription/browserAudio";
-import {
-	createBailianProvider,
-	parseBailianResponse,
-} from "../../../../core/media/transcription/bailianProvider";
-import { transcriptionConfigFingerprint } from "../../../../core/media/transcription/transcriptionConfig";
-import type { BailianTranscriptionConfig } from "../transcriptionTypes";
-import type { OutboundPort } from "../../../../core/net/types";
+import { MediaFailureError, type MediaFailure } from "../../failures";
+import { createBailianProvider, parseBailianResponse } from "../bailianProvider";
+import { transcriptionConfigFingerprint } from "../transcriptionConfig";
+import type { BailianTranscriptionConfig } from "../../transcriptionTypes";
+import type { OutboundPort } from "../../../net/types";
 
 const chunk = { index: 0, start: 0, end: 2, wav: new ArrayBuffer(2) };
 const config: BailianTranscriptionConfig = {
@@ -17,30 +13,23 @@ const config: BailianTranscriptionConfig = {
 	model: "fun-asr-flash-2026-06-15",
 };
 
-function failureOf(run: () => unknown): AudioFailure {
+function failureOf(run: () => unknown): MediaFailure {
 	try {
 		run();
 	} catch (error) {
-		if (error instanceof AudioFailureError) return error.failure;
+		if (error instanceof MediaFailureError) return error.failure;
 		throw error;
 	}
 	throw new Error("Expected an audio failure");
 }
 
-describe("bailian transcription & audio encoding", () => {
+describe("bailian transcription provider", () => {
 	it("keeps the workspace value out of saved draft fingerprints", async () => {
 		const fingerprint = await transcriptionConfigFingerprint(config);
 		expect(fingerprint).not.toContain(config.workspaceId);
 		expect(fingerprint).not.toBe(
 			await transcriptionConfigFingerprint({ ...config, workspaceId: "another-workspace" }),
 		);
-	});
-	it("writes PCM WAV metadata and clips samples", () => {
-		const wav = new DataView(encodeMonoWav(new Float32Array([-2, 0, 2])));
-		expect(wav.getUint32(24, true)).toBe(16000);
-		expect(wav.getUint16(22, true)).toBe(1);
-		expect(wav.getInt16(44, true)).toBe(-32768);
-		expect(wav.getInt16(48, true)).toBe(32767);
 	});
 
 	it("reads final SSE events, ignores partials, replaces duplicate sentence IDs", () => {
