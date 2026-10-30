@@ -1,0 +1,575 @@
+{
+	"schemaVersion": 2,
+	"generatedAt": "2026-10-30T15:53:26.681969Z",
+	"title": "Design System: Study Studio",
+	"extensions": {
+		"colorMeta": {
+			"primary": {
+				"role": "primary",
+				"displayName": "清透青",
+				"canonical": "#00b8c4",
+				"tonalRamp": [
+					"oklch(from #00b8c4 0.15 calc(c * 0.25) h)",
+					"oklch(from #00b8c4 0.26 calc(c * 0.55) h)",
+					"oklch(from #00b8c4 0.37 calc(c * 0.8) h)",
+					"oklch(from #00b8c4 0.48 calc(c * 1) h)",
+					"oklch(from #00b8c4 0.59 calc(c * 1) h)",
+					"oklch(from #00b8c4 0.7 calc(c * 0.8) h)",
+					"oklch(from #00b8c4 0.82 calc(c * 0.5) h)",
+					"oklch(from #00b8c4 0.95 calc(c * 0.15) h)"
+				]
+			},
+			"primary-hover": {
+				"role": "primary",
+				"displayName": "清透青 · 悬停",
+				"canonical": "#00a0ab",
+				"tonalRamp": [
+					"oklch(from #00a0ab 0.15 calc(c * 0.25) h)",
+					"oklch(from #00a0ab 0.26 calc(c * 0.55) h)",
+					"oklch(from #00a0ab 0.37 calc(c * 0.8) h)",
+					"oklch(from #00a0ab 0.48 calc(c * 1) h)",
+					"oklch(from #00a0ab 0.59 calc(c * 1) h)",
+					"oklch(from #00a0ab 0.7 calc(c * 0.8) h)",
+					"oklch(from #00a0ab 0.82 calc(c * 0.5) h)",
+					"oklch(from #00a0ab 0.95 calc(c * 0.15) h)"
+				]
+			},
+			"primary-text": {
+				"role": "primary",
+				"displayName": "主操作墨色",
+				"canonical": "color-mix(in srgb, rgb(var(--fc-black-rgb)) 75%, var(--fc-primary))",
+				"tonalRamp": [
+					"oklch(from color-mix(in srgb, rgb(var(--fc-black-rgb)) 75%, var(--fc-primary)) 0.15 calc(c * 0.25) h)",
+					"oklch(from color-mix(in srgb, rgb(var(--fc-black-rgb)) 75%, var(--fc-primary)) 0.26 calc(c * 0.55) h)",
+					"oklch(from color-mix(in srgb, rgb(var(--fc-black-rgb)) 75%, var(--fc-primary)) 0.37 calc(c * 0.8) h)",
+					"oklch(from color-mix(in srgb, rgb(var(--fc-black-rgb)) 75%, var(--fc-primary)) 0.48 calc(c * 1) h)",
+					"oklch(from color-mix(in srgb, rgb(var(--fc-black-rgb)) 75%, var(--fc-primary)) 0.59 calc(c * 1) h)",
+					"oklch(from color-mix(in srgb, rgb(var(--fc-black-rgb)) 75%, var(--fc-primary)) 0.7 calc(c * 0.8) h)",
+					"oklch(from color-mix(in srgb, rgb(var(--fc-black-rgb)) 75%, var(--fc-primary)) 0.82 calc(c * 0.5) h)",
+					"oklch(from color-mix(in srgb, rgb(var(--fc-black-rgb)) 75%, var(--fc-primary)) 0.95 calc(c * 0.15) h)"
+				]
+			},
+			"cyan": {
+				"role": "primary",
+				"displayName": "主题强调色",
+				"canonical": "var(--interactive-accent)",
+				"tonalRamp": [
+					"oklch(from var(--interactive-accent) 0.15 calc(c * 0.25) h)",
+					"oklch(from var(--interactive-accent) 0.26 calc(c * 0.55) h)",
+					"oklch(from var(--interactive-accent) 0.37 calc(c * 0.8) h)",
+					"oklch(from var(--interactive-accent) 0.48 calc(c * 1) h)",
+					"oklch(from var(--interactive-accent) 0.59 calc(c * 1) h)",
+					"oklch(from var(--interactive-accent) 0.7 calc(c * 0.8) h)",
+					"oklch(from var(--interactive-accent) 0.82 calc(c * 0.5) h)",
+					"oklch(from var(--interactive-accent) 0.95 calc(c * 0.15) h)"
+				]
+			},
+			"danger": {
+				"role": "secondary",
+				"displayName": "危险红",
+				"canonical": "var(--fc-red)",
+				"tonalRamp": [
+					"oklch(from var(--fc-red) 0.15 calc(c * 0.25) h)",
+					"oklch(from var(--fc-red) 0.26 calc(c * 0.55) h)",
+					"oklch(from var(--fc-red) 0.37 calc(c * 0.8) h)",
+					"oklch(from var(--fc-red) 0.48 calc(c * 1) h)",
+					"oklch(from var(--fc-red) 0.59 calc(c * 1) h)",
+					"oklch(from var(--fc-red) 0.7 calc(c * 0.8) h)",
+					"oklch(from var(--fc-red) 0.82 calc(c * 0.5) h)",
+					"oklch(from var(--fc-red) 0.95 calc(c * 0.15) h)"
+				]
+			},
+			"lime": {
+				"role": "secondary",
+				"displayName": "完成绿",
+				"canonical": "var(--color-green)",
+				"tonalRamp": [
+					"oklch(from var(--color-green) 0.15 calc(c * 0.25) h)",
+					"oklch(from var(--color-green) 0.26 calc(c * 0.55) h)",
+					"oklch(from var(--color-green) 0.37 calc(c * 0.8) h)",
+					"oklch(from var(--color-green) 0.48 calc(c * 1) h)",
+					"oklch(from var(--color-green) 0.59 calc(c * 1) h)",
+					"oklch(from var(--color-green) 0.7 calc(c * 0.8) h)",
+					"oklch(from var(--color-green) 0.82 calc(c * 0.5) h)",
+					"oklch(from var(--color-green) 0.95 calc(c * 0.15) h)"
+				]
+			},
+			"amber": {
+				"role": "secondary",
+				"displayName": "等待黄",
+				"canonical": "var(--color-yellow)",
+				"tonalRamp": [
+					"oklch(from var(--color-yellow) 0.15 calc(c * 0.25) h)",
+					"oklch(from var(--color-yellow) 0.26 calc(c * 0.55) h)",
+					"oklch(from var(--color-yellow) 0.37 calc(c * 0.8) h)",
+					"oklch(from var(--color-yellow) 0.48 calc(c * 1) h)",
+					"oklch(from var(--color-yellow) 0.59 calc(c * 1) h)",
+					"oklch(from var(--color-yellow) 0.7 calc(c * 0.8) h)",
+					"oklch(from var(--color-yellow) 0.82 calc(c * 0.5) h)",
+					"oklch(from var(--color-yellow) 0.95 calc(c * 0.15) h)"
+				]
+			},
+			"text": {
+				"role": "neutral",
+				"displayName": "正文",
+				"canonical": "var(--text-normal)",
+				"tonalRamp": [
+					"oklch(from var(--text-normal) 0.15 calc(c * 0.25) h)",
+					"oklch(from var(--text-normal) 0.26 calc(c * 0.55) h)",
+					"oklch(from var(--text-normal) 0.37 calc(c * 0.8) h)",
+					"oklch(from var(--text-normal) 0.48 calc(c * 1) h)",
+					"oklch(from var(--text-normal) 0.59 calc(c * 1) h)",
+					"oklch(from var(--text-normal) 0.7 calc(c * 0.8) h)",
+					"oklch(from var(--text-normal) 0.82 calc(c * 0.5) h)",
+					"oklch(from var(--text-normal) 0.95 calc(c * 0.15) h)"
+				]
+			},
+			"muted": {
+				"role": "neutral",
+				"displayName": "次要文字",
+				"canonical": "var(--text-muted)",
+				"tonalRamp": [
+					"oklch(from var(--text-muted) 0.15 calc(c * 0.25) h)",
+					"oklch(from var(--text-muted) 0.26 calc(c * 0.55) h)",
+					"oklch(from var(--text-muted) 0.37 calc(c * 0.8) h)",
+					"oklch(from var(--text-muted) 0.48 calc(c * 1) h)",
+					"oklch(from var(--text-muted) 0.59 calc(c * 1) h)",
+					"oklch(from var(--text-muted) 0.7 calc(c * 0.8) h)",
+					"oklch(from var(--text-muted) 0.82 calc(c * 0.5) h)",
+					"oklch(from var(--text-muted) 0.95 calc(c * 0.15) h)"
+				]
+			},
+			"faint": {
+				"role": "neutral",
+				"displayName": "弱提示",
+				"canonical": "var(--text-faint)",
+				"tonalRamp": [
+					"oklch(from var(--text-faint) 0.15 calc(c * 0.25) h)",
+					"oklch(from var(--text-faint) 0.26 calc(c * 0.55) h)",
+					"oklch(from var(--text-faint) 0.37 calc(c * 0.8) h)",
+					"oklch(from var(--text-faint) 0.48 calc(c * 1) h)",
+					"oklch(from var(--text-faint) 0.59 calc(c * 1) h)",
+					"oklch(from var(--text-faint) 0.7 calc(c * 0.8) h)",
+					"oklch(from var(--text-faint) 0.82 calc(c * 0.5) h)",
+					"oklch(from var(--text-faint) 0.95 calc(c * 0.15) h)"
+				]
+			},
+			"surface-canvas": {
+				"role": "neutral",
+				"displayName": "surface-canvas",
+				"canonical": "var(--background-secondary)",
+				"tonalRamp": [
+					"oklch(from var(--background-secondary) 0.15 calc(c * 0.25) h)",
+					"oklch(from var(--background-secondary) 0.26 calc(c * 0.55) h)",
+					"oklch(from var(--background-secondary) 0.37 calc(c * 0.8) h)",
+					"oklch(from var(--background-secondary) 0.48 calc(c * 1) h)",
+					"oklch(from var(--background-secondary) 0.59 calc(c * 1) h)",
+					"oklch(from var(--background-secondary) 0.7 calc(c * 0.8) h)",
+					"oklch(from var(--background-secondary) 0.82 calc(c * 0.5) h)",
+					"oklch(from var(--background-secondary) 0.95 calc(c * 0.15) h)"
+				]
+			},
+			"surface-section": {
+				"role": "neutral",
+				"displayName": "surface-section",
+				"canonical": "color-mix(in srgb, var(--fc-bg-panel) 94%, var(--text-normal) 6%)",
+				"tonalRamp": [
+					"oklch(from color-mix(in srgb, var(--fc-bg-panel) 94%, var(--text-normal) 6%) 0.15 calc(c * 0.25) h)",
+					"oklch(from color-mix(in srgb, var(--fc-bg-panel) 94%, var(--text-normal) 6%) 0.26 calc(c * 0.55) h)",
+					"oklch(from color-mix(in srgb, var(--fc-bg-panel) 94%, var(--text-normal) 6%) 0.37 calc(c * 0.8) h)",
+					"oklch(from color-mix(in srgb, var(--fc-bg-panel) 94%, var(--text-normal) 6%) 0.48 calc(c * 1) h)",
+					"oklch(from color-mix(in srgb, var(--fc-bg-panel) 94%, var(--text-normal) 6%) 0.59 calc(c * 1) h)",
+					"oklch(from color-mix(in srgb, var(--fc-bg-panel) 94%, var(--text-normal) 6%) 0.7 calc(c * 0.8) h)",
+					"oklch(from color-mix(in srgb, var(--fc-bg-panel) 94%, var(--text-normal) 6%) 0.82 calc(c * 0.5) h)",
+					"oklch(from color-mix(in srgb, var(--fc-bg-panel) 94%, var(--text-normal) 6%) 0.95 calc(c * 0.15) h)"
+				]
+			},
+			"surface-card": {
+				"role": "neutral",
+				"displayName": "surface-card",
+				"canonical": "color-mix(in srgb, var(--background-primary) 97%, var(--text-normal) 3%)",
+				"tonalRamp": [
+					"oklch(from color-mix(in srgb, var(--background-primary) 97%, var(--text-normal) 3%) 0.15 calc(c * 0.25) h)",
+					"oklch(from color-mix(in srgb, var(--background-primary) 97%, var(--text-normal) 3%) 0.26 calc(c * 0.55) h)",
+					"oklch(from color-mix(in srgb, var(--background-primary) 97%, var(--text-normal) 3%) 0.37 calc(c * 0.8) h)",
+					"oklch(from color-mix(in srgb, var(--background-primary) 97%, var(--text-normal) 3%) 0.48 calc(c * 1) h)",
+					"oklch(from color-mix(in srgb, var(--background-primary) 97%, var(--text-normal) 3%) 0.59 calc(c * 1) h)",
+					"oklch(from color-mix(in srgb, var(--background-primary) 97%, var(--text-normal) 3%) 0.7 calc(c * 0.8) h)",
+					"oklch(from color-mix(in srgb, var(--background-primary) 97%, var(--text-normal) 3%) 0.82 calc(c * 0.5) h)",
+					"oklch(from color-mix(in srgb, var(--background-primary) 97%, var(--text-normal) 3%) 0.95 calc(c * 0.15) h)"
+				]
+			},
+			"surface-raised": {
+				"role": "neutral",
+				"displayName": "surface-raised",
+				"canonical": "color-mix(in srgb, var(--background-primary) 82%, var(--text-normal) 18%)",
+				"tonalRamp": [
+					"oklch(from color-mix(in srgb, var(--background-primary) 82%, var(--text-normal) 18%) 0.15 calc(c * 0.25) h)",
+					"oklch(from color-mix(in srgb, var(--background-primary) 82%, var(--text-normal) 18%) 0.26 calc(c * 0.55) h)",
+					"oklch(from color-mix(in srgb, var(--background-primary) 82%, var(--text-normal) 18%) 0.37 calc(c * 0.8) h)",
+					"oklch(from color-mix(in srgb, var(--background-primary) 82%, var(--text-normal) 18%) 0.48 calc(c * 1) h)",
+					"oklch(from color-mix(in srgb, var(--background-primary) 82%, var(--text-normal) 18%) 0.59 calc(c * 1) h)",
+					"oklch(from color-mix(in srgb, var(--background-primary) 82%, var(--text-normal) 18%) 0.7 calc(c * 0.8) h)",
+					"oklch(from color-mix(in srgb, var(--background-primary) 82%, var(--text-normal) 18%) 0.82 calc(c * 0.5) h)",
+					"oklch(from color-mix(in srgb, var(--background-primary) 82%, var(--text-normal) 18%) 0.95 calc(c * 0.15) h)"
+				]
+			},
+			"surface-control": {
+				"role": "neutral",
+				"displayName": "surface-control",
+				"canonical": "color-mix(in srgb, var(--fc-surface-card) 94%, var(--fc-text))",
+				"tonalRamp": [
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 94%, var(--fc-text)) 0.15 calc(c * 0.25) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 94%, var(--fc-text)) 0.26 calc(c * 0.55) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 94%, var(--fc-text)) 0.37 calc(c * 0.8) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 94%, var(--fc-text)) 0.48 calc(c * 1) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 94%, var(--fc-text)) 0.59 calc(c * 1) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 94%, var(--fc-text)) 0.7 calc(c * 0.8) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 94%, var(--fc-text)) 0.82 calc(c * 0.5) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 94%, var(--fc-text)) 0.95 calc(c * 0.15) h)"
+				]
+			},
+			"surface-hover": {
+				"role": "neutral",
+				"displayName": "surface-hover",
+				"canonical": "var(--background-modifier-hover)",
+				"tonalRamp": [
+					"oklch(from var(--background-modifier-hover) 0.15 calc(c * 0.25) h)",
+					"oklch(from var(--background-modifier-hover) 0.26 calc(c * 0.55) h)",
+					"oklch(from var(--background-modifier-hover) 0.37 calc(c * 0.8) h)",
+					"oklch(from var(--background-modifier-hover) 0.48 calc(c * 1) h)",
+					"oklch(from var(--background-modifier-hover) 0.59 calc(c * 1) h)",
+					"oklch(from var(--background-modifier-hover) 0.7 calc(c * 0.8) h)",
+					"oklch(from var(--background-modifier-hover) 0.82 calc(c * 0.5) h)",
+					"oklch(from var(--background-modifier-hover) 0.95 calc(c * 0.15) h)"
+				]
+			},
+			"surface-selected": {
+				"role": "neutral",
+				"displayName": "surface-selected",
+				"canonical": "var(--background-modifier-active-hover)",
+				"tonalRamp": [
+					"oklch(from var(--background-modifier-active-hover) 0.15 calc(c * 0.25) h)",
+					"oklch(from var(--background-modifier-active-hover) 0.26 calc(c * 0.55) h)",
+					"oklch(from var(--background-modifier-active-hover) 0.37 calc(c * 0.8) h)",
+					"oklch(from var(--background-modifier-active-hover) 0.48 calc(c * 1) h)",
+					"oklch(from var(--background-modifier-active-hover) 0.59 calc(c * 1) h)",
+					"oklch(from var(--background-modifier-active-hover) 0.7 calc(c * 0.8) h)",
+					"oklch(from var(--background-modifier-active-hover) 0.82 calc(c * 0.5) h)",
+					"oklch(from var(--background-modifier-active-hover) 0.95 calc(c * 0.15) h)"
+				]
+			},
+			"line": {
+				"role": "neutral",
+				"displayName": "line",
+				"canonical": "color-mix(in srgb, var(--fc-surface-card) 88%, var(--fc-text))",
+				"tonalRamp": [
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 88%, var(--fc-text)) 0.15 calc(c * 0.25) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 88%, var(--fc-text)) 0.26 calc(c * 0.55) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 88%, var(--fc-text)) 0.37 calc(c * 0.8) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 88%, var(--fc-text)) 0.48 calc(c * 1) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 88%, var(--fc-text)) 0.59 calc(c * 1) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 88%, var(--fc-text)) 0.7 calc(c * 0.8) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 88%, var(--fc-text)) 0.82 calc(c * 0.5) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 88%, var(--fc-text)) 0.95 calc(c * 0.15) h)"
+				]
+			},
+			"line-soft": {
+				"role": "neutral",
+				"displayName": "line-soft",
+				"canonical": "color-mix(in srgb, var(--fc-surface-card) 92%, var(--fc-text))",
+				"tonalRamp": [
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 92%, var(--fc-text)) 0.15 calc(c * 0.25) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 92%, var(--fc-text)) 0.26 calc(c * 0.55) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 92%, var(--fc-text)) 0.37 calc(c * 0.8) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 92%, var(--fc-text)) 0.48 calc(c * 1) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 92%, var(--fc-text)) 0.59 calc(c * 1) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 92%, var(--fc-text)) 0.7 calc(c * 0.8) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 92%, var(--fc-text)) 0.82 calc(c * 0.5) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 92%, var(--fc-text)) 0.95 calc(c * 0.15) h)"
+				]
+			},
+			"line-strong": {
+				"role": "neutral",
+				"displayName": "line-strong",
+				"canonical": "color-mix(in srgb, var(--fc-surface-card) 82%, var(--fc-text))",
+				"tonalRamp": [
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 82%, var(--fc-text)) 0.15 calc(c * 0.25) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 82%, var(--fc-text)) 0.26 calc(c * 0.55) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 82%, var(--fc-text)) 0.37 calc(c * 0.8) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 82%, var(--fc-text)) 0.48 calc(c * 1) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 82%, var(--fc-text)) 0.59 calc(c * 1) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 82%, var(--fc-text)) 0.7 calc(c * 0.8) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 82%, var(--fc-text)) 0.82 calc(c * 0.5) h)",
+					"oklch(from color-mix(in srgb, var(--fc-surface-card) 82%, var(--fc-text)) 0.95 calc(c * 0.15) h)"
+				]
+			},
+			"input-bg": {
+				"role": "neutral",
+				"displayName": "input-bg",
+				"canonical": "color-mix( in srgb, var(--background-primary) 85%, var(--background-secondary) 15% )",
+				"tonalRamp": [
+					"oklch(from color-mix( in srgb, var(--background-primary) 85%, var(--background-secondary) 15% ) 0.15 calc(c * 0.25) h)",
+					"oklch(from color-mix( in srgb, var(--background-primary) 85%, var(--background-secondary) 15% ) 0.26 calc(c * 0.55) h)",
+					"oklch(from color-mix( in srgb, var(--background-primary) 85%, var(--background-secondary) 15% ) 0.37 calc(c * 0.8) h)",
+					"oklch(from color-mix( in srgb, var(--background-primary) 85%, var(--background-secondary) 15% ) 0.48 calc(c * 1) h)",
+					"oklch(from color-mix( in srgb, var(--background-primary) 85%, var(--background-secondary) 15% ) 0.59 calc(c * 1) h)",
+					"oklch(from color-mix( in srgb, var(--background-primary) 85%, var(--background-secondary) 15% ) 0.7 calc(c * 0.8) h)",
+					"oklch(from color-mix( in srgb, var(--background-primary) 85%, var(--background-secondary) 15% ) 0.82 calc(c * 0.5) h)",
+					"oklch(from color-mix( in srgb, var(--background-primary) 85%, var(--background-secondary) 15% ) 0.95 calc(c * 0.15) h)"
+				]
+			}
+		},
+		"typographyMeta": {
+			"display": {
+				"displayName": "display",
+				"purpose": "主要计数"
+			},
+			"headline": {
+				"displayName": "headline",
+				"purpose": "紧凑计数"
+			},
+			"title": {
+				"displayName": "title",
+				"purpose": "界面标题"
+			},
+			"body": {
+				"displayName": "body",
+				"purpose": "界面正文"
+			},
+			"reading": {
+				"displayName": "reading",
+				"purpose": "卡片 Markdown；手机降为 body 字号"
+			},
+			"label": {
+				"displayName": "label",
+				"purpose": "默认按钮"
+			},
+			"caption": {
+				"displayName": "caption",
+				"purpose": "辅助信息"
+			},
+			"micro": {
+				"displayName": "micro",
+				"purpose": "微型提示"
+			}
+		},
+		"shadows": [
+			{
+				"name": "shadow-sm",
+				"value": "0 1px 2px rgba(var(--fc-black-rgb), 0.05)",
+				"purpose": "局部控件与设置选中项"
+			},
+			{
+				"name": "shadow-sm-light",
+				"value": "0 1px 2px rgba(var(--fc-black-rgb), 0.03)",
+				"purpose": "亮色主题：局部控件与设置选中项"
+			},
+			{
+				"name": "shadow-card",
+				"value": "0 1px 3px rgba(var(--fc-black-rgb), 0.12), 0 3px 10px rgba(var(--fc-black-rgb), 0.05), inset 0 1px 0 0 rgba(var(--fc-white-rgb), 0.05)",
+				"purpose": "滑块等现有控件；不是普通卡片默认"
+			},
+			{
+				"name": "shadow-card-light",
+				"value": "0 1px 3px rgba(var(--fc-black-rgb), 0.04), 0 1px 2px rgba(var(--fc-black-rgb), 0.02)",
+				"purpose": "亮色主题：滑块等现有控件；不是普通卡片默认"
+			},
+			{
+				"name": "shadow-popover",
+				"value": "0 8px 24px rgba(var(--fc-black-rgb), 0.12), 0 2px 6px rgba(var(--fc-black-rgb), 0.08)",
+				"purpose": "菜单浮层"
+			},
+			{
+				"name": "shadow-popover-light",
+				"value": "0 4px 14px rgba(var(--fc-black-rgb), 0.05), 0 1px 3px rgba(var(--fc-black-rgb), 0.03)",
+				"purpose": "亮色主题：菜单浮层"
+			},
+			{
+				"name": "shadow-overlay",
+				"value": "0 24px 64px rgba(var(--fc-black-rgb), 0.16), 0 8px 16px rgba(var(--fc-black-rgb), 0.1)",
+				"purpose": "对话浮层"
+			},
+			{
+				"name": "shadow-overlay-light",
+				"value": "0 12px 32px rgba(var(--fc-black-rgb), 0.08), 0 2px 8px rgba(var(--fc-black-rgb), 0.04)",
+				"purpose": "亮色主题：对话浮层"
+			}
+		],
+		"motion": [
+			{
+				"name": "motion-quick",
+				"value": "140ms",
+				"purpose": "沿用当前共享动效；减少动态效果偏好由原有组件与全局规则处理。"
+			},
+			{
+				"name": "motion-base",
+				"value": "180ms",
+				"purpose": "沿用当前共享动效；减少动态效果偏好由原有组件与全局规则处理。"
+			},
+			{
+				"name": "motion-page",
+				"value": "220ms",
+				"purpose": "沿用当前共享动效；减少动态效果偏好由原有组件与全局规则处理。"
+			},
+			{
+				"name": "ease-out",
+				"value": "cubic-bezier(0.16, 1, 0.3, 1)",
+				"purpose": "沿用当前共享动效；减少动态效果偏好由原有组件与全局规则处理。"
+			},
+			{
+				"name": "ease-snap",
+				"value": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+				"purpose": "沿用当前共享动效；减少动态效果偏好由原有组件与全局规则处理。"
+			},
+			{
+				"name": "transition-button",
+				"value": "transform var(--fc-motion-quick) var(--fc-ease-snap), box-shadow var(--fc-motion-quick) ease, border-color var(--fc-motion-quick) ease, background var(--fc-motion-quick) ease, color var(--fc-motion-quick) ease",
+				"purpose": "沿用当前共享动效；减少动态效果偏好由原有组件与全局规则处理。"
+			},
+			{
+				"name": "transition-progress",
+				"value": "width var(--fc-motion-page) var(--fc-ease-out), box-shadow var(--fc-motion-base) ease",
+				"purpose": "沿用当前共享动效；减少动态效果偏好由原有组件与全局规则处理。"
+			},
+			{
+				"name": "motion-modal-in",
+				"value": "fc-modal-in 240ms var(--fc-ease-out) both",
+				"purpose": "沿用当前共享动效；减少动态效果偏好由原有组件与全局规则处理。"
+			}
+		],
+		"breakpoints": [
+			{
+				"name": "phone",
+				"value": "640px"
+			},
+			{
+				"name": "tablet",
+				"value": "1024px"
+			}
+		]
+	},
+	"components": [
+		{
+			"name": "主操作按钮",
+			"kind": "button",
+			"refersTo": "button-primary",
+			"description": "medium 尺寸；来自共享按钮的实际变体、悬停、按下和禁用规则。焦点反馈保留当前实现限制。",
+			"html": "<div class=\"ds-root\"><button type=\"button\" class=\"ds-btn ds-btn-md ds-btn-primary\">开始学习</button></div>",
+			"css": ".ds-root{--fc-font-xs:11px;--fc-font-sm:13px;--fc-font-md:14px;--fc-weight-semibold:600;--fc-line-tight:1.2;--fc-radius-md:6px;--fc-space-1:4px;--fc-space-2:6px;--fc-space-3:8px;--fc-space-4:12px;--fc-space-6:16px;--fc-control-sm:30px;--fc-control-md:36px;--fc-control-lg:42px;--fc-text:var(--text-normal, CanvasText);--fc-muted:var(--text-muted, GrayText);--fc-red:var(--color-red, red);--fc-primary:#00b8c4;--fc-primary-hover:#00a0ab;--fc-primary-text:color-mix(in srgb, rgb(var(--fc-black-rgb)) 75%, var(--fc-primary));--fc-danger:var(--fc-red);--fc-surface-card:color-mix(in srgb, var(--background-primary, Canvas) 97%, var(--text-normal, CanvasText) 3%);--fc-surface-hover:var(--background-modifier-hover, color-mix(in srgb, CanvasText 8%, Canvas));--fc-opacity-disabled:0.45;--fc-line:color-mix(in srgb, var(--fc-surface-card) 88%, var(--fc-text));--fc-line-strong:color-mix(in srgb, var(--fc-surface-card) 82%, var(--fc-text));--fc-control-border-selected:var(--interactive-accent, Highlight);--fc-input-border-focus:var(--fc-control-border-selected);--fc-black-rgb:0, 0, 0;--fc-font-ui:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;--fc-motion-quick:140ms;--fc-ease-snap:cubic-bezier(0.2, 0.8, 0.2, 1);--fc-transition-button:transform var(--fc-motion-quick) var(--fc-ease-snap), box-shadow var(--fc-motion-quick) ease, border-color var(--fc-motion-quick) ease, background var(--fc-motion-quick) ease, color var(--fc-motion-quick) ease;font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;color:var(--fc-text, CanvasText);}\n.ds-btn{\n  --fc-button-height: var(--fc-control-md);\n  --fc-button-accent: var(--fc-primary);\n  --fc-button-ink: color-mix(in srgb, var(--fc-button-accent) 48%, var(--fc-text));\n  --fc-button-bg: color-mix(in srgb, var(--fc-surface-card) 94%, var(--fc-text));\n  --fc-button-bg-hover: color-mix(in srgb, var(--fc-surface-card) 89%, var(--fc-text));\n  --fc-button-border: var(--fc-line-strong);\n  --fc-button-border-hover: color-mix(in srgb, var(--fc-surface-card) 70%, var(--fc-text));\n  --fc-button-text: var(--fc-text);\n  box-sizing: border-box;\n  position: relative;\n  min-width: 0;\n  min-height: var(--fc-button-height);\n  height: auto;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  gap: var(--fc-space-2);\n  padding: var(--fc-space-2) var(--fc-space-4);\n  border-radius: var(--fc-radius-md);\n  font: var(--fc-weight-semibold) var(--fc-font-sm)/var(--fc-line-tight) var(--fc-font-ui);\n  text-align: center;\n  vertical-align: middle;\n  cursor: pointer;\n  user-select: none;\n  -webkit-user-select: none;\n  transition: var(--fc-transition-button);\n}\n.ds-btn > span{\n  min-width: 0;\n}\n.ds-btn svg{\n  display: block;\n  flex: 0 0 auto;\n  stroke: currentColor;\n}\n.ds-btn:where(.ds-btn-sm){\n  --fc-button-height: var(--fc-control-sm);\n  padding: var(--fc-space-1) var(--fc-space-3);\n  font-size: var(--fc-font-xs);\n}\n.ds-btn:where(.ds-btn-lg){\n  --fc-button-height: var(--fc-control-lg);\n  padding: var(--fc-space-3) var(--fc-space-6);\n  font-size: var(--fc-font-md);\n}\n.ds-btn:where(.ds-btn-icon, .ds-btn-prev){\n  width: var(--fc-button-height);\n  height: var(--fc-button-height);\n  min-width: var(--fc-button-height);\n  padding: 0;\n  flex: 0 0 auto;\n}\n.ds-btn:where(.ds-btn-show){\n  width: 100%;\n  overflow: hidden;\n  font-size: var(--fc-font-md);\n  font-weight: var(--fc-weight-semibold);\n}\n.ds-btn:where(.ds-btn-primary){\n  --fc-button-bg: var(--fc-primary);\n  --fc-button-bg-hover: var(--fc-primary-hover);\n  --fc-button-border: color-mix(in srgb, var(--fc-primary) 90%, var(--fc-text));\n  --fc-button-border-hover: var(--fc-primary-hover);\n  --fc-button-text: var(--fc-primary-text);\n}\n.ds-btn:where(.ds-btn-secondary){\n  --fc-button-bg: color-mix(in srgb, var(--fc-primary) 12%, var(--fc-surface-card));\n  --fc-button-bg-hover: color-mix(in srgb, var(--fc-primary) 20%, var(--fc-surface-card));\n  --fc-button-border: color-mix(in srgb, var(--fc-primary) 36%, var(--fc-line));\n  --fc-button-border-hover: color-mix(in srgb, var(--fc-primary) 70%, var(--fc-line));\n  --fc-button-text: var(--fc-button-ink);\n}\n.ds-btn:where(.ds-btn-outline){\n  --fc-button-bg: transparent;\n  --fc-button-bg-hover: var(--fc-surface-hover);\n}\n.ds-btn:where(.ds-btn-ghost){\n  --fc-button-bg: transparent;\n  --fc-button-bg-hover: var(--fc-surface-hover);\n  --fc-button-border: transparent;\n  --fc-button-border-hover: var(--fc-line);\n  --fc-button-text: var(--fc-muted);\n}\n.ds-btn:where(.ds-btn-danger){\n  --fc-button-accent: var(--fc-danger);\n  --fc-button-bg: color-mix(in srgb, var(--fc-danger) 9%, var(--fc-surface-card));\n  --fc-button-bg-hover: color-mix(in srgb, var(--fc-danger) 17%, var(--fc-surface-card));\n  --fc-button-border: color-mix(in srgb, var(--fc-danger) 38%, var(--fc-line));\n  --fc-button-border-hover: var(--fc-danger);\n  --fc-button-text: var(--fc-button-ink);\n}\n.ds-btn,\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn){\n  appearance: none;\n  border: 1px solid var(--fc-button-border);\n  background: var(--fc-button-bg);\n  box-shadow: none;\n  color: var(--fc-button-text);\n}\n.ds-btn:hover:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):hover:not(:disabled){\n  border-color: var(--fc-button-border-hover);\n  background: var(--fc-button-bg-hover);\n  color: var(--fc-button-text);\n}\n.ds-btn:is(.ds-mod-cta, .ds-mod-warning),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):is(.ds-mod-cta, .ds-mod-warning){\n  border-color: var(--fc-button-border);\n  background: var(--fc-button-bg);\n  color: var(--fc-button-text);\n}\n.ds-btn:is(.ds-mod-cta, .ds-mod-warning):hover:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):is(.ds-mod-cta, .ds-mod-warning):hover:not(:disabled){\n  border-color: var(--fc-button-border-hover);\n  background: var(--fc-button-bg-hover);\n  color: var(--fc-button-text);\n}\n.ds-btn:is(.ds-active, [aria-pressed=true], [aria-expanded=true]),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):is(.ds-active, [aria-pressed=true], [aria-expanded=true]){\n  border-color: color-mix(in srgb, var(--fc-button-accent) 65%, var(--fc-line));\n  background: color-mix(in srgb, var(--fc-button-accent) 18%, var(--fc-surface-card));\n  color: var(--fc-button-ink);\n  box-shadow: none;\n}\n.ds-btn:active:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):active:not(:disabled){\n  transform: translateY(1px);\n  box-shadow: none;\n}\n.ds-btn:disabled,\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):disabled{\n  opacity: var(--fc-opacity-disabled);\n  cursor: not-allowed;\n  transform: none;\n  box-shadow: none;\n}\n.ds-btn.ds-btn-primary:is(.ds-active, [aria-pressed=true], [aria-expanded=true]),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn).ds-btn-primary:is(.ds-active, [aria-pressed=true], [aria-expanded=true]){\n  background: var(--fc-primary-hover);\n  color: var(--fc-primary-text);\n}\n.ds-btn.ds-btn-ghost:hover:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn).ds-btn-ghost:hover:not(:disabled){\n  color: var(--fc-text);\n}\n@media (prefers-reduced-motion: reduce){.ds-btn,\n  :is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn){\n    transition: none;\n  }\n.ds-btn:active:not(:disabled),\n  :is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):active:not(:disabled){\n    transform: none;\n  }}\n.ds-btn:focus-visible{outline:none;border-color:var(--fc-input-border-focus);box-shadow:none;}"
+		},
+		{
+			"name": "次级操作按钮",
+			"kind": "button",
+			"refersTo": "button-secondary",
+			"description": "medium 尺寸；来自共享按钮的实际变体、悬停、按下和禁用规则。焦点反馈保留当前实现限制。",
+			"html": "<div class=\"ds-root\"><button type=\"button\" class=\"ds-btn ds-btn-md ds-btn-secondary\">刷题</button></div>",
+			"css": ".ds-root{--fc-font-xs:11px;--fc-font-sm:13px;--fc-font-md:14px;--fc-weight-semibold:600;--fc-line-tight:1.2;--fc-radius-md:6px;--fc-space-1:4px;--fc-space-2:6px;--fc-space-3:8px;--fc-space-4:12px;--fc-space-6:16px;--fc-control-sm:30px;--fc-control-md:36px;--fc-control-lg:42px;--fc-text:var(--text-normal, CanvasText);--fc-muted:var(--text-muted, GrayText);--fc-red:var(--color-red, red);--fc-primary:#00b8c4;--fc-primary-hover:#00a0ab;--fc-primary-text:color-mix(in srgb, rgb(var(--fc-black-rgb)) 75%, var(--fc-primary));--fc-danger:var(--fc-red);--fc-surface-card:color-mix(in srgb, var(--background-primary, Canvas) 97%, var(--text-normal, CanvasText) 3%);--fc-surface-hover:var(--background-modifier-hover, color-mix(in srgb, CanvasText 8%, Canvas));--fc-opacity-disabled:0.45;--fc-line:color-mix(in srgb, var(--fc-surface-card) 88%, var(--fc-text));--fc-line-strong:color-mix(in srgb, var(--fc-surface-card) 82%, var(--fc-text));--fc-control-border-selected:var(--interactive-accent, Highlight);--fc-input-border-focus:var(--fc-control-border-selected);--fc-black-rgb:0, 0, 0;--fc-font-ui:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;--fc-motion-quick:140ms;--fc-ease-snap:cubic-bezier(0.2, 0.8, 0.2, 1);--fc-transition-button:transform var(--fc-motion-quick) var(--fc-ease-snap), box-shadow var(--fc-motion-quick) ease, border-color var(--fc-motion-quick) ease, background var(--fc-motion-quick) ease, color var(--fc-motion-quick) ease;font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;color:var(--fc-text, CanvasText);}\n.ds-btn{\n  --fc-button-height: var(--fc-control-md);\n  --fc-button-accent: var(--fc-primary);\n  --fc-button-ink: color-mix(in srgb, var(--fc-button-accent) 48%, var(--fc-text));\n  --fc-button-bg: color-mix(in srgb, var(--fc-surface-card) 94%, var(--fc-text));\n  --fc-button-bg-hover: color-mix(in srgb, var(--fc-surface-card) 89%, var(--fc-text));\n  --fc-button-border: var(--fc-line-strong);\n  --fc-button-border-hover: color-mix(in srgb, var(--fc-surface-card) 70%, var(--fc-text));\n  --fc-button-text: var(--fc-text);\n  box-sizing: border-box;\n  position: relative;\n  min-width: 0;\n  min-height: var(--fc-button-height);\n  height: auto;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  gap: var(--fc-space-2);\n  padding: var(--fc-space-2) var(--fc-space-4);\n  border-radius: var(--fc-radius-md);\n  font: var(--fc-weight-semibold) var(--fc-font-sm)/var(--fc-line-tight) var(--fc-font-ui);\n  text-align: center;\n  vertical-align: middle;\n  cursor: pointer;\n  user-select: none;\n  -webkit-user-select: none;\n  transition: var(--fc-transition-button);\n}\n.ds-btn > span{\n  min-width: 0;\n}\n.ds-btn svg{\n  display: block;\n  flex: 0 0 auto;\n  stroke: currentColor;\n}\n.ds-btn:where(.ds-btn-sm){\n  --fc-button-height: var(--fc-control-sm);\n  padding: var(--fc-space-1) var(--fc-space-3);\n  font-size: var(--fc-font-xs);\n}\n.ds-btn:where(.ds-btn-lg){\n  --fc-button-height: var(--fc-control-lg);\n  padding: var(--fc-space-3) var(--fc-space-6);\n  font-size: var(--fc-font-md);\n}\n.ds-btn:where(.ds-btn-icon, .ds-btn-prev){\n  width: var(--fc-button-height);\n  height: var(--fc-button-height);\n  min-width: var(--fc-button-height);\n  padding: 0;\n  flex: 0 0 auto;\n}\n.ds-btn:where(.ds-btn-show){\n  width: 100%;\n  overflow: hidden;\n  font-size: var(--fc-font-md);\n  font-weight: var(--fc-weight-semibold);\n}\n.ds-btn:where(.ds-btn-primary){\n  --fc-button-bg: var(--fc-primary);\n  --fc-button-bg-hover: var(--fc-primary-hover);\n  --fc-button-border: color-mix(in srgb, var(--fc-primary) 90%, var(--fc-text));\n  --fc-button-border-hover: var(--fc-primary-hover);\n  --fc-button-text: var(--fc-primary-text);\n}\n.ds-btn:where(.ds-btn-secondary){\n  --fc-button-bg: color-mix(in srgb, var(--fc-primary) 12%, var(--fc-surface-card));\n  --fc-button-bg-hover: color-mix(in srgb, var(--fc-primary) 20%, var(--fc-surface-card));\n  --fc-button-border: color-mix(in srgb, var(--fc-primary) 36%, var(--fc-line));\n  --fc-button-border-hover: color-mix(in srgb, var(--fc-primary) 70%, var(--fc-line));\n  --fc-button-text: var(--fc-button-ink);\n}\n.ds-btn:where(.ds-btn-outline){\n  --fc-button-bg: transparent;\n  --fc-button-bg-hover: var(--fc-surface-hover);\n}\n.ds-btn:where(.ds-btn-ghost){\n  --fc-button-bg: transparent;\n  --fc-button-bg-hover: var(--fc-surface-hover);\n  --fc-button-border: transparent;\n  --fc-button-border-hover: var(--fc-line);\n  --fc-button-text: var(--fc-muted);\n}\n.ds-btn:where(.ds-btn-danger){\n  --fc-button-accent: var(--fc-danger);\n  --fc-button-bg: color-mix(in srgb, var(--fc-danger) 9%, var(--fc-surface-card));\n  --fc-button-bg-hover: color-mix(in srgb, var(--fc-danger) 17%, var(--fc-surface-card));\n  --fc-button-border: color-mix(in srgb, var(--fc-danger) 38%, var(--fc-line));\n  --fc-button-border-hover: var(--fc-danger);\n  --fc-button-text: var(--fc-button-ink);\n}\n.ds-btn,\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn){\n  appearance: none;\n  border: 1px solid var(--fc-button-border);\n  background: var(--fc-button-bg);\n  box-shadow: none;\n  color: var(--fc-button-text);\n}\n.ds-btn:hover:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):hover:not(:disabled){\n  border-color: var(--fc-button-border-hover);\n  background: var(--fc-button-bg-hover);\n  color: var(--fc-button-text);\n}\n.ds-btn:is(.ds-mod-cta, .ds-mod-warning),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):is(.ds-mod-cta, .ds-mod-warning){\n  border-color: var(--fc-button-border);\n  background: var(--fc-button-bg);\n  color: var(--fc-button-text);\n}\n.ds-btn:is(.ds-mod-cta, .ds-mod-warning):hover:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):is(.ds-mod-cta, .ds-mod-warning):hover:not(:disabled){\n  border-color: var(--fc-button-border-hover);\n  background: var(--fc-button-bg-hover);\n  color: var(--fc-button-text);\n}\n.ds-btn:is(.ds-active, [aria-pressed=true], [aria-expanded=true]),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):is(.ds-active, [aria-pressed=true], [aria-expanded=true]){\n  border-color: color-mix(in srgb, var(--fc-button-accent) 65%, var(--fc-line));\n  background: color-mix(in srgb, var(--fc-button-accent) 18%, var(--fc-surface-card));\n  color: var(--fc-button-ink);\n  box-shadow: none;\n}\n.ds-btn:active:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):active:not(:disabled){\n  transform: translateY(1px);\n  box-shadow: none;\n}\n.ds-btn:disabled,\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):disabled{\n  opacity: var(--fc-opacity-disabled);\n  cursor: not-allowed;\n  transform: none;\n  box-shadow: none;\n}\n.ds-btn.ds-btn-primary:is(.ds-active, [aria-pressed=true], [aria-expanded=true]),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn).ds-btn-primary:is(.ds-active, [aria-pressed=true], [aria-expanded=true]){\n  background: var(--fc-primary-hover);\n  color: var(--fc-primary-text);\n}\n.ds-btn.ds-btn-ghost:hover:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn).ds-btn-ghost:hover:not(:disabled){\n  color: var(--fc-text);\n}\n@media (prefers-reduced-motion: reduce){.ds-btn,\n  :is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn){\n    transition: none;\n  }\n.ds-btn:active:not(:disabled),\n  :is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):active:not(:disabled){\n    transform: none;\n  }}\n.ds-btn:focus-visible{outline:none;border-color:var(--fc-input-border-focus);box-shadow:none;}"
+		},
+		{
+			"name": "中性按钮",
+			"kind": "button",
+			"refersTo": "button-neutral",
+			"description": "medium 尺寸；来自共享按钮的实际变体、悬停、按下和禁用规则。焦点反馈保留当前实现限制。",
+			"html": "<div class=\"ds-root\"><button type=\"button\" class=\"ds-btn ds-btn-md ds-btn-neutral\">设置</button></div>",
+			"css": ".ds-root{--fc-font-xs:11px;--fc-font-sm:13px;--fc-font-md:14px;--fc-weight-semibold:600;--fc-line-tight:1.2;--fc-radius-md:6px;--fc-space-1:4px;--fc-space-2:6px;--fc-space-3:8px;--fc-space-4:12px;--fc-space-6:16px;--fc-control-sm:30px;--fc-control-md:36px;--fc-control-lg:42px;--fc-text:var(--text-normal, CanvasText);--fc-muted:var(--text-muted, GrayText);--fc-red:var(--color-red, red);--fc-primary:#00b8c4;--fc-primary-hover:#00a0ab;--fc-primary-text:color-mix(in srgb, rgb(var(--fc-black-rgb)) 75%, var(--fc-primary));--fc-danger:var(--fc-red);--fc-surface-card:color-mix(in srgb, var(--background-primary, Canvas) 97%, var(--text-normal, CanvasText) 3%);--fc-surface-hover:var(--background-modifier-hover, color-mix(in srgb, CanvasText 8%, Canvas));--fc-opacity-disabled:0.45;--fc-line:color-mix(in srgb, var(--fc-surface-card) 88%, var(--fc-text));--fc-line-strong:color-mix(in srgb, var(--fc-surface-card) 82%, var(--fc-text));--fc-control-border-selected:var(--interactive-accent, Highlight);--fc-input-border-focus:var(--fc-control-border-selected);--fc-black-rgb:0, 0, 0;--fc-font-ui:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;--fc-motion-quick:140ms;--fc-ease-snap:cubic-bezier(0.2, 0.8, 0.2, 1);--fc-transition-button:transform var(--fc-motion-quick) var(--fc-ease-snap), box-shadow var(--fc-motion-quick) ease, border-color var(--fc-motion-quick) ease, background var(--fc-motion-quick) ease, color var(--fc-motion-quick) ease;font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;color:var(--fc-text, CanvasText);}\n.ds-btn{\n  --fc-button-height: var(--fc-control-md);\n  --fc-button-accent: var(--fc-primary);\n  --fc-button-ink: color-mix(in srgb, var(--fc-button-accent) 48%, var(--fc-text));\n  --fc-button-bg: color-mix(in srgb, var(--fc-surface-card) 94%, var(--fc-text));\n  --fc-button-bg-hover: color-mix(in srgb, var(--fc-surface-card) 89%, var(--fc-text));\n  --fc-button-border: var(--fc-line-strong);\n  --fc-button-border-hover: color-mix(in srgb, var(--fc-surface-card) 70%, var(--fc-text));\n  --fc-button-text: var(--fc-text);\n  box-sizing: border-box;\n  position: relative;\n  min-width: 0;\n  min-height: var(--fc-button-height);\n  height: auto;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  gap: var(--fc-space-2);\n  padding: var(--fc-space-2) var(--fc-space-4);\n  border-radius: var(--fc-radius-md);\n  font: var(--fc-weight-semibold) var(--fc-font-sm)/var(--fc-line-tight) var(--fc-font-ui);\n  text-align: center;\n  vertical-align: middle;\n  cursor: pointer;\n  user-select: none;\n  -webkit-user-select: none;\n  transition: var(--fc-transition-button);\n}\n.ds-btn > span{\n  min-width: 0;\n}\n.ds-btn svg{\n  display: block;\n  flex: 0 0 auto;\n  stroke: currentColor;\n}\n.ds-btn:where(.ds-btn-sm){\n  --fc-button-height: var(--fc-control-sm);\n  padding: var(--fc-space-1) var(--fc-space-3);\n  font-size: var(--fc-font-xs);\n}\n.ds-btn:where(.ds-btn-lg){\n  --fc-button-height: var(--fc-control-lg);\n  padding: var(--fc-space-3) var(--fc-space-6);\n  font-size: var(--fc-font-md);\n}\n.ds-btn:where(.ds-btn-icon, .ds-btn-prev){\n  width: var(--fc-button-height);\n  height: var(--fc-button-height);\n  min-width: var(--fc-button-height);\n  padding: 0;\n  flex: 0 0 auto;\n}\n.ds-btn:where(.ds-btn-show){\n  width: 100%;\n  overflow: hidden;\n  font-size: var(--fc-font-md);\n  font-weight: var(--fc-weight-semibold);\n}\n.ds-btn:where(.ds-btn-primary){\n  --fc-button-bg: var(--fc-primary);\n  --fc-button-bg-hover: var(--fc-primary-hover);\n  --fc-button-border: color-mix(in srgb, var(--fc-primary) 90%, var(--fc-text));\n  --fc-button-border-hover: var(--fc-primary-hover);\n  --fc-button-text: var(--fc-primary-text);\n}\n.ds-btn:where(.ds-btn-secondary){\n  --fc-button-bg: color-mix(in srgb, var(--fc-primary) 12%, var(--fc-surface-card));\n  --fc-button-bg-hover: color-mix(in srgb, var(--fc-primary) 20%, var(--fc-surface-card));\n  --fc-button-border: color-mix(in srgb, var(--fc-primary) 36%, var(--fc-line));\n  --fc-button-border-hover: color-mix(in srgb, var(--fc-primary) 70%, var(--fc-line));\n  --fc-button-text: var(--fc-button-ink);\n}\n.ds-btn:where(.ds-btn-outline){\n  --fc-button-bg: transparent;\n  --fc-button-bg-hover: var(--fc-surface-hover);\n}\n.ds-btn:where(.ds-btn-ghost){\n  --fc-button-bg: transparent;\n  --fc-button-bg-hover: var(--fc-surface-hover);\n  --fc-button-border: transparent;\n  --fc-button-border-hover: var(--fc-line);\n  --fc-button-text: var(--fc-muted);\n}\n.ds-btn:where(.ds-btn-danger){\n  --fc-button-accent: var(--fc-danger);\n  --fc-button-bg: color-mix(in srgb, var(--fc-danger) 9%, var(--fc-surface-card));\n  --fc-button-bg-hover: color-mix(in srgb, var(--fc-danger) 17%, var(--fc-surface-card));\n  --fc-button-border: color-mix(in srgb, var(--fc-danger) 38%, var(--fc-line));\n  --fc-button-border-hover: var(--fc-danger);\n  --fc-button-text: var(--fc-button-ink);\n}\n.ds-btn,\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn){\n  appearance: none;\n  border: 1px solid var(--fc-button-border);\n  background: var(--fc-button-bg);\n  box-shadow: none;\n  color: var(--fc-button-text);\n}\n.ds-btn:hover:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):hover:not(:disabled){\n  border-color: var(--fc-button-border-hover);\n  background: var(--fc-button-bg-hover);\n  color: var(--fc-button-text);\n}\n.ds-btn:is(.ds-mod-cta, .ds-mod-warning),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):is(.ds-mod-cta, .ds-mod-warning){\n  border-color: var(--fc-button-border);\n  background: var(--fc-button-bg);\n  color: var(--fc-button-text);\n}\n.ds-btn:is(.ds-mod-cta, .ds-mod-warning):hover:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):is(.ds-mod-cta, .ds-mod-warning):hover:not(:disabled){\n  border-color: var(--fc-button-border-hover);\n  background: var(--fc-button-bg-hover);\n  color: var(--fc-button-text);\n}\n.ds-btn:is(.ds-active, [aria-pressed=true], [aria-expanded=true]),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):is(.ds-active, [aria-pressed=true], [aria-expanded=true]){\n  border-color: color-mix(in srgb, var(--fc-button-accent) 65%, var(--fc-line));\n  background: color-mix(in srgb, var(--fc-button-accent) 18%, var(--fc-surface-card));\n  color: var(--fc-button-ink);\n  box-shadow: none;\n}\n.ds-btn:active:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):active:not(:disabled){\n  transform: translateY(1px);\n  box-shadow: none;\n}\n.ds-btn:disabled,\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):disabled{\n  opacity: var(--fc-opacity-disabled);\n  cursor: not-allowed;\n  transform: none;\n  box-shadow: none;\n}\n.ds-btn.ds-btn-primary:is(.ds-active, [aria-pressed=true], [aria-expanded=true]),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn).ds-btn-primary:is(.ds-active, [aria-pressed=true], [aria-expanded=true]){\n  background: var(--fc-primary-hover);\n  color: var(--fc-primary-text);\n}\n.ds-btn.ds-btn-ghost:hover:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn).ds-btn-ghost:hover:not(:disabled){\n  color: var(--fc-text);\n}\n@media (prefers-reduced-motion: reduce){.ds-btn,\n  :is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn){\n    transition: none;\n  }\n.ds-btn:active:not(:disabled),\n  :is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):active:not(:disabled){\n    transform: none;\n  }}\n.ds-btn:focus-visible{outline:none;border-color:var(--fc-input-border-focus);box-shadow:none;}"
+		},
+		{
+			"name": "描边按钮",
+			"kind": "button",
+			"refersTo": "button-outline",
+			"description": "medium 尺寸；来自共享按钮的实际变体、悬停、按下和禁用规则。焦点反馈保留当前实现限制。",
+			"html": "<div class=\"ds-root\"><button type=\"button\" class=\"ds-btn ds-btn-md ds-btn-outline\">返回</button></div>",
+			"css": ".ds-root{--fc-font-xs:11px;--fc-font-sm:13px;--fc-font-md:14px;--fc-weight-semibold:600;--fc-line-tight:1.2;--fc-radius-md:6px;--fc-space-1:4px;--fc-space-2:6px;--fc-space-3:8px;--fc-space-4:12px;--fc-space-6:16px;--fc-control-sm:30px;--fc-control-md:36px;--fc-control-lg:42px;--fc-text:var(--text-normal, CanvasText);--fc-muted:var(--text-muted, GrayText);--fc-red:var(--color-red, red);--fc-primary:#00b8c4;--fc-primary-hover:#00a0ab;--fc-primary-text:color-mix(in srgb, rgb(var(--fc-black-rgb)) 75%, var(--fc-primary));--fc-danger:var(--fc-red);--fc-surface-card:color-mix(in srgb, var(--background-primary, Canvas) 97%, var(--text-normal, CanvasText) 3%);--fc-surface-hover:var(--background-modifier-hover, color-mix(in srgb, CanvasText 8%, Canvas));--fc-opacity-disabled:0.45;--fc-line:color-mix(in srgb, var(--fc-surface-card) 88%, var(--fc-text));--fc-line-strong:color-mix(in srgb, var(--fc-surface-card) 82%, var(--fc-text));--fc-control-border-selected:var(--interactive-accent, Highlight);--fc-input-border-focus:var(--fc-control-border-selected);--fc-black-rgb:0, 0, 0;--fc-font-ui:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;--fc-motion-quick:140ms;--fc-ease-snap:cubic-bezier(0.2, 0.8, 0.2, 1);--fc-transition-button:transform var(--fc-motion-quick) var(--fc-ease-snap), box-shadow var(--fc-motion-quick) ease, border-color var(--fc-motion-quick) ease, background var(--fc-motion-quick) ease, color var(--fc-motion-quick) ease;font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;color:var(--fc-text, CanvasText);}\n.ds-btn{\n  --fc-button-height: var(--fc-control-md);\n  --fc-button-accent: var(--fc-primary);\n  --fc-button-ink: color-mix(in srgb, var(--fc-button-accent) 48%, var(--fc-text));\n  --fc-button-bg: color-mix(in srgb, var(--fc-surface-card) 94%, var(--fc-text));\n  --fc-button-bg-hover: color-mix(in srgb, var(--fc-surface-card) 89%, var(--fc-text));\n  --fc-button-border: var(--fc-line-strong);\n  --fc-button-border-hover: color-mix(in srgb, var(--fc-surface-card) 70%, var(--fc-text));\n  --fc-button-text: var(--fc-text);\n  box-sizing: border-box;\n  position: relative;\n  min-width: 0;\n  min-height: var(--fc-button-height);\n  height: auto;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  gap: var(--fc-space-2);\n  padding: var(--fc-space-2) var(--fc-space-4);\n  border-radius: var(--fc-radius-md);\n  font: var(--fc-weight-semibold) var(--fc-font-sm)/var(--fc-line-tight) var(--fc-font-ui);\n  text-align: center;\n  vertical-align: middle;\n  cursor: pointer;\n  user-select: none;\n  -webkit-user-select: none;\n  transition: var(--fc-transition-button);\n}\n.ds-btn > span{\n  min-width: 0;\n}\n.ds-btn svg{\n  display: block;\n  flex: 0 0 auto;\n  stroke: currentColor;\n}\n.ds-btn:where(.ds-btn-sm){\n  --fc-button-height: var(--fc-control-sm);\n  padding: var(--fc-space-1) var(--fc-space-3);\n  font-size: var(--fc-font-xs);\n}\n.ds-btn:where(.ds-btn-lg){\n  --fc-button-height: var(--fc-control-lg);\n  padding: var(--fc-space-3) var(--fc-space-6);\n  font-size: var(--fc-font-md);\n}\n.ds-btn:where(.ds-btn-icon, .ds-btn-prev){\n  width: var(--fc-button-height);\n  height: var(--fc-button-height);\n  min-width: var(--fc-button-height);\n  padding: 0;\n  flex: 0 0 auto;\n}\n.ds-btn:where(.ds-btn-show){\n  width: 100%;\n  overflow: hidden;\n  font-size: var(--fc-font-md);\n  font-weight: var(--fc-weight-semibold);\n}\n.ds-btn:where(.ds-btn-primary){\n  --fc-button-bg: var(--fc-primary);\n  --fc-button-bg-hover: var(--fc-primary-hover);\n  --fc-button-border: color-mix(in srgb, var(--fc-primary) 90%, var(--fc-text));\n  --fc-button-border-hover: var(--fc-primary-hover);\n  --fc-button-text: var(--fc-primary-text);\n}\n.ds-btn:where(.ds-btn-secondary){\n  --fc-button-bg: color-mix(in srgb, var(--fc-primary) 12%, var(--fc-surface-card));\n  --fc-button-bg-hover: color-mix(in srgb, var(--fc-primary) 20%, var(--fc-surface-card));\n  --fc-button-border: color-mix(in srgb, var(--fc-primary) 36%, var(--fc-line));\n  --fc-button-border-hover: color-mix(in srgb, var(--fc-primary) 70%, var(--fc-line));\n  --fc-button-text: var(--fc-button-ink);\n}\n.ds-btn:where(.ds-btn-outline){\n  --fc-button-bg: transparent;\n  --fc-button-bg-hover: var(--fc-surface-hover);\n}\n.ds-btn:where(.ds-btn-ghost){\n  --fc-button-bg: transparent;\n  --fc-button-bg-hover: var(--fc-surface-hover);\n  --fc-button-border: transparent;\n  --fc-button-border-hover: var(--fc-line);\n  --fc-button-text: var(--fc-muted);\n}\n.ds-btn:where(.ds-btn-danger){\n  --fc-button-accent: var(--fc-danger);\n  --fc-button-bg: color-mix(in srgb, var(--fc-danger) 9%, var(--fc-surface-card));\n  --fc-button-bg-hover: color-mix(in srgb, var(--fc-danger) 17%, var(--fc-surface-card));\n  --fc-button-border: color-mix(in srgb, var(--fc-danger) 38%, var(--fc-line));\n  --fc-button-border-hover: var(--fc-danger);\n  --fc-button-text: var(--fc-button-ink);\n}\n.ds-btn,\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn){\n  appearance: none;\n  border: 1px solid var(--fc-button-border);\n  background: var(--fc-button-bg);\n  box-shadow: none;\n  color: var(--fc-button-text);\n}\n.ds-btn:hover:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):hover:not(:disabled){\n  border-color: var(--fc-button-border-hover);\n  background: var(--fc-button-bg-hover);\n  color: var(--fc-button-text);\n}\n.ds-btn:is(.ds-mod-cta, .ds-mod-warning),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):is(.ds-mod-cta, .ds-mod-warning){\n  border-color: var(--fc-button-border);\n  background: var(--fc-button-bg);\n  color: var(--fc-button-text);\n}\n.ds-btn:is(.ds-mod-cta, .ds-mod-warning):hover:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):is(.ds-mod-cta, .ds-mod-warning):hover:not(:disabled){\n  border-color: var(--fc-button-border-hover);\n  background: var(--fc-button-bg-hover);\n  color: var(--fc-button-text);\n}\n.ds-btn:is(.ds-active, [aria-pressed=true], [aria-expanded=true]),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):is(.ds-active, [aria-pressed=true], [aria-expanded=true]){\n  border-color: color-mix(in srgb, var(--fc-button-accent) 65%, var(--fc-line));\n  background: color-mix(in srgb, var(--fc-button-accent) 18%, var(--fc-surface-card));\n  color: var(--fc-button-ink);\n  box-shadow: none;\n}\n.ds-btn:active:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):active:not(:disabled){\n  transform: translateY(1px);\n  box-shadow: none;\n}\n.ds-btn:disabled,\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):disabled{\n  opacity: var(--fc-opacity-disabled);\n  cursor: not-allowed;\n  transform: none;\n  box-shadow: none;\n}\n.ds-btn.ds-btn-primary:is(.ds-active, [aria-pressed=true], [aria-expanded=true]),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn).ds-btn-primary:is(.ds-active, [aria-pressed=true], [aria-expanded=true]){\n  background: var(--fc-primary-hover);\n  color: var(--fc-primary-text);\n}\n.ds-btn.ds-btn-ghost:hover:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn).ds-btn-ghost:hover:not(:disabled){\n  color: var(--fc-text);\n}\n@media (prefers-reduced-motion: reduce){.ds-btn,\n  :is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn){\n    transition: none;\n  }\n.ds-btn:active:not(:disabled),\n  :is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):active:not(:disabled){\n    transform: none;\n  }}\n.ds-btn:focus-visible{outline:none;border-color:var(--fc-input-border-focus);box-shadow:none;}"
+		},
+		{
+			"name": "轻量按钮",
+			"kind": "button",
+			"refersTo": "button-ghost",
+			"description": "medium 尺寸；来自共享按钮的实际变体、悬停、按下和禁用规则。焦点反馈保留当前实现限制。",
+			"html": "<div class=\"ds-root\"><button type=\"button\" class=\"ds-btn ds-btn-md ds-btn-ghost\">更多</button></div>",
+			"css": ".ds-root{--fc-font-xs:11px;--fc-font-sm:13px;--fc-font-md:14px;--fc-weight-semibold:600;--fc-line-tight:1.2;--fc-radius-md:6px;--fc-space-1:4px;--fc-space-2:6px;--fc-space-3:8px;--fc-space-4:12px;--fc-space-6:16px;--fc-control-sm:30px;--fc-control-md:36px;--fc-control-lg:42px;--fc-text:var(--text-normal, CanvasText);--fc-muted:var(--text-muted, GrayText);--fc-red:var(--color-red, red);--fc-primary:#00b8c4;--fc-primary-hover:#00a0ab;--fc-primary-text:color-mix(in srgb, rgb(var(--fc-black-rgb)) 75%, var(--fc-primary));--fc-danger:var(--fc-red);--fc-surface-card:color-mix(in srgb, var(--background-primary, Canvas) 97%, var(--text-normal, CanvasText) 3%);--fc-surface-hover:var(--background-modifier-hover, color-mix(in srgb, CanvasText 8%, Canvas));--fc-opacity-disabled:0.45;--fc-line:color-mix(in srgb, var(--fc-surface-card) 88%, var(--fc-text));--fc-line-strong:color-mix(in srgb, var(--fc-surface-card) 82%, var(--fc-text));--fc-control-border-selected:var(--interactive-accent, Highlight);--fc-input-border-focus:var(--fc-control-border-selected);--fc-black-rgb:0, 0, 0;--fc-font-ui:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;--fc-motion-quick:140ms;--fc-ease-snap:cubic-bezier(0.2, 0.8, 0.2, 1);--fc-transition-button:transform var(--fc-motion-quick) var(--fc-ease-snap), box-shadow var(--fc-motion-quick) ease, border-color var(--fc-motion-quick) ease, background var(--fc-motion-quick) ease, color var(--fc-motion-quick) ease;font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;color:var(--fc-text, CanvasText);}\n.ds-btn{\n  --fc-button-height: var(--fc-control-md);\n  --fc-button-accent: var(--fc-primary);\n  --fc-button-ink: color-mix(in srgb, var(--fc-button-accent) 48%, var(--fc-text));\n  --fc-button-bg: color-mix(in srgb, var(--fc-surface-card) 94%, var(--fc-text));\n  --fc-button-bg-hover: color-mix(in srgb, var(--fc-surface-card) 89%, var(--fc-text));\n  --fc-button-border: var(--fc-line-strong);\n  --fc-button-border-hover: color-mix(in srgb, var(--fc-surface-card) 70%, var(--fc-text));\n  --fc-button-text: var(--fc-text);\n  box-sizing: border-box;\n  position: relative;\n  min-width: 0;\n  min-height: var(--fc-button-height);\n  height: auto;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  gap: var(--fc-space-2);\n  padding: var(--fc-space-2) var(--fc-space-4);\n  border-radius: var(--fc-radius-md);\n  font: var(--fc-weight-semibold) var(--fc-font-sm)/var(--fc-line-tight) var(--fc-font-ui);\n  text-align: center;\n  vertical-align: middle;\n  cursor: pointer;\n  user-select: none;\n  -webkit-user-select: none;\n  transition: var(--fc-transition-button);\n}\n.ds-btn > span{\n  min-width: 0;\n}\n.ds-btn svg{\n  display: block;\n  flex: 0 0 auto;\n  stroke: currentColor;\n}\n.ds-btn:where(.ds-btn-sm){\n  --fc-button-height: var(--fc-control-sm);\n  padding: var(--fc-space-1) var(--fc-space-3);\n  font-size: var(--fc-font-xs);\n}\n.ds-btn:where(.ds-btn-lg){\n  --fc-button-height: var(--fc-control-lg);\n  padding: var(--fc-space-3) var(--fc-space-6);\n  font-size: var(--fc-font-md);\n}\n.ds-btn:where(.ds-btn-icon, .ds-btn-prev){\n  width: var(--fc-button-height);\n  height: var(--fc-button-height);\n  min-width: var(--fc-button-height);\n  padding: 0;\n  flex: 0 0 auto;\n}\n.ds-btn:where(.ds-btn-show){\n  width: 100%;\n  overflow: hidden;\n  font-size: var(--fc-font-md);\n  font-weight: var(--fc-weight-semibold);\n}\n.ds-btn:where(.ds-btn-primary){\n  --fc-button-bg: var(--fc-primary);\n  --fc-button-bg-hover: var(--fc-primary-hover);\n  --fc-button-border: color-mix(in srgb, var(--fc-primary) 90%, var(--fc-text));\n  --fc-button-border-hover: var(--fc-primary-hover);\n  --fc-button-text: var(--fc-primary-text);\n}\n.ds-btn:where(.ds-btn-secondary){\n  --fc-button-bg: color-mix(in srgb, var(--fc-primary) 12%, var(--fc-surface-card));\n  --fc-button-bg-hover: color-mix(in srgb, var(--fc-primary) 20%, var(--fc-surface-card));\n  --fc-button-border: color-mix(in srgb, var(--fc-primary) 36%, var(--fc-line));\n  --fc-button-border-hover: color-mix(in srgb, var(--fc-primary) 70%, var(--fc-line));\n  --fc-button-text: var(--fc-button-ink);\n}\n.ds-btn:where(.ds-btn-outline){\n  --fc-button-bg: transparent;\n  --fc-button-bg-hover: var(--fc-surface-hover);\n}\n.ds-btn:where(.ds-btn-ghost){\n  --fc-button-bg: transparent;\n  --fc-button-bg-hover: var(--fc-surface-hover);\n  --fc-button-border: transparent;\n  --fc-button-border-hover: var(--fc-line);\n  --fc-button-text: var(--fc-muted);\n}\n.ds-btn:where(.ds-btn-danger){\n  --fc-button-accent: var(--fc-danger);\n  --fc-button-bg: color-mix(in srgb, var(--fc-danger) 9%, var(--fc-surface-card));\n  --fc-button-bg-hover: color-mix(in srgb, var(--fc-danger) 17%, var(--fc-surface-card));\n  --fc-button-border: color-mix(in srgb, var(--fc-danger) 38%, var(--fc-line));\n  --fc-button-border-hover: var(--fc-danger);\n  --fc-button-text: var(--fc-button-ink);\n}\n.ds-btn,\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn){\n  appearance: none;\n  border: 1px solid var(--fc-button-border);\n  background: var(--fc-button-bg);\n  box-shadow: none;\n  color: var(--fc-button-text);\n}\n.ds-btn:hover:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):hover:not(:disabled){\n  border-color: var(--fc-button-border-hover);\n  background: var(--fc-button-bg-hover);\n  color: var(--fc-button-text);\n}\n.ds-btn:is(.ds-mod-cta, .ds-mod-warning),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):is(.ds-mod-cta, .ds-mod-warning){\n  border-color: var(--fc-button-border);\n  background: var(--fc-button-bg);\n  color: var(--fc-button-text);\n}\n.ds-btn:is(.ds-mod-cta, .ds-mod-warning):hover:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):is(.ds-mod-cta, .ds-mod-warning):hover:not(:disabled){\n  border-color: var(--fc-button-border-hover);\n  background: var(--fc-button-bg-hover);\n  color: var(--fc-button-text);\n}\n.ds-btn:is(.ds-active, [aria-pressed=true], [aria-expanded=true]),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):is(.ds-active, [aria-pressed=true], [aria-expanded=true]){\n  border-color: color-mix(in srgb, var(--fc-button-accent) 65%, var(--fc-line));\n  background: color-mix(in srgb, var(--fc-button-accent) 18%, var(--fc-surface-card));\n  color: var(--fc-button-ink);\n  box-shadow: none;\n}\n.ds-btn:active:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):active:not(:disabled){\n  transform: translateY(1px);\n  box-shadow: none;\n}\n.ds-btn:disabled,\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):disabled{\n  opacity: var(--fc-opacity-disabled);\n  cursor: not-allowed;\n  transform: none;\n  box-shadow: none;\n}\n.ds-btn.ds-btn-primary:is(.ds-active, [aria-pressed=true], [aria-expanded=true]),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn).ds-btn-primary:is(.ds-active, [aria-pressed=true], [aria-expanded=true]){\n  background: var(--fc-primary-hover);\n  color: var(--fc-primary-text);\n}\n.ds-btn.ds-btn-ghost:hover:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn).ds-btn-ghost:hover:not(:disabled){\n  color: var(--fc-text);\n}\n@media (prefers-reduced-motion: reduce){.ds-btn,\n  :is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn){\n    transition: none;\n  }\n.ds-btn:active:not(:disabled),\n  :is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):active:not(:disabled){\n    transform: none;\n  }}\n.ds-btn:focus-visible{outline:none;border-color:var(--fc-input-border-focus);box-shadow:none;}"
+		},
+		{
+			"name": "危险操作按钮",
+			"kind": "button",
+			"refersTo": "button-danger",
+			"description": "medium 尺寸；来自共享按钮的实际变体、悬停、按下和禁用规则。焦点反馈保留当前实现限制。",
+			"html": "<div class=\"ds-root\"><button type=\"button\" class=\"ds-btn ds-btn-md ds-btn-danger\">删除</button></div>",
+			"css": ".ds-root{--fc-font-xs:11px;--fc-font-sm:13px;--fc-font-md:14px;--fc-weight-semibold:600;--fc-line-tight:1.2;--fc-radius-md:6px;--fc-space-1:4px;--fc-space-2:6px;--fc-space-3:8px;--fc-space-4:12px;--fc-space-6:16px;--fc-control-sm:30px;--fc-control-md:36px;--fc-control-lg:42px;--fc-text:var(--text-normal, CanvasText);--fc-muted:var(--text-muted, GrayText);--fc-red:var(--color-red, red);--fc-primary:#00b8c4;--fc-primary-hover:#00a0ab;--fc-primary-text:color-mix(in srgb, rgb(var(--fc-black-rgb)) 75%, var(--fc-primary));--fc-danger:var(--fc-red);--fc-surface-card:color-mix(in srgb, var(--background-primary, Canvas) 97%, var(--text-normal, CanvasText) 3%);--fc-surface-hover:var(--background-modifier-hover, color-mix(in srgb, CanvasText 8%, Canvas));--fc-opacity-disabled:0.45;--fc-line:color-mix(in srgb, var(--fc-surface-card) 88%, var(--fc-text));--fc-line-strong:color-mix(in srgb, var(--fc-surface-card) 82%, var(--fc-text));--fc-control-border-selected:var(--interactive-accent, Highlight);--fc-input-border-focus:var(--fc-control-border-selected);--fc-black-rgb:0, 0, 0;--fc-font-ui:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;--fc-motion-quick:140ms;--fc-ease-snap:cubic-bezier(0.2, 0.8, 0.2, 1);--fc-transition-button:transform var(--fc-motion-quick) var(--fc-ease-snap), box-shadow var(--fc-motion-quick) ease, border-color var(--fc-motion-quick) ease, background var(--fc-motion-quick) ease, color var(--fc-motion-quick) ease;font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;color:var(--fc-text, CanvasText);}\n.ds-btn{\n  --fc-button-height: var(--fc-control-md);\n  --fc-button-accent: var(--fc-primary);\n  --fc-button-ink: color-mix(in srgb, var(--fc-button-accent) 48%, var(--fc-text));\n  --fc-button-bg: color-mix(in srgb, var(--fc-surface-card) 94%, var(--fc-text));\n  --fc-button-bg-hover: color-mix(in srgb, var(--fc-surface-card) 89%, var(--fc-text));\n  --fc-button-border: var(--fc-line-strong);\n  --fc-button-border-hover: color-mix(in srgb, var(--fc-surface-card) 70%, var(--fc-text));\n  --fc-button-text: var(--fc-text);\n  box-sizing: border-box;\n  position: relative;\n  min-width: 0;\n  min-height: var(--fc-button-height);\n  height: auto;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  gap: var(--fc-space-2);\n  padding: var(--fc-space-2) var(--fc-space-4);\n  border-radius: var(--fc-radius-md);\n  font: var(--fc-weight-semibold) var(--fc-font-sm)/var(--fc-line-tight) var(--fc-font-ui);\n  text-align: center;\n  vertical-align: middle;\n  cursor: pointer;\n  user-select: none;\n  -webkit-user-select: none;\n  transition: var(--fc-transition-button);\n}\n.ds-btn > span{\n  min-width: 0;\n}\n.ds-btn svg{\n  display: block;\n  flex: 0 0 auto;\n  stroke: currentColor;\n}\n.ds-btn:where(.ds-btn-sm){\n  --fc-button-height: var(--fc-control-sm);\n  padding: var(--fc-space-1) var(--fc-space-3);\n  font-size: var(--fc-font-xs);\n}\n.ds-btn:where(.ds-btn-lg){\n  --fc-button-height: var(--fc-control-lg);\n  padding: var(--fc-space-3) var(--fc-space-6);\n  font-size: var(--fc-font-md);\n}\n.ds-btn:where(.ds-btn-icon, .ds-btn-prev){\n  width: var(--fc-button-height);\n  height: var(--fc-button-height);\n  min-width: var(--fc-button-height);\n  padding: 0;\n  flex: 0 0 auto;\n}\n.ds-btn:where(.ds-btn-show){\n  width: 100%;\n  overflow: hidden;\n  font-size: var(--fc-font-md);\n  font-weight: var(--fc-weight-semibold);\n}\n.ds-btn:where(.ds-btn-primary){\n  --fc-button-bg: var(--fc-primary);\n  --fc-button-bg-hover: var(--fc-primary-hover);\n  --fc-button-border: color-mix(in srgb, var(--fc-primary) 90%, var(--fc-text));\n  --fc-button-border-hover: var(--fc-primary-hover);\n  --fc-button-text: var(--fc-primary-text);\n}\n.ds-btn:where(.ds-btn-secondary){\n  --fc-button-bg: color-mix(in srgb, var(--fc-primary) 12%, var(--fc-surface-card));\n  --fc-button-bg-hover: color-mix(in srgb, var(--fc-primary) 20%, var(--fc-surface-card));\n  --fc-button-border: color-mix(in srgb, var(--fc-primary) 36%, var(--fc-line));\n  --fc-button-border-hover: color-mix(in srgb, var(--fc-primary) 70%, var(--fc-line));\n  --fc-button-text: var(--fc-button-ink);\n}\n.ds-btn:where(.ds-btn-outline){\n  --fc-button-bg: transparent;\n  --fc-button-bg-hover: var(--fc-surface-hover);\n}\n.ds-btn:where(.ds-btn-ghost){\n  --fc-button-bg: transparent;\n  --fc-button-bg-hover: var(--fc-surface-hover);\n  --fc-button-border: transparent;\n  --fc-button-border-hover: var(--fc-line);\n  --fc-button-text: var(--fc-muted);\n}\n.ds-btn:where(.ds-btn-danger){\n  --fc-button-accent: var(--fc-danger);\n  --fc-button-bg: color-mix(in srgb, var(--fc-danger) 9%, var(--fc-surface-card));\n  --fc-button-bg-hover: color-mix(in srgb, var(--fc-danger) 17%, var(--fc-surface-card));\n  --fc-button-border: color-mix(in srgb, var(--fc-danger) 38%, var(--fc-line));\n  --fc-button-border-hover: var(--fc-danger);\n  --fc-button-text: var(--fc-button-ink);\n}\n.ds-btn,\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn){\n  appearance: none;\n  border: 1px solid var(--fc-button-border);\n  background: var(--fc-button-bg);\n  box-shadow: none;\n  color: var(--fc-button-text);\n}\n.ds-btn:hover:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):hover:not(:disabled){\n  border-color: var(--fc-button-border-hover);\n  background: var(--fc-button-bg-hover);\n  color: var(--fc-button-text);\n}\n.ds-btn:is(.ds-mod-cta, .ds-mod-warning),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):is(.ds-mod-cta, .ds-mod-warning){\n  border-color: var(--fc-button-border);\n  background: var(--fc-button-bg);\n  color: var(--fc-button-text);\n}\n.ds-btn:is(.ds-mod-cta, .ds-mod-warning):hover:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):is(.ds-mod-cta, .ds-mod-warning):hover:not(:disabled){\n  border-color: var(--fc-button-border-hover);\n  background: var(--fc-button-bg-hover);\n  color: var(--fc-button-text);\n}\n.ds-btn:is(.ds-active, [aria-pressed=true], [aria-expanded=true]),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):is(.ds-active, [aria-pressed=true], [aria-expanded=true]){\n  border-color: color-mix(in srgb, var(--fc-button-accent) 65%, var(--fc-line));\n  background: color-mix(in srgb, var(--fc-button-accent) 18%, var(--fc-surface-card));\n  color: var(--fc-button-ink);\n  box-shadow: none;\n}\n.ds-btn:active:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):active:not(:disabled){\n  transform: translateY(1px);\n  box-shadow: none;\n}\n.ds-btn:disabled,\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):disabled{\n  opacity: var(--fc-opacity-disabled);\n  cursor: not-allowed;\n  transform: none;\n  box-shadow: none;\n}\n.ds-btn.ds-btn-primary:is(.ds-active, [aria-pressed=true], [aria-expanded=true]),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn).ds-btn-primary:is(.ds-active, [aria-pressed=true], [aria-expanded=true]){\n  background: var(--fc-primary-hover);\n  color: var(--fc-primary-text);\n}\n.ds-btn.ds-btn-ghost:hover:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn).ds-btn-ghost:hover:not(:disabled){\n  color: var(--fc-text);\n}\n@media (prefers-reduced-motion: reduce){.ds-btn,\n  :is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn){\n    transition: none;\n  }\n.ds-btn:active:not(:disabled),\n  :is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):active:not(:disabled){\n    transform: none;\n  }}\n.ds-btn:focus-visible{outline:none;border-color:var(--fc-input-border-focus);box-shadow:none;}"
+		},
+		{
+			"name": "文本输入",
+			"kind": "input",
+			"refersTo": "input",
+			"description": "共享输入基元的默认尺寸、焦点边界及错误状态；真实宿主选择器仍须实机核对。",
+			"html": "<div class=\"ds-root\"><input class=\"ds-control\" type=\"text\" aria-label=\"单词\" placeholder=\"输入单词\"></div>",
+			"css": ".ds-root{--fc-font-md:14px;--fc-weight-regular:400;--fc-line-body:1.5;--fc-radius-sm:4px;--fc-space-2:6px;--fc-space-3:8px;--fc-control-md:36px;--fc-text:var(--text-normal, CanvasText);--fc-faint:var(--text-faint, GrayText);--fc-cyan:var(--interactive-accent, Highlight);--fc-red:var(--color-red, red);--fc-danger:var(--fc-red);--fc-bg-panel:color-mix( in srgb, var(--background-secondary, Canvas) 30%, var(--background-primary, Canvas) 70% );--fc-surface-card:color-mix(in srgb, var(--background-primary, Canvas) 97%, var(--text-normal, CanvasText) 3%);--fc-surface-section:color-mix(in srgb, var(--fc-bg-panel) 94%, var(--text-normal, CanvasText) 6%);--fc-opacity-disabled:0.45;--fc-line:color-mix(in srgb, var(--fc-surface-card) 88%, var(--fc-text));--fc-control-border:var(--fc-line);--fc-control-border-selected:var(--interactive-accent, Highlight);--fc-input-bg:color-mix( in srgb, var(--background-primary, Canvas) 85%, var(--background-secondary, Canvas) 15% );--fc-input-border:var(--fc-control-border);--fc-input-border-focus:var(--fc-control-border-selected);--fc-font-ui:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;--fc-motion-quick:140ms;font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;color:var(--fc-text, CanvasText);}\n.ds-control{\n  box-sizing: border-box;\n  width: 100%;\n  min-height: var(--fc-control-md);\n  margin: 0;\n  padding: var(--fc-space-2) var(--fc-space-3);\n  border: 1px solid var(--fc-input-border);\n  border-radius: var(--fc-radius-sm);\n  background: var(--fc-input-bg);\n  box-shadow: none;\n  color: var(--fc-text);\n  caret-color: var(--fc-cyan);\n  font: var(--fc-weight-regular) var(--fc-font-md)/var(--fc-line-body) var(--fc-font-ui);\n  transition: border-color var(--fc-motion-quick) ease, background var(--fc-motion-quick) ease, box-shadow var(--fc-motion-quick) ease;\n}\n.ds-control:hover:not(:disabled):not([readonly]), .ds-control:focus, .ds-control:focus-visible{\n  border-color: var(--fc-input-border-focus);\n  background: var(--fc-input-bg);\n  outline: none;\n}\n.ds-control:disabled{\n  opacity: var(--fc-opacity-disabled);\n  cursor: not-allowed;\n  border-color: var(--fc-line);\n  background: var(--fc-surface-section);\n}\n.ds-control.ds-is-invalid, .ds-control[aria-invalid=true]{\n  border-color: var(--fc-danger);\n}\n.ds-control.ds-is-invalid:hover:not(:disabled):not([readonly]), .ds-control.ds-is-invalid:focus, .ds-control.ds-is-invalid:focus-visible, .ds-control[aria-invalid=true]:hover:not(:disabled):not([readonly]), .ds-control[aria-invalid=true]:focus, .ds-control[aria-invalid=true]:focus-visible{\n  box-shadow: 0 0 0 2px color-mix(in srgb, var(--fc-red) 30%, transparent);\n}\n.ds-control::placeholder{\n  color: var(--fc-faint);\n  opacity: 1;\n}"
+		},
+		{
+			"name": "设置导航",
+			"kind": "nav",
+			"refersTo": "settings-navigation",
+			"description": "保留自然标签宽度、横向滚动和选中项轻阴影；仅展示视觉状态。",
+			"html": "<div class=\"ds-root ds-settings-tab\"><nav class=\"ds-fc-settings-tab-nav\" aria-label=\"设置分类\"><button type=\"button\" class=\"ds-fc-settings-tab-btn ds-is-active\" aria-current=\"page\">闪卡设置</button><button type=\"button\" class=\"ds-fc-settings-tab-btn\">AI 引擎设置</button></nav></div>",
+			"css": ".ds-root{--fc-font-md:14px;--fc-weight-medium:500;--fc-weight-semibold:600;--fc-radius-md:6px;--fc-space-1:4px;--fc-space-2:6px;--fc-space-3:8px;--fc-space-4:12px;--fc-space-5:14px;--fc-control-md:36px;--fc-text:var(--text-normal, CanvasText);--fc-muted:var(--text-muted, GrayText);--fc-primary:#00b8c4;--fc-primary-hover:#00a0ab;--fc-primary-bg:color-mix(in srgb, var(--interactive-accent, Highlight) 18%, var(--fc-surface-card));--fc-primary-text:color-mix(in srgb, rgb(var(--fc-black-rgb)) 75%, var(--fc-primary));--fc-surface-card:color-mix(in srgb, var(--background-primary, Canvas) 97%, var(--text-normal, CanvasText) 3%);--fc-surface-hover:var(--background-modifier-hover, color-mix(in srgb, CanvasText 8%, Canvas));--fc-line-soft:color-mix(in srgb, var(--fc-surface-card) 92%, var(--fc-text));--fc-black-rgb:0, 0, 0;--fc-shadow-sm:0 1px 2px rgba(var(--fc-black-rgb), 0.05);--fc-motion-quick:140ms;--fc-ease-snap:cubic-bezier(0.2, 0.8, 0.2, 1);--fc-transition-button:transform var(--fc-motion-quick) var(--fc-ease-snap), box-shadow var(--fc-motion-quick) ease, border-color var(--fc-motion-quick) ease, background var(--fc-motion-quick) ease, color var(--fc-motion-quick) ease;font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;color:var(--fc-text, CanvasText);}\n.ds-settings-tab .ds-fc-settings-tab-nav{\n  display: flex;\n  flex-wrap: nowrap;\n  align-items: center;\n  gap: var(--fc-space-4);\n  padding: var(--fc-space-1) 0 var(--fc-space-4);\n  margin-bottom: var(--fc-space-3);\n  border-bottom: 1px solid var(--fc-line-soft);\n  overflow-x: auto;\n  overflow-y: hidden;\n  overscroll-behavior-x: contain;\n  -webkit-overflow-scrolling: touch;\n  scrollbar-width: none;\n  max-width: 100%;\n}\n.ds-settings-tab .ds-fc-settings-tab-btn{\n  display: inline-flex;\n  flex: 0 0 auto;\n  white-space: nowrap;\n  align-items: center;\n  justify-content: center;\n  padding: var(--fc-space-2) var(--fc-space-5);\n  min-height: var(--fc-control-md);\n  border: 1px solid transparent;\n  border-radius: var(--fc-radius-md);\n  background: transparent;\n  color: var(--fc-muted);\n  font-size: var(--fc-font-md);\n  font-weight: var(--fc-weight-medium);\n  cursor: pointer;\n  transition: var(--fc-transition-button);\n}\n.ds-settings-tab .ds-fc-settings-tab-btn:hover:not(.ds-is-active){\n  color: var(--fc-text);\n  background: var(--fc-surface-hover);\n}\n.ds-settings-tab .ds-fc-settings-tab-btn.ds-is-active{\n  background: var(--fc-primary-bg);\n  color: var(--fc-primary-text);\n  font-weight: var(--fc-weight-semibold);\n  box-shadow: var(--fc-shadow-sm);\n  border-color: transparent;\n}\n.ds-settings-tab .ds-fc-settings-tab-btn.ds-is-active:hover{\n  background: var(--fc-primary-hover);\n  color: var(--fc-primary-text);\n}\n.ds-settings-tab .ds-fc-settings-tab-btn:focus-visible{\n  outline: none;\n}"
+		},
+		{
+			"name": "分段选项",
+			"kind": "chip",
+			"refersTo": "segmented-option",
+			"description": "已有学习设置分段控件的未选中与选中外观；不实现切换行为。",
+			"html": "<div class=\"ds-root\"><div class=\"ds-setup-segmented\" role=\"group\" aria-label=\"学习顺序\"><button type=\"button\" class=\"ds-btn ds-btn-md ds-btn-neutral ds-setup-segment-btn ds-active\" aria-pressed=\"true\">顺序</button><button type=\"button\" class=\"ds-btn ds-btn-md ds-btn-neutral ds-setup-segment-btn\" aria-pressed=\"false\">乱序</button></div></div>",
+			"css": ".ds-root{--fc-font-xs:11px;--fc-font-sm:13px;--fc-font-md:14px;--fc-weight-semibold:600;--fc-line-tight:1.2;--fc-radius-md:6px;--fc-space-1:4px;--fc-space-2:6px;--fc-space-3:8px;--fc-space-4:12px;--fc-space-6:16px;--fc-control-sm:30px;--fc-control-md:36px;--fc-control-lg:42px;--fc-text:var(--text-normal, CanvasText);--fc-muted:var(--text-muted, GrayText);--fc-red:var(--color-red, red);--fc-primary:#00b8c4;--fc-primary-hover:#00a0ab;--fc-primary-bg:color-mix(in srgb, var(--interactive-accent, Highlight) 18%, var(--fc-surface-card));--fc-primary-text:color-mix(in srgb, rgb(var(--fc-black-rgb)) 75%, var(--fc-primary));--fc-danger:var(--fc-red);--fc-surface-card:color-mix(in srgb, var(--background-primary, Canvas) 97%, var(--text-normal, CanvasText) 3%);--fc-surface-hover:var(--background-modifier-hover, color-mix(in srgb, CanvasText 8%, Canvas));--fc-opacity-disabled:0.45;--fc-line-soft:color-mix(in srgb, var(--fc-surface-card) 92%, var(--fc-text));--fc-line:color-mix(in srgb, var(--fc-surface-card) 88%, var(--fc-text));--fc-line-strong:color-mix(in srgb, var(--fc-surface-card) 82%, var(--fc-text));--fc-control-border-selected:var(--interactive-accent, Highlight);--fc-input-border-focus:var(--fc-control-border-selected);--fc-black-rgb:0, 0, 0;--fc-font-ui:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;--fc-motion-quick:140ms;--fc-ease-snap:cubic-bezier(0.2, 0.8, 0.2, 1);--fc-transition-button:transform var(--fc-motion-quick) var(--fc-ease-snap), box-shadow var(--fc-motion-quick) ease, border-color var(--fc-motion-quick) ease, background var(--fc-motion-quick) ease, color var(--fc-motion-quick) ease;font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;color:var(--fc-text, CanvasText);}\n.ds-btn{\n  --fc-button-height: var(--fc-control-md);\n  --fc-button-accent: var(--fc-primary);\n  --fc-button-ink: color-mix(in srgb, var(--fc-button-accent) 48%, var(--fc-text));\n  --fc-button-bg: color-mix(in srgb, var(--fc-surface-card) 94%, var(--fc-text));\n  --fc-button-bg-hover: color-mix(in srgb, var(--fc-surface-card) 89%, var(--fc-text));\n  --fc-button-border: var(--fc-line-strong);\n  --fc-button-border-hover: color-mix(in srgb, var(--fc-surface-card) 70%, var(--fc-text));\n  --fc-button-text: var(--fc-text);\n  box-sizing: border-box;\n  position: relative;\n  min-width: 0;\n  min-height: var(--fc-button-height);\n  height: auto;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  gap: var(--fc-space-2);\n  padding: var(--fc-space-2) var(--fc-space-4);\n  border-radius: var(--fc-radius-md);\n  font: var(--fc-weight-semibold) var(--fc-font-sm)/var(--fc-line-tight) var(--fc-font-ui);\n  text-align: center;\n  vertical-align: middle;\n  cursor: pointer;\n  user-select: none;\n  -webkit-user-select: none;\n  transition: var(--fc-transition-button);\n}\n.ds-btn > span{\n  min-width: 0;\n}\n.ds-btn svg{\n  display: block;\n  flex: 0 0 auto;\n  stroke: currentColor;\n}\n.ds-btn:where(.ds-btn-sm){\n  --fc-button-height: var(--fc-control-sm);\n  padding: var(--fc-space-1) var(--fc-space-3);\n  font-size: var(--fc-font-xs);\n}\n.ds-btn:where(.ds-btn-lg){\n  --fc-button-height: var(--fc-control-lg);\n  padding: var(--fc-space-3) var(--fc-space-6);\n  font-size: var(--fc-font-md);\n}\n.ds-btn:where(.ds-btn-icon, .ds-btn-prev){\n  width: var(--fc-button-height);\n  height: var(--fc-button-height);\n  min-width: var(--fc-button-height);\n  padding: 0;\n  flex: 0 0 auto;\n}\n.ds-btn:where(.ds-btn-show){\n  width: 100%;\n  overflow: hidden;\n  font-size: var(--fc-font-md);\n  font-weight: var(--fc-weight-semibold);\n}\n.ds-btn:where(.ds-btn-primary){\n  --fc-button-bg: var(--fc-primary);\n  --fc-button-bg-hover: var(--fc-primary-hover);\n  --fc-button-border: color-mix(in srgb, var(--fc-primary) 90%, var(--fc-text));\n  --fc-button-border-hover: var(--fc-primary-hover);\n  --fc-button-text: var(--fc-primary-text);\n}\n.ds-btn:where(.ds-btn-secondary){\n  --fc-button-bg: color-mix(in srgb, var(--fc-primary) 12%, var(--fc-surface-card));\n  --fc-button-bg-hover: color-mix(in srgb, var(--fc-primary) 20%, var(--fc-surface-card));\n  --fc-button-border: color-mix(in srgb, var(--fc-primary) 36%, var(--fc-line));\n  --fc-button-border-hover: color-mix(in srgb, var(--fc-primary) 70%, var(--fc-line));\n  --fc-button-text: var(--fc-button-ink);\n}\n.ds-btn:where(.ds-btn-outline){\n  --fc-button-bg: transparent;\n  --fc-button-bg-hover: var(--fc-surface-hover);\n}\n.ds-btn:where(.ds-btn-ghost){\n  --fc-button-bg: transparent;\n  --fc-button-bg-hover: var(--fc-surface-hover);\n  --fc-button-border: transparent;\n  --fc-button-border-hover: var(--fc-line);\n  --fc-button-text: var(--fc-muted);\n}\n.ds-btn:where(.ds-btn-danger){\n  --fc-button-accent: var(--fc-danger);\n  --fc-button-bg: color-mix(in srgb, var(--fc-danger) 9%, var(--fc-surface-card));\n  --fc-button-bg-hover: color-mix(in srgb, var(--fc-danger) 17%, var(--fc-surface-card));\n  --fc-button-border: color-mix(in srgb, var(--fc-danger) 38%, var(--fc-line));\n  --fc-button-border-hover: var(--fc-danger);\n  --fc-button-text: var(--fc-button-ink);\n}\n.ds-btn,\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn){\n  appearance: none;\n  border: 1px solid var(--fc-button-border);\n  background: var(--fc-button-bg);\n  box-shadow: none;\n  color: var(--fc-button-text);\n}\n.ds-btn:hover:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):hover:not(:disabled){\n  border-color: var(--fc-button-border-hover);\n  background: var(--fc-button-bg-hover);\n  color: var(--fc-button-text);\n}\n.ds-btn:is(.ds-mod-cta, .ds-mod-warning),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):is(.ds-mod-cta, .ds-mod-warning){\n  border-color: var(--fc-button-border);\n  background: var(--fc-button-bg);\n  color: var(--fc-button-text);\n}\n.ds-btn:is(.ds-mod-cta, .ds-mod-warning):hover:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):is(.ds-mod-cta, .ds-mod-warning):hover:not(:disabled){\n  border-color: var(--fc-button-border-hover);\n  background: var(--fc-button-bg-hover);\n  color: var(--fc-button-text);\n}\n.ds-btn:is(.ds-active, [aria-pressed=true], [aria-expanded=true]),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):is(.ds-active, [aria-pressed=true], [aria-expanded=true]){\n  border-color: color-mix(in srgb, var(--fc-button-accent) 65%, var(--fc-line));\n  background: color-mix(in srgb, var(--fc-button-accent) 18%, var(--fc-surface-card));\n  color: var(--fc-button-ink);\n  box-shadow: none;\n}\n.ds-btn:active:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):active:not(:disabled){\n  transform: translateY(1px);\n  box-shadow: none;\n}\n.ds-btn:disabled,\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):disabled{\n  opacity: var(--fc-opacity-disabled);\n  cursor: not-allowed;\n  transform: none;\n  box-shadow: none;\n}\n.ds-btn.ds-btn-primary:is(.ds-active, [aria-pressed=true], [aria-expanded=true]),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn).ds-btn-primary:is(.ds-active, [aria-pressed=true], [aria-expanded=true]){\n  background: var(--fc-primary-hover);\n  color: var(--fc-primary-text);\n}\n.ds-btn.ds-btn-ghost:hover:not(:disabled),\n:is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn).ds-btn-ghost:hover:not(:disabled){\n  color: var(--fc-text);\n}\n@media (prefers-reduced-motion: reduce){.ds-btn,\n  :is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn){\n    transition: none;\n  }\n.ds-btn:active:not(:disabled),\n  :is(.ds-root, .ds-settings-tab, .ds-modal-backdrop, .ds-fc-overlay) :is(button.ds-btn, .ds-setting-item button.ds-btn):active:not(:disabled){\n    transform: none;\n  }}\n.ds-btn:focus-visible{outline:none;border-color:var(--fc-input-border-focus);box-shadow:none;}\n.ds-setup-segmented{\n  display: inline-flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 3px;\n  min-inline-size: 0;\n  max-width: 100%;\n  margin: 0;\n  padding: 3px;\n  border: 1px solid var(--fc-line-soft);\n  border-radius: var(--fc-radius-md);\n  background: var(--fc-surface-card);\n  box-shadow: none;\n}\n.ds-root button.ds-setup-segment-btn{\n  --fc-button-height: var(--fc-control-md);\n  height: var(--fc-control-md);\n  min-height: var(--fc-control-md);\n  --fc-button-bg: transparent;\n  --fc-button-bg-hover: var(--fc-surface-hover);\n  --fc-button-border: transparent;\n  --fc-button-border-hover: var(--fc-line-soft);\n  --fc-button-text: var(--fc-muted);\n  padding: 0 var(--fc-space-3);\n  border-radius: calc(var(--fc-radius-md) - 2px);\n  box-shadow: none;\n}\n.ds-root button.ds-setup-segment-btn.ds-active{\n  --fc-button-bg: var(--fc-primary-bg);\n  --fc-button-bg-hover: color-mix(in srgb, var(--fc-primary) 16%, var(--fc-surface-card));\n  --fc-button-border: transparent;\n  --fc-button-text: var(--fc-button-ink);\n  animation: none;\n  background: var(--fc-button-bg);\n  border-color: var(--fc-button-border);\n  color: var(--fc-button-text);\n  box-shadow: none;\n}\n.ds-root button.ds-setup-segment-btn:hover:not(:disabled){\n  background: var(--fc-button-bg-hover);\n  border-color: var(--fc-button-border-hover);\n  color: var(--fc-button-text);\n  box-shadow: none;\n}\n@container (max-width: 640px){.ds-setup-segmented{\n    display: flex;\n  }\n.ds-setup-segmented .ds-setup-segment-btn{\n    flex: 1;\n  }}"
+		},
+		{
+			"name": "内容面板",
+			"kind": "card",
+			"refersTo": "panel",
+			"description": "共享 section 表面、细边界与头尾结构；内容文案为样例，不包含业务行为。",
+			"html": "<div class=\"ds-root\"><section class=\"ds-fc-panel\" aria-label=\"学习设置\"><header>学习设置</header><footer>每日新卡数量</footer></section></div>",
+			"css": ".ds-root{--fc-font-xs:11px;--fc-radius-md:6px;--fc-space-2:6px;--fc-space-3:8px;--fc-control-md:36px;--fc-header-height:44px;--fc-text:var(--text-normal, CanvasText);--fc-muted:var(--text-muted, GrayText);--fc-bg-panel:color-mix( in srgb, var(--background-secondary, Canvas) 30%, var(--background-primary, Canvas) 70% );--fc-surface-card:color-mix(in srgb, var(--background-primary, Canvas) 97%, var(--text-normal, CanvasText) 3%);--fc-surface-section:color-mix(in srgb, var(--fc-bg-panel) 94%, var(--text-normal, CanvasText) 6%);--fc-line-soft:color-mix(in srgb, var(--fc-surface-card) 92%, var(--fc-text));--fc-line:color-mix(in srgb, var(--fc-surface-card) 88%, var(--fc-text));--fc-control-border-selected:var(--interactive-accent, Highlight);--fc-input-border-focus:var(--fc-control-border-selected);--fc-motion-quick:140ms;font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;color:var(--fc-text, CanvasText);}\n.ds-fc-panel{\n  display: flex;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  overflow: hidden;\n  border: 1px solid var(--fc-line);\n  border-radius: var(--fc-radius-md);\n  background: var(--fc-surface-section);\n  transition: border-color var(--fc-motion-quick) ease;\n}\n.ds-fc-panel:focus-within{\n  border-color: var(--fc-input-border-focus);\n}\n.ds-fc-panel > header,\n.ds-fc-panel > footer{\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: var(--fc-space-3);\n  padding: var(--fc-space-2) var(--fc-space-3);\n}\n.ds-fc-panel > header{\n  min-height: var(--fc-header-height);\n  border-bottom: 1px solid var(--fc-line-soft);\n}\n.ds-fc-panel > footer{\n  min-height: var(--fc-control-md);\n  border-top: 1px solid var(--fc-line-soft);\n  color: var(--fc-muted);\n  font-size: var(--fc-font-xs);\n}"
+		}
+	],
+	"narrative": {
+		"northStar": "安静的学习工作台",
+		"overview": "克制、清晰、紧凑；通过文字层级、细边界和轻微表面差异组织信息，让学习内容优先。整体气质柔和而安静：弱化容器存在感，让阅读内容优先。\n\n以细微的表面层次表达分组和交互关系。画布、区块、内容容器与浮层共享 Obsidian 的主题环境；清透青为主要操作建立明确落点。阴影主要帮助识别菜单和弹窗的位置，同时保留设置选中项、滑块和媒体区域中已存在的局部层次。",
+		"keyCharacteristics": [
+			"内容和阅读优先，工具反馈轻微而明确。",
+			"中性表面随宿主主题变化，固定主色与宿主强调色各有用途。",
+			"系统无衬线组织界面，衬线呈现卡片 Markdown，等宽字体表达计数与输入练习。",
+			"按工作区分栏的实际宽度调整布局，保留紧凑的信息结构。"
+		],
+		"rules": [
+			{
+				"name": "The Theme Boundary Rule",
+				"body": "固定主色与宿主交互强调色是两个来源。保留二者的现有职责，不能把清透青替换为宿主强调色，也不能把所有宿主色冻结成固定色板。",
+				"section": "colors"
+			},
+			{
+				"name": "The Reading First Rule",
+				"body": "通过字体、行距和字重建立阅读层级；不能为了收纳更多控件而普遍压缩正文。微型字号只用于已有的紧凑提示，不作为普通说明文字的默认值。",
+				"section": "typography"
+			},
+			{
+				"name": "The Quiet Depth Rule",
+				"body": "常规内容先用表面差异、边界和留白组织；阴影沿用已有浮层与局部控件的用途，不扩散为每个容器的装饰。",
+				"section": "elevation"
+			}
+		],
+		"dos": [
+			"Do 使用现有主题派生表面及共享令牌，按组件的实际尺寸和层级复用。",
+			"Do 让学习文本先于容器、工具栏和辅助计数进入视线。",
+			"Do 复用共享页面外壳、面板、按钮、输入框、菜单与弹窗，并在所属视图附近处理特例。",
+			"Do 同时检查亮暗主题、窄桌面分栏、手机宽度、键盘操作及减少动态效果偏好。",
+			"Do 区分实现快照与质量要求；普通文字对比度和触摸目标仍须按项目规范验证。"
+		],
+		"donts": [
+			"Don't 根据旧说明补造源码中不存在的字号、间距或焦点环令牌。",
+			"Don't 用无状态含义的彩色文字、厚重阴影或大面积强调色代替内容层级。",
+			"Don't 将所有桌面按钮统一锁定到一个高度，或把媒体播放器的局部尺寸推广为全局规范。",
+			"Don't 把预览环境的系统色回退或合成色阶写回生产色板。",
+			"Don't 将源码扫描描述为已经完成的可访问性或实机视觉验证。"
+		]
+	}
+}
