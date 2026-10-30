@@ -19,7 +19,11 @@ import type {
 	WorkbenchSettingsSection,
 } from "../../core/host/workbench";
 import { defineFeatureLifetime } from "../../core/host/featureLifetime";
-import type { SelectionTranslationAdapter } from "../../core/selectionHelper/domain/types";
+import { selectionHelperStrings } from "../../core/selectionHelper/strings/selectionPopup";
+import type {
+	SelectionAction,
+	SelectionTranslationAdapter,
+} from "../../core/selectionHelper/domain/types";
 
 /** Settings section id this feature contributes. */
 const TRANSLATION_SECTION_ID = "translation";
@@ -36,8 +40,9 @@ interface TranslationFeatureDeps {
 	net: OutboundPort;
 }
 
-interface TranslationFeature extends WorkbenchModule<"translation"> {
+export interface TranslationFeature extends WorkbenchModule<"translation"> {
 	readonly selectionAdapter: SelectionTranslationAdapter;
+	readonly selectionAction: SelectionAction;
 }
 
 type TranslationWorkbenchHost = WorkbenchHost<"translation">;
@@ -77,6 +82,18 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 			} catch {
 				new Notice(translationStrings(host.settings.read().language).openFailed);
 			}
+		},
+	};
+
+	const selectionAction: SelectionAction = {
+		id: "translate",
+		label: (language) => selectionHelperStrings(language).translate,
+		icon: <Languages aria-hidden="true" />,
+		isPrimary: false,
+		keyEquivalents: ["2", "t", "T"],
+		isEligible: (ctx) => selectionAdapter.available() && ctx.text.length > 0,
+		execute: async (ctx) => {
+			await selectionAdapter.openPrefilled(ctx.text);
 		},
 	};
 
@@ -216,5 +233,5 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 		},
 	});
 
-	return { ...module, selectionAdapter };
+	return { ...module, selectionAdapter, selectionAction };
 }

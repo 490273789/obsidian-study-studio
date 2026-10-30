@@ -4,7 +4,7 @@ import { cls } from "../../../core/shared/classNames";
 import type { Language } from "../../../core/shared/types";
 import type { SelectionLookupSlotProps } from "../../../core/selectionHelper/domain/types";
 import { matchesOpenMainShortcut } from "../../../core/selectionHelper/settings/openMainShortcut";
-import { orderSelectionDictionaries } from "../../../core/selectionHelper/domain/dictionaryOrder";
+import { orderSelectionDictionaries } from "../domain/dictionaryOrder";
 import type { DictionaryRuntime } from "../domain/dictionaryRuntime";
 import type { DictionaryQuerySession } from "../domain/querySession";
 import { dictionaryStrings } from "../strings/dictionary";
@@ -60,7 +60,7 @@ export function LookupAssistantCardView(props: LookupAssistantCardProps) {
 		word,
 		onClose,
 		onHeaderPointerDown,
-		openMainShortcut,
+		openMainShortcut = "",
 		openInMainTab,
 		openFavorite,
 	} = props;

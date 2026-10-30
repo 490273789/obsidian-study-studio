@@ -22,7 +22,10 @@ import { ObsidianDictionaryFavoriteStore } from "./obsidian/favoriteStore";
 import { DictionarySettingsEditor } from "./obsidian/settingsEditor";
 import { createDictionarySettingsStore } from "./obsidian/settingsStore";
 import { LookupAssistantCard } from "./ui/LookupAssistantCard";
+import { isEnglishWordOrPhrase } from "../../core/selectionHelper/domain/selectionHelper";
+import { selectionHelperStrings } from "../../core/selectionHelper/strings/selectionPopup";
 import type {
+	SelectionAction,
 	SelectionDictionarySource,
 	SelectionLookupSlotRenderer,
 } from "../../core/selectionHelper/domain/types";
@@ -56,6 +59,7 @@ interface DictionaryFeatureDeps {
 export interface DictionaryFeature extends WorkbenchModule<"dictionary"> {
 	readonly sources: () => readonly SelectionDictionarySource[];
 	readonly renderLookupSlot: SelectionLookupSlotRenderer;
+	readonly selectionAction: SelectionAction;
 }
 
 type DictionaryWorkbenchHost = WorkbenchHost<"dictionary">;
@@ -155,6 +159,17 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 			/>
 		);
 	};
+	const selectionAction: SelectionAction = {
+		id: "lookup",
+		label: (language) => selectionHelperStrings(language).lookup,
+		icon: <BookOpen aria-hidden="true" />,
+		isPrimary: true,
+		keyEquivalents: ["1"],
+		slotId: "dictionary",
+		isEligible: (ctx) => isEnglishWordOrPhrase(ctx.text) && sources().length > 0,
+		execute: () => {},
+	};
+
 	/**
 	 * The 词典 feature keeps both views registered while disabled: the previous
 	 * adapters rendered this placeholder instead of the lookup UI.
@@ -401,5 +416,5 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 		},
 	});
 
-	return { ...module, sources, renderLookupSlot };
+	return { ...module, sources, renderLookupSlot, selectionAction };
 }

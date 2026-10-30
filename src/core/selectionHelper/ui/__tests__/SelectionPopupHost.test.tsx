@@ -21,6 +21,7 @@ vi.mock("react", async (original) => ({
 		return (hooks.refs[index] ??= { current: initial });
 	},
 	useCallback: (callback: unknown) => callback,
+	useMemo: (callback: () => unknown) => callback(),
 	useSyncExternalStore: () => hooks.snapshot,
 	useState: () => [
 		hooks.position,
@@ -78,6 +79,8 @@ function fixture() {
 	const state: SelectionHelperSnapshot = {
 		visible: true,
 		mode: "dictionary",
+		activeSlotId: "dictionary",
+		eligibleActionIds: ["lookup", "translate"],
 		target: { source: { id: "source" }, text: "word", isEnglishWord: true, x: 100, y: 100 },
 		canLookup: true,
 		canTranslate: true,

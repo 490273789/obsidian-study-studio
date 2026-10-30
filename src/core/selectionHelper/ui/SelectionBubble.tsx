@@ -1,15 +1,26 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { BookOpen, Languages } from "lucide-react";
 import { cls } from "../../shared/classNames";
 import type { SelectionHelperStrings } from "../strings/selectionPopup";
 import styles from "./SelectionPopup.module.scss";
 
-interface SelectionBubbleProps {
-	canLookup: boolean;
-	canTranslate: boolean;
+export interface SelectionBubbleActionItem {
+	readonly id: string;
+	readonly label: string;
+	readonly icon?: React.ReactNode;
+	readonly hint?: string;
+	readonly isPrimary?: boolean;
+	readonly keyEquivalents?: readonly string[];
+	onTrigger: () => void;
+}
+
+export interface SelectionBubbleProps {
+	actions?: readonly SelectionBubbleActionItem[];
+	canLookup?: boolean;
+	canTranslate?: boolean;
 	strings: SelectionHelperStrings;
-	onLookup: () => void;
-	onTranslate: () => void;
+	onLookup?: () => void;
+	onTranslate?: () => void;
 	onClose: () => void;
 }
 
@@ -20,24 +31,52 @@ export function allowsBubbleKey(
 	return !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey;
 }
 
-export const SelectionBubble = React.memo(function SelectionBubble({
-	canLookup,
-	canTranslate,
-	strings,
-	onLookup,
-	onTranslate,
-	onClose,
-}: SelectionBubbleProps) {
-	const lookupRef = useRef<HTMLButtonElement | null>(null);
-	const translateRef = useRef<HTMLButtonElement | null>(null);
+export const SelectionBubble = React.memo(function SelectionBubble(props: SelectionBubbleProps) {
+	const {
+		actions: customActions,
+		canLookup = false,
+		canTranslate = false,
+		strings,
+		onLookup,
+		onTranslate,
+		onClose,
+	} = props;
+
+	const actions = useMemo<readonly SelectionBubbleActionItem[]>(() => {
+		if (customActions && customActions.length > 0) return customActions;
+		const items: SelectionBubbleActionItem[] = [];
+		if (canLookup && onLookup) {
+			items.push({
+				id: "lookup",
+				label: strings.lookup,
+				icon: <BookOpen aria-hidden="true" />,
+				hint: "[1]",
+				isPrimary: true,
+				keyEquivalents: ["1"],
+				onTrigger: onLookup,
+			});
+		}
+		if (canTranslate && onTranslate) {
+			items.push({
+				id: "translate",
+				label: strings.translate,
+				icon: <Languages aria-hidden="true" />,
+				hint: items.length > 0 ? "[2]" : "[↵]",
+				isPrimary: items.length === 0,
+				keyEquivalents: ["2", "t", "T"],
+				onTrigger: onTranslate,
+			});
+		}
+		return items;
+	}, [customActions, canLookup, canTranslate, strings, onLookup, onTranslate]);
+
+	const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
 	useEffect(() => {
-		if (canLookup) {
-			lookupRef.current?.focus();
-		} else {
-			translateRef.current?.focus();
-		}
-	}, [canLookup]);
+		const primaryIndex = actions.findIndex((a) => a.isPrimary);
+		const targetIndex = primaryIndex >= 0 ? primaryIndex : 0;
+		buttonRefs.current[targetIndex]?.focus();
+	}, [actions]);
 
 	useEffect(() => {
 		const handleKeyDown = (event: KeyboardEvent) => {
@@ -49,35 +88,30 @@ export const SelectionBubble = React.memo(function SelectionBubble({
 			}
 			if (!allowsBubbleKey(event)) return;
 
-			if (event.key === "1") {
-				event.preventDefault();
-				event.stopPropagation();
-				if (canLookup) {
-					onLookup();
-				} else {
-					onTranslate();
+			// Check key equivalents
+			for (let i = 0; i < actions.length; i++) {
+				const action = actions[i]!;
+				const matchesKey =
+					action.keyEquivalents?.includes(event.key) || String(i + 1) === event.key;
+				if (matchesKey) {
+					event.preventDefault();
+					event.stopPropagation();
+					action.onTrigger();
+					return;
 				}
-				return;
-			}
-
-			if (event.key === "2" || event.key === "t" || event.key === "T") {
-				event.preventDefault();
-				event.stopPropagation();
-				if (canTranslate) onTranslate();
-				return;
 			}
 
 			if (event.key === "Enter") {
 				event.preventDefault();
 				event.stopPropagation();
-				if (canLookup) {
-					if (document.activeElement === translateRef.current) {
-						onTranslate();
-					} else {
-						onLookup();
-					}
+				const focusedIndex = buttonRefs.current.findIndex(
+					(el) => el === document.activeElement,
+				);
+				if (focusedIndex >= 0 && actions[focusedIndex]) {
+					actions[focusedIndex]!.onTrigger();
 				} else {
-					onTranslate();
+					const primary = actions.find((a) => a.isPrimary) ?? actions[0];
+					primary?.onTrigger();
 				}
 			}
 		};
@@ -86,7 +120,7 @@ export const SelectionBubble = React.memo(function SelectionBubble({
 		return () => {
 			window.removeEventListener("keydown", handleKeyDown, true);
 		};
-	}, [canLookup, canTranslate, onLookup, onTranslate, onClose]);
+	}, [actions, onClose]);
 
 	return (
 		<div
@@ -95,38 +129,35 @@ export const SelectionBubble = React.memo(function SelectionBubble({
 			aria-label={strings.settingsHeading}
 			tabIndex={-1}
 		>
-			{canLookup && (
-				<button
-					ref={lookupRef}
-					type="button"
-					className={cls(styles.button, styles.buttonPrimary)}
-					onClick={(e) => {
-						e.stopPropagation();
-						onLookup();
-					}}
-					title={strings.lookup}
-				>
-					<BookOpen aria-hidden="true" />
-					<span>{strings.lookup}</span>
-					<span className={styles.hint}>[1]</span>
-				</button>
-			)}
-			{canTranslate && (
-				<button
-					ref={translateRef}
-					type="button"
-					className={cls(styles.button, !canLookup && styles.buttonPrimary)}
-					onClick={(e) => {
-						e.stopPropagation();
-						onTranslate();
-					}}
-					title={strings.translate}
-				>
-					<Languages aria-hidden="true" />
-					<span>{strings.translate}</span>
-					<span className={styles.hint}>{canLookup ? "[2]" : "[↵]"}</span>
-				</button>
-			)}
+			{actions.map((action, index) => {
+				const isPrimary = action.isPrimary ?? index === 0;
+				const hint =
+					action.hint ??
+					(action.keyEquivalents?.[0]
+						? `[${action.keyEquivalents[0]}]`
+						: isPrimary
+							? "[↵]"
+							: undefined);
+				return (
+					<button
+						key={action.id}
+						ref={(el) => {
+							buttonRefs.current[index] = el;
+						}}
+						type="button"
+						className={cls(styles.button, isPrimary && styles.buttonPrimary)}
+						onClick={(e) => {
+							e.stopPropagation();
+							action.onTrigger();
+						}}
+						title={action.label}
+					>
+						{action.icon}
+						<span>{action.label}</span>
+						{hint && <span className={styles.hint}>{hint}</span>}
+					</button>
+				);
+			})}
 		</div>
 	);
 });

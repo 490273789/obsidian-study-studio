@@ -58,8 +58,10 @@ export const selectionPopupSettingsSlice: SettingsSlice<SelectionPopupSliceSetti
 	defaults: () => ({
 		selectionPopup: {
 			...DEFAULT_SELECTION_POPUP_SETTINGS,
-			selectedDictionaries: [...DEFAULT_SELECTION_POPUP_SETTINGS.selectedDictionaries],
-			dictionaryOrder: [...DEFAULT_SELECTION_POPUP_SETTINGS.dictionaryOrder],
+			selectedDictionaries: [
+				...(DEFAULT_SELECTION_POPUP_SETTINGS.selectedDictionaries ?? []),
+			],
+			dictionaryOrder: [...(DEFAULT_SELECTION_POPUP_SETTINGS.dictionaryOrder ?? [])],
 		},
 	}),
 
@@ -70,8 +72,12 @@ export const selectionPopupSettingsSlice: SettingsSlice<SelectionPopupSliceSetti
 	clone: (document) => ({
 		selectionPopup: {
 			...document.selectionPopup,
-			selectedDictionaries: [...document.selectionPopup.selectedDictionaries],
-			dictionaryOrder: [...document.selectionPopup.dictionaryOrder],
+			selectedDictionaries: document.selectionPopup.selectedDictionaries
+				? [...document.selectionPopup.selectedDictionaries]
+				: undefined,
+			dictionaryOrder: document.selectionPopup.dictionaryOrder
+				? [...document.selectionPopup.dictionaryOrder]
+				: undefined,
 		},
 	}),
 };

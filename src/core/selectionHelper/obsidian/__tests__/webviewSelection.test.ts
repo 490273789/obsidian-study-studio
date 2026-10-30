@@ -76,7 +76,10 @@ function setup() {
 		interrupt: () => helper.interrupt(),
 		isDictionaryPopup: () => {
 			const snapshot = helper.getSnapshot();
-			return snapshot.visible && snapshot.mode === "dictionary";
+			return (
+				snapshot.visible &&
+				(snapshot.mode === "slot" || (snapshot.mode as string) === "dictionary")
+			);
 		},
 		onStatus,
 		isEnabled,
@@ -136,7 +139,7 @@ describe("WebviewSelectionAdapter", () => {
 		await flush();
 		expect(env.helper.getSnapshot()).toMatchObject({
 			visible: true,
-			mode: "dictionary",
+			mode: "slot",
 			target: { text: "hello", x: 55, y: 106 },
 		});
 		env.adapter.stop();
@@ -273,7 +276,7 @@ describe("WebviewSelectionAdapter", () => {
 			expect(keydown.stopImmediatePropagation).toHaveBeenCalledOnce();
 			expect(env.helper.getSnapshot()).toMatchObject({
 				visible: true,
-				mode: "dictionary",
+				mode: "slot",
 				target: { text: "hello", x: 70, y: 140 },
 			});
 			env.helper.dismiss();
@@ -809,7 +812,7 @@ describe("WebviewSelectionAdapter", () => {
 		env.helper.beginLookup();
 		env.executeJavaScript.mockResolvedValue({ ...event, sequence: 2, text: "" });
 		await vi.advanceTimersByTimeAsync(150);
-		expect(env.helper.getSnapshot()).toMatchObject({ visible: true, mode: "dictionary" });
+		expect(env.helper.getSnapshot()).toMatchObject({ visible: true, mode: "slot" });
 		env.executeJavaScript.mockResolvedValue({ ...event, sequence: 3, text: "world" });
 		await vi.advanceTimersByTimeAsync(150);
 		expect(env.helper.getSnapshot()).toMatchObject({
@@ -833,7 +836,7 @@ describe("WebviewSelectionAdapter", () => {
 			reposition: true,
 		});
 		await vi.advanceTimersByTimeAsync(150);
-		expect(env.helper.getSnapshot()).toMatchObject({ visible: true, mode: "dictionary" });
+		expect(env.helper.getSnapshot()).toMatchObject({ visible: true, mode: "slot" });
 		env.adapter.stop();
 	});
 	it("accepts a new guest selection even if it scrolls before the next poll", async () => {
@@ -1028,13 +1031,13 @@ describe("WebviewSelectionAdapter", () => {
 					guest.document.hasFocus.mockReturnValue(true);
 					await vi.advanceTimersByTimeAsync(150);
 				}
-				expect(env.helper.getSnapshot().mode).toBe("dictionary");
+				expect(env.helper.getSnapshot().mode).toBe("slot");
 				expect(env.helper.getSnapshot().target?.text).toBe("hello");
 				expect(env.selections).toHaveLength(1);
 			}
 			handlers.get("mousedown")?.({});
 			await vi.advanceTimersByTimeAsync(150);
-			expect(env.helper.getSnapshot().mode).toBe("dictionary");
+			expect(env.helper.getSnapshot().mode).toBe("slot");
 			origin.isConnected = false;
 			const cleared = collector.read();
 			expect(cleared.text).toBe("");
@@ -1093,7 +1096,7 @@ describe("WebviewSelectionAdapter", () => {
 		resolve();
 		await flush();
 		expect(env.helper.getSnapshot().target?.text).toBe("new");
-		expect(env.helper.getSnapshot().mode).toBe("dictionary");
+		expect(env.helper.getSnapshot().mode).toBe("slot");
 		await vi.advanceTimersByTimeAsync(150);
 		expect(env.helper.getSnapshot().target?.text).toBe("new");
 		env.adapter.stop();

@@ -74,8 +74,8 @@ describe("selectionPopupSettingsSlice", () => {
 		const cloned = selectionPopupSettingsSlice.clone(original);
 		expect(cloned).toEqual(original);
 		cloned.selectionPopup.enabled = false;
-		cloned.selectionPopup.selectedDictionaries.push("cambridge");
-		cloned.selectionPopup.dictionaryOrder.push("cambridge");
+		cloned.selectionPopup.selectedDictionaries!.push("cambridge");
+		cloned.selectionPopup.dictionaryOrder!.push("cambridge");
 		expect(original.selectionPopup.enabled).toBe(true);
 		expect(original.selectionPopup.selectedDictionaries).toEqual(["youdao"]);
 		expect(original.selectionPopup.dictionaryOrder).toEqual(["youdao"]);

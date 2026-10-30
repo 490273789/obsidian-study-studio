@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { SelectionHelper } from "../selectionHelper";
 import type {
+	SelectionAction,
 	SelectionCandidate,
 	SelectionDictionarySourceProvider,
 	SelectionHelperSettings,
@@ -22,7 +23,8 @@ describe("SelectionHelper", () => {
 		helper.openDictionary(source.reference);
 		expect(helper.getSnapshot()).toMatchObject({
 			visible: true,
-			mode: "dictionary",
+			mode: "slot",
+			activeSlotId: "dictionary",
 			target: { text: "", trigger: "manual" },
 		});
 		expect(pending.submit(candidate("late"))).toBe(false);
@@ -52,7 +54,8 @@ describe("SelectionHelper", () => {
 		helper.openDictionary(source.reference, { text: "hello", x: 1, y: 2 });
 		expect(helper.getSnapshot()).toMatchObject({
 			visible: true,
-			mode: "dictionary",
+			mode: "slot",
+			activeSlotId: "dictionary",
 			target: { text: "hello" },
 		});
 		helper.dismiss();
@@ -74,7 +77,8 @@ describe("SelectionHelper", () => {
 		helper.beginLookup();
 		expect(helper.getSnapshot()).toMatchObject({
 			visible: true,
-			mode: "dictionary",
+			mode: "slot",
+			activeSlotId: "dictionary",
 			target: { text: "hello" },
 		});
 	});
@@ -133,7 +137,11 @@ describe("SelectionHelper", () => {
 		helper.beginLookup();
 		expect(source.capture().submit(candidate(""))).toBe(false);
 		expect(source.capture().submit(candidate("hello"))).toBe(false);
-		expect(helper.getSnapshot()).toMatchObject({ visible: true, mode: "dictionary" });
+		expect(helper.getSnapshot()).toMatchObject({
+			visible: true,
+			mode: "slot",
+			activeSlotId: "dictionary",
+		});
 
 		expect(source.capture().submit(candidate("hello", { x: 30 }))).toBe(true);
 		expect(helper.getSnapshot()).toMatchObject({
@@ -206,7 +214,7 @@ describe("SelectionHelper", () => {
 		helper.interrupt();
 		pending.dismiss();
 		expect(pending.submit(candidate("old"))).toBe(false);
-		expect(helper.getSnapshot().mode).toBe("dictionary");
+		expect(helper.getSnapshot().mode).toBe("slot");
 	});
 
 	it("owner-scoped closing fences all pending captures but preserves another window's visible query", () => {
@@ -284,6 +292,74 @@ describe("SelectionHelper", () => {
 		expect(helper.getSnapshot().visible).toBe(false);
 		select(helper, candidate("hello", { [key]: true }));
 		expect(helper.getSnapshot().visible).toBe(true);
+	});
+
+	it("filters candidates against generic selection action eligibility and triggers execution", async () => {
+		const executeMock = vi.fn();
+		const customAction: SelectionAction = {
+			id: "custom",
+			label: () => "Custom Action",
+			isEligible: (ctx) => ctx.text.startsWith("custom:"),
+			execute: executeMock,
+		};
+		const helper = new SelectionHelper({
+			settings: () => ({ enabled: true, modifier: "none", openMainShortcut: "Ctrl+Enter" }),
+			actions: [customAction],
+		});
+
+		// Ineligible text should not show popup
+		select(helper, candidate("regular text"));
+		expect(helper.getSnapshot().visible).toBe(false);
+
+		// Eligible text should show actions popup
+		select(helper, candidate("custom:hello"));
+		expect(helper.getSnapshot()).toMatchObject({
+			visible: true,
+			mode: "actions",
+			eligibleActionIds: ["custom"],
+			target: { text: "custom:hello" },
+		});
+		expect(helper.eligibleActions).toEqual([customAction]);
+
+		// Triggering action executes callback and dismisses popup
+		await helper.triggerAction("custom");
+		expect(executeMock).toHaveBeenCalledWith(expect.objectContaining({ text: "custom:hello" }));
+		expect(helper.getSnapshot().visible).toBe(false);
+	});
+
+	it("transitions to slot mode for slot-based action and opens arbitrary slots", async () => {
+		const slotAction: SelectionAction = {
+			id: "ai-card",
+			label: () => "AI Card",
+			slotId: "ai-slot",
+			isEligible: () => true,
+			execute: vi.fn(),
+		};
+		const helper = new SelectionHelper({
+			settings: () => ({ enabled: true, modifier: "none", openMainShortcut: "Ctrl+Enter" }),
+			actions: [slotAction],
+		});
+
+		select(helper, candidate("test"));
+		expect(helper.getSnapshot().mode).toBe("actions");
+
+		// Triggering slot action switches mode to slot
+		await helper.triggerAction("ai-card");
+		expect(helper.getSnapshot()).toMatchObject({
+			visible: true,
+			mode: "slot",
+			activeSlotId: "ai-slot",
+		});
+
+		// Can open arbitrary slot explicitly
+		const source = helper.openSource({});
+		helper.openSlot("custom-slot", source.reference, { text: "manual", x: 10, y: 20 });
+		expect(helper.getSnapshot()).toMatchObject({
+			visible: true,
+			mode: "slot",
+			activeSlotId: "custom-slot",
+			target: { text: "manual" },
+		});
 	});
 });
 

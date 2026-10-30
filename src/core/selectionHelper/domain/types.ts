@@ -1,3 +1,5 @@
+import type { Language } from "../../shared/types";
+
 export type SelectionHelperModifier = "none" | "alt" | "shift" | "ctrl";
 
 export interface SelectionHelperSettings {
@@ -7,10 +9,10 @@ export interface SelectionHelperSettings {
 	modifier: SelectionHelperModifier;
 	/** Shortcut to open the current lookup in the main dictionary tab. */
 	openMainShortcut: string;
-	/** Persisted IDs of dictionary sources selected for inline lookup. */
-	selectedDictionaries: string[];
-	/** Popup-specific source order, independent of selection and the main dictionary catalog. */
-	dictionaryOrder: string[];
+	/** Persisted IDs of dictionary sources selected for inline lookup (legacy/optional). */
+	selectedDictionaries?: string[];
+	/** Popup-specific source order, independent of selection and the main dictionary catalog (legacy/optional). */
+	dictionaryOrder?: string[];
 }
 
 export interface SelectionSource {
@@ -49,9 +51,28 @@ export interface SelectionTarget {
 	source: SelectionSource;
 	trigger?: "mouse" | "touch" | "webview" | "manual";
 	text: string;
-	isEnglishWord: boolean;
+	isEnglishWord?: boolean;
 	x: number;
 	y: number;
+}
+
+export interface SelectionActionContext {
+	readonly text: string;
+	readonly trigger?: "mouse" | "touch" | "webview" | "manual";
+	readonly x: number;
+	readonly y: number;
+}
+
+export interface SelectionAction {
+	readonly id: string;
+	readonly label: (language: Language) => string;
+	readonly icon?: React.ReactNode;
+	readonly hint?: string;
+	readonly keyEquivalents?: readonly string[];
+	readonly isPrimary?: boolean;
+	isEligible(context: SelectionActionContext): boolean;
+	execute(context: SelectionActionContext): Promise<void> | void;
+	readonly slotId?: string;
 }
 
 export interface SelectionDictionarySource {
@@ -69,21 +90,29 @@ export interface SelectionTranslationAdapter {
 	openPrefilled(text: string): Promise<void>;
 }
 
-export interface SelectionLookupSlotProps {
+export interface SelectionSlotProps {
 	word: string;
+	text?: string;
 	onClose: () => void;
 	onHeaderPointerDown?: React.PointerEventHandler<HTMLElement>;
-	selectedDictionaries: readonly string[];
-	dictionaryOrder: readonly string[];
-	openMainShortcut: string;
+	selectedDictionaries?: readonly string[];
+	dictionaryOrder?: readonly string[];
+	openMainShortcut?: string;
 }
 
-export type SelectionLookupSlotRenderer = (props: SelectionLookupSlotProps) => React.ReactNode;
+export type SelectionSlotRenderer = (props: SelectionSlotProps) => React.ReactNode;
+
+export type SelectionLookupSlotProps = SelectionSlotProps;
+export type SelectionLookupSlotRenderer = SelectionSlotRenderer;
+
+export type SelectionHelperMode = "actions" | "slot" | "dictionary";
 
 export interface SelectionHelperSnapshot {
 	visible: boolean;
-	mode: "actions" | "dictionary";
+	mode: SelectionHelperMode;
 	target: SelectionTarget | null;
-	canLookup: boolean;
-	canTranslate: boolean;
+	activeSlotId: string | null;
+	eligibleActionIds: readonly string[];
+	canLookup?: boolean;
+	canTranslate?: boolean;
 }

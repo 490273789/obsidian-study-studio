@@ -4,9 +4,11 @@ import type { WorkbenchHost, WorkbenchModule, WorkbenchSettingsSection } from ".
 import { isEnglishWordOrPhrase, SelectionHelper } from "./domain/selectionHelper";
 import { orderSelectionDictionaries } from "./domain/dictionaryOrder";
 import type {
+	SelectionAction,
 	SelectionDictionarySourceProvider,
 	SelectionHelperSettings,
 	SelectionLookupSlotRenderer,
+	SelectionSlotRenderer,
 	SelectionTranslationAdapter,
 } from "./domain/types";
 import { SelectionListener } from "./obsidian/selectionListener";
@@ -18,8 +20,10 @@ import { selectionHelperStrings } from "./strings/selectionPopup";
 const SELECTION_HELPER_SECTION_ID = "selectionPopup";
 
 interface SelectionHelperModuleDeps {
-	dictionary: SelectionDictionarySourceProvider;
-	translation: SelectionTranslationAdapter;
+	actions?: readonly SelectionAction[];
+	slots?: Record<string, SelectionSlotRenderer>;
+	dictionary?: SelectionDictionarySourceProvider;
+	translation?: SelectionTranslationAdapter;
 	renderLookupSlot?: SelectionLookupSlotRenderer;
 }
 
@@ -59,7 +63,7 @@ export function createSelectionHelperModule(
 		order: 4,
 		label: (language) => selectionHelperStrings(language).settingsHeading,
 		presentation: (language) => {
-			const sources = deps.dictionary.sources();
+			const sources = deps.dictionary?.sources() ?? [];
 			return buildSelectionHelperSettingsViewModel(
 				host.settings.read().selectionPopup,
 				sources.map(({ id, label }) => ({ id, label })),
@@ -68,7 +72,7 @@ export function createSelectionHelperModule(
 						const current = host.settings.read().selectionPopup;
 						const dictionaryOrder = orderSelectionDictionaries(
 							sources,
-							current.dictionaryOrder,
+							current.dictionaryOrder ?? [],
 						).map((source) => source.id);
 						const [moved] = dictionaryOrder.splice(fromIndex, 1);
 						if (!moved) return;
@@ -78,7 +82,9 @@ export function createSelectionHelperModule(
 						await save(host, {
 							dictionaryOrder: [
 								...dictionaryOrder,
-								...current.dictionaryOrder.filter((id) => !available.has(id)),
+								...(current.dictionaryOrder ?? []).filter(
+									(id) => !available.has(id),
+								),
 							],
 						});
 					},
@@ -98,7 +104,8 @@ export function createSelectionHelperModule(
 						await save(host, { openMainShortcut: shortcut });
 					},
 					toggleDictionary: async (id, enabled) => {
-						const current = host.settings.read().selectionPopup.selectedDictionaries;
+						const current =
+							host.settings.read().selectionPopup.selectedDictionaries ?? [];
 						const base =
 							current.length > 0 ? current : sources.map((source) => source.id);
 						const selectedDictionaries = enabled
@@ -120,6 +127,7 @@ export function createSelectionHelperModule(
 			const helper = lifetime.own(
 				new SelectionHelper({
 					settings: () => host.settings.read().selectionPopup,
+					actions: deps.actions,
 					dictionary: deps.dictionary,
 					translation: deps.translation,
 				}),
@@ -138,6 +146,7 @@ export function createSelectionHelperModule(
 					isEnabled: () => host.settings.read().selectionPopup.enabled,
 					getLanguage: () => host.settings.read().language,
 					getTheme: () => (host.app.isDarkMode() ? "dark" : "light"),
+					slots: deps.slots,
 					renderLookupSlot: deps.renderLookupSlot,
 				});
 				const web = Platform.isDesktopApp
@@ -154,7 +163,13 @@ export function createSelectionHelperModule(
 							interrupt: () => helper.interrupt(),
 							isDictionaryPopup: () => {
 								const snapshot = helper.getSnapshot();
-								return snapshot.visible && snapshot.mode === "dictionary";
+								return (
+									snapshot.visible &&
+									(snapshot.mode === "slot" ||
+										(snapshot.mode as string) === "dictionary") &&
+									(snapshot.activeSlotId === "dictionary" ||
+										!snapshot.activeSlotId)
+								);
 							},
 							onStatus: (status) => {
 								if (webStatuses.get(doc) === status) return;

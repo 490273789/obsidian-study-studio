@@ -79,7 +79,7 @@ export function buildSelectionHelperSettingsViewModel(
 
 			if (availableDictionaries.length === 0) return;
 			const selectedSet = new Set(
-				settings.selectedDictionaries.length > 0
+				settings.selectedDictionaries && settings.selectedDictionaries.length > 0
 					? settings.selectedDictionaries
 					: availableDictionaries.map((dictionary) => dictionary.id),
 			);
@@ -94,7 +94,7 @@ export function buildSelectionHelperSettingsViewModel(
 					disabled: saving,
 					items: orderSelectionDictionaries(
 						availableDictionaries,
-						settings.dictionaryOrder,
+						settings.dictionaryOrder ?? [],
 					).map((dictionary) => ({
 						id: dictionary.id,
 						label: dictionary.label,

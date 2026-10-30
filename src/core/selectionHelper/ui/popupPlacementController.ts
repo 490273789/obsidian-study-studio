@@ -41,7 +41,7 @@ interface PopupPlacementControllerOptions {
 		  })
 		| null;
 	target: PopupTargetPoint;
-	mode: "actions" | "dictionary";
+	mode: "actions" | "slot" | "dictionary";
 	onPositionChange?: (position: PopupPositionSnapshot) => void;
 }
 
@@ -113,7 +113,7 @@ export class PopupPlacementController {
 		  })
 		| null;
 	private readonly target: PopupTargetPoint;
-	private readonly mode: "actions" | "dictionary";
+	private readonly mode: "actions" | "slot" | "dictionary";
 	private readonly onPositionChange?: (position: PopupPositionSnapshot) => void;
 
 	private manualPosition: { left: number; top: number } | null = null;
@@ -146,7 +146,7 @@ export class PopupPlacementController {
 		this.mode = options.mode;
 		this.onPositionChange = options.onPositionChange;
 
-		if (this.mode === "dictionary") {
+		if (this.mode !== "actions") {
 			this.onHeaderPointerDown = (event) => this.handleHeaderPointerDown(event);
 		} else {
 			this.onHeaderPointerDown = null;
@@ -154,7 +154,7 @@ export class PopupPlacementController {
 
 		if (this.element && this.ownerWindow) {
 			const ownerWindow = this.ownerWindow;
-			if (this.mode === "dictionary") {
+			if (this.mode !== "actions") {
 				ownerWindow.addEventListener("pointermove", this.handlePointerMove, {
 					passive: false,
 				});
@@ -210,7 +210,7 @@ export class PopupPlacementController {
 		};
 
 		const next =
-			this.mode === "dictionary" && reason === "content" && this.placedCorner
+			this.mode !== "actions" && reason === "content" && this.placedCorner
 				? popupPositionAtAnchor(this.placedCorner, visibleArea)
 				: popupPosition(
 						this.target,
@@ -235,7 +235,7 @@ export class PopupPlacementController {
 					);
 
 		this.currentPosition = next;
-		if (this.mode === "dictionary") {
+		if (this.mode !== "actions") {
 			this.placedCorner = { left: next.left, top: next.top };
 		}
 		if (this.manualPosition) {

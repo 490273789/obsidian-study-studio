@@ -122,7 +122,7 @@ describe("SelectionListener", () => {
 		listener.openDictionary();
 		expect(shared.getSnapshot()).toMatchObject({
 			visible: true,
-			mode: "dictionary",
+			mode: "slot",
 			target: { text: "hello", x: 32, y: 64 },
 		});
 		env.setText("");
@@ -132,7 +132,7 @@ describe("SelectionListener", () => {
 		shared.dismiss();
 		listener.openDictionary();
 		expect(shared.getSnapshot()).toMatchObject({
-			mode: "dictionary",
+			mode: "slot",
 			target: { text: "", trigger: "manual" },
 		});
 		listener.stop();
@@ -321,19 +321,19 @@ describe("SelectionListener", () => {
 		const listener = listen(env, shared);
 		env.emit("mouseup", mouse(env.element));
 		shared.beginLookup();
-		expect(shared.getSnapshot().mode).toBe("dictionary");
+		expect(shared.getSnapshot().mode).toBe("slot");
 
 		env.emit("mousedown", mouse(env.element));
 		env.setText("");
 		env.emit("mouseup", mouse(env.element));
-		expect(shared.getSnapshot()).toMatchObject({ visible: true, mode: "dictionary" });
+		expect(shared.getSnapshot()).toMatchObject({ visible: true, mode: "slot" });
 		env.setText("hello");
 		env.emit("mousedown", mouse(env.element));
 		env.emit("mouseup", mouse(env.element));
 		env.emit("scroll", { target: env.element });
 		env.emit("touchstart", touch(env.element));
 		env.emit("touchmove", touch(env.element));
-		expect(shared.getSnapshot()).toMatchObject({ visible: true, mode: "dictionary" });
+		expect(shared.getSnapshot()).toMatchObject({ visible: true, mode: "slot" });
 
 		env.setText("world");
 		env.setX(140);

@@ -128,6 +128,10 @@ export function createWorkbenchModules(deps: WorkbenchModuleDeps): AnyWorkbenchM
 	const audioPractice = createAudioPracticeFeature({ store: deps.store, net: deps.net });
 
 	const selectionHelper = createSelectionHelperModule({
+		actions: [dictionary.selectionAction, translation.selectionAction],
+		slots: {
+			dictionary: dictionary.renderLookupSlot,
+		},
 		dictionary: {
 			sources: dictionary.sources,
 		},

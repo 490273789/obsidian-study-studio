@@ -4,6 +4,7 @@ import { isEnglishWordOrPhrase, type SelectionHelper } from "../domain/selection
 import type {
 	SelectionLookupSlotRenderer,
 	SelectionRead,
+	SelectionSlotRenderer,
 	SelectionSource,
 	SelectionSourceLease,
 } from "../domain/types";
@@ -23,6 +24,7 @@ interface SelectionListenerDeps {
 	document?: Document;
 	owner?: object;
 	isEnabled?: () => boolean;
+	slots?: Record<string, SelectionSlotRenderer>;
 	renderLookupSlot?: SelectionLookupSlotRenderer;
 }
 
@@ -116,7 +118,10 @@ export class SelectionListener {
 			isAssistantElement(target) || Boolean(this.containerEl?.contains(target as Node));
 		const handleOutsideInteraction = (ownerScoped = false) => {
 			const snapshot = this.deps.helper.getSnapshot();
-			if (snapshot.visible && snapshot.mode === "dictionary") {
+			if (
+				snapshot.visible &&
+				(snapshot.mode === "slot" || (snapshot.mode as string) === "dictionary")
+			) {
 				this.deps.helper.interrupt();
 				return;
 			}
@@ -366,6 +371,7 @@ export class SelectionListener {
 				strings={selectionHelperStrings(this.deps.getLanguage())}
 				theme={this.deps.getTheme()}
 				language={this.deps.getLanguage()}
+				slots={this.deps.slots}
 				renderLookupSlot={this.deps.renderLookupSlot}
 			/>,
 		);
