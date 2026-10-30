@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { DEFAULT_SETTINGS } from "../../../../../core/host/settingsSlices";
 import type { Deck } from "../../../../../core/shared/types";
-import { equalLearningValue, LearningDocumentStore } from "../learningDocumentStore";
+import {
+	equalLearningDocument,
+	equalLearningValue,
+	LearningDocumentStore,
+} from "../learningDocumentStore";
 import type { LearningStateDocument } from "../persistenceTypes";
 import { MemoryFlashcardAuthority } from "./memoryFlashcardAuthority";
 
@@ -160,6 +164,74 @@ describe("LearningDocumentStore", () => {
 			expect(equalLearningValue([1, 2], [1, 2, 3])).toBe(false);
 			expect(equalLearningValue([{ a: 1 }], [{ a: 1 }])).toBe(true);
 			expect(equalLearningValue([], {})).toBe(false);
+		});
+	});
+
+	describe("equalLearningDocument", () => {
+		it("returns true for same reference and undefined comparisons", () => {
+			const doc = emptyLearning();
+			expect(equalLearningDocument(doc, doc)).toBe(true);
+			expect(equalLearningDocument(undefined, undefined)).toBe(true);
+			expect(equalLearningDocument(doc, undefined)).toBe(false);
+			expect(equalLearningDocument(undefined, doc)).toBe(false);
+		});
+
+		it("returns true for equivalent deep structures", () => {
+			const a = emptyLearning();
+			const b = emptyLearning();
+			expect(equalLearningDocument(a, b)).toBe(true);
+		});
+
+		it("short-circuits early when scalar or metadata fields differ", () => {
+			const base = emptyLearning();
+			const diffJournalSeq = { ...base, journalSeq: 42 };
+			expect(equalLearningDocument(base, diffJournalSeq)).toBe(false);
+
+			const diffContinuity = {
+				...base,
+				continuity: {
+					sources: { "a.md": { type: "current" as const } },
+					issues: [],
+					journal: null,
+				},
+			};
+			expect(equalLearningDocument(base, diffContinuity)).toBe(false);
+
+			const diffDecks = {
+				...base,
+				decks: { d1: { studyCount: 3, lastStudied: null } },
+			};
+			expect(equalLearningDocument(base, diffDecks)).toBe(false);
+		});
+
+		it("detects differences inside card states", () => {
+			const base = emptyLearning();
+			const a = {
+				...base,
+				cards: {
+					c1: {
+						fsrsCard: { reps: 1, stability: 2 } as any,
+					},
+				},
+			};
+			const b = {
+				...base,
+				cards: {
+					c1: {
+						fsrsCard: { reps: 1, stability: 3 } as any,
+					},
+				},
+			};
+			const c = {
+				...base,
+				cards: {
+					c1: {
+						fsrsCard: { reps: 1, stability: 2 } as any,
+					},
+				},
+			};
+			expect(equalLearningDocument(a, b)).toBe(false);
+			expect(equalLearningDocument(a, c)).toBe(true);
 		});
 	});
 });

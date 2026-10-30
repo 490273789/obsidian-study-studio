@@ -12,6 +12,7 @@ import { selectionHelperStrings } from "../strings/selectionPopup";
 import { SelectionPopupHost } from "../ui/SelectionPopupHost";
 import {
 	captureSelection,
+	hasMatchingElement,
 	isAssistantElement,
 	selectionOrigin,
 	toHostCoordinates,
@@ -282,14 +283,6 @@ export class SelectionListener {
 			binding.dispose();
 		};
 		const scanFrames = () => {
-			if (!lease.active) return;
-			if (
-				selectedNode?.isConnected === false &&
-				this.deps.helper.getSnapshot().target?.source === lease.reference
-			) {
-				selectedNode = null;
-				lease.dismiss();
-			}
 			const present = new Set(doc.querySelectorAll<HTMLIFrameElement>("iframe"));
 			for (const [frame, state] of frames) {
 				if (present.has(frame)) continue;
@@ -322,10 +315,40 @@ export class SelectionListener {
 				load();
 			}
 		};
+		const onMutation = (mutations?: readonly MutationRecord[]) => {
+			if (!lease.active) return;
+			if (
+				selectedNode?.isConnected === false &&
+				this.deps.helper.getSnapshot().target?.source === lease.reference
+			) {
+				selectedNode = null;
+				lease.dismiss();
+			}
+			if (mutations && mutations.length > 0) {
+				let relevant = false;
+				for (const mutation of mutations) {
+					if (mutation.type === "childList") {
+						if (frames.size > 0 && mutation.removedNodes.length > 0) {
+							relevant = true;
+							break;
+						}
+						if (
+							mutation.addedNodes.length > 0 &&
+							hasMatchingElement(mutation.addedNodes, "iframe")
+						) {
+							relevant = true;
+							break;
+						}
+					}
+				}
+				if (!relevant) return;
+			}
+			scanFrames();
+		};
 		const Observer = (
 			doc.defaultView as (Window & { MutationObserver?: typeof MutationObserver }) | null
 		)?.MutationObserver;
-		const observer = Observer ? new Observer(scanFrames) : null;
+		const observer = Observer ? new Observer((mutations) => onMutation(mutations)) : null;
 		this.bindings.set(doc, {
 			openDictionary: () => {
 				const selection = read(doc.activeElement);

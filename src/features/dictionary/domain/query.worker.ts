@@ -22,18 +22,26 @@ interface OpenInput {
 	readonly cacheBytes: number;
 	readonly queryPlan: CompiledPackageQueryPlan;
 	readonly type: "open";
+	readonly dictionaryId?: string;
+}
+
+interface CloseInput {
+	readonly type: "close";
+	readonly dictionaryId?: string;
 }
 
 interface LookupInput {
 	readonly id: number;
 	readonly type: "lookup";
 	readonly word: string;
+	readonly dictionaryId?: string;
 }
 
 interface ResourceInput {
 	readonly id: number;
 	readonly path: string;
 	readonly type: "resource";
+	readonly dictionaryId?: string;
 }
 
 interface ReadResultInput {
@@ -41,9 +49,10 @@ interface ReadResultInput {
 	readonly error?: string;
 	readonly id: number;
 	readonly type: "read-result";
+	readonly dictionaryId?: string;
 }
 
-type QueryInput = LookupInput | OpenInput | ReadResultInput | ResourceInput;
+type QueryInput = CloseInput | LookupInput | OpenInput | ReadResultInput | ResourceInput;
 
 interface RecordLocator {
 	readonly frame: number;
@@ -80,14 +89,41 @@ async function coalesce<T>(
 }
 
 let nextReadId = 1;
-let manifest: CompiledDictionaryManifest | null = null;
-let cache: ByteLru;
+
+interface DictionarySession {
+	readonly id: string;
+	readonly manifest: CompiledDictionaryManifest;
+	readonly cache: ByteLru;
+}
+
+const sessions = new Map<string, DictionarySession>();
+
+function getSession(dictionaryId?: string): DictionarySession {
+	const key = dictionaryId ?? "";
+	const session = sessions.get(key);
+	if (!session) {
+		if (!dictionaryId && sessions.size === 1) {
+			return sessions.values().next().value!;
+		}
+		throw new Error("Compiled dictionary is not open.");
+	}
+	return session;
+}
 
 context.addEventListener("message", (event) => {
 	const message = event.data;
 	if (message.type === "open") {
-		manifest = readCompiledPackageQueryPlan(message.queryPlan);
-		cache = new ByteLru(message.cacheBytes);
+		const key = message.dictionaryId ?? "";
+		sessions.set(key, {
+			id: key,
+			manifest: readCompiledPackageQueryPlan(message.queryPlan),
+			cache: new ByteLru(message.cacheBytes),
+		});
+		return;
+	}
+	if (message.type === "close") {
+		const key = message.dictionaryId ?? "";
+		sessions.delete(key);
 		return;
 	}
 	if (message.type === "read-result") {
@@ -104,21 +140,32 @@ context.addEventListener("message", (event) => {
 			error: error instanceof Error ? error.message : "Dictionary query failed.",
 			id: message.id,
 			type: "error",
+			dictionaryId: message.dictionaryId,
 		});
 	});
 });
 
 async function run(message: LookupInput | ResourceInput): Promise<void> {
 	await ensureDictionaryEngine();
-	if (!manifest) throw new Error("Compiled dictionary is not open.");
+	const session = getSession(message.dictionaryId);
 	if (message.type === "lookup") {
-		const result = await lookup(message.word);
-		context.postMessage({ id: message.id, result, type: "lookup-result" });
+		const result = await lookup(session, message.word);
+		context.postMessage({
+			id: message.id,
+			result,
+			type: "lookup-result",
+			dictionaryId: session.id || undefined,
+		});
 		return;
 	}
-	const result = await resolveResource(message.path);
+	const result = await resolveResource(session, message.path);
 	if (!result) {
-		context.postMessage({ id: message.id, result: null, type: "resource-result" });
+		context.postMessage({
+			id: message.id,
+			result: null,
+			type: "resource-result",
+			dictionaryId: session.id || undefined,
+		});
 		return;
 	}
 	const transfer = result.data.buffer.slice(
@@ -126,46 +173,67 @@ async function run(message: LookupInput | ResourceInput): Promise<void> {
 		result.data.byteOffset + result.data.byteLength,
 	);
 	context.postMessage(
-		{ id: message.id, result: { data: transfer, mime: result.mime }, type: "resource-result" },
+		{
+			id: message.id,
+			result: { data: transfer, mime: result.mime },
+			type: "resource-result",
+			dictionaryId: session.id || undefined,
+		},
 		[transfer],
 	);
 }
 
-async function lookup(word: string): Promise<{
+async function lookup(
+	session: DictionarySession,
+	word: string,
+): Promise<{
 	definitions: RecordValue[];
 	suggestions: string[];
 }> {
 	const normalized = normalizeCompiledLookupKey(word);
 	if (!normalized || normalized.length > 512) return { definitions: [], suggestions: [] };
-	const definitions = await resolveLinkedDefinitions(normalized, exactDefinitions);
+	const definitions = await resolveLinkedDefinitions(normalized, (key) =>
+		exactDefinitions(session, key),
+	);
 	if (definitions.length > 0) return { definitions, suggestions: [] };
-	const prefix = await prefixSuggestions(normalized, 12);
-	const suggestions = prefix.length > 0 ? prefix : await fuzzySuggestions(normalized, 12);
+	const prefix = await prefixSuggestions(session, normalized, 12);
+	const suggestions =
+		prefix.length > 0 ? prefix : await fuzzySuggestions(session, normalized, 12);
 	return { definitions: [], suggestions };
 }
 
-async function exactDefinitions(key: string): Promise<RecordValue[]> {
-	const current = requiredManifest();
+async function exactDefinitions(session: DictionarySession, key: string): Promise<RecordValue[]> {
+	const current = session.manifest;
 	const shard = current.indexes.find(
 		(candidate) => candidate.firstKey <= key && candidate.lastKey >= key,
 	);
 	if (!shard) return [];
-	const fst = await readCached(shard.fstFile);
+	const fst = await readCached(session, shard.fstFile);
 	const postingIndex = fst_exact(fst, key);
 	if (postingIndex === undefined) return [];
 	const postings = await readJsonCached<readonly (readonly RecordLocator[])[]>(
+		session,
 		shard.postingsFile,
 	);
 	const locators = postings[postingIndex];
 	if (!locators) throw new Error("Compiled dictionary posting is missing.");
-	const values = await Promise.all(locators.slice(0, 64).map((locator) => readRecord(locator)));
+	const values = await Promise.all(
+		locators.slice(0, 64).map((locator) => readRecord(session, locator)),
+	);
 	return values;
 }
 
-async function readRecord(locator: RecordLocator): Promise<RecordValue> {
-	const frame = requiredManifest().recordFrames[locator.frame];
+async function readRecord(
+	session: DictionarySession,
+	locator: RecordLocator,
+): Promise<RecordValue> {
+	const frame = session.manifest.recordFrames[locator.frame];
 	if (!frame) throw new Error("Compiled dictionary record frame is missing.");
-	const values = await readFrameJson<readonly RecordValue[]>(frame, `record:${locator.frame}`);
+	const values = await readFrameJson<readonly RecordValue[]>(
+		session,
+		frame,
+		`record:${locator.frame}`,
+	);
 	const value = values[locator.item];
 	if (
 		!value ||
@@ -178,11 +246,15 @@ async function readRecord(locator: RecordLocator): Promise<RecordValue> {
 	return value;
 }
 
-async function prefixSuggestions(prefix: string, limit: number): Promise<string[]> {
+async function prefixSuggestions(
+	session: DictionarySession,
+	prefix: string,
+	limit: number,
+): Promise<string[]> {
 	const values: string[] = [];
-	for (const shard of relevantPrefixShards(requiredManifest().indexes, prefix)) {
+	for (const shard of relevantPrefixShards(session.manifest.indexes, prefix)) {
 		// oxlint-disable-next-line no-await-in-loop -- stop after the first shards satisfy the read limit.
-		const fst = await readCached(shard.fstFile);
+		const fst = await readCached(session, shard.fstFile);
 		const keys = JSON.parse(fst_prefix(fst, prefix, limit - values.length)) as unknown;
 		if (!Array.isArray(keys) || !keys.every((key) => typeof key === "string")) {
 			throw new Error("Compiled dictionary prefix index is corrupt.");
@@ -193,12 +265,16 @@ async function prefixSuggestions(prefix: string, limit: number): Promise<string[
 	return unique(values, limit);
 }
 
-async function fuzzySuggestions(word: string, limit: number): Promise<string[]> {
-	if (Array.from(word).length > 48) return prefixSuggestions(word, limit);
+async function fuzzySuggestions(
+	session: DictionarySession,
+	word: string,
+	limit: number,
+): Promise<string[]> {
+	if (Array.from(word).length > 48) return prefixSuggestions(session, word, limit);
 	const candidates: string[] = [];
-	for (const shard of requiredManifest().indexes) {
+	for (const shard of session.manifest.indexes) {
 		// oxlint-disable-next-line no-await-in-loop -- stop once ordered FST shards satisfy the limit.
-		const fst = await readCached(shard.fstFile);
+		const fst = await readCached(session, shard.fstFile);
 		const values = JSON.parse(fst_fuzzy(fst, word, 2, limit - candidates.length)) as unknown;
 		if (!Array.isArray(values) || !values.every((value) => typeof value === "string")) {
 			throw new Error("Compiled dictionary fuzzy index is corrupt.");
@@ -209,18 +285,24 @@ async function fuzzySuggestions(word: string, limit: number): Promise<string[]> 
 	return unique(candidates, limit);
 }
 
-async function resolveResource(path: string): Promise<{ data: Uint8Array; mime: string } | null> {
+async function resolveResource(
+	session: DictionarySession,
+	path: string,
+): Promise<{ data: Uint8Array; mime: string } | null> {
 	const key = normalizeCompiledResourceKey(path);
-	for (const shard of matchingJsonShards(requiredManifest().resources, key)) {
+	for (const shard of matchingJsonShards(session.manifest.resources, key)) {
 		// oxlint-disable-next-line no-await-in-loop -- only the first matching resource shard is needed.
-		const values = await readJsonCached<Record<string, readonly ResourceLocator[]>>(shard.file);
+		const values = await readJsonCached<Record<string, readonly ResourceLocator[]>>(
+			session,
+			shard.file,
+		);
 		const locator = values[key]?.[0];
 		if (!locator) continue;
 		if (
 			!Array.isArray(locator.frames) ||
 			locator.frames.length === 0 ||
 			locator.frames.length > 16 ||
-			!locator.frames.every(validResourceFrame) ||
+			!locator.frames.every((frame) => validResourceFrame(session.manifest, frame)) ||
 			!isCompiledResourceMime(locator.mime)
 		) {
 			throw new Error("Compiled resource index is corrupt.");
@@ -228,7 +310,7 @@ async function resolveResource(path: string): Promise<{ data: Uint8Array; mime: 
 		// oxlint-disable-next-line no-await-in-loop -- resource chunks are read only after a locator hit.
 		const parts = await Promise.all(
 			locator.frames.map((frame) =>
-				readFrame(frame, `resource:${frame.file}:${frame.offset}:${frame.length}`),
+				readFrame(session, frame, `resource:${frame.file}:${frame.offset}:${frame.length}`),
 			),
 		);
 		const totalBytes = parts.reduce((total, part) => total + part.byteLength, 0);
@@ -244,23 +326,31 @@ async function resolveResource(path: string): Promise<{ data: Uint8Array; mime: 
 	return null;
 }
 
-async function readFrameJson<T>(frame: CompiledFrameDescriptor, key: string): Promise<T> {
-	const cached = cache.getJson<T>(key);
+async function readFrameJson<T>(
+	session: DictionarySession,
+	frame: CompiledFrameDescriptor,
+	key: string,
+): Promise<T> {
+	const cached = session.cache.getJson<T>(key);
 	if (cached) return cached;
-	return coalesce(inflightJson, key, async () => {
-		const bytes = await readFrame(frame, `${key}:bytes`);
+	return coalesce(inflightJson, `${session.id}:${key}`, async () => {
+		const bytes = await readFrame(session, frame, `${key}:bytes`);
 		const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 		const value = JSON.parse(text) as T;
-		cache.setJson(key, value, bytes.byteLength);
+		session.cache.setJson(key, value, bytes.byteLength);
 		return value;
 	}) as Promise<T>;
 }
 
-async function readFrame(frame: CompiledFrameDescriptor, key: string): Promise<Uint8Array> {
-	const cached = cache.getBytes(key);
+async function readFrame(
+	session: DictionarySession,
+	frame: CompiledFrameDescriptor,
+	key: string,
+): Promise<Uint8Array> {
+	const cached = session.cache.getBytes(key);
 	if (cached) return cached;
-	return coalesce(inflightBytes, key, async () => {
-		const pack = await readFile(frame.file);
+	return coalesce(inflightBytes, `${session.id}:${key}`, async () => {
+		const pack = await readFile(session, frame.file);
 		const end = frame.offset + frame.length;
 		if (frame.offset < 0 || end > pack.byteLength)
 			throw new Error("Compiled frame is out of range.");
@@ -269,50 +359,45 @@ async function readFrame(frame: CompiledFrameDescriptor, key: string): Promise<U
 			frame.codec === "deflate" ? inflate_zlib(packed, frame.unpackedSize) : packed.slice();
 		if (bytes.byteLength !== frame.unpackedSize)
 			throw new Error("Compiled frame size mismatch.");
-		cache.setBytes(key, bytes);
+		session.cache.setBytes(key, bytes);
 		return bytes;
 	});
 }
 
-async function readCached(path: string): Promise<Uint8Array> {
+async function readCached(session: DictionarySession, path: string): Promise<Uint8Array> {
 	const key = `file:${path}`;
-	const cached = cache.getBytes(key);
+	const cached = session.cache.getBytes(key);
 	if (cached) return cached;
-	return coalesce(inflightBytes, key, async () => {
-		const bytes = await readFile(path);
-		cache.setBytes(key, bytes);
+	return coalesce(inflightBytes, `${session.id}:${key}`, async () => {
+		const bytes = await readFile(session, path);
+		session.cache.setBytes(key, bytes);
 		return bytes;
 	});
 }
 
-async function readJsonCached<T>(path: string): Promise<T> {
+async function readJsonCached<T>(session: DictionarySession, path: string): Promise<T> {
 	const key = `json:${path}`;
-	const cached = cache.getJson<T>(key);
+	const cached = session.cache.getJson<T>(key);
 	if (cached) return cached;
-	return coalesce(inflightJson, key, async () => {
-		const bytes = await readFile(path);
+	return coalesce(inflightJson, `${session.id}:${key}`, async () => {
+		const bytes = await readFile(session, path);
 		const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as T;
-		cache.setJson(key, value, bytes.byteLength);
+		session.cache.setJson(key, value, bytes.byteLength);
 		return value;
 	}) as Promise<T>;
 }
 
-function readFile(path: string): Promise<Uint8Array> {
-	return coalesce(inflightBytes, `read:${path}`, () => readFileNow(path));
+function readFile(session: DictionarySession, path: string): Promise<Uint8Array> {
+	return coalesce(inflightBytes, `${session.id}:read:${path}`, () => readFileNow(session, path));
 }
 
-function readFileNow(path: string): Promise<Uint8Array> {
+function readFileNow(session: DictionarySession, path: string): Promise<Uint8Array> {
 	const id = nextReadId;
 	nextReadId += 1;
 	return new Promise((resolve, reject) => {
 		pendingReads.set(id, { reject, resolve });
-		context.postMessage({ id, path, type: "read" });
+		context.postMessage({ id, path, type: "read", dictionaryId: session.id || undefined });
 	});
-}
-
-function requiredManifest(): CompiledDictionaryManifest {
-	if (!manifest) throw new Error("Compiled dictionary is not open.");
-	return manifest;
 }
 
 function relevantPrefixShards(
@@ -343,11 +428,14 @@ function unique(values: readonly string[], limit: number): string[] {
 	return output;
 }
 
-function validResourceFrame(value: unknown): value is CompiledFrameDescriptor {
+function validResourceFrame(
+	manifest: CompiledDictionaryManifest,
+	value: unknown,
+): value is CompiledFrameDescriptor {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
 	const frame = value as Record<string, unknown>;
 	if (typeof frame.file !== "string") return false;
-	const file = requiredManifest().files[frame.file];
+	const file = manifest.files[frame.file];
 	return (
 		file !== undefined &&
 		(frame.codec === "deflate" || frame.codec === "none") &&

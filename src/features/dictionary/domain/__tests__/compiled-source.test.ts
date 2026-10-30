@@ -61,6 +61,7 @@ vi.mock("../sandbox-storage", () => ({
 }));
 
 import { CompiledDictionarySource } from "../compiled-source";
+import { resetSharedDictionaryQueryWorker } from "../sharedQueryWorker";
 
 const metadata: LocalDictionarySettings = {
 	compiled: {
@@ -116,6 +117,7 @@ async function waitForPost(type: string) {
 }
 
 beforeEach(() => {
+	resetSharedDictionaryQueryWorker();
 	mocks.workers.length = 0;
 	mocks.openCompiledPackage.mockReset();
 	mocks.prepareDictionarySandboxDocument.mockReset();

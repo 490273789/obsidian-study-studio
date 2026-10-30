@@ -2,18 +2,20 @@ import { Platform, type DataAdapter } from "obsidian";
 import type { OutboundPort } from "../../../core/net/types";
 import { dictionaryText } from "./messages";
 import type { LocalDictionarySettings } from "./types";
-// oxlint-disable-next-line import/default -- Vite's ?worker&inline query generates this constructor.
-import QueryWorker from "./dictionary.worker?worker&inline";
 import {
 	CompiledPackageError,
 	openCompiledPackage,
 	type CompiledPackageReader,
 } from "./compiled-package";
 import { EUDIC_IMAGE_RESOURCE_KIND, EudicImageResourceLoader } from "./eudic-image";
-import { CompiledDictionaryResources, type CompiledResource } from "./compiled-resources";
+import { CompiledDictionaryResources } from "./compiled-resources";
 import { prepareDictionarySandboxDocument } from "./sandbox-document";
 import type { DictionarySandboxStorageMutation } from "./sandbox-document/protocol";
 import { LocalDictionarySandboxStorage } from "./sandbox-storage";
+import {
+	getSharedDictionaryQueryWorker,
+	type SharedDictionaryQueryWorker,
+} from "./sharedQueryWorker";
 import {
 	DictionaryError,
 	type DictionaryQuery,
@@ -24,26 +26,6 @@ import {
 
 const MAX_VISIBLE_DEFINITIONS = 8;
 
-interface QueryResult {
-	readonly definitions: readonly { definition: string; keyText: string }[];
-	readonly suggestions: readonly string[];
-}
-
-interface WorkerOutput {
-	readonly data?: ArrayBuffer;
-	readonly error?: string;
-	readonly id: number;
-	readonly mime?: string;
-	readonly path?: string;
-	readonly result?: QueryResult | CompiledResource | null;
-	readonly type: "error" | "lookup-result" | "read" | "resource-result";
-}
-
-interface PendingRequest {
-	reject(error: Error): void;
-	resolve(value: unknown): void;
-}
-
 export class CompiledDictionarySource implements DictionarySource {
 	readonly kind = "local" as const;
 	readonly id: string;
@@ -51,11 +33,8 @@ export class CompiledDictionarySource implements DictionarySource {
 	private readonly packageCacheBytes: number;
 	private readonly resources: CompiledDictionaryResources;
 	private readonly sandboxStorage: LocalDictionarySandboxStorage;
-	private readonly pending = new Map<number, PendingRequest>();
-	private readonly queryWorker = new QueryWorker();
 	private closed = false;
 	private packageReader: CompiledPackageReader | null = null;
-	private nextRequestId = 1;
 	private opening: Promise<void> | null = null;
 	private script = "";
 	private stylesheet = "";
@@ -65,6 +44,7 @@ export class CompiledDictionarySource implements DictionarySource {
 		private readonly adapter: DataAdapter,
 		private readonly dictionaryRoot: string,
 		net: Pick<OutboundPort, "requestHostPinned">,
+		private readonly workerClient: SharedDictionaryQueryWorker = getSharedDictionaryQueryWorker(),
 	) {
 		this.id = metadata.id;
 		this.label = metadata.name;
@@ -72,26 +52,19 @@ export class CompiledDictionarySource implements DictionarySource {
 		this.packageCacheBytes = (totalBudget * 3) / 8;
 		this.sandboxStorage = new LocalDictionarySandboxStorage(adapter, dictionaryRoot);
 		this.resources = new CompiledDictionaryResources({
-			read: (path) => this.request<CompiledResource | null>({ path, type: "resource" }),
+			read: (path) => this.workerClient.resolveResource(this.id, path),
 			canReadRemote: () =>
 				this.packageReader?.remoteResourceKind === EUDIC_IMAGE_RESOURCE_KIND,
 			remote: new EudicImageResourceLoader(net),
 			budgetBytes: totalBudget / 4,
-		});
-		this.queryWorker.addEventListener("message", (event: MessageEvent<WorkerOutput>) => {
-			void this.handleWorkerMessage(event.data);
-		});
-		this.queryWorker.addEventListener("error", (event) => {
-			this.failAll(new DictionaryError("invalid-response", event.message));
 		});
 	}
 
 	close(): void {
 		if (this.closed) return;
 		this.closed = true;
-		this.queryWorker.terminate();
+		this.workerClient.unregister(this.id);
 		this.resources.close();
-		this.failAll(new DictionaryError("request", dictionaryText().errors.request));
 		this.packageReader?.close();
 		this.packageReader = null;
 		this.sandboxStorage.close();
@@ -104,7 +77,7 @@ export class CompiledDictionarySource implements DictionarySource {
 				this.sandboxStorage.update(mutation),
 			values: await this.sandboxStorage.snapshot(),
 		};
-		const content = await this.request<QueryResult>({ type: "lookup", word: query.text });
+		const content = await this.workerClient.lookup(this.id, query.text);
 		const visible = content.definitions.slice(0, MAX_VISIBLE_DEFINITIONS);
 		const sections: DictionarySection[] = await Promise.all(
 			visible.map(async ({ definition, keyText }): Promise<DictionarySection> => ({
@@ -209,65 +182,10 @@ export class CompiledDictionarySource implements DictionarySource {
 		this.packageReader = reader;
 		this.script = reader.script;
 		this.stylesheet = reader.stylesheet;
-		this.queryWorker.postMessage({
-			cacheBytes: this.packageCacheBytes,
-			queryPlan: reader.queryPlan,
-			type: "open",
+		this.workerClient.register(this.id, {
+			readPackageFile: (path) => this.readPackageFile(path),
 		});
-	}
-
-	private request<T>(value: Record<string, unknown>): Promise<T> {
-		if (this.closed)
-			return Promise.reject(new DictionaryError("request", dictionaryText().errors.request));
-		const id = this.nextRequestId;
-		this.nextRequestId += 1;
-		return new Promise<T>((resolve, reject) => {
-			this.pending.set(id, {
-				reject,
-				resolve: (result) => resolve(result as T),
-			});
-			this.queryWorker.postMessage({ ...value, id });
-		});
-	}
-
-	private async handleWorkerMessage(message: WorkerOutput): Promise<void> {
-		if (this.closed) return;
-		if (message.type === "read" && message.path) {
-			try {
-				const data = await this.readPackageFile(message.path);
-				if (this.closed) return;
-				const transfer = data.buffer.slice(
-					data.byteOffset,
-					data.byteOffset + data.byteLength,
-				);
-				this.queryWorker.postMessage(
-					{ data: transfer, id: message.id, type: "read-result" },
-					[transfer],
-				);
-			} catch (error) {
-				if (this.closed) return;
-				this.queryWorker.postMessage({
-					error:
-						error instanceof Error ? error.message : "Dictionary package read failed.",
-					id: message.id,
-					type: "read-result",
-				});
-			}
-			return;
-		}
-		const pending = this.pending.get(message.id);
-		if (!pending) return;
-		this.pending.delete(message.id);
-		if (message.type === "error") {
-			pending.reject(
-				new DictionaryError(
-					"invalid-response",
-					message.error ?? dictionaryText().errors.invalidResponse,
-				),
-			);
-			return;
-		}
-		pending.resolve(message.result);
+		this.workerClient.open(this.id, reader.queryPlan, this.packageCacheBytes);
 	}
 
 	private async readPackageFile(path: string): Promise<Uint8Array> {
@@ -278,11 +196,6 @@ export class CompiledDictionarySource implements DictionarySource {
 		} catch {
 			throw packageCorrupt();
 		}
-	}
-
-	private failAll(error: Error): void {
-		for (const pending of this.pending.values()) pending.reject(error);
-		this.pending.clear();
 	}
 }
 function packageCorrupt(): DictionaryError {

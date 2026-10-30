@@ -295,14 +295,59 @@ export function createDeckHome(options: CreateDeckHomeOptions): DeckHome {
 	return new DefaultDeckHome(options);
 }
 
-/**
- * One deck row and the serialized content that produced it. A rebuild reuses the
- * row only while the content key holds, so equal snapshots keep equal row
- * references and memoized consumers see the reuse.
- */
-interface DeckRowCacheEntry {
-	readonly contentKey: string;
-	readonly row: DeckHomeDeckSnapshot;
+function equalDeckStats(a: DeckStats, b: DeckStats): boolean {
+	return (
+		a === b ||
+		(a.totalCards === b.totalCards &&
+			a.newCards === b.newCards &&
+			a.dueCards === b.dueCards &&
+			a.learningCards === b.learningCards &&
+			a.reviewCards === b.reviewCards &&
+			a.relearningCards === b.relearningCards)
+	);
+}
+
+function equalDeckSpelling(a: DeckSpellingSnapshot, b: DeckSpellingSnapshot): boolean {
+	return (
+		a === b ||
+		(a.enabled === b.enabled &&
+			a.ready === b.ready &&
+			a.valid === b.valid &&
+			a.canStart === b.canStart &&
+			a.hasStableIdentities === b.hasStableIdentities &&
+			a.issueCount === b.issueCount &&
+			a.ignoredCardCount === b.ignoredCardCount)
+	);
+}
+
+function equalStudySettings(a: StudySettings, b: StudySettings): boolean {
+	return (
+		a === b ||
+		(a.dailyNewCards === b.dailyNewCards &&
+			a.dailyReviewCards === b.dailyReviewCards &&
+			a.studyOrder === b.studyOrder &&
+			(a.fsrsParameters === b.fsrsParameters ||
+				(a.fsrsParameters.requestRetention === b.fsrsParameters.requestRetention &&
+					a.fsrsParameters.maximumInterval === b.fsrsParameters.maximumInterval)))
+	);
+}
+
+function isDeckRowUnchanged(
+	row: DeckHomeDeckSnapshot,
+	deck: Deck,
+	stats: DeckStats,
+	spelling: DeckSpellingSnapshot,
+	effectiveStudySettings: StudySettings,
+): boolean {
+	return (
+		row.name === deck.name &&
+		row.filePath === deck.filePath &&
+		row.tag === deck.tag &&
+		row.studyCount === deck.studyCount &&
+		equalDeckStats(row.stats, stats) &&
+		equalDeckSpelling(row.spelling, spelling) &&
+		equalStudySettings(row.effectiveStudySettings, effectiveStudySettings)
+	);
 }
 
 class DefaultDeckHome implements DeckHome {
@@ -330,10 +375,10 @@ class DefaultDeckHome implements DeckHome {
 		}
 	>();
 	/**
-	 * Rows keyed by deck id. The key serializes every input that determines a
-	 * row's content, so a rebuild only allocates rows whose content changed.
+	 * Rows keyed by deck id. Rebuild reuses unchanged rows to keep memoized
+	 * consumers referentially stable without string serialization.
 	 */
-	private readonly deckRowCache = new Map<string, DeckRowCacheEntry>();
+	private readonly deckRowCache = new Map<string, DeckHomeDeckSnapshot>();
 
 	private readonly challengeCountCache = new WeakMap<Deck, { enabled: boolean; count: number }>();
 
@@ -815,18 +860,11 @@ class DefaultDeckHome implements DeckHome {
 			settings.wordLearningDecks[deck.id] === true,
 		).spelling;
 		const effectiveStudySettings = this.options.repository.getEffectiveStudySettings(deck.id);
-		const contentKey = JSON.stringify([
-			deck.id,
-			deck.name,
-			deck.filePath,
-			deck.tag,
-			deck.studyCount,
-			stats,
-			spelling,
-			effectiveStudySettings,
-		]);
+
 		const cached = this.deckRowCache.get(deck.id);
-		if (cached?.contentKey === contentKey) return cached.row;
+		if (cached && isDeckRowUnchanged(cached, deck, stats, spelling, effectiveStudySettings)) {
+			return cached;
+		}
 
 		const row: DeckHomeDeckSnapshot = {
 			id: deck.id,
@@ -838,7 +876,7 @@ class DefaultDeckHome implements DeckHome {
 			effectiveStudySettings,
 			spelling,
 		};
-		this.deckRowCache.set(deck.id, { contentKey, row });
+		this.deckRowCache.set(deck.id, row);
 		return row;
 	}
 

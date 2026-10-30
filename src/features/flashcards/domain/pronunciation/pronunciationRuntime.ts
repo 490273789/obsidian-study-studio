@@ -23,6 +23,7 @@ import type {
 	PronunciationTestOutcome,
 	SynthesizedAudio,
 } from "./types";
+import { PRONUNCIATION_CACHE_LIMIT_BYTES } from "./types";
 
 const CACHE_KEY_MEMO_LIMIT = 128;
 /** Recently probed audio records, so one card's presence check and playback share one read. */
@@ -46,6 +47,7 @@ interface PronunciationRuntimeDependencies {
 	revokeObjectUrl?: ((url: string) => void) | null;
 	net?: Pick<OutboundPort, "request" | "readSecret">;
 	cache?: PronunciationAudioCache;
+	cacheLimitBytes?: number;
 	isOnline?: () => boolean;
 	now?: () => number;
 	requestTimeoutMs?: number;
@@ -86,7 +88,9 @@ export function createPronunciationRuntime(
 				? null
 				: (url) => URL.revokeObjectURL(url)),
 		net: dependencies.net ?? host,
-		cache: dependencies.cache ?? new IndexedDbPronunciationAudioCache(),
+		cache:
+			dependencies.cache ??
+			new IndexedDbPronunciationAudioCache(undefined, dependencies.cacheLimitBytes),
 		isOnline:
 			dependencies.isOnline ??
 			(() => typeof navigator === "undefined" || navigator.onLine !== false),
@@ -108,6 +112,7 @@ export function createPronunciationRuntime(
 				};
 			}),
 		persistSettings: dependencies.persistSettings ?? (() => Promise.resolve()),
+		cacheLimitBytes: dependencies.cacheLimitBytes ?? PRONUNCIATION_CACHE_LIMIT_BYTES,
 	});
 }
 

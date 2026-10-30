@@ -72,4 +72,17 @@ describe("SourceSyntaxCache", () => {
 		expect(cache.stats()).toEqual({ entries: 2, bytes: 40 });
 		expect(cache.get("b.md", "b")).toBeNull();
 	});
+
+	it("deletes an entry and recovers its byte budget", () => {
+		const cache = new SourceSyntaxCache({ maxEntries: 4, maxBytes: 100 });
+		cache.set("a.md", entry("a", 10));
+		cache.set("b.md", entry("b", 20));
+
+		cache.delete("a.md");
+		expect(cache.stats()).toEqual({ entries: 1, bytes: 20 });
+		expect(cache.get("a.md", "a")).toBeNull();
+
+		cache.delete("nonexistent.md");
+		expect(cache.stats()).toEqual({ entries: 1, bytes: 20 });
+	});
 });

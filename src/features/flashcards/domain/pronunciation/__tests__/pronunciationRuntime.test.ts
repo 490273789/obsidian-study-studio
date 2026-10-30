@@ -1110,4 +1110,17 @@ describe("pronunciation playback single-flight", () => {
 			runtime.dispose();
 		}
 	});
+
+	it("passes cacheLimitBytes to the default cache instance", async () => {
+		const runtime = createPronunciationRuntime(makeApp(), makeSettings(), {
+			speechSynthesis: null,
+			cacheLimitBytes: 16 * 1024 * 1024,
+		});
+		try {
+			await vi.waitFor(() => expect(runtime.getSnapshot().cacheUsage.status).toBe("ready"));
+			expect(runtime.getSnapshot().cacheUsage).toEqual({ status: "ready", bytes: 0 });
+		} finally {
+			runtime.dispose();
+		}
+	});
 });

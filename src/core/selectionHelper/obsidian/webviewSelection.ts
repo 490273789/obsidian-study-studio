@@ -1,11 +1,13 @@
 import { isEnglishWordOrPhrase } from "../domain/selectionHelper";
 import type { SelectionSource, SelectionSourceLease } from "../domain/types";
 import { normalizeFeatureOpenShortcut } from "../../settings/featureOpenShortcuts";
+import { hasMatchingElement } from "./selectionCapture";
 
 export type WebviewSelectionStatus = "idle" | "available" | "unavailable";
 
 /** Guest selections never reach the host, so an embedded page is polled on a timer. */
 const WEBVIEW_POLL_INTERVAL_MS = 150;
+const WEBVIEW_POLL_INTERVAL_IDLE_MS = 1000;
 
 interface WebviewElement extends HTMLElement {
 	executeJavaScript(code: string): Promise<unknown>;
@@ -214,9 +216,12 @@ export class WebviewSelectionAdapter {
 	private readonly sources = new Map<Element, Source>();
 	private observer: MutationObserver | null = null;
 	private timer: ReturnType<typeof setInterval> | null = null;
+	private pollIntervalMs = WEBVIEW_POLL_INTERVAL_MS;
+	private consecutiveIdlePolls = 0;
 	private docMouseDownHandler: ((event: MouseEvent) => void) | null = null;
 	private docFocusInHandler: ((event: FocusEvent) => void) | null = null;
 	private windowBlurHandler: (() => void) | null = null;
+	private windowFocusHandler: (() => void) | null = null;
 	private running = false;
 	private enabled = false;
 	private status: WebviewSelectionStatus = "idle";
@@ -230,7 +235,10 @@ export class WebviewSelectionAdapter {
 		const doc = this.options.document;
 		// Guest input never bubbles to the embedder. Host input only fences pending
 		// reads; focus eligibility is determined in the guest document itself.
-		const invalidatePendingRead = () => this.options.interrupt();
+		const invalidatePendingRead = () => {
+			this.options.interrupt();
+			this.wakeUpPolling();
+		};
 		this.docMouseDownHandler = invalidatePendingRead;
 		this.docFocusInHandler = invalidatePendingRead;
 		if (typeof doc.addEventListener === "function") {
@@ -239,13 +247,18 @@ export class WebviewSelectionAdapter {
 		}
 		const win = doc.defaultView;
 		if (win?.addEventListener) {
-			this.windowBlurHandler = invalidatePendingRead;
+			this.windowBlurHandler = () => {
+				this.options.interrupt();
+				this.adjustPollInterval(WEBVIEW_POLL_INTERVAL_IDLE_MS);
+			};
+			this.windowFocusHandler = () => this.wakeUpPolling();
 			win.addEventListener("blur", this.windowBlurHandler);
+			win.addEventListener("focus", this.windowFocusHandler);
 		}
 		this.discover();
 		const Observer = doc.defaultView?.MutationObserver;
 		if (Observer) {
-			this.observer = new Observer(() => this.discover());
+			this.observer = new Observer((mutations) => this.onMutation(mutations));
 			if (doc.body) {
 				this.observer.observe(doc.body, { childList: true, subtree: true });
 			}
@@ -274,6 +287,13 @@ export class WebviewSelectionAdapter {
 		if (this.windowBlurHandler) {
 			this.options.document.defaultView?.removeEventListener("blur", this.windowBlurHandler);
 			this.windowBlurHandler = null;
+		}
+		if (this.windowFocusHandler) {
+			this.options.document.defaultView?.removeEventListener(
+				"focus",
+				this.windowFocusHandler,
+			);
+			this.windowFocusHandler = null;
 		}
 		for (const source of this.sources.values()) this.release(source);
 		this.sources.clear();
@@ -357,6 +377,29 @@ export class WebviewSelectionAdapter {
 			}
 		})();
 		return true;
+	}
+
+	private onMutation(mutations?: readonly MutationRecord[]): void {
+		if (mutations && mutations.length > 0) {
+			let relevant = false;
+			for (const mutation of mutations) {
+				if (mutation.type === "childList") {
+					if (this.sources.size > 0 && mutation.removedNodes.length > 0) {
+						relevant = true;
+						break;
+					}
+					if (
+						mutation.addedNodes.length > 0 &&
+						hasMatchingElement(mutation.addedNodes, "webview")
+					) {
+						relevant = true;
+						break;
+					}
+				}
+			}
+			if (!relevant) return;
+		}
+		this.discover();
 	}
 
 	private discover(): void {
@@ -461,6 +504,7 @@ export class WebviewSelectionAdapter {
 			}
 		}
 		if (document.visibilityState === "hidden") return;
+		let pollActivity = false;
 		for (const source of this.sources.values()) {
 			if (
 				(!source.page.ready && !source.page.manualOrigin) ||
@@ -475,11 +519,20 @@ export class WebviewSelectionAdapter {
 			)
 				continue;
 			if (!this.visibleRect(source)) continue;
-			void this.read(source);
+			pollActivity = true;
+			void this.read(source).then((changed) => {
+				if (changed) this.wakeUpPolling();
+			});
+		}
+		if (!pollActivity) {
+			this.consecutiveIdlePolls++;
+			if (this.consecutiveIdlePolls > 10) {
+				this.adjustPollInterval(WEBVIEW_POLL_INTERVAL_IDLE_MS);
+			}
 		}
 	}
 
-	private async read(source: Source): Promise<void> {
+	private async read(source: Source): Promise<boolean> {
 		const page = source.page;
 		const read = page.lease.capture();
 		page.busy = true;
@@ -487,16 +540,16 @@ export class WebviewSelectionAdapter {
 			const result = await source.element.executeJavaScript(
 				this.script(page.manualOrigin ? readManualOrigin : readCollector, page),
 			);
-			if (!page.lease.active || (!page.ready && !page.manualOrigin)) return;
+			if (!page.lease.active || (!page.ready && !page.manualOrigin)) return false;
 			if (result === false && page.manualOrigin) {
 				if (read.isCurrent()) {
 					page.manualOrigin = false;
 					read.dismiss();
 				}
-				return;
+				return false;
 			}
 			const event = guestEvent(result);
-			if (!event || event.sequence <= page.sequence) return;
+			if (!event || event.sequence <= page.sequence) return false;
 			// Consume rejected events too, so returning focus cannot revive them.
 			page.sequence = event.sequence;
 			if (event.openAssistant) {
@@ -506,7 +559,7 @@ export class WebviewSelectionAdapter {
 					this.options.document.activeElement === source.element
 				)
 					this.openDictionary();
-				return;
+				return true;
 			}
 			const rect = this.visibleRect(source);
 			if (
@@ -514,15 +567,15 @@ export class WebviewSelectionAdapter {
 				!this.options.isEnabled() ||
 				this.options.document.visibilityState === "hidden"
 			)
-				return;
+				return true;
 			if (!event.text.trim()) {
 				if (event.shouldDismiss || !this.options.isDictionaryPopup()) read.dismiss();
-				return;
+				return true;
 			}
 			// A scroll can follow a new capture before this poll consumes either event.
 			const freshCapture = event.captureSequence > page.captureSequence;
 			page.captureSequence = Math.max(page.captureSequence, event.captureSequence);
-			if (event.reposition && !freshCapture && this.options.isDictionaryPopup()) return;
+			if (event.reposition && !freshCapture && this.options.isDictionaryPopup()) return true;
 			read.submit({
 				text: event.text,
 				x: rect.left + (event.x * rect.width) / event.width,
@@ -533,6 +586,7 @@ export class WebviewSelectionAdapter {
 				ctrlOrMetaKey: event.ctrlOrMetaKey,
 				trigger: "mouse",
 			});
+			return true;
 		} catch {
 			if (page.lease.active) {
 				this.disposePage(source, page);
@@ -540,6 +594,7 @@ export class WebviewSelectionAdapter {
 				page.failed = true;
 				this.publishStatus();
 			}
+			return false;
 		} finally {
 			// A pending read belongs to its page, never to the replacement page.
 			page.busy = false;
@@ -556,6 +611,20 @@ export class WebviewSelectionAdapter {
 		source.cleanup();
 	}
 
+	private adjustPollInterval(intervalMs: number): void {
+		if (this.pollIntervalMs === intervalMs) return;
+		this.pollIntervalMs = intervalMs;
+		if (this.timer !== null) {
+			clearInterval(this.timer);
+			this.timer = setInterval(() => this.poll(), this.pollIntervalMs);
+		}
+	}
+
+	private wakeUpPolling(): void {
+		this.consecutiveIdlePolls = 0;
+		this.adjustPollInterval(WEBVIEW_POLL_INTERVAL_MS);
+	}
+
 	/**
 	 * A document without embedded webviews has nothing to poll, so the timer only
 	 * runs while at least one source exists. `discover()` is still driven by the
@@ -565,7 +634,9 @@ export class WebviewSelectionAdapter {
 		const needed = this.running && this.sources.size > 0;
 		if (needed === (this.timer !== null)) return;
 		if (needed) {
-			this.timer = setInterval(() => this.poll(), WEBVIEW_POLL_INTERVAL_MS);
+			this.pollIntervalMs = WEBVIEW_POLL_INTERVAL_MS;
+			this.consecutiveIdlePolls = 0;
+			this.timer = setInterval(() => this.poll(), this.pollIntervalMs);
 			return;
 		}
 		if (this.timer !== null) clearInterval(this.timer);

@@ -216,4 +216,31 @@ describe("continuity source reuse", () => {
 		await continuity.synchronize();
 		expect(state().decks.get("a.md")?.cards[0]?.front).toBe("repaired");
 	});
+
+	it("clears content of discoveryOnly documents during synchronization to free memory", async () => {
+		const docA = document("a.md", APPLE);
+		const docB = { ...document("b.md", BANANA), discoveryOnly: true };
+		let currentState: CardIdentityContinuityState = {
+			configuredTags: ["#单词"],
+			decks: new Map(),
+			continuity: { sources: {}, issues: [], journal: null },
+		};
+		const continuity = createCardIdentityContinuity({
+			state: {
+				load: async () => currentState,
+				commit: async (next) => {
+					currentState = next;
+				},
+			},
+			sources: {
+				list: async () => [docA, docB],
+				replaceIfUnchanged: async () => "written",
+			},
+			createIdentity: () => BANANA,
+		});
+
+		await continuity.synchronize();
+		expect(docB.content).toBe("");
+		expect(docA.content).not.toBe("");
+	});
 });

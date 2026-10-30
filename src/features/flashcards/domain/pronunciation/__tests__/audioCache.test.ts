@@ -5,7 +5,7 @@ import {
 	createPronunciationCacheKey,
 } from "../audioCache";
 import type { PronunciationRequestDescriptor } from "../types";
-import { PRONUNCIATION_CACHE_LIMIT_BYTES } from "../types";
+import { PRONUNCIATION_CACHE_LIMIT_BYTES, PRONUNCIATION_CACHE_LIMIT_BYTES_MOBILE } from "../types";
 
 function makeDescriptor(
 	overrides: Partial<PronunciationRequestDescriptor> = {},
@@ -310,8 +310,9 @@ describe("pronunciation audio cache", () => {
 		expect(database.close).toHaveBeenCalledOnce();
 	});
 
-	it("uses a 100 MB device cache limit", () => {
+	it("uses a 100 MB device cache limit and 16 MB mobile cache limit", () => {
 		expect(PRONUNCIATION_CACHE_LIMIT_BYTES).toBe(100 * 1024 * 1024);
+		expect(PRONUNCIATION_CACHE_LIMIT_BYTES_MOBILE).toBe(16 * 1024 * 1024);
 	});
 
 	it("evicts the least recently used audio at the configured limit", async () => {

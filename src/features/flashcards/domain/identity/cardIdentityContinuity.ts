@@ -389,9 +389,16 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 			let attentionRequired = false;
 
 			for (const document of documents) {
-				const { tag, hasCards } = this.inspectSource(document.path, document.content);
+				const { tag, hasCards } = this.inspectSource(
+					document.path,
+					document.content,
+					!document.discoveryOnly,
+				);
 				if (tag && hasCards) availableTags.add(tag);
-				if (document.discoveryOnly) continue;
+				if (document.discoveryOnly) {
+					document.content = "";
+					continue;
+				}
 				if (!tag || !configuredTags.has(tag.toLowerCase()) || !hasCards) {
 					continue;
 				}
@@ -600,16 +607,26 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 		return others;
 	}
 
-	private inspectSource(path: string, content: string): CachedSourceSyntax {
+	private inspectSource(path: string, content: string, cacheable = true): CachedSourceSyntax {
 		const cached = this.sourceSyntax.get(path, content);
-		if (cached) return cached;
+		if (cached) {
+			if (!cacheable) {
+				this.sourceSyntax.delete(path);
+			}
+			return cached;
+		}
+		if (!cacheable) {
+			this.sourceSyntax.delete(path);
+		}
 		const next: CachedSourceSyntax = {
 			content,
 			tag: extractFirstTag(content),
 			hasCards: hasFlashcardSyntax(content),
 			bytes: 2 * (path.length + content.length),
 		};
-		this.sourceSyntax.set(path, next);
+		if (cacheable) {
+			this.sourceSyntax.set(path, next);
+		}
 		return next;
 	}
 

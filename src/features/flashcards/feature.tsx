@@ -31,7 +31,11 @@ import {
 } from "./domain/identity/cardIdentityContinuity";
 import { createCardIdentity } from "./domain/identity/cardIdentity";
 import { describeSynchronizationOutcome } from "./domain/identity/synchronizationFeedback";
-import { createPronunciationRuntime, type PronunciationRuntime } from "./domain/pronunciation";
+import {
+	createPronunciationRuntime,
+	PRONUNCIATION_CACHE_LIMIT_BYTES_MOBILE,
+	type PronunciationRuntime,
+} from "./domain/pronunciation";
 import { createSessionLifecycle, type SessionLifecycle } from "./domain/sessions/sessionLifecycle";
 import { CardIdentityMigrationModal, CardIdentityRepairModal } from "./obsidian/continuityModals";
 import { createObsidianContinuitySourceStore } from "./obsidian/continuityAdapters";
@@ -588,6 +592,9 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 					persistSettings: async (pronunciation) => {
 						await host.settings.update({ pronunciation: { ...pronunciation } });
 					},
+					cacheLimitBytes: Platform.isMobile
+						? PRONUNCIATION_CACHE_LIMIT_BYTES_MOBILE
+						: undefined,
 				}),
 			);
 			const deckSettingsDraftSession = lifetime.own(

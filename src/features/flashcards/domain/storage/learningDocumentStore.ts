@@ -17,25 +17,53 @@ export function equalLearningValue(left: unknown, right: unknown): boolean {
 	if (left === null || right === null || typeof left !== "object" || typeof right !== "object") {
 		return false;
 	}
-	if (Array.isArray(left) || Array.isArray(right)) {
-		return (
-			Array.isArray(left) &&
-			Array.isArray(right) &&
-			left.length === right.length &&
-			left.every((value, index) => equalLearningValue(value, right[index]))
-		);
+	const leftIsArray = Array.isArray(left);
+	const rightIsArray = Array.isArray(right);
+	if (leftIsArray || rightIsArray) {
+		if (!leftIsArray || !rightIsArray) return false;
+		const leftArr = left as readonly unknown[];
+		const rightArr = right as readonly unknown[];
+		const len = leftArr.length;
+		if (len !== rightArr.length) return false;
+		for (let index = 0; index < len; index++) {
+			if (!equalLearningValue(leftArr[index], rightArr[index])) return false;
+		}
+		return true;
 	}
 	const leftRecord = left as Record<string, unknown>;
 	const rightRecord = right as Record<string, unknown>;
-	const keys = Object.keys(leftRecord);
-	return (
-		keys.length === Object.keys(rightRecord).length &&
-		keys.every(
-			(key) =>
-				Object.prototype.hasOwnProperty.call(rightRecord, key) &&
-				equalLearningValue(leftRecord[key], rightRecord[key]),
-		)
-	);
+	const leftKeys = Object.keys(leftRecord);
+	const rightKeys = Object.keys(rightRecord);
+	const len = leftKeys.length;
+	if (len !== rightKeys.length) return false;
+	for (let index = 0; index < len; index++) {
+		const key = leftKeys[index]!;
+		if (!Object.prototype.hasOwnProperty.call(rightRecord, key)) return false;
+		if (!equalLearningValue(leftRecord[key], rightRecord[key])) return false;
+	}
+	return true;
+}
+
+/**
+ * Compares two LearningStateDocument instances by comparing smaller/faster
+ * partitions first, checking cards only when all other metadata matches.
+ */
+export function equalLearningDocument(
+	left: LearningStateDocument | undefined,
+	right: LearningStateDocument | undefined,
+): boolean {
+	if (left === right) return true;
+	if (!left || !right) return false;
+	if (left.journalSeq !== right.journalSeq) return false;
+	if (!equalLearningValue(left.continuity, right.continuity)) return false;
+	if (!equalLearningValue(left.challengeProgress, right.challengeProgress)) return false;
+	if (!equalLearningValue(left.decks, right.decks)) return false;
+	if (!equalLearningValue(left.spellingProgress, right.spellingProgress)) return false;
+	if (!equalLearningValue(left.studyHistory, right.studyHistory)) return false;
+	if (!equalLearningValue(left.dailyLearningActivities, right.dailyLearningActivities))
+		return false;
+	if (!equalLearningValue(left.cards, right.cards)) return false;
+	return true;
 }
 
 export interface AuthorityCandidate {
@@ -152,7 +180,7 @@ export class LearningDocumentStore {
 			// even when the durable learning document needs no replacement.
 			if (
 				options.skipUnchanged &&
-				equalLearningValue(candidate.learning, this.persistedLearning)
+				equalLearningDocument(candidate.learning, this.persistedLearning)
 			) {
 				candidate.install();
 				this.persistedCardDecks = options.baselineDecks();

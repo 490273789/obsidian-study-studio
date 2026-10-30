@@ -125,3 +125,4 @@ export interface PronunciationAudioCache {
 }
 
 export const PRONUNCIATION_CACHE_LIMIT_BYTES = 100 * 1024 * 1024;
+export const PRONUNCIATION_CACHE_LIMIT_BYTES_MOBILE = 16 * 1024 * 1024;

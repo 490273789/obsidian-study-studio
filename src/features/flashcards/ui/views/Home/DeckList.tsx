@@ -567,7 +567,18 @@ export const DeckList = React.memo(function DeckList({
 function orderDeckRows(
 	rows: readonly DeckHomeDeckSnapshot[],
 	deckIds: readonly string[],
-): DeckHomeDeckSnapshot[] {
+): readonly DeckHomeDeckSnapshot[] {
+	if (rows.length === 0 || deckIds.length === 0) return rows;
+	if (rows.length === deckIds.length) {
+		let matches = true;
+		for (let i = 0; i < rows.length; i++) {
+			if (rows[i]!.id !== deckIds[i]) {
+				matches = false;
+				break;
+			}
+		}
+		if (matches) return rows;
+	}
 	const rowsById = new Map(rows.map((row) => [row.id, row]));
 	const orderedRows = deckIds
 		.map((deckId) => rowsById.get(deckId))

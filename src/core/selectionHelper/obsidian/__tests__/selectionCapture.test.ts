@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { captureSelection, toHostCoordinates } from "../selectionCapture";
+import { captureSelection, hasMatchingElement, toHostCoordinates } from "../selectionCapture";
 
 function input(type = "text") {
 	const control = {
@@ -63,5 +63,29 @@ describe("selection capture", () => {
 		expect(
 			toHostCoordinates({ defaultView: {} } as Document, host, { text: "hello", x: 0, y: 0 }),
 		).toBeNull();
+	});
+
+	describe("hasMatchingElement", () => {
+		it("detects direct tag matches case-insensitively", () => {
+			const iframe = { nodeType: 1, tagName: "IFRAME" } as unknown as Node;
+			const text = { nodeType: 3, tagName: undefined } as unknown as Node;
+			expect(hasMatchingElement([text, iframe], "iframe")).toBe(true);
+			expect(hasMatchingElement([text], "iframe")).toBe(false);
+		});
+
+		it("detects nested matching elements inside container nodes", () => {
+			const container = {
+				nodeType: 1,
+				tagName: "DIV",
+				querySelector: (selector: string) => (selector === "webview" ? {} : null),
+			} as unknown as Node;
+			const normalDiv = {
+				nodeType: 1,
+				tagName: "DIV",
+				querySelector: () => null,
+			} as unknown as Node;
+			expect(hasMatchingElement([normalDiv, container], "webview")).toBe(true);
+			expect(hasMatchingElement([normalDiv], "webview")).toBe(false);
+		});
 	});
 });

@@ -51,6 +51,13 @@ export class SourceSyntaxCache {
 		this.bytes += entry.bytes;
 	}
 
+	delete(path: string): void {
+		const previous = this.entries.get(path);
+		if (!previous) return;
+		this.entries.delete(path);
+		this.bytes -= previous.bytes;
+	}
+
 	/** Drops entries whose source is no longer part of the current scan. */
 	retain(paths: ReadonlySet<string>): void {
 		for (const [path, entry] of this.entries) {

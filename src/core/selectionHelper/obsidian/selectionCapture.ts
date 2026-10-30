@@ -9,6 +9,21 @@ export function isAssistantElement(node: EventTarget | Node | null): boolean {
 	return Boolean(elementOf(node)?.closest?.(".fc-selection-popup-container"));
 }
 
+/** Efficiently checks whether any of the mutation nodes is or contains a specific tag. */
+export function hasMatchingElement(nodes: NodeList | readonly Node[], tagName: string): boolean {
+	const lower = tagName.toLowerCase();
+	for (let i = 0; i < nodes.length; i++) {
+		const node = nodes[i];
+		if (!node || node.nodeType !== 1) continue;
+		const el = node as Element;
+		if (el.tagName?.toLowerCase() === lower) return true;
+		if (typeof el.querySelector === "function" && el.querySelector(tagName) !== null) {
+			return true;
+		}
+	}
+	return false;
+}
+
 function elementOf(node: EventTarget | Node | null): Element | null {
 	if (!node) return null;
 	const candidate = node as Node;

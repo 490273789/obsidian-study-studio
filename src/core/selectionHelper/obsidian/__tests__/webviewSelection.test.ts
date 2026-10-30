@@ -960,6 +960,33 @@ describe("WebviewSelectionAdapter", () => {
 		expect(env.openSource).toHaveBeenCalledTimes(sourceCalls);
 		interval.mockRestore();
 	});
+
+	it("backs off polling interval on window blur and wakes up on window focus or host input", async () => {
+		const intervalSpy = vi.spyOn(globalThis, "setInterval");
+		const env = setup();
+		env.adapter.start();
+		await flush();
+
+		expect(intervalSpy).toHaveBeenLastCalledWith(expect.any(Function), 150);
+
+		// Window loses focus -> interval increases to 1000ms
+		env.windowHandlers.get("blur")?.();
+		expect(intervalSpy).toHaveBeenLastCalledWith(expect.any(Function), 1000);
+
+		// Window regains focus -> wakes up to 150ms
+		env.windowHandlers.get("focus")?.();
+		expect(intervalSpy).toHaveBeenLastCalledWith(expect.any(Function), 150);
+
+		// Blur again, then user clicks in host -> wakes up to 150ms
+		env.windowHandlers.get("blur")?.();
+		expect(intervalSpy).toHaveBeenLastCalledWith(expect.any(Function), 1000);
+		env.hostHandlers.get("mousedown")?.();
+		expect(intervalSpy).toHaveBeenLastCalledWith(expect.any(Function), 150);
+
+		env.adapter.stop();
+		intervalSpy.mockRestore();
+	});
+
 	it.each(
 		["DOM", "input"].flatMap((kind) =>
 			["focused", "unfocused", "blurred", "refocused"].map((focus) => ({ kind, focus })),
