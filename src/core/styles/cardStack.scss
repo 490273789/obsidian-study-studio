@@ -8,6 +8,14 @@
 	justify-content: center;
 	gap: var(--fc-space-4);
 	text-align: center;
+	color: var(--fc-text);
+
+	.flashcard-complete-icon {
+		color: var(--fc-primary);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
 }
 .flashcard-content {
 	min-height: 0;
@@ -25,7 +33,12 @@
 	display: flex;
 	flex-direction: column;
 	flex-shrink: 0;
-	gap: var(--fc-space-4);
+	gap: var(--fc-space-5);
+	background: var(--fc-surface-card);
+	border: 1px solid var(--fc-line-soft);
+	border-radius: var(--fc-radius-lg);
+	padding: var(--fc-space-6);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 	animation: fc-session-content-enter var(--fc-motion-base) var(--fc-ease-out);
 	user-select: text;
 	-webkit-user-select: text;
@@ -38,56 +51,57 @@
 	animation: var(--fc-motion-answer);
 }
 .flashcard-question,
-.flashcard-answer,
+.flashcard-answer {
+	position: relative;
+	flex: 0 0 auto;
+	min-width: 0;
+	padding: 0;
+	background: transparent;
+	border: none;
+	box-shadow: none;
+}
 .flashcard-explanation {
 	position: relative;
 	flex: 0 0 auto;
 	min-width: 0;
+	margin-top: var(--fc-space-2);
 	padding: var(--fc-space-4) var(--fc-space-5);
-	border-color: var(--fc-line-soft);
-	border-inline-start-width: 4px;
-	background: var(--fc-surface-card);
+	background: color-mix(in srgb, var(--fc-surface-canvas) 50%, var(--fc-surface-card));
+	border: 1px solid var(--fc-line-soft);
+	border-radius: var(--fc-radius-md);
 	box-shadow: none;
 }
 .flashcard-question {
 	.flashcard-markdown {
-		font-size: var(--fc-font-xl);
+		font-size: var(--fc-font-2xl);
 		font-weight: var(--fc-weight-semibold);
 		color: var(--fc-text);
+		line-height: var(--fc-line-tight);
+	}
+}
+.flashcard-answer {
+	.flashcard-markdown {
+		font-size: var(--fc-font-md);
+		color: var(--fc-text);
+		line-height: var(--fc-line-body);
+	}
+}
+.flashcard-explanation {
+	.flashcard-markdown {
+		font-size: var(--fc-font-sm);
+		color: var(--fc-muted);
+		line-height: var(--fc-line-body);
 	}
 }
 .flashcard-label {
-	position: absolute;
-	inset-block-start: 0;
-	inset-inline-end: 0;
-	display: inline-flex;
-	align-items: center;
-	padding: var(--fc-space-2) var(--fc-space-6);
-	border-end-start-radius: var(--fc-radius-md);
-	font: var(--fc-weight-semibold) var(--fc-font-sm) / var(--fc-line-body) var(--fc-font-ui);
-	margin: 0;
-	width: fit-content;
-	max-width: 60%;
-	overflow-wrap: anywhere;
-	user-select: none;
-	&.flashcard-label-question {
-		color: var(--fc-primary);
-		background: color-mix(in srgb, var(--fc-primary) 10%, var(--fc-surface-card));
-	}
-	&.flashcard-label-answer {
-		color: var(--fc-violet);
-		background: color-mix(in srgb, var(--fc-violet) 10%, var(--fc-surface-card));
-	}
-	&.flashcard-label-explanation {
-		color: var(--fc-amber);
-		background: color-mix(in srgb, var(--fc-amber) 10%, var(--fc-surface-card));
-	}
+	display: none;
 }
 .flashcard-divider {
-	width: min(280px, 60%);
+	width: 100%;
 	height: 1px;
-	margin: var(--fc-space-2) auto;
-	background: linear-gradient(90deg, transparent, var(--fc-line), transparent);
+	margin: var(--fc-space-2) 0;
+	background: var(--fc-line-soft);
+	border: none;
 }
 /* A short, paired handoff; the page chrome stays still and text stays sharp. */
 @keyframes fc-session-content-enter {
@@ -124,21 +138,25 @@
 	}
 }
 @container session (max-width: #{breakpoints.$phone}) {
-	.flashcard-question,
-	.flashcard-answer,
-	.flashcard-explanation {
+	.flashcard-card-stack {
 		padding: var(--fc-space-4);
+		gap: var(--fc-space-3);
 	}
-	.flashcard-study .flashcard-markdown {
-		font-size: var(--fc-font-lg);
+	.flashcard-explanation {
+		padding: var(--fc-space-3);
 	}
-	.flashcard-card-stack,
+	.flashcard-question .flashcard-markdown {
+		font-size: var(--fc-font-xl);
+	}
 	.flashcard-answer-section {
-		gap: var(--fc-space-2);
+		gap: var(--fc-space-3);
 	}
 }
+.flashcard-pronunciation-row,
 .flashcard-study .flashcard-pronunciation-row {
-	flex-direction: column;
-	align-items: flex-start;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	flex-wrap: wrap;
 	gap: var(--fc-space-3);
 }

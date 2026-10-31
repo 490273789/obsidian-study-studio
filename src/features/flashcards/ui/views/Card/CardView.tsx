@@ -168,6 +168,7 @@ export const CardView = React.memo(function CardView({
 							onClick={handlePrevious}
 							disabled={!session.canPrevious || isTransitioning}
 							title={`${t("common.undo")} (6)`}
+							aria-label={`${t("common.undo")} (6)`}
 						/>
 						<div className={cls(styles.ratingGrid)}>
 							{ratingButtons.map((btn) => (

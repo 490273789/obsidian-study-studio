@@ -172,7 +172,7 @@ function interpret(state: CardShortcutState, code: string): CardShortcutIntent |
 	if (state.mode !== "challenge" && (code === "Digit6" || code === "Numpad6"))
 		return { kind: "previous" };
 	if (state.mode === "study") {
-		if (code === "Space") return { kind: "rate", rating: 2 };
+		if (code === "Space") return { kind: "rate", rating: 3 };
 		const digit = /^(?:Digit|Numpad)([1-5])$/.exec(code)?.[1];
 		return digit ? { kind: "rate", rating: Number(digit) as StudyRating } : null;
 	}

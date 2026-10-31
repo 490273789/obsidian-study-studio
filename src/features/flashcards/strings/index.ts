@@ -144,13 +144,13 @@ export function getLocalizedRatingButtons(language: Language): RatingButton[] {
 		},
 		{
 			label: t("ratings.hard"),
-			shortcut: `2/${t("common.space")}`,
+			shortcut: "2",
 			rating: 2,
 			intervalDesc: formatReviewInterval(language, "day", 1),
 		},
 		{
 			label: t("ratings.good"),
-			shortcut: "3",
+			shortcut: `3/${t("common.space")}`,
 			rating: 3,
 			intervalDesc: formatReviewInterval(language, "day", 3),
 		},

@@ -238,7 +238,7 @@ for (const rating of [1, 2, 3, 4, 5] as const) {
 		]);
 	}
 }
-mappings.push(["study Space", study(true), " ", "Space", { kind: "rate", rating: 2 }]);
+mappings.push(["study Space", study(true), " ", "Space", { kind: "rate", rating: 3 }]);
 for (const state of [
 	practice(true),
 	challenge("normal", "question", true),

@@ -88,7 +88,7 @@ presented state and semantic actions. Answer transactions stay with
 - Composing, modified, already-consumed, and unmapped key events pass through.
   Recognized keys prevent the browser default; repeated, busy, or unavailable
   previous-card actions are consumed without dispatching. Propagation continues.
-- Preserve existing mode and phase mappings, including study Space = rating 2 and
+- Preserve existing mode and phase mappings, including study Space = rating 3 and
   challenge feedback Space/Enter = continue. Read the presented state on each
   event; do not capture a prior card's callback or invent parallel transition state.
 - Test through the binding interface: observable intents, default prevention,
