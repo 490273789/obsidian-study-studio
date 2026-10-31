@@ -15,14 +15,17 @@ export const SetupControlGroup: React.FC<SetupControlGroupProps> = ({
 	note,
 	children,
 }) => {
+	const titleId = React.useId();
 	return (
-		<section className="flashcard-setup-control-group">
+		<section className="flashcard-setup-control-group" aria-labelledby={titleId}>
 			<div className="flashcard-setup-control-copy">
 				<span className="flashcard-setup-control-icon" aria-hidden="true">
 					<Icon size={17} />
 				</span>
 				<div className="flashcard-setup-control-text">
-					<div className="flashcard-setup-control-title">{title}</div>
+					<div id={titleId} className="flashcard-setup-control-title">
+						{title}
+					</div>
 					<div className="flashcard-setup-control-note">{note}</div>
 				</div>
 			</div>

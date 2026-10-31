@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Play } from "lucide-react";
+import { cls } from "../../../../../core/shared/classNames";
 import { FlashcardHeader } from "../../../../../core/ui/primitives/Header/FlashcardHeader";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button/Button";
 import { handleSetupKeyDown } from "./setupShortcuts";
@@ -56,7 +57,7 @@ export function SetupPage({
 		// oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- This focused page owns its setup keyboard shortcut.
 		<div
 			ref={rootRef}
-			className={`fc-page fc-page--fill ${styles.page}`}
+			className={cls("fc-page", "fc-page--fill", styles.page)}
 			tabIndex={-1}
 			onKeyDown={(event) => {
 				if (event.defaultPrevented) return;
@@ -64,17 +65,17 @@ export function SetupPage({
 			}}
 		>
 			<FlashcardHeader className={styles.header} icon={icon} title={title} onBack={onBack} />
-			<div className={`fc-page__body ${styles.body}`}>
+			<div className={cls("fc-page__body", styles.body)}>
 				<div className={styles.column}>
-					<section className={`fc-hero ${styles.hero}`}>
+					<section className={cls("fc-hero", styles.hero)} aria-label={deck.name}>
 						<div className={styles.identity}>
-							<div className={styles.deckName}>{deck.name}</div>
+							<h1 className={styles.deckName}>{deck.name}</h1>
 							{deck.tag && (
 								<span className={styles.deckTag}>
 									{deck.tag.startsWith("#") ? deck.tag : `#${deck.tag}`}
 								</span>
 							)}
-							<div className={`fc-hero__summary ${styles.meta}`}>{meta}</div>
+							<div className={cls("fc-hero__summary", styles.meta)}>{meta}</div>
 						</div>
 						<div className={styles.figure}>
 							<div className="fc-hero__label">{countLabel}</div>
@@ -86,25 +87,26 @@ export function SetupPage({
 					{children}
 
 					{afterAction}
+
+					<footer className={styles.footer}>
+						<div className={styles.action}>
+							<div className={styles.summary}>{summary}</div>
+							<div className={styles.startGroup}>
+								<FlashcardButton
+									size="lg"
+									variant="primary"
+									icon={Play}
+									disabled={disabled}
+									onClick={onStart}
+								>
+									{startLabel}
+								</FlashcardButton>
+								{!disabled && <kbd className={styles.shortcut}>Space</kbd>}
+							</div>
+						</div>
+					</footer>
 				</div>
 			</div>
-			<footer className={styles.footer}>
-				<div className={styles.action}>
-					<div className={styles.summary}>{summary}</div>
-					<div className={styles.startGroup}>
-						<FlashcardButton
-							size="lg"
-							variant="primary"
-							icon={Play}
-							disabled={disabled}
-							onClick={onStart}
-						>
-							{startLabel}
-						</FlashcardButton>
-						{!disabled && <kbd className={styles.shortcut}>Space</kbd>}
-					</div>
-				</div>
-			</footer>
 		</div>
 	);
 }

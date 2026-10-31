@@ -21,7 +21,7 @@
 	padding: var(--fc-space-4) var(--fc-space-5);
 	border-color: var(--fc-border-color);
 	border-radius: var(--fc-radius-md);
-	background: color-mix(in srgb, var(--fc-primary) 2%, var(--fc-surface-card));
+	background: var(--fc-surface-card);
 
 	:global(.fc-hero__num) b {
 		font-size: var(--fc-font-hero);
@@ -32,8 +32,10 @@
 	min-width: 0;
 }
 .deckName {
+	margin: 0;
 	font-size: var(--fc-font-lg);
 	font-weight: var(--fc-weight-semibold);
+	line-height: var(--fc-line-title, 1.4);
 	overflow-wrap: anywhere;
 }
 .deckTag {
@@ -41,6 +43,7 @@
 	margin-block: var(--fc-space-1) var(--fc-space-3);
 	color: var(--fc-muted);
 	font-size: var(--fc-font-xs);
+	font-family: var(--fc-font-data);
 	overflow-wrap: anywhere;
 }
 .meta:global(.fc-hero__summary) {
@@ -52,7 +55,7 @@
 }
 .figure {
 	white-space: nowrap;
-	border-inline-start: 1px solid color-mix(in srgb, var(--fc-primary) 35%, var(--fc-line-soft));
+	border-inline-start: 1px solid var(--fc-line-soft);
 	padding-inline-start: var(--fc-space-5);
 	:global(.fc-hero__num) {
 		margin-top: var(--fc-space-2);
@@ -76,13 +79,15 @@
 .chip {
 	min-height: var(--fc-control-md);
 	min-width: 48px;
+	font-family: var(--fc-font-data);
+	font-variant-numeric: tabular-nums;
 }
 .customField,
 .rangeInputs {
 	display: flex;
-	align-items: center;
+	align-items: flex-end;
 	flex-wrap: wrap;
-	gap: var(--fc-space-2);
+	gap: var(--fc-space-3);
 }
 .inputLabel {
 	color: var(--fc-muted);
@@ -109,22 +114,24 @@
 .action {
 	box-sizing: border-box;
 	width: 100%;
-	max-width: var(--page-content-width, var(--fc-layout-max-width));
-	margin-inline: auto;
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: var(--fc-space-4);
-	padding: var(--fc-space-2);
+	padding: var(--fc-space-2) var(--fc-space-3);
 	border-radius: var(--fc-radius-md);
 	background: var(--fc-surface-section);
 	border: 1px solid var(--fc-line-soft);
+	box-shadow: var(--fc-shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.05));
 }
 .footer {
 	flex: none;
-	padding: var(--fc-space-3) var(--fc-space-2) 0;
-	border-top: 1px solid var(--fc-line-soft);
-	// background: var(--fc-surface-canvas);
+	position: sticky;
+	bottom: 0;
+	z-index: 2;
+	padding-block: var(--fc-space-2) var(--fc-space-3);
+	margin-top: var(--fc-space-2);
+	background: linear-gradient(to top, var(--fc-surface-canvas) 70%, transparent);
 }
 .summary {
 	min-width: 0;
@@ -140,9 +147,10 @@
 }
 
 .shortcut {
-	font-size: var(--fc-font-2xs);
+	font-size: var(--fc-font-xs);
+	font-family: var(--fc-font-data);
 	color: var(--fc-muted);
-	padding: var(--fc-space-1) var(--fc-space-2);
+	padding: var(--fc-space-half) var(--fc-space-2);
 	border: 1px solid var(--fc-line);
 	border-radius: var(--fc-radius-sm);
 	background: var(--fc-surface-card);
@@ -156,6 +164,9 @@
 	display: none;
 }
 @container (max-width: #{breakpoints.$phone}) {
+	.shortcut {
+		display: none;
+	}
 	.body {
 		padding: var(--fc-space-3) var(--fc-space-2);
 		scroll-padding-block: var(--fc-space-3);
@@ -193,8 +204,8 @@
 		width: var(--fc-control-md);
 		height: var(--fc-control-md);
 		padding: var(--fc-space-2);
-		border: 1px solid color-mix(in srgb, var(--fc-primary) 24%, transparent);
-		background: color-mix(in srgb, var(--fc-primary) 14%, var(--fc-surface-card));
+		border: 1px solid color-mix(in srgb, var(--fc-primary) 24%, var(--fc-line-soft));
+		background: var(--fc-primary-bg);
 	}
 
 	:global(.flashcard-header-title-content) {

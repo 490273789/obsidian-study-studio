@@ -5,7 +5,8 @@ import {
 	Lock,
 	Brain,
 	Dices,
-	AudioWaveform,
+	ArrowDownUp,
+	ListOrdered,
 	Repeat2,
 	ChevronDown,
 	ChevronRight,
@@ -313,7 +314,7 @@ export const StudySetup = React.memo(function StudySetup({
 		>
 			<div className={cls("fc-panel", setupStyles.setupPanel)}>
 				<SetupControlGroup
-					icon={AudioWaveform}
+					icon={ArrowDownUp}
 					title={t("study.studyOrder")}
 					note={
 						studyOrder === "random" ? t("study.randomNote") : t("study.sequentialNote")
@@ -326,7 +327,7 @@ export const StudySetup = React.memo(function StudySetup({
 							{
 								value: "sequential",
 								label: t("study.sequentialOrder"),
-								icon: AudioWaveform,
+								icon: ListOrdered,
 							},
 							{
 								value: "random",

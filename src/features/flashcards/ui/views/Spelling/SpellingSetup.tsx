@@ -37,11 +37,79 @@ export const SpellingSetup = React.memo(function SpellingSetup({
 	const stats = plan.stats;
 	const [mode, setMode] = useState<"smart" | "range">(plan.initialSelectionMode);
 	const [questionCount, setQuestionCount] = useState(plan.initialQuestionCount);
+	const [inputValue, setInputValue] = useState(plan.initialQuestionCount.toString());
 	const [rangeStart, setRangeStart] = useState(plan.initialRangeStart);
 	const [rangeEnd, setRangeEnd] = useState(plan.initialRangeEnd);
+	const [rangeStartInput, setRangeStartInput] = useState(plan.initialRangeStart.toString());
+	const [rangeEndInput, setRangeEndInput] = useState(plan.initialRangeEnd.toString());
 	const rangeCount = Math.max(0, rangeEnd - rangeStart + 1);
 	const currentCount = mode === "smart" ? questionCount : rangeCount;
 	const isStartDisabled = currentCount < 1;
+
+	const handleQuickSelect = (count: number) => {
+		setQuestionCount(count);
+		setInputValue(count.toString());
+	};
+
+	const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const value = e.target.value;
+		setInputValue(value);
+
+		const num = parseInt(value, 10);
+		if (!isNaN(num) && num >= 1) {
+			setQuestionCount(Math.min(num, maxQuestions));
+		}
+	};
+
+	const handleInputBlur = () => {
+		const num = parseInt(inputValue, 10);
+		if (isNaN(num) || num < 1) {
+			setQuestionCount(1);
+			setInputValue("1");
+		} else {
+			const normalized = Math.min(num, maxQuestions);
+			setQuestionCount(normalized);
+			setInputValue(normalized.toString());
+		}
+	};
+
+	const handleRangeStartChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const value = e.target.value;
+		setRangeStartInput(value);
+
+		const num = parseInt(value, 10);
+		if (!isNaN(num)) {
+			const clamped = Math.max(1, Math.min(num, rangeEnd));
+			setRangeStart(clamped);
+		}
+	};
+
+	const handleRangeEndChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const value = e.target.value;
+		setRangeEndInput(value);
+
+		const num = parseInt(value, 10);
+		if (!isNaN(num)) {
+			const clamped = Math.max(rangeStart, Math.min(num, maxQuestions));
+			setRangeEnd(clamped);
+		}
+	};
+
+	const handleRangeBlur = () => {
+		const parsedStart = parseInt(rangeStartInput, 10);
+		const parsedEnd = parseInt(rangeEndInput, 10);
+		const start =
+			isNaN(parsedStart) || parsedStart < 1
+				? rangeStart
+				: Math.min(parsedStart, maxQuestions);
+		const end =
+			isNaN(parsedEnd) || parsedEnd < start ? start : Math.min(parsedEnd, maxQuestions);
+
+		setRangeStart(start);
+		setRangeEnd(end);
+		setRangeStartInput(start.toString());
+		setRangeEndInput(end.toString());
+	};
 
 	const handleStart = () => {
 		if (isStartDisabled) return;
@@ -100,7 +168,11 @@ export const SpellingSetup = React.memo(function SpellingSetup({
 				<SetupControlGroup
 					icon={SlidersHorizontal}
 					title={t("spelling.chooseWords")}
-					note={t("spelling.chooseWordsNote")}
+					note={t(
+						mode === "smart"
+							? "spelling.chooseWordsNote"
+							: "spelling.rangeSelectionNote",
+					)}
 				>
 					<SetupSelector
 						value={mode}
@@ -122,29 +194,47 @@ export const SpellingSetup = React.memo(function SpellingSetup({
 
 					<div className={styles.controlDetail}>
 						{mode === "smart" ? (
-							<div className={styles.quickButtons}>
-								{quickCounts.map((count) => (
+							<>
+								<div className={styles.quickButtons}>
+									{quickCounts.map((count) => (
+										<FlashcardButton
+											key={count}
+											type="button"
+											className={styles.chip}
+											active={questionCount === count}
+											aria-pressed={questionCount === count}
+											onClick={() => handleQuickSelect(count)}
+										>
+											{count}
+										</FlashcardButton>
+									))}
 									<FlashcardButton
-										key={count}
 										type="button"
 										className={styles.chip}
-										active={questionCount === count}
-										aria-pressed={questionCount === count}
-										onClick={() => setQuestionCount(count)}
+										active={questionCount === maxQuestions}
+										aria-pressed={questionCount === maxQuestions}
+										onClick={() => handleQuickSelect(maxQuestions)}
 									>
-										{count}
+										{t("common.all")}
 									</FlashcardButton>
-								))}
-								<FlashcardButton
-									type="button"
-									className={styles.chip}
-									active={questionCount === maxQuestions}
-									aria-pressed={questionCount === maxQuestions}
-									onClick={() => setQuestionCount(maxQuestions)}
-								>
-									{t("common.all")}
-								</FlashcardButton>
-							</div>
+								</div>
+
+								<label className={styles.customField}>
+									<span className={styles.inputLabel}>
+										{t("spelling.customCount")}
+									</span>
+									<FlashcardInput
+										type="number"
+										className={styles.input}
+										value={inputValue}
+										onChange={handleInputChange}
+										onBlur={handleInputBlur}
+										min={1}
+										max={maxQuestions}
+									/>
+									<span className={styles.inputHint}>1–{maxQuestions}</span>
+								</label>
+							</>
 						) : (
 							<div className={styles.rangeGroup}>
 								<div className={styles.rangeInputs}>
@@ -157,14 +247,9 @@ export const SpellingSetup = React.memo(function SpellingSetup({
 											className={styles.input}
 											min={1}
 											max={maxQuestions}
-											value={rangeStart}
-											onChange={(event) => {
-												const next = Math.max(
-													1,
-													Math.min(Number(event.target.value), rangeEnd),
-												);
-												setRangeStart(next);
-											}}
+											value={rangeStartInput}
+											onChange={handleRangeStartChange}
+											onBlur={handleRangeBlur}
 										/>
 									</label>
 									<label className={styles.rangeField}>
@@ -176,17 +261,9 @@ export const SpellingSetup = React.memo(function SpellingSetup({
 											className={styles.input}
 											min={rangeStart}
 											max={maxQuestions}
-											value={rangeEnd}
-											onChange={(event) => {
-												const next = Math.max(
-													rangeStart,
-													Math.min(
-														Number(event.target.value),
-														maxQuestions,
-													),
-												);
-												setRangeEnd(next);
-											}}
+											value={rangeEndInput}
+											onChange={handleRangeEndChange}
+											onBlur={handleRangeBlur}
 										/>
 									</label>
 								</div>

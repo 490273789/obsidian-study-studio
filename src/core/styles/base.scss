@@ -70,7 +70,7 @@
 	/* 强调色用于文字和轮廓，操作底色单独轻染，避免大面积高亮。 */
 	--fc-primary: #00b8c4;
 	--fc-primary-hover: #00a0ab;
-	--fc-primary-bg: color-mix(in srgb, var(--interactive-accent) 18%, var(--fc-surface-card));
+	--fc-primary-bg: color-mix(in srgb, var(--fc-primary) 12%, var(--fc-surface-card));
 	--fc-primary-text: color-mix(in srgb, rgb(var(--fc-black-rgb)) 75%, var(--fc-primary));
 	--fc-danger: var(--fc-red);
 

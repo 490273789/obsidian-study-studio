@@ -336,6 +336,22 @@ describe("setup selections and start requests", () => {
 			selection: { kind: "range", startIndex: 10, endIndex: 100 },
 		});
 	});
+	it("supports custom quantity in spelling smart mode", () => {
+		const props = { deck, plan: spellingPlan, onStartSession: vi.fn(), onBack: vi.fn() };
+		let tree = renderMemo(SpellingSetup, props);
+		const render = () => {
+			tree = renderMemo(SpellingSetup, props);
+		};
+		change(find<InputProps>(tree, FlashcardInput), "35");
+		render();
+		expect(find<PageProps>(tree, SetupPage).count).toBe(35);
+		find<PageProps>(tree, SetupPage).onStart();
+		expect(props.onStartSession).toHaveBeenLastCalledWith({
+			mode: "spelling",
+			deckId: "deck",
+			selection: { kind: "smart", questionCount: 35 },
+		});
+	});
 	it.each(["practice", "spelling"])("disables empty %s setup", (mode) => {
 		const onStartSession = vi.fn();
 		const common = { deck, onStartSession, onBack: vi.fn() };
