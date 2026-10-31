@@ -92,6 +92,23 @@ interface ElementProps {
 	ref?: (node: { focus(): void }) => void;
 }
 
+function visibleText(node: React.ReactNode): string {
+	let result = "";
+	function visit(children: React.ReactNode): void {
+		React.Children.forEach(children, (child) => {
+			if (typeof child === "string" || typeof child === "number") {
+				result += String(child);
+				return;
+			}
+			if (React.isValidElement<ElementProps>(child) && !child.props.hidden) {
+				visit(child.props.children);
+			}
+		});
+	}
+	visit(node);
+	return result;
+}
+
 function elements(node: React.ReactNode): React.ReactElement<ElementProps>[] {
 	const result: React.ReactElement<ElementProps>[] = [];
 	function visit(node: React.ReactNode): void {
@@ -188,7 +205,7 @@ describe("learning footprint window disclosure", () => {
 		const days = Array.from({ length: 16 * 7 }, (_, index) =>
 			day(new NativeDate(Date.UTC(2026, 0, 5 + index)).toISOString().slice(0, 10)),
 		);
-		const footprint: LearningFootprintSnapshot = {
+		let footprint: LearningFootprintSnapshot = {
 			today: days.slice(-1)[0]!.activity,
 			todayTotalSeconds: 0,
 			currentStreak: 0,
@@ -219,10 +236,24 @@ describe("learning footprint window disclosure", () => {
 		const selectedDate = () =>
 			cells().find((cell) => cell.props.tabIndex === 0)?.props["data-heatmap-day"];
 		render();
-		return { days, render, cells, toggle, panelToggle, selectedDate, tree: () => tree };
+		return {
+			days,
+			render,
+			cells,
+			toggle,
+			panelToggle,
+			selectedDate,
+			tree: () => tree,
+			setFootprint: (next: LearningFootprintSnapshot) => {
+				footprint = next;
+				render();
+			},
+			footprint: () => footprint,
+		};
 	}
 
-	it("starts collapsed and preserves the heading summary and selection across toggles", () => {
+	it("starts collapsed and keeps today's details available after expanding", () => {
+		locale.language = "zh";
 		const h = harness();
 		const body = () =>
 			elements(h.tree()).find(
@@ -230,10 +261,14 @@ describe("learning footprint window disclosure", () => {
 			)!;
 		expect(h.panelToggle().props["aria-expanded"]).toBe(false);
 		expect(body().props.hidden).toBe(true);
+		expect(visibleText(h.tree())).toContain("今天还没有学习记录");
+		expect(visibleText(h.tree())).not.toContain("总时长");
 		h.panelToggle().props.onClick!();
 		h.render();
 		expect(h.panelToggle().props["aria-expanded"]).toBe(true);
 		expect(body().props.hidden).toBe(false);
+		expect(visibleText(h.tree())).toContain("今日明细");
+		expect(visibleText(h.tree())).toContain("总时长");
 		h.toggle().props.onClick!();
 		h.render();
 		const selected = h.days.slice(-8)[0]!.date;
@@ -245,17 +280,43 @@ describe("learning footprint window disclosure", () => {
 		expect(body().props.hidden).toBe(true);
 		const header = elements(h.tree()).find((element) => element.type === "header")!;
 		expect(elements(header).some((element) => element.type === "h2")).toBe(true);
-		const text = elements(header)
-			.flatMap((element) => React.Children.toArray(element.props.children))
-			.filter((child) => typeof child === "string" || typeof child === "number")
-			.join("");
-		expect(text).toContain(createTranslator(locale.language)("footprint.totalDuration"));
-		expect(text).toContain(createTranslator(locale.language)("footprint.studyAnswers"));
+		expect(visibleText(header)).toContain("今天还没有学习记录");
+		expect(visibleText(header)).not.toContain("总时长");
 		h.panelToggle().props.onClick!();
 		h.render();
 		expect(body().props.hidden).toBe(false);
 		expect(h.toggle().props["aria-expanded"]).toBe(true);
 		expect(h.selectedDate()).toBe(selected);
+	});
+
+	it("summarizes answers or word-list-only activity without showing zero counters", () => {
+		locale.language = "zh";
+		const h = harness();
+		const base = h.footprint();
+		h.setFootprint({
+			...base,
+			today: {
+				...base.today,
+				answers: { ...base.today.answers, study: 3 },
+				seconds: { ...base.today.seconds, study: 60 },
+			},
+			todayTotalSeconds: 60,
+			currentStreak: 2,
+		});
+		expect(visibleText(h.tree())).toContain("今日作答 3 次 · 总时长 1分钟");
+		expect(visibleText(h.tree())).toContain("连续 2 天");
+		expect(visibleText(h.tree())).not.toContain("练习 0 次");
+
+		h.setFootprint({
+			...base,
+			today: {
+				...base.today,
+				seconds: { ...base.today.seconds, "word-list": 120 },
+			},
+			todayTotalSeconds: 120,
+		});
+		expect(visibleText(h.tree())).toContain("今日活动 2分钟");
+		expect(visibleText(h.tree())).not.toContain("作答 0 次");
 	});
 
 	it("expands the recent 14 weeks without changing the selected date", () => {

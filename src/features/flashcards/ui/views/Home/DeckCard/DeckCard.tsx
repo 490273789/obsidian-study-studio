@@ -184,44 +184,13 @@ export const DeckCard = memo(function DeckCard({
 		>
 			<div className="flashcard-deck-main fc-rail-row__main" inert={isMenuOpen}>
 				<div className={cls("flashcard-deck-headline", styles.deckHeadline)}>
-					<div className={cls("flashcard-deck-name-wrapper", styles.deckNameWrapper)}>
-						<span
-							className={cls(
-								"flashcard-deck-name fc-rail-row__title",
-								styles.deckName,
-							)}
-						>
-							{deck.name}
-						</span>
-						<span className={cls("flashcard-deck-tag", styles.deckTag)}>
-							{deck.tag}
-						</span>
-						{deck.spelling.enabled && (
-							<span
-								className={cls(
-									"flashcard-word-learning-badge",
-									styles.wordLearningBadge,
-									!spellingReady && styles.isInvalid,
-								)}
-								title={
-									spellingReady
-										? t("home.wordLearningDeck")
-										: t("home.wordLearningNeedsRepair")
-								}
-							>
-								{spellingReady ? (
-									<Keyboard size={12} />
-								) : (
-									<TriangleAlert size={12} />
-								)}
-								{spellingReady
-									? t("home.supportsSpelling")
-									: t("home.wordLearningNeedsRepair")}
-							</span>
-						)}
-					</div>
+					<span
+						className={cls("flashcard-deck-name fc-rail-row__title", styles.deckName)}
+					>
+						{deck.name}
+					</span>
 
-					<div className="flashcard-deck-meta fc-meta">
+					<div className={cls("flashcard-deck-meta fc-meta", styles.deckMeta)}>
 						{state === "active" && (
 							<>
 								<span
@@ -286,6 +255,12 @@ export const DeckCard = memo(function DeckCard({
 								)}
 							</>
 						)}
+						{deck.spelling.enabled && !spellingReady && (
+							<span className={styles.spellingIssue}>
+								<TriangleAlert size={12} aria-hidden="true" />
+								{t("home.wordLearningNeedsRepair")}
+							</span>
+						)}
 					</div>
 				</div>
 			</div>
@@ -321,7 +296,7 @@ export const DeckCard = memo(function DeckCard({
 					)}
 				>
 					<FlashcardButton
-						variant="primary"
+						variant="secondary"
 						size="md"
 						className="flashcard-deck-action-study"
 						icon={isDone ? RefreshCcw : Brain}
@@ -334,7 +309,7 @@ export const DeckCard = memo(function DeckCard({
 						<span>{isDone ? t("home.review") : t("home.study")}</span>
 					</FlashcardButton>
 					<FlashcardButton
-						variant="secondary"
+						variant="outline"
 						size="md"
 						className="flashcard-deck-action-practice"
 						icon={Target}
@@ -369,6 +344,12 @@ export const DeckCard = memo(function DeckCard({
 										})
 							}
 							aria-label={t("home.spelling")}
+						/>
+					)}
+					{!deck.spelling.enabled && (
+						<span
+							className="flashcard-deck-action-spelling-placeholder"
+							aria-hidden="true"
 						/>
 					)}
 					<FlashcardButton

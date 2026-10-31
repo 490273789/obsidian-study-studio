@@ -12,6 +12,7 @@ import styles from "./LearningFootprint.module.scss";
 
 interface LearningFootprintProps {
 	footprint: LearningFootprintSnapshot;
+	className?: string;
 }
 
 const DAYS_PER_WEEK = 7;
@@ -24,10 +25,12 @@ const RECENT_WEEKS = 14;
  * height in proportion to how much there is to say; expanding restores the full
  * grid from the same data.
  *
- * Streaks are not rendered here: the home hero owns that number already.
+ * Streaks stay with the learning history so the home lead can focus on the
+ * recommended deck.
  */
 export const LearningFootprint = React.memo(function LearningFootprint({
 	footprint,
+	className,
 }: LearningFootprintProps) {
 	const { t, language } = useFlashcardI18n();
 	const titleId = useId();
@@ -87,6 +90,18 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 			value: footprint.today.answers.challenge,
 		},
 	];
+	const todayAnswerCount = summaryItems.reduce((total, item) => total + item.value, 0);
+	const todayStatus =
+		todayAnswerCount > 0
+			? t("footprint.todayAnswers", {
+					count: todayAnswerCount,
+					duration: formatCompactDuration(language, footprint.todayTotalSeconds),
+				})
+			: footprint.todayTotalSeconds > 0
+				? t("footprint.todayActivity", {
+						duration: formatCompactDuration(language, footprint.todayTotalSeconds),
+					})
+				: t("footprint.todayNoActivity");
 
 	const activeDayCount = useMemo(() => days.filter((day) => day.hasActivity).length, [days]);
 
@@ -96,7 +111,7 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 	);
 
 	return (
-		<section className={styles.panel} aria-labelledby={titleId}>
+		<section className={cls(styles.panel, className)} aria-labelledby={titleId}>
 			<header className={styles.header}>
 				<h2 id={titleId} className={styles.title}>
 					<button
@@ -114,34 +129,52 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 						<ChevronDown size={14} aria-hidden="true" />
 					</button>
 				</h2>
-				<div className={styles.summary}>
-					{summaryItems.map((item) => (
-						<span key={item.key} className={styles.summaryItem}>
-							<span className={styles.summaryLabel}>{item.label}</span>
-							<b className={styles.summaryValue}>{item.value}</b>
-							<span className={styles.summaryLabel}>{t("footprint.times")}</span>
+				<div className={styles.todayStatus}>
+					<span>{todayStatus}</span>
+					{footprint.currentStreak > 0 && (
+						<span className={styles.headerStreak}>
+							{t("footprint.currentStreak", { count: footprint.currentStreak })}
 						</span>
-					))}
-					<span className={styles.summaryItem}>
-						<span className={styles.summaryLabel}>{t("footprint.totalDuration")}</span>
-						<b className={styles.summaryValue}>
-							{formatCompactDuration(language, footprint.todayTotalSeconds)}
-						</b>
-					</span>
-					<span className={styles.summaryItem}>
-						<span className={styles.summaryLabel}>
-							{t("footprint.wordListDuration", {
-								duration: formatCompactDuration(
-									language,
-									footprint.today.seconds["word-list"],
-								),
-							})}
-						</span>
-					</span>
+					)}
 				</div>
 			</header>
 
 			<div id={panelBodyId} className={styles.heatmapSection} hidden={!isPanelOpen}>
+				<div className={styles.todayDetails}>
+					<h3>{t("footprint.todayDetails")}</h3>
+					<div className={styles.summary}>
+						{summaryItems.map((item) => (
+							<span key={item.key} className={styles.summaryItem}>
+								<span className={styles.summaryLabel}>{item.label}</span>
+								<b className={styles.summaryValue}>{item.value}</b>
+								<span className={styles.summaryLabel}>{t("footprint.times")}</span>
+							</span>
+						))}
+						<span className={styles.summaryItem}>
+							<span className={styles.summaryLabel}>
+								{t("footprint.totalDuration")}
+							</span>
+							<b className={styles.summaryValue}>
+								{formatCompactDuration(language, footprint.todayTotalSeconds)}
+							</b>
+						</span>
+						<span className={styles.summaryItem}>
+							<span className={styles.summaryLabel}>
+								{t("footprint.wordListDuration", {
+									duration: formatCompactDuration(
+										language,
+										footprint.today.seconds["word-list"],
+									),
+								})}
+							</span>
+						</span>
+						<span className={styles.streak}>
+							{t("footprint.currentStreak", { count: footprint.currentStreak })}
+							<span className="fc-meta__dot" aria-hidden="true" />
+							{t("footprint.bestStreak", { count: footprint.bestStreak })}
+						</span>
+					</div>
+				</div>
 				<div className={styles.heatmapHeading}>
 					<div className={styles.rangeControls}>
 						<span>
@@ -188,7 +221,10 @@ export const LearningFootprint = React.memo(function LearningFootprint({
 					</div>
 					<div ref={scrollerRef} className={styles.scroller}>
 						<div
-							className={styles.heatmapContent}
+							className={cls(
+								styles.heatmapContent,
+								!isExpanded && styles.recentHeatmap,
+							)}
 							style={
 								{
 									"--fc-heatmap-weeks": visibleWeeks.length,

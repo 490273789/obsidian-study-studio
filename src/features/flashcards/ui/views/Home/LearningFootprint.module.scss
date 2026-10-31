@@ -31,6 +31,27 @@
 	flex-wrap: wrap;
 }
 
+.todayStatus {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: var(--fc-space-1) var(--fc-space-4);
+	color: var(--fc-muted);
+	font-size: var(--fc-font-sm);
+}
+
+.todayDetails {
+	display: grid;
+	gap: var(--fc-space-2);
+
+	h3 {
+		margin: 0;
+		color: var(--fc-muted);
+		font-size: var(--fc-font-xs);
+		font-weight: var(--fc-weight-semibold);
+	}
+}
+
 .title {
 	margin: 0;
 	color: var(--fc-text);
@@ -107,6 +128,15 @@
 	font-variant-numeric: tabular-nums;
 }
 
+.streak {
+	display: inline-flex;
+	align-items: baseline;
+	gap: var(--fc-space-2);
+	color: var(--fc-muted);
+	font-size: var(--fc-font-xs);
+	white-space: nowrap;
+}
+
 /* ── Heatmap ─────────────────────────────────────────────────────────────── */
 
 .heatmapSection {
@@ -180,6 +210,27 @@
 .heatmapContent {
 	width: max-content;
 	min-width: 100%;
+}
+
+@container flashcard-pane (min-width: #{breakpoints.$phone + 1px}) {
+	.recentHeatmap {
+		width: 100%;
+
+		.months,
+		.grid {
+			grid-template-columns: repeat(var(--fc-heatmap-weeks), minmax(0, 1fr));
+		}
+
+		.week {
+			min-width: 0;
+		}
+
+		button.cell {
+			width: 100% !important;
+			min-width: 0 !important;
+			max-width: none !important;
+		}
+	}
 }
 
 .months,
@@ -342,16 +393,67 @@ button.cell:not(:disabled) {
 
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
+/* In a roomy pane, expanded details take the compact status's header position. */
+@container flashcard-pane (min-width: #{breakpoints.$phone + 1px}) {
+	.panel:has(.panelToggle[aria-expanded="true"]) {
+		grid-template-columns: max-content minmax(0, 1fr);
+
+		.header {
+			grid-column: 1;
+			grid-row: 1;
+		}
+
+		.todayStatus {
+			display: none;
+		}
+
+		.heatmapSection {
+			display: contents;
+		}
+
+		.todayDetails {
+			grid-column: 2;
+			grid-row: 1;
+			align-self: center;
+			min-width: 0;
+			display: flex;
+			align-items: baseline;
+			justify-content: flex-end;
+			flex-wrap: wrap;
+			gap: var(--fc-space-1) var(--fc-space-3);
+
+			h3 {
+				white-space: nowrap;
+			}
+		}
+
+		.summary {
+			justify-content: flex-end;
+		}
+
+		.heatmapHeading,
+		.heatmapLayout,
+		.details {
+			grid-column: 1 / -1;
+		}
+	}
+}
+
 @mixin footprint-compact {
 	--fc-heatmap-cell: clamp(9px, 2.5cqi, 10px);
 	--fc-heatmap-gap: 3px;
 
-	padding: var(--fc-space-3);
+	padding: var(--fc-space-2) var(--fc-space-3);
+	gap: var(--fc-space-2);
 
 	.header {
-		flex-direction: column;
-		align-items: flex-start;
-		gap: var(--fc-space-2);
+		flex-direction: row;
+		align-items: baseline;
+		gap: var(--fc-space-1) var(--fc-space-3);
+	}
+
+	.headerStreak {
+		display: none;
 	}
 
 	.summary {
@@ -363,6 +465,16 @@ button.cell:not(:disabled) {
 	.panel {
 		@include footprint-compact;
 	}
+}
+
+@container flashcard-pane (max-width: #{breakpoints.$phone}) {
+	.panel {
+		@include footprint-compact;
+	}
+}
+
+:global(.is-phone) .panel {
+	@include footprint-compact;
 }
 
 @media (prefers-reduced-motion: reduce) {

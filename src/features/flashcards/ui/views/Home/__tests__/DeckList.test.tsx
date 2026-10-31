@@ -115,12 +115,12 @@ interface ElementProps {
 	ariaExpanded?: boolean;
 	"aria-label"?: string;
 	title?: string;
-	onKeyDown?: (event: { key: string; preventDefault(): void }) => void;
 	right?: React.ReactNode;
 	badge?: React.ReactNode;
 	"aria-controls"?: string;
 	id?: string;
 	hidden?: boolean;
+	footprint?: unknown;
 }
 
 /** Flattens rendered text so an assertion can name a button by its label. */
@@ -533,6 +533,92 @@ describe("deck reorder availability", () => {
 });
 
 describe("deck row presentation state", () => {
+	it("keeps the current recommendation rule and opens the recommended deck", () => {
+		const h = harness([
+			{ id: "fresh", totalCards: 100, newCards: 100 },
+			{ id: "started", totalCards: 10, newCards: 6, studyCount: 1 },
+		]);
+		const title = h.findElement(
+			h.tree(),
+			(element) => element.props.className?.includes("resumeTitle") === true,
+		);
+		const button = h.findElement(
+			h.tree(),
+			(element) => element.props.className?.includes("resumeButton") === true,
+		);
+
+		expect(textOf(title.props.children)).toBe("home.resumeHeading");
+		expect(textOf(button.props.children)).toBe("home.continueStudy");
+		button.props.onClick!({ stopPropagation: vi.fn() });
+		expect(h.props.onNavigate).toHaveBeenCalledWith("study", "started");
+	});
+
+	it("starts a fresh recommendation and has no dead action when all decks are learned", () => {
+		const h = harness([{ id: "fresh", totalCards: 10, newCards: 10 }]);
+		const title = () =>
+			h.findElement(
+				h.tree(),
+				(element) => element.props.className?.includes("resumeTitle") === true,
+			);
+		const buttons = () =>
+			h.findAll(
+				h.tree(),
+				(element) => element.props.className?.includes("resumeButton") === true,
+			);
+
+		expect(textOf(title().props.children)).toBe("home.startHeading");
+		expect(textOf(buttons()[0]!.props.children)).toBe("home.startStudy");
+		h.props.snapshot = {
+			...h.props.snapshot,
+			decks: [
+				{
+					...h.props.snapshot.decks[0]!,
+					stats: {
+						...h.props.snapshot.decks[0]!.stats,
+						newCards: 0,
+					},
+				},
+			],
+		};
+		h.render();
+		expect(textOf(title().props.children)).toBe("home.allDoneHeading");
+		expect(buttons()).toHaveLength(0);
+	});
+
+	it("groups the recommendation and learning history before the complete deck list", () => {
+		const h = harness();
+		const body = h.findElement(
+			h.tree(),
+			(element) => element.props.className === "fc-page__body",
+		);
+		const sections = React.Children.toArray(
+			body.props.children,
+		) as React.ReactElement<ElementProps>[];
+
+		expect(sections[0]!.props.className).toContain("overview");
+		const overview = React.Children.toArray(
+			sections[0]!.props.children,
+		) as React.ReactElement<ElementProps>[];
+		expect(overview[0]!.props.className).toContain("flashcard-home-hero");
+		expect(overview[1]!.props.footprint).toBe(h.props.snapshot.learningFootprint);
+		expect(sections[1]!.props.className).toContain("flashcard-home-workspace");
+		expect(h.deckIds()).toEqual(["first", "second"]);
+	});
+
+	it("keeps the empty-state action before learning history when there is no deck", () => {
+		const h = harness([]);
+		const body = h.findElement(
+			h.tree(),
+			(element) => element.props.className === "fc-page__body",
+		);
+		const sections = React.Children.toArray(
+			body.props.children,
+		) as React.ReactElement<ElementProps>[];
+
+		expect(sections[0]!.props.className).toContain("flashcard-empty");
+		expect(sections[1]!.props.footprint).toBe(h.props.snapshot.learningFootprint);
+	});
+
 	it("keeps completed decks collapsed and connects the disclosure to its group", () => {
 		const h = harness([
 			{ id: "new", totalCards: 10, newCards: 10 },
@@ -640,9 +726,11 @@ describe("mobile header collapse", () => {
 				(element) => element.props.className?.includes("homeHeader") === true,
 			);
 
-		// Defaults to collapsed
+		const getToggle = () =>
+			h.findElement(getHeader().props.badge, (element) => element.type === "button");
+
 		const initialHeader = getHeader();
-		expect(initialHeader.props.ariaExpanded).toBe(false);
+		expect(getToggle().props["aria-expanded"]).toBe(false);
 		expect(initialHeader.props.className).toContain("isCollapsed");
 
 		// Clicking header toggles to expanded
@@ -650,7 +738,7 @@ describe("mobile header collapse", () => {
 		h.render();
 
 		const expandedHeader = getHeader();
-		expect(expandedHeader.props.ariaExpanded).toBe(true);
+		expect(getToggle().props["aria-expanded"]).toBe(true);
 		expect(expandedHeader.props.className).not.toContain("isCollapsed");
 
 		// Clicking again collapses
@@ -658,30 +746,37 @@ describe("mobile header collapse", () => {
 		h.render();
 
 		const collapsedAgain = getHeader();
-		expect(collapsedAgain.props.ariaExpanded).toBe(false);
+		expect(getToggle().props["aria-expanded"]).toBe(false);
 		expect(collapsedAgain.props.className).toContain("isCollapsed");
 	});
 
-	it("toggles collapse state with Enter and Space keys", () => {
+	it("offers a labelled native toggle linked to the action tray", () => {
 		const h = harness();
-		const getHeader = () =>
-			h.findElement(
-				h.tree(),
-				(element) => element.props.className?.includes("homeHeader") === true,
-			);
-
-		const header = getHeader();
-		const preventDefault = vi.fn();
-		header.props.onKeyDown!({ key: "Enter", preventDefault });
-		expect(preventDefault).toHaveBeenCalled();
+		const header = h.findElement(
+			h.tree(),
+			(element) => element.props.className?.includes("homeHeader") === true,
+		);
+		const toggle = h.findElement(header.props.badge, (element) => element.type === "button");
+		const tray = h.findElement(
+			header.props.right,
+			(element) => element.props.className === "flashcard-header-actions",
+		);
+		expect(toggle.props["aria-label"]).toBe("home.expandTools");
+		expect(toggle.props["aria-controls"]).toBe(tray.props.id);
+		const stopPropagation = vi.fn();
+		toggle.props.onClick!({ stopPropagation });
+		expect(stopPropagation).toHaveBeenCalled();
 		h.render();
-
-		expect(getHeader().props.ariaExpanded).toBe(true);
-
-		getHeader().props.onKeyDown!({ key: " ", preventDefault });
-		h.render();
-
-		expect(getHeader().props.ariaExpanded).toBe(false);
+		const expandedHeader = h.findElement(
+			h.tree(),
+			(element) => element.props.className?.includes("homeHeader") === true,
+		);
+		const expandedToggle = h.findElement(
+			expandedHeader.props.badge,
+			(element) => element.type === "button",
+		);
+		expect(expandedToggle.props["aria-expanded"]).toBe(true);
+		expect(expandedToggle.props["aria-label"]).toBe("home.collapseTools");
 	});
 
 	it("stops propagation when clicking the header action buttons container", () => {

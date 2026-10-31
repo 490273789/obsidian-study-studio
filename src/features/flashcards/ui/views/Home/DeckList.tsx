@@ -17,13 +17,11 @@ import {
 	ChartNoAxesColumn,
 	ChevronDown,
 	ChevronRight,
-	Flame,
 	Inbox,
 	Plus,
 	RefreshCcw,
 	Settings,
 	Sparkles,
-	Target,
 	Trophy,
 } from "lucide-react";
 import type {
@@ -39,7 +37,11 @@ import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
 import { DeckSettingsModal } from "../DeckSettings";
 import { useFlashcardI18n } from "../../../strings/context";
-import { selectContinueDeck, selectDeckVisualState } from "../../homePresentation";
+import {
+	selectContinueDeck,
+	selectDeckCardMetrics,
+	selectDeckVisualState,
+} from "../../homePresentation";
 import { DeckCard } from "./DeckCard/DeckCard";
 import { formatDeckCount } from "./deckCountFormat";
 import styles from "./DeckList.module.scss";
@@ -79,6 +81,7 @@ export const DeckList = React.memo(function DeckList({
 	const { t, language } = useFlashcardI18n();
 	const isLoading = snapshot.mutation.kind === "refreshing";
 	const completedGroupId = useId();
+	const headerActionsId = `${completedGroupId}-header-actions`;
 	const isMutationBusy = snapshot.mutation.kind !== "idle";
 	const isMigrating =
 		snapshot.mutation.kind === "preparing-migration" ||
@@ -106,13 +109,6 @@ export const DeckList = React.memo(function DeckList({
 
 	const handleToggleHeader = useCallback(() => {
 		setIsHeaderCollapsed((current) => !current);
-	}, []);
-
-	const handleHeaderKeyDown = useCallback((event: React.KeyboardEvent<HTMLElement>) => {
-		if (event.key === "Enter" || event.key === " ") {
-			event.preventDefault();
-			setIsHeaderCollapsed((current) => !current);
-		}
 	}, []);
 
 	const handleMenuOpenChange = useCallback((deckId: string, open: boolean) => {
@@ -178,6 +174,7 @@ export const DeckList = React.memo(function DeckList({
 	 * inside each tier.
 	 */
 	const nextDeck = useMemo(() => selectContinueDeck(sortableRows), [sortableRows]);
+	const nextDeckMetrics = nextDeck ? selectDeckCardMetrics(nextDeck) : null;
 
 	/** Another view's settings draft blocks a row unless that draft targets it. */
 	const isSettingsLocked = (deckId: string): boolean => {
@@ -187,9 +184,6 @@ export const DeckList = React.memo(function DeckList({
 		return false;
 	};
 
-	const learnedCards = snapshot.totals.totalCards - snapshot.totals.newCards;
-	const streak = snapshot.learningFootprint;
-
 	return (
 		<>
 			<div className="flashcard-home fc-page fc-page--fill">
@@ -198,22 +192,34 @@ export const DeckList = React.memo(function DeckList({
 					icon={BookOpen}
 					title={t("home.title")}
 					badge={
-						<span
-							className={cls(
-								styles.collapseIcon,
-								!isHeaderCollapsed && styles.isExpanded,
+						<button
+							type="button"
+							className={styles.headerToggle}
+							aria-label={t(
+								isHeaderCollapsed ? "home.expandTools" : "home.collapseTools",
 							)}
-							aria-hidden="true"
+							aria-expanded={!isHeaderCollapsed}
+							aria-controls={headerActionsId}
+							onClick={(event) => {
+								event.stopPropagation();
+								handleToggleHeader();
+							}}
 						>
-							<ChevronDown size={16} />
-						</span>
+							<ChevronDown
+								size={16}
+								className={cls(
+									styles.collapseIcon,
+									!isHeaderCollapsed && styles.isExpanded,
+								)}
+								aria-hidden="true"
+							/>
+						</button>
 					}
 					onClick={handleToggleHeader}
-					onKeyDown={handleHeaderKeyDown}
-					ariaExpanded={!isHeaderCollapsed}
 					right={
 						// oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- Header actions stop click propagation so clicking action buttons does not toggle header collapse.
 						<div
+							id={headerActionsId}
 							className="flashcard-header-actions"
 							onClick={(event) => event.stopPropagation()}
 						>
@@ -304,57 +310,70 @@ export const DeckList = React.memo(function DeckList({
 
 				<div className="fc-page__body">
 					{snapshot.decks.length > 0 && (
-						<section className={cls("flashcard-home-hero fc-hero", styles.hero)}>
-							<div className={styles.heroMain}>
-								<div className="fc-hero__num">
-									<div className="fc-hero__label">{t("home.heroLabel")}</div>
-									<b>{formatDeckCount(language, snapshot.totals.newCards)}</b>
-									<span>{t("home.heroUnit")}</span>
+						<div className={styles.overview}>
+							<section className={cls("flashcard-home-hero fc-hero", styles.hero)}>
+								<div className={styles.heroMain}>
+									<h2 className={styles.resumeTitle}>
+										{nextDeck
+											? t(
+													nextDeckMetrics?.state === "fresh"
+														? "home.startHeading"
+														: "home.resumeHeading",
+													{ deck: nextDeck.name },
+												)
+											: t("home.allDoneHeading")}
+									</h2>
+									<p className={styles.resumeDetail}>
+										{nextDeck && nextDeckMetrics
+											? nextDeckMetrics.state === "fresh"
+												? t("home.startProgress", {
+														count: formatDeckCount(
+															language,
+															nextDeck.stats.totalCards,
+														),
+													})
+												: t("home.resumeProgress", {
+														learned: formatDeckCount(
+															language,
+															nextDeckMetrics.learnedCards,
+														),
+														total: formatDeckCount(
+															language,
+															nextDeck.stats.totalCards,
+														),
+														pending: formatDeckCount(
+															language,
+															nextDeck.stats.newCards,
+														),
+													})
+											: t("home.allDoneHint")}
+									</p>
 								</div>
-								<div className="fc-hero__summary">
-									{nextDeck
-										? t("home.heroSummary", {
-												decks: snapshot.totals.deckCount,
-												learned: formatDeckCount(language, learnedCards),
-												deck: nextDeck.name,
-											})
-										: t("home.heroSummaryNoTarget", {
-												decks: snapshot.totals.deckCount,
-												learned: formatDeckCount(language, learnedCards),
-											})}
-								</div>
-							</div>
-							<div className="fc-hero__side">
-								<span className={styles.heroStreak}>
-									<Flame size={14} aria-hidden="true" />
-									<b>
-										{t("footprint.currentStreak", {
-											count: streak.currentStreak,
-										})}
-									</b>
-									<span className="fc-meta__dot" aria-hidden="true" />
-									<Trophy size={12} aria-hidden="true" />
-									{t("footprint.bestStreak", {
-										count: streak.bestStreak,
-									})}
-								</span>
-								<FlashcardButton
-									variant="secondary"
-									size="md"
-									icon={Brain}
-									disabled={!nextDeck}
-									onClick={() => nextDeck && onNavigate("study", nextDeck.id)}
-								>
-									{t("home.continueStudy")}
-								</FlashcardButton>
-							</div>
-						</section>
+								{nextDeck && (
+									<div className="fc-hero__side">
+										<FlashcardButton
+											variant="primary"
+											size="md"
+											className={styles.resumeButton}
+											icon={Brain}
+											onClick={() => onNavigate("study", nextDeck.id)}
+										>
+											{t(
+												nextDeckMetrics?.state === "fresh"
+													? "home.startStudy"
+													: "home.continueStudy",
+											)}
+										</FlashcardButton>
+									</div>
+								)}
+							</section>
+							<LearningFootprint
+								key={snapshot.learningFootprint.today.date}
+								footprint={snapshot.learningFootprint}
+								className={styles.overviewFootprint}
+							/>
+						</div>
 					)}
-
-					<LearningFootprint
-						key={snapshot.learningFootprint.today.date}
-						footprint={snapshot.learningFootprint}
-					/>
 
 					{snapshot.decks.length === 0 ? (
 						<div className={cls("flashcard-empty", styles.empty)}>
@@ -376,8 +395,9 @@ export const DeckList = React.memo(function DeckList({
 								</FlashcardButton>
 								<FlashcardButton
 									variant="primary"
-									icon={Target}
+									icon={Trophy}
 									onClick={onOpenChallenge}
+									title={t("home.challengeGuide")}
 								>
 									{t("challenge.title")}
 								</FlashcardButton>
@@ -401,6 +421,19 @@ export const DeckList = React.memo(function DeckList({
 											count: snapshot.totals.deckCount,
 										})}
 									</span>
+									<span className={styles.deckIndexPending}>
+										{t("home.deckPendingSummary", {
+											count: formatDeckCount(
+												language,
+												snapshot.totals.newCards,
+											),
+										})}
+									</span>
+								</div>
+								<div className={styles.modeGuide}>
+									<span>{t("home.studyGuide")}</span>
+									<span>{t("home.practiceGuide")}</span>
+									<span>{t("home.challengeGuide")}</span>
 								</div>
 
 								<ReorderableList
@@ -533,13 +566,20 @@ export const DeckList = React.memo(function DeckList({
 								</FlashcardButton>
 								<FlashcardButton
 									variant="primary"
-									icon={Target}
+									icon={Trophy}
 									onClick={onOpenChallenge}
+									title={t("home.challengeGuide")}
 								>
 									{t("challenge.title")}
 								</FlashcardButton>
 							</div>
 						</div>
+					)}
+					{snapshot.decks.length === 0 && (
+						<LearningFootprint
+							key={snapshot.learningFootprint.today.date}
+							footprint={snapshot.learningFootprint}
+						/>
 					)}
 				</div>
 			</div>
