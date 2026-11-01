@@ -507,10 +507,10 @@
 	}
 }
 
-/* Desktop actions share the deck heading row; phones keep their bottom bar. */
+/* Desktop and tablet actions share the deck heading row; phones keep their bottom bar. */
 @media (min-width: #{breakpoints.$phone + 1px}) {
 	@container flashcard-pane (min-width: #{breakpoints.$phone + 1px}) {
-		:global(body:not(.is-mobile):not(.is-phone)) .workspace {
+		:global(body:not(.is-phone)) .workspace {
 			display: grid;
 			grid-template-columns: minmax(0, 1fr) max-content;
 			grid-template-rows: auto auto auto;
@@ -785,6 +785,31 @@
 	}
 }
 
+@mixin compact-home-actions {
+	.workspace {
+		gap: var(--fc-space-3);
+	}
+
+	.deckIndex {
+		order: 2;
+	}
+
+	.deckIndexHeading {
+		padding: var(--fc-space-3);
+	}
+
+	.homeActions {
+		order: 3;
+		flex: 0 0 auto;
+
+		:global(.flashcard-btn),
+		button {
+			flex: 1 1 0;
+			width: 100%;
+		}
+	}
+}
+
 @media (max-width: #{breakpoints.$phone}) {
 	@include compact-home-overview;
 
@@ -798,17 +823,20 @@
 
 	@include compact-deck-layout;
 	@include home-header-compact;
+	@include compact-home-actions;
 }
 
 @container flashcard-pane (max-width: #{breakpoints.$phone}) {
 	@include compact-home-overview;
 	@include home-header-compact;
+	@include compact-home-actions;
 }
 
 :global(.is-phone) {
 	@include compact-home-overview;
 	@include compact-deck-layout;
 	@include home-header-compact;
+	@include compact-home-actions;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -867,29 +895,6 @@
 @container flashcard-pane (max-width: #{breakpoints.$tablet}) {
 	@include home-actions-grid;
 	@include compact-overlay-actions;
-
-	.workspace {
-		gap: var(--fc-space-3);
-	}
-
-	.deckIndex {
-		order: 2;
-	}
-
-	.deckIndexHeading {
-		padding: var(--fc-space-3);
-	}
-
-	.homeActions {
-		order: 3;
-		flex: 0 0 auto;
-
-		:global(.flashcard-btn),
-		button {
-			flex: 1 1 0;
-			width: 100%;
-		}
-	}
 }
 
 @media (pointer: coarse) {
