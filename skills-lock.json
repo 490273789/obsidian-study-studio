@@ -23,7 +23,7 @@
 			"source": "mattpocock/skills",
 			"sourceType": "github",
 			"skillPath": "skills/productivity/grilling/SKILL.md",
-			"computedHash": "ef1641a2047b71b60f1942cd35efb47d3afc9d584dff5a0b01f8c7db923aaa08"
+			"computedHash": "e40cc1d348f6d935e28f1e24474302d7368f0a400429271a43b35fe154891dc5"
 		},
 		"handoff": {
 			"source": "mattpocock/skills",
@@ -41,7 +41,7 @@
 			"source": "mattpocock/skills",
 			"sourceType": "github",
 			"skillPath": "skills/engineering/implement-spec/SKILL.md",
-			"computedHash": "f0db7dafd236fff9dc40da566cb72bbad6802674f64617b06959b00a436c7d5b"
+			"computedHash": "0ccc13c6766b0e5f55229c8f1252d004090da70e6610b4c324cd245970fcb3f1"
 		},
 		"loop-me": {
 			"source": "mattpocock/skills",
@@ -53,7 +53,7 @@
 			"source": "mattpocock/skills",
 			"sourceType": "github",
 			"skillPath": "skills/engineering/research/SKILL.md",
-			"computedHash": "c8c1cba327a6f824b554cd978079a3dadd7406d73174f8fb9bfef58824691970"
+			"computedHash": "5d85b64ecceed6b3f6d5996dc8af07180be8d1ff11ef3d26eda2acff078fbd39"
 		},
 		"tdd": {
 			"source": "mattpocock/skills",
