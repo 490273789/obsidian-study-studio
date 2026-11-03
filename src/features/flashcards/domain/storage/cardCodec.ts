@@ -79,7 +79,6 @@ export class CardCodec {
 			due: new Date(data.due),
 			stability: data.stability,
 			difficulty: data.difficulty,
-			elapsed_days: data.elapsed_days,
 			scheduled_days: data.scheduled_days,
 			reps: data.reps,
 			lapses: data.lapses,

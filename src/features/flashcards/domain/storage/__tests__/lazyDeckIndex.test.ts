@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
+import { State } from "ts-fsrs";
 
 vi.mock("obsidian", () => ({ normalizePath: (value: string) => value }));
 import type { DeckIndexCache } from "../../../../../core/storage/deckIndexCache";
@@ -23,7 +24,7 @@ function fixture() {
 		scheduled_days: 5,
 		reps: 2,
 		lapses: 0,
-		state: 2,
+		state: State.Review,
 		last_review: null,
 		learning_steps: 0,
 	};

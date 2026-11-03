@@ -22,7 +22,7 @@ const FSRS_CARD = {
 	scheduled_days: 5,
 	reps: 2,
 	lapses: 0,
-	state: 2,
+	state: State.Review,
 	last_review: null,
 	learning_steps: 0,
 };

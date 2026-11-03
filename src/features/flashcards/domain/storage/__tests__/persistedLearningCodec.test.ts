@@ -20,7 +20,6 @@ function fsrsCard(overrides: Partial<SerializedFSRSCard> = {}): SerializedFSRSCa
 		due: DUE,
 		stability: 0.212,
 		difficulty: 6.4133,
-		elapsed_days: 0,
 		scheduled_days: 0,
 		reps: 1,
 		lapses: 0,
@@ -146,7 +145,7 @@ describe("persisted learning codec", () => {
 		const document = learningDocument({
 			fresh: { fsrsCard: fsrsCard() },
 			reviewed: { fsrsCard: fsrsCard({ last_review: REVIEWED_AT, state: State.Review }) },
-			relearning: { fsrsCard: fsrsCard({ learning_steps: 2, elapsed_days: 1 }) },
+			relearning: { fsrsCard: fsrsCard({ learning_steps: 2 }) },
 			sourced: {
 				fsrsCard: fsrsCard({ last_review: REVIEWED_AT }),
 				sourceFile: "notes/source.md",
@@ -204,7 +203,17 @@ describe("persisted learning codec", () => {
 		const decoded = decodePersistedLearning(JSON.parse(JSON.stringify(legacy)));
 
 		expect(decoded.cards.complete).toEqual({
-			fsrsCard: legacy.cards.complete.fsrsCard,
+			fsrsCard: {
+				due: DUE,
+				stability: 2,
+				difficulty: 3,
+				scheduled_days: 2,
+				reps: 4,
+				lapses: 1,
+				state: State.Review,
+				last_review: REVIEWED_AT,
+				learning_steps: 1,
+			},
 			sourceFile: "notes/source.md",
 		});
 		// Missing optional fields normalize to the repository deserializer defaults.
@@ -216,7 +225,6 @@ describe("persisted learning codec", () => {
 			due: DUE,
 			stability: 0,
 			difficulty: 0,
-			elapsed_days: 0,
 			scheduled_days: 0,
 			reps: 0,
 			lapses: 0,

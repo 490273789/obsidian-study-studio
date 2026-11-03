@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("obsidian", () => ({ normalizePath: (value: string) => value }));
 
-import { State, type Card } from "ts-fsrs";
+import { State } from "ts-fsrs";
 import type { Deck, FlashCard } from "../../../../../core/shared/types";
 import {
 	DECK_INDEX_CACHE_VERSION,
@@ -25,12 +25,12 @@ function createDummyCard(id: string, state: State, due: Date): FlashCard {
 			due,
 			stability: 1,
 			difficulty: 5,
-			elapsed_days: 0,
 			scheduled_days: 1,
 			reps: 1,
 			lapses: 0,
+			learning_steps: 0,
 			last_review: new Date(),
-		} as Card,
+		},
 	};
 }
 

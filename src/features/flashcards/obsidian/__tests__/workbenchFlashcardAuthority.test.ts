@@ -42,7 +42,6 @@ function serializedFSRSCard(overrides: Partial<SerializedFSRSCard> = {}): Serial
 		due: "2026-10-16T01:40:23.805Z",
 		stability: 0.212,
 		difficulty: 6.4133,
-		elapsed_days: 0,
 		scheduled_days: 0,
 		reps: 1,
 		lapses: 0,

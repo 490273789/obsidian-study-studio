@@ -134,13 +134,14 @@ function isSerializedFSRSCard(value: unknown): value is SerializedFSRSCard {
 	const fields = [
 		value.stability,
 		value.difficulty,
-		value.elapsed_days,
 		value.scheduled_days,
 		value.reps,
 		value.lapses,
 		value.state,
 	] as const;
 	if (fields.some((field) => finiteNumber(field) === null)) return false;
+	const elapsedDays = value.elapsed_days;
+	if (elapsedDays !== undefined && finiteNumber(elapsedDays) === null) return false;
 	const learningSteps = value.learning_steps;
 	if (learningSteps !== undefined && finiteNumber(learningSteps) === null) return false;
 	const lastReview = value.last_review;

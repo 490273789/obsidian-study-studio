@@ -67,7 +67,6 @@ export class FSRSScheduler {
 			due: dueDate,
 			stability: card.stability || 21,
 			difficulty: card.difficulty,
-			elapsed_days: 0,
 			scheduled_days: 21,
 			reps: card.reps + 1,
 			lapses: card.lapses,
