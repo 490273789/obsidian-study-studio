@@ -20,13 +20,19 @@ class MockElement {
 	getAttribute(name: string) {
 		return this.attributes[name] ?? null;
 	}
+	setAttribute(name: string, value: string) {
+		this.attributes[name] = value;
+	}
 	contains(element: MockElement): boolean {
 		return this === element || this.children.some((child) => child.contains(element));
 	}
-	querySelectorAll(): MockElement[] {
+	querySelectorAll(selector?: string): MockElement[] {
+		if (selector === ".fc-settings-tab-btn") {
+			return this.children.filter((child) => child.classList.has("fc-settings-tab-btn"));
+		}
 		return this.children.flatMap((child) => [
 			...(child.attributes["data-sortable-id"] ? [child] : []),
-			...child.querySelectorAll(),
+			...child.querySelectorAll(selector),
 		]);
 	}
 	addClass(cls: string) {
@@ -55,6 +61,9 @@ class MockElement {
 	}
 	addEventListener(event: string, fn: (...args: unknown[]) => void) {
 		(this.listeners[event] ??= []).push(fn);
+	}
+	emit(event: string, ...args: unknown[]) {
+		for (const fn of this.listeners[event] ?? []) fn(...args);
 	}
 	click() {
 		for (const fn of this.listeners.click ?? []) fn();
@@ -221,5 +230,53 @@ describe("SettingsPageRenderer", () => {
 			}),
 		).toBe(true);
 		expect(content(container).children).toHaveLength(0);
+	});
+
+	it("applies WAI-ARIA tablist and tab semantics to navigation and content pane", () => {
+		const { container, render } = setup();
+		render();
+
+		const nav = navigation(container);
+		expect(nav.getAttribute("role")).toBe("tablist");
+
+		const tabs = nav.children;
+		expect(tabs[0]!.getAttribute("role")).toBe("tab");
+		expect(tabs[0]!.getAttribute("aria-selected")).toBe("true");
+		expect(tabs[0]!.getAttribute("aria-controls")).toBe("fc-settings-panel-flashcards");
+
+		expect(tabs[1]!.getAttribute("role")).toBe("tab");
+		expect(tabs[1]!.getAttribute("aria-selected")).toBe("false");
+		expect(tabs[1]!.getAttribute("aria-controls")).toBe("fc-settings-panel-ai");
+
+		const pane = content(container);
+		expect(pane.getAttribute("role")).toBe("tabpanel");
+		expect(pane.getAttribute("id")).toBe("fc-settings-panel-flashcards");
+		expect(pane.getAttribute("aria-labelledby")).toBe("fc-settings-tab-flashcards");
+	});
+
+	it("supports keyboard arrow navigation between tabs", () => {
+		const { container, render, onSelectSection } = setup();
+		render();
+
+		const nav = navigation(container);
+		const firstTab = nav.children[0]!;
+		firstTab.emit("keydown", { key: "ArrowRight", preventDefault: vi.fn() });
+
+		expect(onSelectSection).toHaveBeenCalledWith("ai");
+	});
+
+	it("retains focus on the active tab button across rebuilds when navigating by keyboard", () => {
+		const { container, render } = setup();
+		render();
+
+		const nav = navigation(container);
+		const firstTab = nav.children[0]!;
+		container.ownerDocument!.activeElement = firstTab;
+
+		firstTab.emit("keydown", { key: "ArrowRight", preventDefault: vi.fn() });
+
+		const updatedNav = navigation(container);
+		const activeTab = updatedNav.children[1]!;
+		expect(activeTab.focus).toHaveBeenCalledWith({ preventScroll: true });
 	});
 });

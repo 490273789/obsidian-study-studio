@@ -22,6 +22,9 @@ class MockElement {
 	getAttribute(name: string) {
 		return this.attributes[name] ?? null;
 	}
+	setAttribute(name: string, value: string) {
+		this.attributes[name] = value;
+	}
 	contains(element: MockElement): boolean {
 		return this === element || this.children.some((child) => child.contains(element));
 	}
@@ -111,6 +114,7 @@ vi.mock("obsidian", () => ({
 	Setting: class {
 		descEl = new MockElement();
 		controlEl = new MockElement();
+		settingEl = this as unknown as MockElement;
 		constructor(public parent: MockElement) {
 			parent.children.push(this as unknown as MockElement);
 		}

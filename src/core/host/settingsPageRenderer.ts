@@ -65,6 +65,9 @@ export class SettingsPageRenderer {
 		}
 
 		const focused = containerEl.ownerDocument?.activeElement;
+		const navFocused = Boolean(
+			focused && this.navEl && containerEl.contains(focused) && this.navEl.contains(focused),
+		);
 		if (activeSectionId !== this.renderedSectionId) this.pendingSortFocus = null;
 		else if (focused && containerEl.contains(focused)) {
 			this.pendingSortFocus = focused.getAttribute("data-sortable-id");
@@ -82,15 +85,29 @@ export class SettingsPageRenderer {
 
 		this.renderedSectionId = activeSectionId;
 		const navEl = containerEl.createDiv({ cls: "fc-settings-tab-nav" });
+		navEl.setAttribute?.("role", "tablist");
+		navEl.setAttribute?.(
+			"aria-label",
+			input.language === "zh" ? "设置模块导航" : "Settings sections navigation",
+		);
 		let activeTabEl: HTMLButtonElement | null = null;
+		const tabButtons: HTMLButtonElement[] = [];
 
 		for (const section of input.sections) {
+			const isActive = input.activeSection?.id === section.id;
 			const tabBtn = navEl.createEl("button", {
 				type: "button",
 				text: section.label(input.language),
-				cls: `fc-settings-tab-btn ${input.activeSection?.id === section.id ? "is-active" : ""}`,
+				cls: `fc-settings-tab-btn ${isActive ? "is-active" : ""}`,
 			});
-			if (section.id === input.activeSection?.id) activeTabEl = tabBtn;
+			tabBtn.setAttribute?.("role", "tab");
+			tabBtn.setAttribute?.("id", `fc-settings-tab-${section.id}`);
+			tabBtn.setAttribute?.("aria-selected", isActive ? "true" : "false");
+			tabBtn.setAttribute?.("aria-controls", `fc-settings-panel-${section.id}`);
+			tabBtn.tabIndex = isActive ? 0 : -1;
+			tabButtons.push(tabBtn);
+
+			if (isActive) activeTabEl = tabBtn;
 			tabBtn.addEventListener("click", () => {
 				if (input.activeSection?.id === section.id) return;
 				const currentScroll = this.getScrollContainer().scrollTop;
@@ -102,12 +119,40 @@ export class SettingsPageRenderer {
 				}
 				this.options.onSelectSection(section.id);
 			});
+
+			tabBtn.addEventListener("keydown", (event: KeyboardEvent) => {
+				let targetIndex = -1;
+				const currentIndex = tabButtons.indexOf(tabBtn);
+				if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+					event.preventDefault();
+					targetIndex = (currentIndex + 1) % tabButtons.length;
+				} else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+					event.preventDefault();
+					targetIndex = (currentIndex - 1 + tabButtons.length) % tabButtons.length;
+				} else if (event.key === "Home") {
+					event.preventDefault();
+					targetIndex = 0;
+				} else if (event.key === "End") {
+					event.preventDefault();
+					targetIndex = tabButtons.length - 1;
+				}
+				if (targetIndex >= 0 && targetIndex !== currentIndex) {
+					const targetBtn = tabButtons[targetIndex];
+					targetBtn?.focus();
+					targetBtn?.click();
+				}
+			});
 		}
 
 		this.navEl = navEl;
 		navEl.scrollLeft = this.navScrollLeft;
 
 		const contentEl = containerEl.createDiv({ cls: "fc-settings-tab-content" });
+		contentEl.setAttribute?.("role", "tabpanel");
+		if (activeSectionId) {
+			contentEl.setAttribute?.("id", `fc-settings-panel-${activeSectionId}`);
+			contentEl.setAttribute?.("aria-labelledby", `fc-settings-tab-${activeSectionId}`);
+		}
 
 		if (nextPresentation) {
 			this.disposeControls = renderSettingsControls(
@@ -115,6 +160,7 @@ export class SettingsPageRenderer {
 				contentEl,
 				nextPresentation,
 				input.language,
+				{ redundantHeading: input.activeSection?.label(input.language) },
 			);
 		}
 		if (this.pendingSortFocus) {
@@ -128,6 +174,9 @@ export class SettingsPageRenderer {
 		}
 
 		if (sectionChanged) this.revealActiveTab(activeTabEl);
+		if (navFocused) {
+			activeTabEl?.focus({ preventScroll: true });
+		}
 		this.restoreScroll(targetScrollTop);
 
 		if (input.preserveScroll && containerEl.style) {

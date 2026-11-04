@@ -27,10 +27,11 @@ export function renderSettingsControls(
 	container: HTMLElement,
 	presentation: SettingsPresentation,
 	language: Language = "zh",
+	options?: { redundantHeading?: string },
 ): () => void {
 	const renderer = new SettingsControlRenderer(app, container.ownerDocument, language);
 	try {
-		renderer.render(container, presentation);
+		renderer.render(container, presentation, options?.redundantHeading);
 	} catch (error) {
 		renderer.dispose();
 		throw error;
@@ -51,9 +52,27 @@ class SettingsControlRenderer {
 		for (const dispose of this.disposers.splice(0).reverse()) dispose();
 	}
 
-	render(container: HTMLElement, presentation: SettingsPresentation): void {
-		for (const group of presentation.snapshot.groups) {
-			if (group.heading) new Setting(container).setName(group.heading).setHeading();
+	render(
+		container: HTMLElement,
+		presentation: SettingsPresentation,
+		redundantHeading?: string,
+	): void {
+		for (let i = 0; i < presentation.snapshot.groups.length; i++) {
+			const group = presentation.snapshot.groups[i];
+			if (!group) continue;
+			if (group.heading) {
+				const headingSetting = new Setting(container).setName(group.heading).setHeading();
+				if (
+					i === 0 &&
+					redundantHeading &&
+					group.heading.trim().toLowerCase() === redundantHeading.trim().toLowerCase()
+				) {
+					const el =
+						headingSetting.settingEl ??
+						(headingSetting as unknown as { addClass?: (cls: string) => void });
+					el?.addClass?.("fc-heading-redundant");
+				}
+			}
 			for (const row of group.rows) this.renderSetting(container, row, presentation);
 		}
 	}

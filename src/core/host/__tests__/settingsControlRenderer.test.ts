@@ -819,4 +819,27 @@ describe("renderSettingsControls", () => {
 		expect(movedSource).toHaveBeenCalledWith(0, 1);
 		expect(toggledSource).toHaveBeenCalledWith(false);
 	});
+
+	it("suppresses redundant first heading when matching section title", () => {
+		const presentation = defineSettings("example", (page) => {
+			page.group("dictionary", "英语字典", (group) => {
+				group.toggle("enabled", { name: "启用" }, { value: true, onChange: vi.fn() });
+			});
+			page.group("categories", "保存分类", (group) => {
+				group.button("new", { name: "新建" }, { label: "新建", onPress: vi.fn() });
+			});
+		});
+		const container = new MockElement("div", new MockDocument());
+		renderSettingsControls({} as never, container as never, presentation, "zh", {
+			redundantHeading: "英语字典",
+		});
+
+		const firstHeading = named(container, "英语字典").parentElement;
+		expect(firstHeading?.classList.contains("setting-item-heading")).toBe(true);
+		expect(firstHeading?.classList.contains("fc-heading-redundant")).toBe(true);
+
+		const secondHeading = named(container, "保存分类").parentElement;
+		expect(secondHeading?.classList.contains("setting-item-heading")).toBe(true);
+		expect(secondHeading?.classList.contains("fc-heading-redundant")).toBe(false);
+	});
 });

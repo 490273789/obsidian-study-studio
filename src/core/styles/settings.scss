@@ -46,8 +46,8 @@
 		display: flex;
 		flex-wrap: nowrap;
 		align-items: center;
-		gap: var(--fc-space-4);
-		padding: var(--fc-space-1) 0 var(--fc-space-4);
+		gap: var(--fc-space-2);
+		padding: var(--fc-space-1) var(--fc-space-3) var(--fc-space-3);
 		margin-bottom: var(--fc-space-3);
 		border-bottom: 1px solid var(--fc-line-soft);
 		// The section strip is its own horizontal scroller: overflowing tabs must
@@ -58,6 +58,32 @@
 		-webkit-overflow-scrolling: touch;
 		scrollbar-width: none;
 		max-width: 100%;
+		scroll-behavior: smooth;
+		scroll-snap-type: x mandatory;
+		scroll-padding: 0 var(--fc-space-3);
+		touch-action: pan-x pan-y;
+		-webkit-mask-image: linear-gradient(
+			to right,
+			transparent 0%,
+			black var(--fc-space-3),
+			black calc(100% - var(--fc-space-3)),
+			transparent 100%
+		);
+		mask-image: linear-gradient(
+			to right,
+			transparent 0%,
+			black var(--fc-space-3),
+			black calc(100% - var(--fc-space-3)),
+			transparent 100%
+		);
+
+		&::-webkit-scrollbar {
+			display: none;
+		}
+
+		@media (prefers-reduced-motion: reduce) {
+			scroll-behavior: auto;
+		}
 	}
 
 	.fc-settings-tab-btn {
@@ -68,15 +94,18 @@
 		white-space: nowrap;
 		align-items: center;
 		justify-content: center;
-		padding: var(--fc-space-2) var(--fc-space-5);
-		min-height: var(--fc-control-md);
+		padding: 6px var(--fc-space-3);
+		min-height: var(--fc-control-sm, 30px);
 		border: 1px solid transparent;
 		border-radius: var(--fc-radius-md);
 		background: transparent;
 		color: var(--fc-muted);
-		font-size: var(--fc-font-md);
+		font-size: var(--fc-font-sm);
 		font-weight: var(--fc-weight-medium);
 		cursor: pointer;
+		scroll-snap-align: start;
+		user-select: none;
+		-webkit-user-select: none;
 		transition: var(--fc-transition-button);
 
 		&:hover:not(.is-active) {
@@ -84,21 +113,55 @@
 			background: var(--fc-surface-hover);
 		}
 
+		&:active {
+			transform: scale(0.98);
+		}
+
 		&.is-active {
 			background: var(--fc-primary-bg);
-			color: var(--fc-primary-text);
+			color: var(--fc-primary-text-light, #007a82);
 			font-weight: var(--fc-weight-semibold);
 			box-shadow: var(--fc-shadow-sm);
-			border-color: transparent;
+			border-color: color-mix(in srgb, var(--fc-primary) 32%, transparent);
 
 			&:hover {
-				background: var(--fc-primary-hover);
-				color: var(--fc-primary-text);
+				background: color-mix(in srgb, var(--fc-primary) 18%, var(--fc-surface-card));
+			}
+
+			.theme-dark & {
+				color: var(--fc-cyan, var(--interactive-accent));
+				background: color-mix(
+					in srgb,
+					var(--fc-cyan, var(--interactive-accent)) 16%,
+					var(--fc-surface-card)
+				);
+				border-color: color-mix(
+					in srgb,
+					var(--fc-cyan, var(--interactive-accent)) 35%,
+					transparent
+				);
+
+				&:hover {
+					background: color-mix(
+						in srgb,
+						var(--fc-cyan, var(--interactive-accent)) 22%,
+						var(--fc-surface-card)
+					);
+				}
 			}
 		}
 
 		&:focus-visible {
-			outline: none;
+			outline: 2px solid var(--interactive-accent);
+			outline-offset: 2px;
+		}
+
+		@media (prefers-reduced-motion: reduce) {
+			transition: none;
+
+			&:active {
+				transform: none;
+			}
 		}
 	}
 
@@ -121,6 +184,10 @@
 		background: transparent;
 		color: var(--fc-text);
 		box-shadow: none;
+
+		&.fc-heading-redundant {
+			display: none;
+		}
 	}
 
 	.fc-settings-tab-content > .setting-item-heading:first-child,
@@ -446,12 +513,26 @@
 }
 
 @media (max-width: #{breakpoints.$phone}) {
-	.flashcard-settings-tab .setting-item {
-		flex-direction: column;
-		align-items: stretch;
-	}
+	.flashcard-settings-tab {
+		.fc-settings-tab-nav {
+			gap: var(--fc-space-1);
+			padding: var(--fc-space-1) var(--fc-space-2) var(--fc-space-2);
+			scroll-padding: 0 var(--fc-space-2);
+		}
 
-	.flashcard-settings-tab .setting-item-info {
-		width: 100%;
+		.fc-settings-tab-btn {
+			padding: 4px var(--fc-space-2);
+			font-size: var(--fc-font-xs);
+			min-height: 28px;
+		}
+
+		.setting-item {
+			flex-direction: column;
+			align-items: stretch;
+		}
+
+		.setting-item-info {
+			width: 100%;
+		}
 	}
 }
