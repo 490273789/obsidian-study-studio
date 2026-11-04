@@ -10,6 +10,7 @@ target_fingerprint: "sha256:6b4deb538741501bfdcb93c61a9067363daad06fb189861ce481
 target_path: /Users/ethan/workspace/develop-obsidian/.obsidian/plugins/obsidian-study-studio/src/features/translation/ui/TranslatorView.tsx
 timestamp: 2026-11-04T05-55-52Z
 slug: src-features-translation-ui-translatorview-tsx
+closed: true
 ---
 
 Method: dual-agent (A: 8d45bd8b-d00b-4bcd-9bae-d4e6e224b37c · B: 819fd767-ea11-4d21-a535-77db17fbae8c)

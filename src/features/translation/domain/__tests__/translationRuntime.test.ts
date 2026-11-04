@@ -269,4 +269,30 @@ describe("translation session", () => {
 
 		runtime.dispose();
 	});
+
+	it("restores previously cleared input and results", () => {
+		const { runtime } = setup();
+		runtime.setInput("original input");
+		const mockResults = [
+			{
+				id: "deepseek",
+				name: "DeepSeek",
+				model: "deepseek-v3",
+				provider: "deepseek",
+				status: "success" as const,
+				text: "translated text",
+			},
+		];
+		runtime.clear();
+		expect(runtime.getSnapshot().input).toBe("");
+
+		runtime.restore("original input", mockResults);
+		const snapshot = runtime.getSnapshot();
+		expect(snapshot.input).toBe("original input");
+		expect(snapshot.results).toHaveLength(1);
+		expect(snapshot.results[0]!.text).toBe("translated text");
+		expect(snapshot.status).toBe("success");
+
+		runtime.dispose();
+	});
 });

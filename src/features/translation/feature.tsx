@@ -142,6 +142,21 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 				"youdao",
 			);
 			const openViews = new Set<() => void>();
+			let lastActiveMarkdownLeaf: unknown = null;
+			if (typeof host.app.workspace?.on === "function") {
+				const onActiveLeafChange = (leaf: unknown) => {
+					if ((leaf as { view?: unknown })?.view instanceof MarkdownView) {
+						lastActiveMarkdownLeaf = leaf;
+					}
+				};
+				const eventRef = host.app.workspace.on("active-leaf-change", onActiveLeafChange);
+				lifetime.defer(() => {
+					if (typeof host.app.workspace?.offref === "function") {
+						host.app.workspace.offref(eventRef);
+					}
+				});
+			}
+
 			lifetime.defer(() => {
 				editor.hide();
 				gatewayEditor.hide();
@@ -149,6 +164,23 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 				openViews.clear();
 				active = null;
 			});
+
+			const findTargetMarkdownView = (): MarkdownView | null => {
+				const activeView = host.app.workspace?.getActiveViewOfType?.(MarkdownView);
+				if (activeView?.file) return activeView;
+				const lastView = (lastActiveMarkdownLeaf as { view?: unknown })?.view;
+				if (lastView instanceof MarkdownView && lastView.file) {
+					return lastView;
+				}
+				const mdLeaves = host.app.workspace?.getLeavesOfType?.("markdown") ?? [];
+				const candidate = mdLeaves.find(
+					(l) => l.view instanceof MarkdownView && (l.view as MarkdownView).file,
+				);
+				if (candidate?.view instanceof MarkdownView) {
+					return candidate.view;
+				}
+				return null;
+			};
 
 			host.registerView(
 				VIEW_TYPE_TRANSLATOR,
@@ -176,14 +208,33 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 							focusController={focusController}
 							onOpenSettings={() => host.settingsTab.open(TRANSLATION_SECTION_ID)}
 							onInsertNote={async (text, sourceText) => {
-								const activeView =
-									host.app.workspace.getActiveViewOfType(MarkdownView);
-								if (!activeView?.editor) {
+								const targetView = findTargetMarkdownView();
+								if (!targetView?.editor) {
 									return false;
 								}
 								const callout = `> [!quote] 翻译\n> ${sourceText.split("\n").join("\n> ")}\n>\n> ${text.split("\n").join("\n> ")}\n\n`;
-								activeView.editor.replaceSelection(callout);
-								new Notice(translationStrings(language).insertedNotice);
+								targetView.editor.replaceSelection(callout);
+								const noteName = targetView.file
+									? ` (${targetView.file.basename})`
+									: "";
+								new Notice(
+									`${translationStrings(language).insertedNotice}${noteName}`,
+								);
+								return true;
+							}}
+							onCreateCard={async (sourceText, targetText) => {
+								const targetView = findTargetMarkdownView();
+								if (!targetView?.file) {
+									return false;
+								}
+								const cardBlock = `\n\n#flashcards\n\nQ: ${sourceText.trim()}\nA: ${targetText.trim()}\n`;
+								await host.app.vault.append(targetView.file, cardBlock);
+								const noteName = targetView.file
+									? ` (${targetView.file.basename})`
+									: "";
+								new Notice(
+									`${translationStrings(language).cardCreated}${noteName}`,
+								);
 								return true;
 							}}
 						/>

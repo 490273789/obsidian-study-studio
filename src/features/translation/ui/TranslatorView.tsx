@@ -6,7 +6,18 @@ import React, {
 	useState,
 	useSyncExternalStore,
 } from "react";
-import { Check, Copy, FileText, Layers, Languages, Settings2, Trash2 } from "lucide-react";
+import {
+	BookmarkPlus,
+	Check,
+	Copy,
+	FileDiff,
+	FileText,
+	Languages,
+	Settings2,
+	Trash2,
+	Volume2,
+	VolumeX,
+} from "lucide-react";
 import { aiErrorText } from "../../../core/i18n/ai";
 import { cls } from "../../../core/shared/classNames";
 import type { Language } from "../../../core/shared/types";
@@ -25,7 +36,7 @@ export interface TranslatorViewProps {
 	focusController?: TranslatorFocusController;
 	onOpenSettings: () => void;
 	onInsertNote?: (text: string, sourceText: string) => Promise<boolean> | boolean;
-	onCreateCard?: (sourceText: string, targetText: string) => void;
+	onCreateCard?: (sourceText: string, targetText: string) => Promise<boolean> | boolean | void;
 }
 
 interface ActionFeedback {
@@ -54,13 +65,68 @@ function cleanProfileSubtitle(
 	provider: string,
 	model: string | undefined,
 	strings: ReturnType<typeof translationStrings>,
-): string {
+): string | null {
 	const providerName = providerLabel(provider, strings);
-	if (!model) return providerName;
+	if (!model) {
+		if (name.trim().toLowerCase() === providerName.trim().toLowerCase()) {
+			return null;
+		}
+		return providerName;
+	}
 	if (name.trim().toLowerCase() === providerName.trim().toLowerCase()) {
 		return model;
 	}
 	return `${providerName} · ${model}`;
+}
+
+function highlightDifferences(
+	text: string,
+	otherTexts: string[],
+	isTargetEnglish: boolean,
+): React.ReactNode {
+	if (!text.trim() || otherTexts.length === 0) return text;
+
+	if (isTargetEnglish) {
+		const chunks = text.split(/(\s+|[.,!?;:"'()[\]{}]+)/);
+		const otherWordSets = otherTexts.map(
+			(t) => new Set(t.toLowerCase().match(/[a-z0-9'-]+/g) ?? []),
+		);
+		return chunks.map((chunk, i) => {
+			const clean = chunk.toLowerCase().trim();
+			if (clean && /^[a-z0-9'-]+$/.test(clean)) {
+				const isUnique = otherWordSets.some((set) => !set.has(clean));
+				if (isUnique) {
+					return (
+						<mark key={i} className={styles.diffMark}>
+							{chunk}
+						</mark>
+					);
+				}
+			}
+			return chunk;
+		});
+	} else {
+		const segments = text.split(/([，。！？；：“”（）\s]+)/);
+		return segments.map((seg, sIdx) => {
+			if (/^[，。！？；：“”（）\s]+$/.test(seg)) return seg;
+			const chars = Array.from(seg);
+			return (
+				<span key={sIdx}>
+					{chars.map((char, cIdx) => {
+						const common = otherTexts.every((t) => t.includes(char));
+						if (!common) {
+							return (
+								<mark key={cIdx} className={styles.diffMark}>
+									{char}
+								</mark>
+							);
+						}
+						return char;
+					})}
+				</span>
+			);
+		});
+	}
 }
 
 export const TranslatorView = React.memo(function TranslatorView({
@@ -75,8 +141,17 @@ export const TranslatorView = React.memo(function TranslatorView({
 	const getSnapshot = useCallback(() => runtime.getSnapshot(), [runtime]);
 	const snapshot = useSyncExternalStore(subscribe, getSnapshot);
 	const [activeTab, setActiveTab] = useState<string>("all");
-	const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
-	const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const [feedbackMap, setFeedbackMap] = useState<Record<string, ActionFeedback>>({});
+	const feedbackTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+	const [speakingId, setSpeakingId] = useState<string | null>(null);
+	const [showDiff, setShowDiff] = useState<boolean>(false);
+	const [showUndo, setShowUndo] = useState<boolean>(false);
+	const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const clearedStateRef = useRef<{
+		input: string;
+		results: readonly TranslationResultState[];
+	} | null>(null);
+
 	const inputRef = useRef<HTMLTextAreaElement>(null);
 	const viewId = useId();
 
@@ -100,20 +175,32 @@ export const TranslatorView = React.memo(function TranslatorView({
 	}, [focusController]);
 
 	const showFeedback = useCallback((newFeedback: ActionFeedback) => {
-		if (feedbackTimeoutRef.current) {
-			clearTimeout(feedbackTimeoutRef.current);
+		const existingTimer = feedbackTimeoutsRef.current[newFeedback.id];
+		if (existingTimer) {
+			clearTimeout(existingTimer);
 		}
-		setFeedback(newFeedback);
-		feedbackTimeoutRef.current = setTimeout(() => {
-			setFeedback(null);
-			feedbackTimeoutRef.current = null;
-		}, 1800);
+		setFeedbackMap((prev) => ({ ...prev, [newFeedback.id]: newFeedback }));
+		feedbackTimeoutsRef.current[newFeedback.id] = setTimeout(() => {
+			setFeedbackMap((prev) => {
+				const next = { ...prev };
+				delete next[newFeedback.id];
+				return next;
+			});
+			delete feedbackTimeoutsRef.current[newFeedback.id];
+		}, 2000);
 	}, []);
 
 	useEffect(() => {
+		const timers = feedbackTimeoutsRef.current;
 		return () => {
-			if (feedbackTimeoutRef.current) {
-				clearTimeout(feedbackTimeoutRef.current);
+			for (const id in timers) {
+				clearTimeout(timers[id]);
+			}
+			if (undoTimeoutRef.current) {
+				clearTimeout(undoTimeoutRef.current);
+			}
+			if (typeof window !== "undefined" && "speechSynthesis" in window) {
+				window.speechSynthesis.cancel();
 			}
 		};
 	}, []);
@@ -162,6 +249,58 @@ export const TranslatorView = React.memo(function TranslatorView({
 						? aiErrorText(language, snapshot.error)
 						: null;
 
+	const speechUnavailable = strings.speechUnavailable;
+	const speak = useCallback(
+		(id: string, text: string, lang: "en" | "zh") => {
+			if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+				showFeedback({ id, type: "copied", message: speechUnavailable });
+				return;
+			}
+			if (speakingId === id) {
+				window.speechSynthesis.cancel();
+				setSpeakingId(null);
+				return;
+			}
+			window.speechSynthesis.cancel();
+			const utterance = new SpeechSynthesisUtterance(text);
+			utterance.lang = lang === "en" ? "en-US" : "zh-CN";
+			utterance.onend = () => setSpeakingId((curr) => (curr === id ? null : curr));
+			utterance.onerror = () => setSpeakingId((curr) => (curr === id ? null : curr));
+			setSpeakingId(id);
+			window.speechSynthesis.speak(utterance);
+		},
+		[showFeedback, speakingId, speechUnavailable],
+	);
+
+	const handleClear = useCallback(() => {
+		if (!snapshot.input && !snapshot.results.some((r) => r.text || r.error)) {
+			return;
+		}
+		clearedStateRef.current = {
+			input: snapshot.input,
+			results: snapshot.results,
+		};
+		runtime.clear();
+		setShowUndo(true);
+		if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+		undoTimeoutRef.current = setTimeout(() => {
+			setShowUndo(false);
+			clearedStateRef.current = null;
+			undoTimeoutRef.current = null;
+		}, 6000);
+	}, [runtime, snapshot.input, snapshot.results]);
+
+	const handleUndo = useCallback(() => {
+		if (!clearedStateRef.current) return;
+		runtime.restore(clearedStateRef.current.input, clearedStateRef.current.results);
+		setShowUndo(false);
+		clearedStateRef.current = null;
+		if (undoTimeoutRef.current) {
+			clearTimeout(undoTimeoutRef.current);
+			undoTimeoutRef.current = null;
+		}
+	}, [runtime]);
+
 	const copyResult = async (result: TranslationResultState): Promise<void> => {
 		try {
 			if (!navigator.clipboard) throw new Error("Clipboard API unavailable");
@@ -192,9 +331,11 @@ export const TranslatorView = React.memo(function TranslatorView({
 
 	const makeCard = async (result: TranslationResultState): Promise<void> => {
 		if (onCreateCard) {
-			onCreateCard(snapshot.input, result.text);
-			showFeedback({ id: result.id, type: "card", message: strings.cardCopied });
-			return;
+			const success = await onCreateCard(snapshot.input, result.text);
+			if (success !== false) {
+				showFeedback({ id: result.id, type: "card", message: strings.cardCreated });
+				return;
+			}
 		}
 		const cardFormat = `#flashcards\n\nQ: ${snapshot.input}\nA: ${result.text}\n\n`;
 		try {
@@ -206,33 +347,53 @@ export const TranslatorView = React.memo(function TranslatorView({
 		}
 	};
 
-	const renderCard = (result: TranslationResultState) => {
+	const otherSuccessResults = snapshot.results.filter(
+		(r) => r.status === "success" && r.text.trim().length > 0,
+	);
+	const otherSuccessTexts = otherSuccessResults.map((r) => r.text);
+
+	const renderCard = (result: TranslationResultState, isParallel: boolean) => {
 		const usage = resultUsage(result, strings.usage);
 		const error = result.error ? aiErrorText(language, result.error) : null;
-		const isCopied = feedback?.id === result.id && feedback.type === "copied";
-		const isInserted = feedback?.id === result.id && feedback.type === "inserted";
-		const isCard = feedback?.id === result.id && feedback.type === "card";
+		const cardFeedback = feedbackMap[result.id];
+		const isCopied = cardFeedback?.type === "copied";
+		const isInserted = cardFeedback?.type === "inserted";
+		const isCard = cardFeedback?.type === "card";
 		const subtitle = cleanProfileSubtitle(result.name, result.provider, result.model, strings);
+		const targetLang = snapshot.settings.direction === "zh-en" ? "en" : "zh";
 
 		return (
 			<article
 				key={result.id}
-				className={cls("fc-panel", styles.resultPanel)}
+				id={`${viewId}-panel-${result.id}`}
+				role="tabpanel"
+				aria-labelledby={`${viewId}-tab-${result.id}`}
+				className={cls("fc-panel", styles.resultPanel, isParallel && styles.parallelCard)}
 				aria-busy={result.status === "loading"}
 			>
 				<header>
 					<div className={styles.resultTitle}>
 						<strong>{result.name}</strong>
-						<span>{subtitle}</span>
+						{subtitle && <span className={styles.subtitle}>{subtitle}</span>}
 					</div>
 					<div className={styles.cardActions}>
 						<FlashcardButton
 							size="sm"
 							variant="ghost"
 							preset="icon"
-							icon={isCard ? Check : Layers}
-							title={isCard ? feedback.message : strings.makeCard}
-							aria-label={isCard ? feedback.message : strings.makeCard}
+							icon={speakingId === result.id ? VolumeX : Volume2}
+							title={strings.speak}
+							aria-label={strings.speak}
+							disabled={!result.text || result.status === "loading"}
+							onClick={() => speak(result.id, result.text, targetLang)}
+						/>
+						<FlashcardButton
+							size="sm"
+							variant="ghost"
+							preset="icon"
+							icon={isCard ? Check : BookmarkPlus}
+							title={isCard ? cardFeedback.message : strings.makeCard}
+							aria-label={isCard ? cardFeedback.message : strings.makeCard}
 							disabled={!result.text || result.status === "loading"}
 							onClick={() => void makeCard(result)}
 						/>
@@ -241,8 +402,8 @@ export const TranslatorView = React.memo(function TranslatorView({
 							variant="ghost"
 							preset="icon"
 							icon={isInserted ? Check : FileText}
-							title={isInserted ? feedback.message : strings.insertNote}
-							aria-label={isInserted ? feedback.message : strings.insertNote}
+							title={isInserted ? cardFeedback.message : strings.insertNote}
+							aria-label={isInserted ? cardFeedback.message : strings.insertNote}
 							disabled={!result.text || result.status === "loading"}
 							onClick={() => void insertToNote(result)}
 						/>
@@ -251,43 +412,64 @@ export const TranslatorView = React.memo(function TranslatorView({
 							variant="ghost"
 							preset="icon"
 							icon={isCopied ? Check : Copy}
-							title={isCopied ? feedback.message : strings.copied}
-							aria-label={isCopied ? feedback.message : strings.copied}
+							title={isCopied ? cardFeedback.message : strings.copied}
+							aria-label={isCopied ? cardFeedback.message : strings.copied}
 							disabled={!result.text || result.status === "loading"}
 							onClick={() => void copyResult(result)}
 						/>
 					</div>
 				</header>
-				<FlashcardTextarea
-					id={`${viewId}-translator-output-${result.id}`}
-					variant="unstyled"
-					aria-label={formatTranslationString(strings.resultLabel, {
-						name: result.name,
-					})}
-					value={result.text}
-					placeholder={
-						result.status === "loading"
-							? strings.translating
-							: strings.outputPlaceholder
-					}
-					readOnly
-				/>
+				<div className={styles.cardBody}>
+					{showDiff &&
+					isParallel &&
+					result.status === "success" &&
+					otherSuccessTexts.length > 1 ? (
+						<div className={styles.diffContent}>
+							{highlightDifferences(
+								result.text,
+								otherSuccessResults
+									.filter((r) => r.id !== result.id)
+									.map((r) => r.text),
+								snapshot.settings.direction === "zh-en",
+							)}
+						</div>
+					) : (
+						<FlashcardTextarea
+							id={`${viewId}-translator-output-${result.id}`}
+							variant="unstyled"
+							aria-label={formatTranslationString(strings.resultLabel, {
+								name: result.name,
+							})}
+							value={result.text}
+							placeholder={
+								result.status === "loading"
+									? strings.translating
+									: strings.outputPlaceholder
+							}
+							readOnly
+						/>
+					)}
+				</div>
 				<footer>
 					{error ? (
 						<p className={cls(styles.statusMessage, styles.isError)} role="alert">
 							{error}
 						</p>
-					) : feedback?.id === result.id ? (
+					) : cardFeedback ? (
 						<span className={styles.feedbackTag}>
 							<Check size={12} aria-hidden="true" />
-							{feedback.message}
+							{cardFeedback.message}
 						</span>
 					) : (
 						<span className={styles.statusMessage}>
 							{result.status === "loading" ? strings.translating : ""}
 						</span>
 					)}
-					{usage && <p className={styles.usage}>{usage}</p>}
+					{usage && (
+						<span className={styles.usage} title={usage}>
+							{usage}
+						</span>
+					)}
 				</footer>
 			</article>
 		);
@@ -319,20 +501,6 @@ export const TranslatorView = React.memo(function TranslatorView({
 				}
 			/>
 
-			<section className={styles.direction} aria-label={strings.direction}>
-				<strong>{sourceLanguage}</strong>
-				<FlashcardButton
-					preset="icon"
-					variant="secondary"
-					icon={Languages}
-					title={strings.swapDirection}
-					aria-label={strings.swapDirection}
-					disabled={isLoading || snapshot.saving}
-					onClick={() => void runtime.swapDirection()}
-				/>
-				<strong>{targetLanguage}</strong>
-			</section>
-
 			{!snapshot.settings.enabled ? (
 				<section className={cls("fc-page__content", styles.notice)}>
 					<span>{strings.disabled}</span>
@@ -352,12 +520,45 @@ export const TranslatorView = React.memo(function TranslatorView({
 			<section className={cls("fc-page__content", styles.workspace)}>
 				<article className={cls("fc-panel", styles.inputPanel)}>
 					<header>
-						<label htmlFor={`${viewId}-translator-input`}>{strings.inputLabel}</label>
-						<span>
-							{formatTranslationString(strings.characterCount, {
-								count: snapshot.input.length,
-							})}
-						</span>
+						<div className={styles.inputHeaderTitle}>
+							<label htmlFor={`${viewId}-translator-input`}>
+								{strings.inputLabel}
+							</label>
+							<span className={styles.langPill}>{sourceLanguage}</span>
+							<FlashcardButton
+								preset="icon"
+								variant="ghost"
+								size="sm"
+								icon={Languages}
+								title={strings.swapDirection}
+								aria-label={strings.swapDirection}
+								disabled={isLoading || snapshot.saving}
+								onClick={() => void runtime.swapDirection()}
+							/>
+						</div>
+						<div className={styles.inputHeaderActions}>
+							<FlashcardButton
+								preset="icon"
+								variant="ghost"
+								size="sm"
+								icon={speakingId === "source" ? VolumeX : Volume2}
+								title={strings.speak}
+								aria-label={strings.speak}
+								disabled={!snapshot.input.trim()}
+								onClick={() =>
+									speak(
+										"source",
+										snapshot.input,
+										snapshot.settings.direction === "zh-en" ? "zh" : "en",
+									)
+								}
+							/>
+							<span className={styles.charCount}>
+								{formatTranslationString(strings.characterCount, {
+									count: snapshot.input.length,
+								})}
+							</span>
+						</div>
 					</header>
 					<FlashcardTextarea
 						ref={inputRef}
@@ -395,60 +596,111 @@ export const TranslatorView = React.memo(function TranslatorView({
 								title={strings.clear}
 								aria-label={strings.clear}
 								disabled={!canClear}
-								onClick={() => runtime.clear()}
+								onClick={handleClear}
 							/>
+							{showUndo && (
+								<output className={styles.undoBar}>
+									<span>{strings.clearedNotice}</span>
+									<button
+										type="button"
+										className={styles.undoBtn}
+										onClick={handleUndo}
+									>
+										{strings.undo}
+									</button>
+								</output>
+							)}
 						</div>
 						<span className={styles.shortcutHint}>{strings.shortcutHint}</span>
 					</footer>
 				</article>
 
 				<section className={styles.outputSection} aria-label={strings.outputLabel}>
-					{configuredProfiles.length > 0 && (
-						<div className={styles.segmentedHeader}>
-							<div
-								className={styles.segmented}
-								role="tablist"
-								aria-label={strings.outputLabel}
-							>
-								{configuredProfiles.map((profile) => (
-									<button
-										key={profile.id}
-										role="tab"
-										type="button"
-										aria-selected={effectiveTab === profile.id}
-										className={cls(
-											styles.segmentButton,
-											effectiveTab === profile.id && styles.active,
-										)}
-										onClick={() => setActiveTab(profile.id)}
-									>
-										{profile.name}
-									</button>
-								))}
-								{configuredProfiles.length > 1 && (
-									<button
-										role="tab"
-										type="button"
-										aria-selected={effectiveTab === "all"}
-										className={cls(
-											styles.segmentButton,
-											effectiveTab === "all" && styles.active,
-										)}
-										onClick={() => setActiveTab("all")}
-									>
-										{strings.compareAll}
-									</button>
-								)}
-							</div>
+					<div className={styles.outputHeader}>
+						<div className={styles.outputHeading}>
+							<span className={styles.outputLabelText}>{strings.outputLabel}</span>
+							<span className={styles.langPill}>{targetLanguage}</span>
 						</div>
-					)}
+						<div className={styles.outputControls}>
+							{configuredProfiles.length > 0 && (
+								<div
+									className={styles.segmented}
+									role="tablist"
+									aria-label={strings.outputLabel}
+								>
+									{configuredProfiles.map((profile) => (
+										<button
+											key={profile.id}
+											id={`${viewId}-tab-${profile.id}`}
+											role="tab"
+											type="button"
+											aria-selected={effectiveTab === profile.id}
+											aria-controls={`${viewId}-panel-${profile.id}`}
+											className={cls(
+												styles.segmentButton,
+												effectiveTab === profile.id && styles.active,
+											)}
+											onClick={() => setActiveTab(profile.id)}
+										>
+											{profile.name}
+										</button>
+									))}
+									{configuredProfiles.length > 1 && (
+										<button
+											id={`${viewId}-tab-all`}
+											role="tab"
+											type="button"
+											aria-selected={effectiveTab === "all"}
+											aria-controls={`${viewId}-panel-all`}
+											className={cls(
+												styles.segmentButton,
+												effectiveTab === "all" && styles.active,
+											)}
+											onClick={() => setActiveTab("all")}
+										>
+											{strings.compareTable}
+										</button>
+									)}
+								</div>
+							)}
+							{effectiveTab === "all" && configuredProfiles.length > 1 && (
+								<FlashcardButton
+									size="sm"
+									variant={showDiff ? "secondary" : "ghost"}
+									preset="icon"
+									icon={FileDiff}
+									title={strings.diffToggle}
+									aria-label={strings.diffToggle}
+									className={cls(
+										styles.diffButton,
+										showDiff && styles.diffActive,
+									)}
+									onClick={() => setShowDiff((prev) => !prev)}
+								/>
+							)}
+						</div>
+					</div>
 
 					{effectiveTab === "all" ? (
-						<div className={styles.compareGrid}>
-							{snapshot.results.map((result) => renderCard(result))}
+						<div
+							id={`${viewId}-panel-all`}
+							role="tabpanel"
+							aria-labelledby={`${viewId}-tab-all`}
+							className={styles.compareStack}
+						>
+							{snapshot.results.map((result) => renderCard(result, true))}
 						</div>
 					) : (
-						singleResult && renderCard(singleResult)
+						singleResult && (
+							<div
+								id={`${viewId}-panel-${singleResult.id}`}
+								role="tabpanel"
+								aria-labelledby={`${viewId}-tab-${singleResult.id}`}
+								className={styles.singleContainer}
+							>
+								{renderCard(singleResult, false)}
+							</div>
+						)
 					)}
 				</section>
 			</section>

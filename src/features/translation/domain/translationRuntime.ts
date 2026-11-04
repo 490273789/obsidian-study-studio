@@ -104,6 +104,18 @@ export class TranslationRuntime {
 		this.state.input = "";
 		this.publish();
 	}
+	restore(input: string, results: readonly TranslationResultState[]): void {
+		if (this.disposed) return;
+		this.invalidate(false);
+		this.state.input = input;
+		this.state.results = results.map((result) => ({ ...result }));
+		this.state.status = results.some((r) => r.status === "success")
+			? "success"
+			: results.some((r) => r.status === "error")
+				? "error"
+				: "idle";
+		this.publish();
+	}
 	async configure(input: TranslationSettings): Promise<void> {
 		if (this.disposed) throw new AiError("disposed");
 		if (this.state.saving) throw new AiError("busy");

@@ -15,22 +15,17 @@
 	--page-content-width: 1400px;
 }
 
-.direction {
-	align-self: center;
-	display: grid;
-	grid-template-columns: auto auto auto;
+.langPill {
+	display: inline-flex;
 	align-items: center;
-	gap: var(--fc-space-2);
-	padding: var(--fc-space-1);
+	padding: 1px var(--fc-space-2);
 	border: 1px solid var(--fc-line-soft);
-	border-radius: var(--fc-radius-sm);
+	border-radius: var(--fc-radius-pill);
 	background: var(--fc-surface-section);
-	text-align: center;
-
-	strong {
-		min-width: 3em;
-		font-weight: var(--fc-weight-semibold);
-	}
+	color: var(--fc-muted);
+	font-size: var(--fc-font-xs);
+	font-weight: var(--fc-weight-medium);
+	line-height: var(--fc-line-tight);
 }
 
 .modelCount {
@@ -57,9 +52,9 @@
 
 .workspace {
 	display: grid;
-	min-height: 440px;
+	min-height: 480px;
 	flex: 1 1 auto;
-	grid-template-columns: minmax(300px, 42%) minmax(360px, 58%);
+	grid-template-columns: minmax(320px, 44%) minmax(380px, 56%);
 	gap: var(--fc-space-4);
 }
 
@@ -79,16 +74,6 @@
 		justify-content: space-between;
 		padding: var(--fc-space-2) var(--fc-space-3);
 		border-bottom: 1px solid var(--fc-line-soft);
-
-		label {
-			font-weight: var(--fc-weight-semibold);
-			color: var(--fc-normal);
-		}
-
-		> span {
-			color: var(--fc-faint);
-			font-size: var(--fc-font-xs);
-		}
 	}
 
 	> :global(.flashcard-textarea) {
@@ -113,6 +98,28 @@
 	}
 }
 
+.inputHeaderTitle {
+	display: flex;
+	align-items: center;
+	gap: var(--fc-space-2);
+
+	label {
+		font-weight: var(--fc-weight-semibold);
+		color: var(--fc-normal);
+	}
+}
+
+.inputHeaderActions {
+	display: flex;
+	align-items: center;
+	gap: var(--fc-space-2);
+
+	.charCount {
+		color: var(--fc-muted);
+		font-size: var(--fc-font-xs);
+	}
+}
+
 .inputActions {
 	display: flex;
 	align-items: center;
@@ -120,8 +127,35 @@
 }
 
 .shortcutHint {
-	color: var(--fc-faint);
+	color: var(--fc-muted);
 	font-size: var(--fc-font-xs);
+}
+
+.undoBar {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--fc-space-2);
+	padding: 2px var(--fc-space-3);
+	border: 1px solid var(--fc-line-soft);
+	border-radius: var(--fc-radius-sm);
+	background: var(--fc-surface-section);
+	font-size: var(--fc-font-xs);
+	color: var(--fc-muted);
+}
+
+.undoBtn {
+	border: none;
+	background: transparent;
+	color: var(--fc-accent);
+	font-weight: var(--fc-weight-semibold);
+	font-size: var(--fc-font-xs);
+	cursor: pointer;
+	padding: 0;
+	text-decoration: underline;
+
+	&:hover {
+		color: var(--fc-accent-hover);
+	}
 }
 
 .outputSection {
@@ -132,12 +166,38 @@
 	height: 100%;
 }
 
-.segmentedHeader {
+.outputHeader {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: var(--fc-space-2);
 	min-height: 32px;
+	flex-wrap: wrap;
+}
+
+.outputHeading {
+	display: flex;
+	align-items: center;
+	gap: var(--fc-space-2);
+
+	.outputLabelText {
+		font-weight: var(--fc-weight-semibold);
+		color: var(--fc-normal);
+		font-size: var(--fc-font-sm);
+	}
+}
+
+.outputControls {
+	display: flex;
+	align-items: center;
+	gap: var(--fc-space-2);
+}
+
+.diffButton {
+	&.diffActive {
+		background: color-mix(in srgb, var(--fc-accent) 15%, var(--fc-surface-card));
+		color: var(--fc-accent);
+	}
 }
 
 .segmented {
@@ -176,6 +236,24 @@
 	}
 }
 
+.singleContainer {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-height: 0;
+	height: 100%;
+}
+
+.compareStack {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fc-space-3);
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	@include fc-scrollbar;
+}
+
 .resultPanel {
 	display: flex;
 	flex-direction: column;
@@ -195,17 +273,6 @@
 		border-bottom: 1px solid var(--fc-line-soft);
 	}
 
-	> :global(.flashcard-textarea) {
-		flex: 1 1 auto;
-		min-height: 180px;
-		height: 100%;
-		padding: var(--fc-space-3) var(--fc-space-4);
-		background: transparent;
-		border: none;
-		line-height: var(--fc-line-body);
-		resize: none;
-	}
-
 	> footer {
 		display: flex;
 		align-items: center;
@@ -216,6 +283,50 @@
 		border-radius: 0 0 var(--fc-radius-md) var(--fc-radius-md);
 		font-size: var(--fc-font-xs);
 	}
+}
+
+.parallelCard {
+	flex: 0 0 auto;
+	min-height: 140px;
+	height: auto;
+}
+
+.cardBody {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+	min-height: 100px;
+	position: relative;
+
+	> :global(.flashcard-textarea) {
+		flex: 1 1 auto;
+		min-height: 100px;
+		height: 100%;
+		padding: var(--fc-space-3) var(--fc-space-4);
+		background: transparent;
+		border: none;
+		line-height: var(--fc-line-body);
+		resize: none;
+	}
+}
+
+.diffContent {
+	flex: 1 1 auto;
+	padding: var(--fc-space-3) var(--fc-space-4);
+	font-size: var(--fc-font-sm);
+	line-height: var(--fc-line-relaxed);
+	color: var(--fc-normal);
+	white-space: pre-wrap;
+	word-break: break-word;
+	user-select: text;
+}
+
+.diffMark {
+	background: color-mix(in srgb, var(--fc-accent) 18%, transparent);
+	color: inherit;
+	border-radius: var(--fc-radius-xs);
+	padding: 1px 3px;
+	font-weight: var(--fc-weight-medium);
 }
 
 .resultTitle {
@@ -232,7 +343,7 @@
 		color: var(--fc-normal);
 	}
 
-	span {
+	.subtitle {
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -247,18 +358,8 @@
 	gap: var(--fc-space-1);
 }
 
-.compareGrid {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-	gap: var(--fc-space-3);
-	flex: 1 1 auto;
-	min-height: 0;
-	overflow-y: auto;
-	@include fc-scrollbar;
-}
-
 .usage {
-	color: var(--fc-faint);
+	color: var(--fc-muted);
 	font-size: var(--fc-font-xs);
 	margin-left: auto;
 }
@@ -295,12 +396,13 @@
 		height: 180px;
 	}
 
-	.resultPanel > :global(.flashcard-textarea) {
+	.cardBody > :global(.flashcard-textarea),
+	.diffContent {
 		min-height: 140px;
-		height: 200px;
+		height: 180px;
 	}
 
-	.compareGrid {
+	.compareStack {
 		display: flex;
 		flex-direction: column;
 	}
