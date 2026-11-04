@@ -23,10 +23,12 @@ import type { SortableInteraction } from "../../../../../../core/ui/primitives/S
 // Exercise the component's events and emitted dnd-kit boundary in node. Sensor
 // classes remain real; native DOM hit testing is outside this adapter test.
 const hooks = vi.hoisted(() => ({ cursor: 0, state: [] as unknown[] }));
+const translate = vi.hoisted(() => vi.fn((key: string) => key));
 const drag = vi.hoisted(() => ({
 	activeId: null as string | null,
 	transforms: {} as Record<string, { x: number; y: number; scaleX: number; scaleY: number }>,
 }));
+vi.mock("obsidian", () => ({ Platform: { isMobile: false } }));
 vi.mock("react", async (original) => ({
 	...(await original<typeof import("react")>()),
 	useState: (initial: unknown) => {
@@ -84,12 +86,13 @@ vi.mock("@dnd-kit/core", async (original) => ({
 	useSensors: (...sensors: unknown[]) => sensors,
 }));
 vi.mock("../../../../strings/context", () => ({
-	useFlashcardI18n: () => ({ language: "en", t: (key: string) => key }),
+	useFlashcardI18n: () => ({ language: "en", t: translate }),
 }));
 vi.mock("../../DeckSettings", () => ({ DeckSettingsModal: () => null }));
 vi.mock("../LearningFootprint", () => ({ LearningFootprint: () => null }));
 
 beforeEach(() => {
+	translate.mockClear();
 	hooks.cursor = 0;
 	hooks.state = [];
 	sortingAdapter.interaction = null;
@@ -160,6 +163,9 @@ interface DeckOverrides {
 	id: string;
 	totalCards: number;
 	newCards: number;
+	dueCards?: number;
+	dailyNewCards?: number;
+	dailyReviewCards?: number;
 	studyCount?: number;
 }
 
@@ -182,14 +188,14 @@ function harness(decks?: DeckOverrides[]) {
 			stats: {
 				totalCards: input.totalCards,
 				newCards: input.newCards,
-				dueCards: 0,
+				dueCards: input.dueCards ?? 0,
 				learningCards: 0,
 				reviewCards: 0,
 				relearningCards: 0,
 			},
 			effectiveStudySettings: {
-				dailyNewCards: DEFAULT_SETTINGS.dailyNewCards,
-				dailyReviewCards: DEFAULT_SETTINGS.dailyReviewCards,
+				dailyNewCards: input.dailyNewCards ?? DEFAULT_SETTINGS.dailyNewCards,
+				dailyReviewCards: input.dailyReviewCards ?? DEFAULT_SETTINGS.dailyReviewCards,
 				studyOrder: DEFAULT_SETTINGS.studyOrder,
 				fsrsParameters: DEFAULT_SETTINGS.fsrsParameters,
 			},
@@ -209,7 +215,7 @@ function harness(decks?: DeckOverrides[]) {
 			deckCount: deckInputs.length,
 			totalCards: deckInputs.reduce((sum, deck) => sum + deck.totalCards, 0),
 			newCards: deckInputs.reduce((sum, deck) => sum + deck.newCards, 0),
-			dueCards: 0,
+			dueCards: deckInputs.reduce((sum, deck) => sum + (deck.dueCards ?? 0), 0),
 			studyCount: 0,
 		},
 		learningFootprint: restoreDailyLearningActivity(undefined).footprint(new Date(0)),
@@ -425,7 +431,7 @@ describe("deck reorder availability", () => {
 		},
 	);
 
-	it("keeps the action overlay on only one deck row", () => {
+	it("keeps the action menu open for only one deck", () => {
 		const h = harness();
 		h.setCardMenu("first", true);
 		expect(h.openCardMenuIds()).toEqual(["first"]);
@@ -579,10 +585,52 @@ describe("deck row presentation state", () => {
 					},
 				},
 			],
+			totals: { ...h.props.snapshot.totals, newCards: 0 },
 		};
 		h.render();
 		expect(textOf(title().props.children)).toBe("home.allDoneHeading");
 		expect(buttons()).toHaveLength(0);
+	});
+
+	it("shows the capped new and review plan in the hero and raw counts in the row", () => {
+		const h = harness([
+			{
+				id: "started",
+				totalCards: 2_384,
+				newCards: 2_344,
+				dueCards: 40,
+				dailyNewCards: 12,
+				dailyReviewCards: 8,
+				studyCount: 2,
+			},
+		]);
+		expect(translate).toHaveBeenCalledWith("home.todayPlan", {
+			total: "20",
+			newCards: "12",
+			reviews: "8",
+		});
+		const card = h.findElement(h.tree(), (element) => element.props.deck?.id === "started");
+		renderDeckCard(card);
+		expect(translate).toHaveBeenCalledWith("home.remainingNewCount", { count: "2,344" });
+		expect(translate).toHaveBeenCalledWith("home.dueReviewCount", { count: "40" });
+	});
+
+	it("recommends a finished deck with planned reviews and shows its due cards while collapsed", () => {
+		const h = harness([
+			{ id: "new", totalCards: 10, newCards: 10 },
+			{ id: "finished", totalCards: 7, newCards: 0, dueCards: 4, dailyReviewCards: 2 },
+			{ id: "finished-too", totalCards: 5, newCards: 0, dueCards: 1 },
+		]);
+		const button = h.findElement(
+			h.tree(),
+			(element) => element.props.className?.includes("resumeButton") === true,
+		);
+		expect(textOf(button.props.children)).toBe("home.openStudyPlan");
+		expect(translate).toHaveBeenCalledWith("home.reviewHeading", { deck: "finished" });
+		expect(translate).toHaveBeenCalledWith("home.dueReviewCount", { count: "5" });
+		expect(h.deckIds()).toEqual(["new"]);
+		button.props.onClick!({ stopPropagation: vi.fn() });
+		expect(h.props.onNavigate).toHaveBeenCalledWith("study", "finished");
 	});
 
 	it("groups the recommendation and learning history before the complete deck list", () => {

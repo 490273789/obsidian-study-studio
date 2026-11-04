@@ -121,6 +121,23 @@ describe("selectContinueDeck", () => {
 
 		expect(selectContinueDeck([done])).toBeNull();
 	});
+
+	it("skips due and new inventory that the daily limits exclude from the plan", () => {
+		const base = makeDeck();
+		const excluded = makeDeck({
+			id: "excluded",
+			studyCount: 2,
+			stats: { ...base.stats, newCards: 4, dueCards: 6 },
+			effectiveStudySettings: {
+				...base.effectiveStudySettings,
+				dailyNewCards: 0,
+				dailyReviewCards: 0,
+			},
+		});
+
+		expect(selectContinueDeck([excluded, base])).toBe(base);
+		expect(selectContinueDeck([excluded])).toBeNull();
+	});
 });
 
 describe("selectDeckVisualState", () => {

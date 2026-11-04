@@ -1,4 +1,5 @@
 import type { DeckHomeDeckSnapshot } from "../domain/decks/deckHome";
+import { getStudyPlanSummary } from "../domain/sessions/studyPlanSummary";
 
 /**
  * A deck's presentation state, derived only from the shared snapshot:
@@ -39,8 +40,8 @@ export function selectDeckCardMetrics(deck: DeckHomeDeckSnapshot): DeckCardMetri
 }
 
 /**
- * The deck a returning learner should resume: a deck that has been started
- * outranks an untouched one, and the largest backlog wins inside each tier.
+ * Prefer the largest planned review load. For new cards, keep started decks
+ * ahead of untouched decks and prefer the largest backlog within each tier.
  * Ties keep the snapshot's display order.
  */
 export function selectContinueDeck(
@@ -48,13 +49,20 @@ export function selectContinueDeck(
 ): DeckHomeDeckSnapshot | null {
 	let started: DeckHomeDeckSnapshot | null = null;
 	let untouched: DeckHomeDeckSnapshot | null = null;
+	let review: DeckHomeDeckSnapshot | null = null;
+	let mostPlannedReviews = 0;
 	for (const deck of decks) {
-		if (deck.stats.newCards <= 0) continue;
+		const plan = getStudyPlanSummary(deck.stats, deck.effectiveStudySettings);
+		if (plan.todayReviewCount > mostPlannedReviews) {
+			review = deck;
+			mostPlannedReviews = plan.todayReviewCount;
+		}
+		if (plan.todayNewCount <= 0) continue;
 		if (deck.studyCount > 0) {
 			if (!started || deck.stats.newCards > started.stats.newCards) started = deck;
 		} else if (!untouched || deck.stats.newCards > untouched.stats.newCards) {
 			untouched = deck;
 		}
 	}
-	return started ?? untouched;
+	return review ?? started ?? untouched;
 }

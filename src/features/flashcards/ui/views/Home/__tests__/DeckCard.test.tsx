@@ -1,46 +1,50 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { FlashcardButton } from "../../../../../../core/ui/primitives/Button";
+import { FlashcardMenu } from "../../../../../../core/ui/primitives/Menu";
 import type { DeckHomeDeckSnapshot } from "../../../../domain/decks/deckHome";
 import { DeckCard } from "../DeckCard/DeckCard";
 
-const hooks = vi.hoisted(() => ({
-	cursor: 0,
-	refs: [] as Array<{ current: unknown }>,
-	effects: [] as Array<() => void | (() => void)>,
+const sort = vi.hoisted(() => ({
+	activate: vi.fn(),
+	setNodeRef: vi.fn(),
+	setActivatorNodeRef: vi.fn(),
+	useSortable: vi.fn(),
 }));
+const platform = vi.hoisted(() => ({ isMobile: false }));
+
+beforeEach(() => {
+	vi.clearAllMocks();
+	platform.isMobile = false;
+});
+
+vi.mock("obsidian", () => ({ Platform: platform }));
 vi.mock("react", async (original) => ({
 	...(await original<typeof import("react")>()),
 	useCallback: (callback: unknown) => callback,
-	useId: () => "more-actions",
-	useRef: () => {
-		const index = hooks.cursor++;
-		return (hooks.refs[index] ??= { current: null });
-	},
-	useEffect: (effect: () => void | (() => void)) => hooks.effects.push(effect),
 }));
-
-beforeEach(() => {
-	hooks.cursor = 0;
-	hooks.refs = [];
-	hooks.effects = [];
-});
 vi.mock("../../../../strings/context", () => ({
-	useFlashcardI18n: () => ({ language: "en", t: (key: string) => key }),
-}));
-vi.mock("@dnd-kit/sortable", () => ({
-	useSortable: () => ({
-		attributes: {},
-		listeners: {},
-		setNodeRef: () => {},
-		setActivatorNodeRef: () => {},
-		isDragging: false,
-		transform: null,
-		transition: undefined,
+	useFlashcardI18n: () => ({
+		language: "en",
+		t: (key: string, params?: { deckName?: string }) =>
+			params?.deckName ? `${key}: ${params.deckName}` : key,
 	}),
 }));
+vi.mock("@dnd-kit/sortable", () => ({
+	useSortable: (options: unknown) => {
+		sort.useSortable(options);
+		return {
+			attributes: { tabIndex: 0, role: "button" },
+			listeners: { onKeyDown: sort.activate },
+			setNodeRef: sort.setNodeRef,
+			setActivatorNodeRef: sort.setActivatorNodeRef,
+			isDragging: false,
+			transform: null,
+			transition: undefined,
+		};
+	},
+}));
 
-function makeDeck(): DeckHomeDeckSnapshot {
+function makeDeck(newCards = 4): DeckHomeDeckSnapshot {
 	return {
 		id: "deck",
 		name: "Deck",
@@ -49,7 +53,7 @@ function makeDeck(): DeckHomeDeckSnapshot {
 		studyCount: 1,
 		stats: {
 			totalCards: 10,
-			newCards: 4,
+			newCards,
 			dueCards: 0,
 			learningCards: 0,
 			reviewCards: 6,
@@ -78,8 +82,9 @@ type Element = React.ReactElement<{
 	className?: string;
 	"aria-label"?: string;
 	"aria-expanded"?: boolean;
-	disabled?: boolean;
-	size?: string;
+	onKeyDown?: (event: { key: string }) => void;
+	tabIndex?: number;
+	ref?: unknown;
 	inert?: boolean;
 	onClick?: (event: { target: unknown; currentTarget: unknown; stopPropagation(): void }) => void;
 }>;
@@ -110,7 +115,6 @@ function renderCard(
 		onMenuOpenChange: ReturnType<typeof vi.fn>;
 	},
 ): Element {
-	hooks.cursor = 0;
 	const element = (
 		DeckCard as unknown as {
 			type: (props: React.ComponentProps<typeof DeckCard>) => React.ReactElement;
@@ -132,18 +136,9 @@ function renderCard(
 	return element as Element;
 }
 
-function actionButtons(tree: Element): Element[] {
-	return findAll(
-		tree,
-		(element) =>
-			element.type === FlashcardButton &&
-			element.props.className?.includes("overlayAction") === true,
-	);
-}
-
-function click(button: Element): void {
-	const target = {};
-	button.props.onClick?.({ target, currentTarget: target, stopPropagation: vi.fn() });
+function menuOf(tree: Element): React.ComponentProps<typeof FlashcardMenu> {
+	return findAll(tree, (element) => element.type === FlashcardMenu)[0]!
+		.props as React.ComponentProps<typeof FlashcardMenu>;
 }
 
 function handlers() {
@@ -156,82 +151,94 @@ function handlers() {
 	};
 }
 
-describe("DeckCard row action overlay", () => {
-	it("opens on the current row and wires its four actions", () => {
+describe("DeckCard actions", () => {
+	it("uses a deck-named menu and keeps the card context available while open", () => {
 		const calls = handlers();
-		const closed = renderCard(makeDeck(), {}, false, calls);
-		expect(actionButtons(closed)).toHaveLength(0);
-		const trigger = findAll(
-			closed,
-			(element) => element.props["aria-label"] === "home.showMoreActions",
-		)[0]!;
-		click(trigger);
+		const deck = makeDeck();
+		const closed = menuOf(renderCard(deck, {}, false, calls));
+		expect(closed.open).toBe(false);
+		expect(closed.triggerTitle).toBe("home.deckActions: Deck");
+		closed.onOpenChange!(true);
 		expect(calls.onMenuOpenChange).toHaveBeenCalledWith("deck", true);
 
-		const open = renderCard(makeDeck(), {}, true, calls);
-		const actions = actionButtons(open);
-		expect(actions.map((action) => action.props.children)).toEqual([
-			"home.exportPdfTitle",
-			"home.list",
-			"home.source",
-			"home.setting",
+		const tree = renderCard(deck, {}, true, calls);
+		const menu = menuOf(tree);
+		expect(menu.open).toBe(true);
+		expect(menu.presentation).toBe("floating");
+		expect(menu.ariaLabel).toBe("home.deckActions: Deck");
+		expect(findAll(tree, (element) => element.props.inert === true)).toHaveLength(0);
+		expect(menu.items.map((action) => action.key)).toEqual([
+			"export",
+			"list",
+			"source",
+			"settings",
 		]);
-		expect(actions.map((action) => action.props.size)).toEqual(["sm", "sm", "sm", "sm"]);
-		expect(findAll(open, (element) => element.props.inert === true)).toHaveLength(3);
-		click(actions[0]!);
+		menu.items.forEach((action) => action.onSelect());
 		expect(calls.onExport).toHaveBeenCalledWith("deck");
-		click(actions[1]!);
 		expect(calls.onNavigate).toHaveBeenCalledWith("word-list", "deck");
-		click(actions[2]!);
 		expect(calls.onOpenSourceFile).toHaveBeenCalledWith("deck.md");
-		click(actions[3]!);
 		expect(calls.onOpenSettings).toHaveBeenCalledWith("deck");
-		expect(calls.onMenuOpenChange).toHaveBeenLastCalledWith("deck", false);
+	});
+
+	it("replaces the mobile action row in place and keeps the deck context visible", () => {
+		platform.isMobile = true;
+		const deck = makeDeck();
+		const calls = handlers();
+		const isStudy = (element: Element) =>
+			element.props.className === "flashcard-deck-action-study";
+		const closed = renderCard(deck, {}, false, calls);
+		expect(findAll(closed, isStudy)).toHaveLength(1);
+
+		const open = renderCard(deck, {}, true, calls);
+		const menu = menuOf(open);
+		expect(menu.presentation).toBe("inline");
+		expect(menu.triggerTitle).toBe("home.closeDeckActions: Deck");
+		expect(menu.ariaLabel).toBe("home.deckActions: Deck");
+		expect(findAll(open, isStudy)).toHaveLength(0);
+		expect(
+			findAll(
+				open,
+				(element) => element.props.className?.includes("flashcard-deck-name") === true,
+			)[0]?.props.children,
+		).toBe(deck.name);
+		menu.onOpenChange!(false);
+		expect(calls.onMenuOpenChange).toHaveBeenCalledWith(deck.id, false);
 	});
 
 	it("disables export while an export is running and settings while another view owns the draft", () => {
-		const calls = handlers();
-		const open = renderCard(
+		const tree = renderCard(
 			makeDeck(),
 			{ isExporting: true, isExportBusy: true, isSettingsLocked: true },
 			true,
-			calls,
+			handlers(),
 		);
-		const actions = actionButtons(open);
-		expect(actions[0]?.props.disabled).toBe(true);
-		expect(actions[3]?.props.disabled).toBe(true);
+		const disabled = menuOf(tree).items.filter((action) => action.disabled);
+		expect(disabled.map((action) => action.key)).toEqual(["export", "settings"]);
+	});
+});
+
+describe("DeckCard sort handle", () => {
+	it("binds keyboard sorting and the activator ref to the named handle", () => {
+		const tree = renderCard(makeDeck(), {}, false, handlers());
+		const [handle] = findAll(tree, (element) => element.props.onKeyDown === sort.activate);
+		expect(tree.props.onKeyDown).toBeUndefined();
+		expect(tree.props.tabIndex).toBeUndefined();
+		expect(tree.props.ref).toBe(sort.setNodeRef);
+		expect(handle?.type).toBe("button");
+		expect(handle?.props.ref).toBe(sort.setActivatorNodeRef);
+		expect(handle?.props["aria-label"]).toBe("home.reorderDeck: Deck");
+		expect(handle?.props.tabIndex).toBe(0);
 	});
 
-	it("closes from the overlay toggle, empty backdrop, Escape, and outside pointer", () => {
-		const calls = handlers();
-		const open = renderCard(makeDeck(), {}, true, calls);
-		const closeButtons = findAll(
-			open,
-			(element) => element.props["aria-label"] === "home.hideMoreActions",
+	it("excludes completed decks from both drag and drop", () => {
+		const deck = makeDeck(0);
+		const tree = renderCard(deck, {}, false, handlers());
+		expect(findAll(tree, (element) => element.props.onKeyDown === sort.activate)).toHaveLength(
+			0,
 		);
-		click(closeButtons[1]!);
-		expect(calls.onMenuOpenChange).toHaveBeenCalledWith("deck", false);
-		click(closeButtons[0]!);
-		expect(calls.onMenuOpenChange).toHaveBeenCalledTimes(2);
-
-		const listeners = new Map<string, (event: never) => void>();
-		const document = {
-			addEventListener: (type: string, listener: (event: never) => void) =>
-				listeners.set(type, listener),
-			removeEventListener: (type: string) => listeners.delete(type),
-		};
-		hooks.refs[0]!.current = { ownerDocument: document, contains: () => false };
-		const focus = vi.fn();
-		hooks.refs[1]!.current = { focus };
-		hooks.refs[2]!.current = { focus: vi.fn() };
-		const cleanup = hooks.effects[hooks.effects.length - 1]!();
-		listeners.get("pointerdown")?.({ target: {} } as never);
-		listeners.get("keydown")?.({ key: "Escape", preventDefault: vi.fn() } as never);
-		expect(calls.onMenuOpenChange).toHaveBeenCalledTimes(4);
-		renderCard(makeDeck(), {}, false, calls);
-		hooks.effects[hooks.effects.length - 1]!();
-		expect(focus).toHaveBeenCalledOnce();
-		cleanup?.();
-		expect(listeners.size).toBe(0);
+		expect(sort.useSortable).toHaveBeenCalledWith({
+			id: deck.id,
+			disabled: { draggable: true, droppable: true },
+		});
 	});
 });

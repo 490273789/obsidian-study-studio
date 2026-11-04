@@ -14,6 +14,7 @@ import { shuffleArray } from "../../../../core/shared/utils";
 import { extractSpellingWord, validateSpellingDeck } from "../cards/spellingWord";
 import { isStableCardIdentity } from "../identity/cardIdentity";
 import type { SessionStartRequest } from "./sessionLifecycle";
+import { getStudyPlanSummary } from "./studyPlanSummary";
 
 export interface StudySetupPlan {
 	readonly dayList: StudyDayInfo[];
@@ -149,13 +150,7 @@ function getDayList(deck: Pick<Deck, "cards">, dailyNewCards: number): StudyDayI
 	return days;
 }
 
-function getTodayStudyCounts(
-	deck: Pick<Deck, "cards">,
-	settings: Pick<StudySettings, "dailyNewCards" | "dailyReviewCards">,
-	now: Date = new Date(),
-): { newCount: number; reviewCount: number } {
-	const dailyNewCards = Math.max(0, settings.dailyNewCards);
-	const dailyReviewCards = Math.max(0, settings.dailyReviewCards);
+function getStudyInventory(deck: Pick<Deck, "cards">, now: Date) {
 	let newCards = 0;
 	let dueCards = 0;
 
@@ -167,10 +162,7 @@ function getTodayStudyCounts(
 		}
 	}
 
-	return {
-		newCount: Math.min(dailyNewCards, newCards),
-		reviewCount: Math.min(dailyReviewCards, dueCards),
-	};
+	return { newCards, dueCards };
 }
 
 function getCardsForDay(
@@ -194,20 +186,16 @@ export function getStudySetupPlan(
 	initialStudyOrder?: StudySettings["studyOrder"],
 ): StudySetupPlan {
 	const dayList = getDayList(deck, settings.dailyNewCards);
-	const { newCount, reviewCount } = getTodayStudyCounts(deck, settings, now);
+	const summary = getStudyPlanSummary(getStudyInventory(deck, now), settings);
 	const completedDays = dayList.reduce((total, day) => total + (day.isCompleted ? 1 : 0), 0);
 	const allCompleted = dayList.length > 0 && completedDays === dayList.length;
-	const hasAnythingToStudy = newCount > 0 || reviewCount > 0;
-	const todayTotal = newCount + reviewCount;
 
 	return {
 		dayList,
-		todayNewCount: newCount,
-		todayReviewCount: reviewCount,
+		...summary,
 		completedDays,
 		allCompleted,
-		hasAnythingToStudy,
-		todayTotal,
+		hasAnythingToStudy: summary.todayTotal > 0,
 		defaultStudyOrder: initialStudyOrder ?? settings.studyOrder,
 	};
 }

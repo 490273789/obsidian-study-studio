@@ -30,6 +30,7 @@ import type {
 	DeckHomeDestination,
 	DeckHomeSnapshot,
 } from "../../../domain/decks/deckHome";
+import { getStudyPlanSummary } from "../../../domain/sessions/studyPlanSummary";
 import type { DeckSettingsDraftSession } from "../../../domain/decks/deckSettingsDraftSession";
 import type { WorkbenchFeatureShortcut } from "../../../../../core/host/workbench";
 import { cls } from "../../../../../core/shared/classNames";
@@ -37,11 +38,7 @@ import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
 import { DeckSettingsModal } from "../DeckSettings";
 import { useFlashcardI18n } from "../../../strings/context";
-import {
-	selectContinueDeck,
-	selectDeckCardMetrics,
-	selectDeckVisualState,
-} from "../../homePresentation";
+import { selectContinueDeck, selectDeckVisualState } from "../../homePresentation";
 import { DeckCard } from "./DeckCard/DeckCard";
 import { formatDeckCount } from "./deckCountFormat";
 import styles from "./DeckList.module.scss";
@@ -121,14 +118,19 @@ export const DeckList = React.memo(function DeckList({
 	 * the reorder action writes the working set back with the finished
 	 * decks appended in their existing order.
 	 */
-	const { sortableRows, completedRows } = useMemo(() => {
+	const { sortableRows, completedRows, completedDueCards } = useMemo(() => {
 		const sortable: DeckHomeDeckSnapshot[] = [];
 		const completed: DeckHomeDeckSnapshot[] = [];
+		let dueCards = 0;
 		for (const deck of snapshot.decks) {
-			if (selectDeckVisualState(deck) === "done") completed.push(deck);
-			else sortable.push(deck);
+			if (selectDeckVisualState(deck) === "done") {
+				completed.push(deck);
+				dueCards += deck.stats.dueCards;
+			} else {
+				sortable.push(deck);
+			}
 		}
-		return { sortableRows: sortable, completedRows: completed };
+		return { sortableRows: sortable, completedRows: completed, completedDueCards: dueCards };
 	}, [snapshot.decks]);
 	const visibleOpenMenuDeckId = snapshot.decks.some((deck) => deck.id === openMenuDeckId)
 		? openMenuDeckId
@@ -168,13 +170,13 @@ export const DeckList = React.memo(function DeckList({
 		[settingsDraftSession, ownerId],
 	);
 
-	/**
-	 * The hero leads with the deck a returning learner should resume: a deck that
-	 * has been started outranks an untouched one, and the largest backlog wins
-	 * inside each tier.
-	 */
-	const nextDeck = useMemo(() => selectContinueDeck(sortableRows), [sortableRows]);
-	const nextDeckMetrics = nextDeck ? selectDeckCardMetrics(nextDeck) : null;
+	const nextDeck = useMemo(() => selectContinueDeck(snapshot.decks), [snapshot.decks]);
+	const todayPlan = nextDeck
+		? getStudyPlanSummary(nextDeck.stats, nextDeck.effectiveStudySettings)
+		: null;
+	const shouldReview = todayPlan !== null && todayPlan.todayReviewCount > 0;
+	const isFresh = nextDeck !== null && selectDeckVisualState(nextDeck) === "fresh";
+	const allNewCardsLearned = snapshot.totals.newCards === 0;
 
 	/** Another view's settings draft blocks a row unless that draft targets it. */
 	const isSettingsLocked = (deckId: string): boolean => {
@@ -316,37 +318,36 @@ export const DeckList = React.memo(function DeckList({
 									<h2 className={styles.resumeTitle}>
 										{nextDeck
 											? t(
-													nextDeckMetrics?.state === "fresh"
-														? "home.startHeading"
-														: "home.resumeHeading",
+													shouldReview
+														? "home.reviewHeading"
+														: isFresh
+															? "home.startHeading"
+															: "home.resumeHeading",
 													{ deck: nextDeck.name },
 												)
-											: t("home.allDoneHeading")}
+											: t(
+													allNewCardsLearned
+														? "home.allDoneHeading"
+														: "home.noPlanHeading",
+												)}
 									</h2>
 									<p className={styles.resumeDetail}>
-										{nextDeck && nextDeckMetrics
-											? nextDeckMetrics.state === "fresh"
-												? t("home.startProgress", {
-														count: formatDeckCount(
-															language,
-															nextDeck.stats.totalCards,
-														),
-													})
-												: t("home.resumeProgress", {
-														learned: formatDeckCount(
-															language,
-															nextDeckMetrics.learnedCards,
-														),
-														total: formatDeckCount(
-															language,
-															nextDeck.stats.totalCards,
-														),
-														pending: formatDeckCount(
-															language,
-															nextDeck.stats.newCards,
-														),
-													})
-											: t("home.allDoneHint")}
+										{todayPlan
+											? t("home.todayPlan", {
+													total: formatDeckCount(
+														language,
+														todayPlan.todayTotal,
+													),
+													newCards: formatDeckCount(
+														language,
+														todayPlan.todayNewCount,
+													),
+													reviews: formatDeckCount(
+														language,
+														todayPlan.todayReviewCount,
+													),
+												})
+											: t("home.noPlanHint")}
 									</p>
 								</div>
 								{nextDeck && (
@@ -355,13 +356,15 @@ export const DeckList = React.memo(function DeckList({
 											variant="primary"
 											size="md"
 											className={styles.resumeButton}
-											icon={Brain}
+											icon={shouldReview ? RefreshCcw : Brain}
 											onClick={() => onNavigate("study", nextDeck.id)}
 										>
 											{t(
-												nextDeckMetrics?.state === "fresh"
-													? "home.startStudy"
-													: "home.continueStudy",
+												shouldReview
+													? "home.openStudyPlan"
+													: isFresh
+														? "home.startStudy"
+														: "home.continueStudy",
 											)}
 										</FlashcardButton>
 									</div>
@@ -475,9 +478,6 @@ export const DeckList = React.memo(function DeckList({
 													)}
 													aria-expanded={isCompletedGroupOpen}
 													aria-controls={completedGroupId}
-													aria-label={t("home.completedGroup", {
-														count: completedRows.length,
-													})}
 													onClick={() => {
 														setIsCompletedGroupOpen(
 															(current) => !current,
@@ -494,15 +494,24 @@ export const DeckList = React.memo(function DeckList({
 														/>
 													)}
 													<span>{t("home.completedGroupTitle")}</span>
-													<span
-														className={styles.completedCount}
-														aria-hidden="true"
-													>
-														{formatDeckCount(
-															language,
-															completedRows.length,
-														)}
+													<span className={styles.completedCount}>
+														{t("home.deckCountValue", {
+															count: formatDeckCount(
+																language,
+																completedRows.length,
+															),
+														})}
 													</span>
+													{completedDueCards > 0 && (
+														<span className={styles.completedDue}>
+															{t("home.dueReviewCount", {
+																count: formatDeckCount(
+																	language,
+																	completedDueCards,
+																),
+															})}
+														</span>
+													)}
 												</button>
 
 												<div

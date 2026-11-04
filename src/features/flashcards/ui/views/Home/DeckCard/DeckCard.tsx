@@ -1,4 +1,5 @@
-import { memo, useCallback, useEffect, useId, useRef } from "react";
+import { memo, useCallback } from "react";
+import { Platform } from "obsidian";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
@@ -6,18 +7,19 @@ import {
 	Check,
 	FileDown,
 	FileText,
+	GripVertical,
 	Keyboard,
 	List,
 	LoaderCircle,
-	Ellipsis,
 	RefreshCcw,
 	Settings,
 	Target,
 	TriangleAlert,
+	X,
 } from "lucide-react";
 import { cls } from "../../../../../../core/shared/classNames";
 import { FlashcardButton } from "../../../../../../core/ui/primitives/Button";
-import type { FlashcardMenuItem } from "../../../../../../core/ui/primitives/Menu";
+import { FlashcardMenu, type FlashcardMenuItem } from "../../../../../../core/ui/primitives/Menu";
 import { useFlashcardI18n } from "../../../../strings/context";
 import type { DeckHomeDeckSnapshot, DeckHomeDestination } from "../../../../domain/decks/deckHome";
 import { selectDeckCardMetrics } from "../../../homePresentation";
@@ -55,11 +57,11 @@ export const DeckCard = memo(function DeckCard({
 	onMenuOpenChange,
 }: DeckCardProps) {
 	const { t } = useFlashcardI18n();
-	const overlayId = useId();
-	const rowRef = useRef<HTMLElement | null>(null);
-	const triggerRef = useRef<HTMLButtonElement>(null);
-	const firstActionRef = useRef<HTMLButtonElement>(null);
-	const restoreFocusRef = useRef(false);
+	const { state, learnedCards, progressPercent, isDone } = selectDeckCardMetrics(deck);
+	const handleMenuOpenChange = useCallback(
+		(open: boolean) => onMenuOpenChange(deck.id, open),
+		[deck.id, onMenuOpenChange],
+	);
 	const {
 		attributes,
 		isDragging,
@@ -68,7 +70,7 @@ export const DeckCard = memo(function DeckCard({
 		setNodeRef,
 		transform,
 		transition,
-	} = useSortable({ id: deck.id });
+	} = useSortable({ id: deck.id, disabled: { draggable: isDone, droppable: isDone } });
 	// Keep pickup scale in the same transform as translation: dnd-kit can then
 	// exclude it from measurements. Never inherit another slot's size ratio.
 	const cardTransform =
@@ -80,18 +82,11 @@ export const DeckCard = memo(function DeckCard({
 					scaleY: isDragging ? 0.95 : 1,
 				}
 			: null;
-	const setDragNodeRef = useCallback(
-		(node: HTMLElement | null) => {
-			rowRef.current = node;
-			setNodeRef(node);
-			setActivatorNodeRef(node);
-		},
-		[setNodeRef, setActivatorNodeRef],
-	);
-
-	const { state, learnedCards, progressPercent, isDone } = selectDeckCardMetrics(deck);
-	const { totalCards, newCards } = deck.stats;
+	const { totalCards, newCards, dueCards } = deck.stats;
 	const spellingReady = deck.spelling.ready;
+	const mobile = Platform.isMobile;
+	const showInlineActions = mobile && isMenuOpen;
+	const moreActionsLabel = t("home.deckActions", { deckName: deck.name });
 
 	const moreActions: FlashcardMenuItem[] = [
 		{
@@ -123,46 +118,9 @@ export const DeckCard = memo(function DeckCard({
 			disabled: isSettingsLocked,
 		},
 	];
-	const firstEnabledAction = moreActions.findIndex((action) => !action.disabled);
-	useEffect(() => {
-		if (!isMenuOpen) {
-			if (restoreFocusRef.current) {
-				restoreFocusRef.current = false;
-				triggerRef.current?.focus();
-			}
-			return;
-		}
-		firstActionRef.current?.focus();
-		const ownerDocument = rowRef.current?.ownerDocument;
-		if (!ownerDocument) return;
-		const handlePointerDown = (event: PointerEvent) => {
-			if (!rowRef.current?.contains(event.target as Node | null)) {
-				onMenuOpenChange(deck.id, false);
-			}
-		};
-		const handleKeyDown = (event: KeyboardEvent) => {
-			if (event.key !== "Escape") return;
-			event.preventDefault();
-			restoreFocusRef.current = true;
-			onMenuOpenChange(deck.id, false);
-		};
-		ownerDocument.addEventListener("pointerdown", handlePointerDown);
-		ownerDocument.addEventListener("keydown", handleKeyDown);
-		return () => {
-			ownerDocument.removeEventListener("pointerdown", handlePointerDown);
-			ownerDocument.removeEventListener("keydown", handleKeyDown);
-		};
-	}, [deck.id, isMenuOpen, onMenuOpenChange]);
-
-	const closeOverlay = () => {
-		restoreFocusRef.current = true;
-		onMenuOpenChange(deck.id, false);
-	};
-
 	return (
-		// oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- dnd-kit owns the keyboard contract here: it supplies role="button", tabIndex and Space/Enter drag handling via `attributes`/`listeners`, and the 学习 button is the keyboard route to the same destination.
 		<article
-			ref={setDragNodeRef}
+			ref={isDone ? undefined : setNodeRef}
 			className={cls(
 				"flashcard-deck-item fc-rail-row",
 				styles.deckItem,
@@ -174,15 +132,21 @@ export const DeckCard = memo(function DeckCard({
 				transform: CSS.Transform.toString(cardTransform),
 				transition: isDragging || isRecentlyDropped ? "none" : transition,
 			}}
-			/* dnd-kit supplies `role="button"`, `tabIndex` and its drag keyboard
-			   handling here; spreading last would clobber `onClick`, so spread
-			   first and keep only the additions below. */
-			{...attributes}
-			{...listeners}
-			tabIndex={isMenuOpen ? -1 : attributes.tabIndex}
-			aria-label={t("home.openDeck", { deckName: deck.name })}
 		>
-			<div className="flashcard-deck-main fc-rail-row__main" inert={isMenuOpen}>
+			<div className={cls("flashcard-deck-main fc-rail-row__main", styles.deckMain)}>
+				{!isDone && (
+					<button
+						type="button"
+						ref={setActivatorNodeRef}
+						className={cls("fc-sortable-handle fc-focus-ring", styles.deckSortHandle)}
+						{...attributes}
+						{...listeners}
+						aria-label={t("home.reorderDeck", { deckName: deck.name })}
+						title={t("home.reorderDeck", { deckName: deck.name })}
+					>
+						<GripVertical size={16} aria-hidden="true" />
+					</button>
+				)}
 				<div className={cls("flashcard-deck-headline", styles.deckHeadline)}>
 					<span
 						className={cls("flashcard-deck-name fc-rail-row__title", styles.deckName)}
@@ -265,27 +229,31 @@ export const DeckCard = memo(function DeckCard({
 				</div>
 			</div>
 
-			<div className="flashcard-deck-count fc-rail-row__count" inert={isMenuOpen}>
+			<div className="flashcard-deck-count fc-rail-row__count">
+				{dueCards > 0 && (
+					<span className={styles.dueCount}>
+						{t("home.dueReviewCount", { count: formatDeckCount(language, dueCards) })}
+					</span>
+				)}
 				{isDone ? (
 					<span className="flashcard-deck-done fc-rail-row__badge">
 						<Check size={13} aria-hidden="true" />
 						{t("home.deckCompleted")}
 					</span>
 				) : (
-					<>
-						<b>{formatDeckCount(language, newCards)}</b>
-						<span>{t("home.deckPending")}</span>
-					</>
+					<span className={styles.newCount}>
+						{t("home.remainingNewCount", {
+							count: formatDeckCount(language, newCards),
+						})}
+					</span>
 				)}
 			</div>
 
 			<div
-				className="flashcard-deck-side fc-rail-row__actions"
-				inert={isMenuOpen}
-				role="presentation"
-				onMouseDown={(event) => event.stopPropagation()}
-				onTouchStart={(event) => event.stopPropagation()}
-				onClick={(event) => event.stopPropagation()}
+				className={cls(
+					"flashcard-deck-side fc-rail-row__actions",
+					showInlineActions && styles.inlineActions,
+				)}
 			>
 				<div
 					className={cls(
@@ -295,134 +263,77 @@ export const DeckCard = memo(function DeckCard({
 						deck.spelling.enabled && styles.hasSpelling,
 					)}
 				>
-					<FlashcardButton
-						variant="secondary"
-						size="md"
-						className="flashcard-deck-action-study"
-						icon={isDone ? RefreshCcw : Brain}
-						onClick={(event) => {
-							event.stopPropagation();
-							onNavigate("study", deck.id);
-						}}
-						title={isDone ? t("home.review") : t("home.studyModeTitle")}
-					>
-						<span>{isDone ? t("home.review") : t("home.study")}</span>
-					</FlashcardButton>
-					<FlashcardButton
-						variant="outline"
-						size="md"
-						className="flashcard-deck-action-practice"
-						icon={Target}
-						onClick={(event) => {
-							event.stopPropagation();
-							onNavigate("practice", deck.id);
-						}}
-						title={t("home.practiceModeTitle")}
-					>
-						<span>{t("home.practice")}</span>
-					</FlashcardButton>
-					{deck.spelling.enabled && (
-						<FlashcardButton
-							preset="icon"
-							variant="neutral"
-							className={cls("flashcard-deck-action-spelling", styles.actionSpelling)}
-							icon={Keyboard}
-							onClick={(event) => {
-								event.stopPropagation();
-								onNavigate("spelling", deck.id);
-							}}
-							disabled={!spellingReady}
-							title={
-								spellingReady
-									? deck.spelling.ignoredCardCount > 0
-										? t("home.spellingModeIgnoredTitle", {
-												count: deck.spelling.ignoredCardCount,
-											})
-										: t("home.spellingModeTitle")
-									: t("home.spellingUnavailableTitle", {
-											count: deck.spelling.issueCount,
-										})
-							}
-							aria-label={t("home.spelling")}
-						/>
+					{!showInlineActions && (
+						<>
+							<FlashcardButton
+								variant="secondary"
+								size="md"
+								className="flashcard-deck-action-study"
+								icon={isDone ? RefreshCcw : Brain}
+								onClick={() => onNavigate("study", deck.id)}
+								title={isDone ? t("home.review") : t("home.studyModeTitle")}
+							>
+								<span>{isDone ? t("home.review") : t("home.study")}</span>
+							</FlashcardButton>
+							<FlashcardButton
+								variant="outline"
+								size="md"
+								className="flashcard-deck-action-practice"
+								icon={Target}
+								onClick={() => onNavigate("practice", deck.id)}
+								title={t("home.practiceModeTitle")}
+							>
+								<span>{t("home.practice")}</span>
+							</FlashcardButton>
+							{deck.spelling.enabled && (
+								<FlashcardButton
+									preset="icon"
+									variant="neutral"
+									className={cls(
+										"flashcard-deck-action-spelling",
+										styles.actionSpelling,
+									)}
+									icon={Keyboard}
+									onClick={() => onNavigate("spelling", deck.id)}
+									disabled={!spellingReady}
+									title={
+										spellingReady
+											? deck.spelling.ignoredCardCount > 0
+												? t("home.spellingModeIgnoredTitle", {
+														count: deck.spelling.ignoredCardCount,
+													})
+												: t("home.spellingModeTitle")
+											: t("home.spellingUnavailableTitle", {
+													count: deck.spelling.issueCount,
+												})
+									}
+									aria-label={t("home.spelling")}
+								/>
+							)}
+							{!deck.spelling.enabled && (
+								<span
+									className="flashcard-deck-action-spelling-placeholder"
+									aria-hidden="true"
+								/>
+							)}
+						</>
 					)}
-					{!deck.spelling.enabled && (
-						<span
-							className="flashcard-deck-action-spelling-placeholder"
-							aria-hidden="true"
-						/>
-					)}
-					<FlashcardButton
-						ref={triggerRef}
-						preset="icon"
-						icon={Ellipsis}
-						className={cls("flashcard-deck-action-more", styles.actionMore)}
-						title={t("home.showMoreActions")}
-						aria-label={t("home.showMoreActions")}
-						aria-expanded={isMenuOpen}
-						aria-controls={overlayId}
-						onClick={() => onMenuOpenChange(deck.id, !isMenuOpen)}
+					<FlashcardMenu
+						items={moreActions}
+						triggerTitle={
+							showInlineActions
+								? t("home.closeDeckActions", { deckName: deck.name })
+								: moreActionsLabel
+						}
+						triggerIcon={showInlineActions ? X : undefined}
+						ariaLabel={moreActionsLabel}
+						triggerClassName={cls("flashcard-deck-action-more", styles.actionMore)}
+						open={isMenuOpen}
+						onOpenChange={handleMenuOpenChange}
+						presentation={mobile ? "inline" : "floating"}
 					/>
 				</div>
 			</div>
-			{isMenuOpen && (
-				// oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Fence pointer starts inside the fieldset so the row's dnd-kit listeners cannot begin a drag.
-				<fieldset
-					id={overlayId}
-					className={styles.actionOverlay}
-					aria-label={t("home.moreActions")}
-					onPointerDown={(event) => event.stopPropagation()}
-					onMouseDown={(event) => event.stopPropagation()}
-					onTouchStart={(event) => event.stopPropagation()}
-					onKeyDown={(event) => {
-						if (event.key === "Enter" || event.key === " ") event.stopPropagation();
-					}}
-				>
-					<button
-						type="button"
-						className={styles.overlayBackdrop}
-						tabIndex={-1}
-						aria-label={t("home.hideMoreActions")}
-						onClick={(event) => {
-							event.stopPropagation();
-							closeOverlay();
-						}}
-					/>
-					<div className={styles.overlayActions}>
-						{moreActions.map((action, index) => (
-							<FlashcardButton
-								key={action.key}
-								ref={index === firstEnabledAction ? firstActionRef : undefined}
-								variant="neutral"
-								size="sm"
-								icon={action.icon}
-								iconClassName={action.iconClassName}
-								className={styles.overlayAction}
-								disabled={action.disabled}
-								title={action.title}
-								onClick={(event) => {
-									event.stopPropagation();
-									onMenuOpenChange(deck.id, false);
-									action.onSelect();
-								}}
-							>
-								{action.label}
-							</FlashcardButton>
-						))}
-					</div>
-					<FlashcardButton
-						preset="icon"
-						icon={Ellipsis}
-						className={styles.overlayClose}
-						title={t("home.hideMoreActions")}
-						aria-label={t("home.hideMoreActions")}
-						onClick={(event) => {
-							event.stopPropagation();
-							closeOverlay();
-						}}
-					/>
-				</fieldset>
-			)}
 		</article>
 	);
 });

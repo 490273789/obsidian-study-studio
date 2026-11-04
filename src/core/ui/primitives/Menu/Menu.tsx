@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useId, useRef, useState } from "react";
+import React, { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { LucideIcon } from "lucide-react";
 import { Ellipsis } from "lucide-react";
 import { FlashcardButton } from "../Button";
@@ -22,6 +23,8 @@ export interface FlashcardMenuProps {
 	triggerClassName?: string;
 	menuClassName?: string;
 	align?: "start" | "end";
+	open?: boolean;
+	presentation?: "dropdown" | "floating" | "inline";
 	onOpenChange?: (open: boolean) => void;
 	stopPropagation?: boolean;
 }
@@ -35,21 +38,33 @@ export const FlashcardMenu: React.FC<FlashcardMenuProps> = ({
 	triggerClassName = "",
 	menuClassName = "",
 	align = "end",
+	open,
+	presentation = "dropdown",
 	onOpenChange,
 	stopPropagation = true,
 }) => {
-	const [isOpen, setIsOpen] = useState(false);
+	const [localOpen, setLocalOpen] = useState(false);
+	const isOpen = open ?? localOpen;
+	const floating = presentation === "floating";
+	const inline = presentation === "inline" && isOpen;
+	const openStateIsLocal = open === undefined;
+	const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
 	const menuId = useId();
 	const rootRef = useRef<HTMLDivElement>(null);
 	const triggerRef = useRef<HTMLButtonElement>(null);
 	const menuRef = useRef<HTMLDivElement>(null);
+	const initialFocus = useRef(0);
+
+	useLayoutEffect(() => {
+		if (floating && isOpen) setPortalHost(rootRef.current?.ownerDocument.body ?? null);
+	}, [floating, isOpen]);
 
 	const setOpen = useCallback(
 		(open: boolean) => {
-			setIsOpen(open);
+			if (openStateIsLocal) setLocalOpen(open);
 			onOpenChange?.(open);
 		},
-		[onOpenChange],
+		[onOpenChange, openStateIsLocal],
 	);
 
 	const focusItem = useCallback((index: number) => {
@@ -58,9 +73,32 @@ export const FlashcardMenu: React.FC<FlashcardMenuProps> = ({
 				".flashcard-menu-item:not(:disabled)",
 			) ?? [],
 		);
-		if (controls.length === 0) return;
-		controls[(index + controls.length) % controls.length]?.focus();
+		const target =
+			controls.length > 0
+				? controls[(index + controls.length) % controls.length]
+				: menuRef.current;
+		target?.focus();
 	}, []);
+
+	useLayoutEffect(() => {
+		const trigger = triggerRef.current;
+		const menu = menuRef.current;
+		const view = trigger?.ownerDocument.defaultView;
+		if (!isOpen || !trigger || !menu || !view) return;
+		if (floating) {
+			const anchor = trigger.getBoundingClientRect();
+			const { width, height } = menu.getBoundingClientRect();
+			const gap = 8;
+			const below = anchor.bottom + gap;
+			const above = anchor.top - gap - height;
+			const top = below + height <= view.innerHeight - gap || above < gap ? below : above;
+			const left = align === "end" ? anchor.right - width : anchor.left;
+			menu.style.top = `${Math.max(gap, Math.min(top, view.innerHeight - height - gap))}px`;
+			menu.style.left = `${Math.max(gap, Math.min(left, view.innerWidth - width - gap))}px`;
+		}
+		focusItem(initialFocus.current);
+		initialFocus.current = 0;
+	}, [align, floating, focusItem, isOpen, portalHost]);
 
 	useEffect(() => {
 		if (!isOpen) return;
@@ -68,22 +106,40 @@ export const FlashcardMenu: React.FC<FlashcardMenuProps> = ({
 		if (!ownerDocument) return;
 
 		const handlePointerDown = (event: PointerEvent) => {
-			if (!rootRef.current?.contains(event.target as Node | null)) setOpen(false);
+			const target = event.target as Node | null;
+			if (!rootRef.current?.contains(target) && !menuRef.current?.contains(target)) {
+				setOpen(false);
+			}
+		};
+		const closeAndFocus = () => {
+			setOpen(false);
+			triggerRef.current?.focus({ preventScroll: true });
 		};
 		const handleKeyDown = (event: KeyboardEvent) => {
 			if (event.key !== "Escape") return;
 			event.preventDefault();
-			setOpen(false);
-			triggerRef.current?.focus();
+			closeAndFocus();
 		};
+		const handleScroll = (event: Event) => {
+			if (!menuRef.current?.contains(event.target as Node | null)) closeAndFocus();
+		};
+		const view = ownerDocument.defaultView;
 
 		ownerDocument.addEventListener("pointerdown", handlePointerDown);
 		ownerDocument.addEventListener("keydown", handleKeyDown);
+		if (floating) {
+			ownerDocument.addEventListener("scroll", handleScroll, true);
+			view?.addEventListener("resize", closeAndFocus);
+		}
 		return () => {
 			ownerDocument.removeEventListener("pointerdown", handlePointerDown);
 			ownerDocument.removeEventListener("keydown", handleKeyDown);
+			if (floating) {
+				ownerDocument.removeEventListener("scroll", handleScroll, true);
+				view?.removeEventListener("resize", closeAndFocus);
+			}
 		};
-	}, [isOpen, setOpen]);
+	}, [floating, isOpen, setOpen]);
 
 	const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
 		const controls = Array.from(
@@ -92,12 +148,15 @@ export const FlashcardMenu: React.FC<FlashcardMenuProps> = ({
 			) ?? [],
 		);
 		const currentIndex = controls.indexOf(event.target as HTMLButtonElement);
-		if (event.key === "ArrowDown") {
+		if (event.key === "Tab") {
+			setOpen(false);
+			triggerRef.current?.focus({ preventScroll: true });
+		} else if (event.key === "ArrowDown") {
 			event.preventDefault();
 			focusItem(currentIndex + 1);
 		} else if (event.key === "ArrowUp") {
 			event.preventDefault();
-			focusItem(currentIndex - 1);
+			focusItem(currentIndex < 0 ? -1 : currentIndex - 1);
 		} else if (event.key === "Home") {
 			event.preventDefault();
 			focusItem(0);
@@ -107,8 +166,49 @@ export const FlashcardMenu: React.FC<FlashcardMenuProps> = ({
 		}
 	};
 
+	const menu = isOpen ? (
+		<div
+			ref={menuRef}
+			id={menuId}
+			className={`flashcard-menu${menuClassName ? ` ${menuClassName}` : ""}`}
+			role="menu"
+			tabIndex={-1}
+			aria-label={ariaLabel}
+			onKeyDown={handleMenuKeyDown}
+		>
+			{items.map((item) => {
+				const Icon = item.icon;
+				return (
+					<button
+						key={item.key}
+						type="button"
+						className={`flashcard-menu-item${item.danger ? " is-danger" : ""}`}
+						role="menuitem"
+						tabIndex={-1}
+						disabled={item.disabled}
+						title={item.title}
+						onClick={(event) => {
+							if (stopPropagation) event.stopPropagation();
+							setOpen(false);
+							triggerRef.current?.focus({ preventScroll: true });
+							item.onSelect();
+						}}
+					>
+						{Icon && (
+							<Icon size={16} className={item.iconClassName} aria-hidden="true" />
+						)}
+						<span>{item.label}</span>
+					</button>
+				);
+			})}
+		</div>
+	) : null;
+
 	return (
-		<div ref={rootRef} className={`flashcard-menu-root is-${align}`}>
+		<div
+			ref={rootRef}
+			className={`flashcard-menu-root is-${align}${inline ? " is-inline" : ""}`}
+		>
 			<FlashcardButton
 				ref={triggerRef}
 				preset="icon"
@@ -117,60 +217,34 @@ export const FlashcardMenu: React.FC<FlashcardMenuProps> = ({
 				onClick={(event) => {
 					if (stopPropagation) event.stopPropagation();
 					setOpen(!isOpen);
+					if (isOpen) triggerRef.current?.focus({ preventScroll: true });
 				}}
 				onKeyDown={(event) => {
 					if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
 					event.preventDefault();
-					setOpen(true);
-					requestAnimationFrame(() => focusItem(event.key === "ArrowUp" ? -1 : 0));
+					const index = event.key === "ArrowUp" ? -1 : 0;
+					if (isOpen) {
+						focusItem(index);
+					} else {
+						initialFocus.current = index;
+						setOpen(true);
+					}
 				}}
 				active={isOpen}
 				title={triggerTitle}
 				aria-label={triggerTitle}
 				aria-haspopup="menu"
 				aria-expanded={isOpen}
-				aria-controls={menuId}
+				aria-controls={isOpen ? menuId : undefined}
 			/>
-
-			{isOpen && (
-				<div
-					ref={menuRef}
-					id={menuId}
-					className={`flashcard-menu${menuClassName ? ` ${menuClassName}` : ""}`}
-					role="menu"
-					tabIndex={-1}
-					aria-label={ariaLabel}
-					onKeyDown={handleMenuKeyDown}
-				>
-					{items.map((item) => {
-						const Icon = item.icon;
-						return (
-							<button
-								key={item.key}
-								type="button"
-								className={`flashcard-menu-item${item.danger ? " is-danger" : ""}`}
-								role="menuitem"
-								disabled={item.disabled}
-								title={item.title}
-								onClick={(event) => {
-									if (stopPropagation) event.stopPropagation();
-									setOpen(false);
-									item.onSelect();
-								}}
-							>
-								{Icon && (
-									<Icon
-										size={16}
-										className={item.iconClassName}
-										aria-hidden="true"
-									/>
-								)}
-								<span>{item.label}</span>
-							</button>
-						);
-					})}
-				</div>
-			)}
+			{floating
+				? menu &&
+					portalHost &&
+					createPortal(
+						<div className="fc-overlay flashcard-menu-root is-floating">{menu}</div>,
+						portalHost,
+					)
+				: menu}
 		</div>
 	);
 };
