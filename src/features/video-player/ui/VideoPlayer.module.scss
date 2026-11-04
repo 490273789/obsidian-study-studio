@@ -182,27 +182,37 @@
 	cursor: pointer;
 
 	&::-webkit-slider-runnable-track {
-		height: 3px;
+		height: 4px;
 		border-radius: var(--fc-radius-pill);
 		background: linear-gradient(
 			to right,
 			var(--interactive-accent) var(--played),
 			var(--fc-line) var(--played)
 		);
+		transition: height var(--fc-motion-quick) ease;
+	}
+
+	&:hover:not(:disabled)::-webkit-slider-runnable-track {
+		height: 6px;
 	}
 
 	&::-webkit-slider-thumb {
 		appearance: none;
-		width: 12px;
-		height: 12px;
+		width: 14px;
+		height: 14px;
 		box-sizing: border-box;
-		margin: -4.5px 0 0;
+		margin: -5px 0 0;
 		top: 0;
 		transform: none;
 		border: 2px solid var(--fc-surface-card);
 		border-radius: 50%;
 		background: var(--interactive-accent);
 		box-shadow: 0 0 0 1px var(--fc-line);
+		transition: transform var(--fc-motion-quick) ease;
+	}
+
+	&:hover:not(:disabled)::-webkit-slider-thumb {
+		transform: scale(1.15);
 	}
 
 	&:focus-visible {
@@ -270,6 +280,70 @@
 	}
 }
 
+.shortcutsHint {
+	grid-column: 1;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--fc-muted);
+	font-size: var(--fc-font-xs);
+	user-select: none;
+	opacity: 0.75;
+	transition: opacity var(--fc-motion-quick) ease;
+
+	&:hover {
+		opacity: 1;
+	}
+}
+
+.shortcutKey {
+	display: inline-block;
+	padding: 1px 5px;
+	border: 1px solid var(--fc-line-soft);
+	border-radius: var(--fc-radius-xs);
+	background: var(--fc-surface-card);
+	font-family: var(--font-monospace);
+	font-size: 10px;
+	line-height: 1.2;
+	color: var(--fc-text);
+}
+
+.shortcutLabel {
+	font-size: var(--fc-font-xs);
+}
+
+.shortcutDivider {
+	color: var(--fc-line);
+}
+
+.skipBtnWrapper {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.skipBtn {
+	position: relative;
+}
+
+.skipStepBadge {
+	position: absolute;
+	right: 4px;
+	bottom: 3px;
+	font-size: 10px;
+	font-weight: var(--fc-weight-bold);
+	line-height: 1;
+	font-variant-numeric: tabular-nums;
+	color: var(--fc-muted);
+	pointer-events: none;
+	user-select: none;
+}
+
+:global(button.flashcard-btn):hover .skipStepBadge {
+	color: var(--fc-text);
+}
+
 .transport,
 .utilities {
 	display: flex;
@@ -290,11 +364,21 @@
 	flex: none;
 }
 
+@container video-surface (max-width: 720px) {
+	.shortcutsHint {
+		display: none;
+	}
+}
+
 @container video-surface (max-width: 540px) {
 	.controls {
 		grid-template-columns: minmax(0, 1fr);
 		gap: 6px;
 		padding-inline: 12px;
+	}
+
+	.shortcutsHint {
+		display: none;
 	}
 
 	.transport,
@@ -379,44 +463,97 @@
 
 .queueCurrentName {
 	min-width: 0;
-	flex: 1;
+	flex: 1 1 auto;
 	overflow: hidden;
 	color: var(--fc-text);
 	font-weight: var(--fc-weight-medium);
 	font-size: var(--fc-font-sm);
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	padding: 3px 10px;
+	margin-inline: 4px;
+	border-radius: var(--fc-radius-md);
+	background: var(--fc-surface-card);
+	border: 1px solid var(--fc-line-soft);
 }
 
 .shadowToggle {
+	position: relative;
 	display: inline-flex;
 	min-height: 32px;
 	align-items: center;
 	gap: 6px;
-	padding: 4px 8px;
-	border: 1px solid var(--fc-line-soft);
-	border-radius: var(--fc-radius-md);
+	padding: 4px 12px;
+	border: 1px solid var(--fc-line);
+	border-radius: var(--fc-radius-pill);
 	background: var(--fc-surface-card);
 	color: var(--fc-muted);
 	font-size: var(--fc-font-sm);
+	font-weight: var(--fc-weight-medium);
 	white-space: nowrap;
 	cursor: pointer;
+	user-select: none;
+	transition:
+		border-color var(--fc-motion-quick) ease,
+		background-color var(--fc-motion-quick) ease,
+		color var(--fc-motion-quick) ease,
+		box-shadow var(--fc-motion-quick) ease;
 
-	input {
-		margin: 0;
-		accent-color: var(--interactive-accent);
-		cursor: pointer;
+	&:hover {
+		border-color: var(--fc-primary);
+		color: var(--fc-text);
+		background: var(--fc-surface-hover);
 	}
 
+	&.shadowToggleActive,
 	&:has(input:checked) {
-		border-color: color-mix(in srgb, var(--fc-primary) 55%, var(--fc-line));
+		border-color: var(--interactive-accent);
+		background: color-mix(in srgb, var(--interactive-accent) 12%, var(--fc-surface-card));
 		color: var(--fc-text);
+		box-shadow: 0 0 0 1px color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+
+		.shadowToggleIcon {
+			color: var(--interactive-accent);
+		}
 	}
 
 	&:focus-within {
 		outline: 2px solid var(--interactive-accent);
 		outline-offset: 2px;
 	}
+}
+
+.shadowToggleInput {
+	position: absolute;
+	opacity: 0;
+	width: 0;
+	height: 0;
+	margin: 0;
+	pointer-events: none;
+}
+
+.shadowToggleIcon {
+	color: var(--fc-muted);
+	flex-shrink: 0;
+	transition: color var(--fc-motion-quick) ease;
+}
+
+.shadowToggleText {
+	font-size: var(--fc-font-sm);
+}
+
+.shadowCueBadge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 1px 6px;
+	font-size: var(--fc-font-xs);
+	font-weight: var(--fc-weight-semibold);
+	font-variant-numeric: tabular-nums;
+	border-radius: var(--fc-radius-pill);
+	background: color-mix(in srgb, var(--interactive-accent) 18%, var(--fc-surface-card));
+	color: var(--interactive-accent);
+	line-height: 1.2;
 }
 
 .queueAddBtn {
@@ -440,7 +577,7 @@
 	overflow-y: auto;
 	padding: var(--fc-space-2) var(--fc-space-3) var(--fc-space-3);
 	border: 1px solid var(--fc-line-soft);
-	border-radius: 12px;
+	border-radius: var(--fc-radius-lg);
 	background: var(--fc-surface-section);
 	box-shadow: var(--shadow-l);
 	@include fc-scrollbar;
@@ -650,10 +787,10 @@
 }
 
 .actionBtn {
-	width: 26px !important;
-	height: 26px !important;
-	min-width: 26px !important;
-	min-height: 26px !important;
+	width: 30px !important;
+	height: 30px !important;
+	min-width: 30px !important;
+	min-height: 30px !important;
 	padding: 0 !important;
 	border: 0 !important;
 	border-radius: var(--fc-radius-md) !important;
@@ -744,7 +881,7 @@
 	flex-direction: column;
 	overflow: hidden;
 	border: 1px solid var(--fc-line-soft);
-	border-radius: 12px;
+	border-radius: var(--fc-radius-lg);
 	background: var(--fc-surface-card);
 	box-shadow: var(--fc-shadow-overlay);
 

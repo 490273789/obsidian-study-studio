@@ -10,11 +10,13 @@ import {
 	Maximize2,
 	Minimize2,
 	Pause,
+	PictureInPicture2,
 	Play,
 	Rewind,
 	Settings,
 	SkipBack,
 	SkipForward,
+	Subtitles,
 	Trash2,
 	X,
 } from "lucide-react";
@@ -259,11 +261,15 @@ export function VideoPlayerView({
 								<div className={styles.queueHeaderActions}>
 									{shadowing && (
 										<label
-											className={styles.shadowToggle}
+											className={cls(
+												styles.shadowToggle,
+												shadowEnabled && styles.shadowToggleActive,
+											)}
 											title={t.shadowToggleHint}
 										>
 											<input
 												type="checkbox"
+												className={styles.shadowToggleInput}
 												checked={shadowEnabled}
 												onChange={(event) =>
 													void shadowing.setEnabled(
@@ -271,7 +277,25 @@ export function VideoPlayerView({
 													)
 												}
 											/>
-											<span>{t.shadowToggle}</span>
+											<Subtitles
+												size={14}
+												className={styles.shadowToggleIcon}
+												aria-hidden="true"
+											/>
+											<span className={styles.shadowToggleText}>
+												{t.shadowToggle}
+											</span>
+											{Boolean(
+												shadowSnapshot?.cues &&
+												shadowSnapshot.cues.length > 0,
+											) && (
+												<span
+													className={styles.shadowCueBadge}
+													aria-label={`${shadowSnapshot!.cues.length} cues`}
+												>
+													{shadowSnapshot!.cues.length}
+												</span>
+											)}
 										</label>
 									)}
 									<FlashcardButton
@@ -604,6 +628,13 @@ function PlayerSurface({
 				onSeek={onSeek}
 			/>
 			<div className={styles.controls}>
+				<div className={styles.shortcutsHint} aria-hidden="true">
+					<span className={styles.shortcutKey}>Space</span>
+					<span className={styles.shortcutLabel}>{t.play}</span>
+					<span className={styles.shortcutDivider}>·</span>
+					<span className={styles.shortcutKey}>← / →</span>
+					<span className={styles.shortcutLabel}>±{settings.skipInterval}s</span>
+				</div>
 				<div className={styles.transport}>
 					<IconButton
 						icon={SkipBack}
@@ -611,26 +642,44 @@ function PlayerSurface({
 						disabled={!canPrevious}
 						onClick={onPrevious}
 					/>
-					<IconButton
-						icon={Rewind}
-						label={t.backward(settings.skipInterval)}
-						onClick={onBackward}
-					/>
+					<div className={styles.skipBtnWrapper}>
+						<FlashcardButton
+							preset="icon"
+							variant="ghost"
+							icon={Rewind}
+							iconSize={16}
+							aria-label={`${t.backward(settings.skipInterval)} (←)`}
+							title={`${t.backward(settings.skipInterval)} (←)`}
+							className={styles.skipBtn}
+							onClick={() => void onBackward()}
+						>
+							<span className={styles.skipStepBadge}>{settings.skipInterval}</span>
+						</FlashcardButton>
+					</div>
 					<FlashcardButton
 						preset="icon"
 						variant="primary"
 						icon={playing ? Pause : Play}
 						iconSize={18}
 						className={styles.playBtn}
-						aria-label={playing ? t.pause : t.play}
-						title={playing ? t.pause : t.play}
+						aria-label={playing ? `${t.pause} (Space)` : `${t.play} (Space)`}
+						title={playing ? `${t.pause} (Space)` : `${t.play} (Space)`}
 						onClick={onToggle}
 					/>
-					<IconButton
-						icon={FastForward}
-						label={t.forward(settings.skipInterval)}
-						onClick={onForward}
-					/>
+					<div className={styles.skipBtnWrapper}>
+						<FlashcardButton
+							preset="icon"
+							variant="ghost"
+							icon={FastForward}
+							iconSize={16}
+							aria-label={`${t.forward(settings.skipInterval)} (→)`}
+							title={`${t.forward(settings.skipInterval)} (→)`}
+							className={styles.skipBtn}
+							onClick={() => void onForward()}
+						>
+							<span className={styles.skipStepBadge}>{settings.skipInterval}</span>
+						</FlashcardButton>
+					</div>
 					<IconButton
 						icon={SkipForward}
 						label={t.next}
@@ -648,7 +697,7 @@ function PlayerSurface({
 						onChange={(value) => onRate(value as (typeof VIDEO_PLAYBACK_RATES)[number])}
 					/>
 					{!floating && (
-						<IconButton icon={Minimize2} label={t.floating} onClick={onFloat} />
+						<IconButton icon={PictureInPicture2} label={t.floating} onClick={onFloat} />
 					)}
 				</div>
 			</div>

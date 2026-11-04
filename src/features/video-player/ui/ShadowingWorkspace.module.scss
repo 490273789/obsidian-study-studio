@@ -5,7 +5,7 @@
 	min-height: 0;
 	padding: 16px;
 	border: 1px solid var(--fc-line-soft);
-	border-radius: 12px;
+	border-radius: var(--fc-radius-lg);
 	background: var(--fc-surface-card);
 }
 
