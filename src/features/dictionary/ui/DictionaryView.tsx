@@ -1,6 +1,7 @@
-import React, { useCallback, useRef, useState, useSyncExternalStore } from "react";
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
 	Bookmark,
+	Check,
 	Copy,
 	ListPlus,
 	Play,
@@ -35,11 +36,6 @@ export interface DictionaryViewProps {
 	onPlayAudio: (url: string) => Promise<void>;
 	/** Obsidian theme, seeded before the sandbox document loads. */
 	theme: "dark" | "light";
-}
-
-interface ExampleCopyStatus {
-	isError: boolean;
-	message: string;
 }
 
 function sourceTabId(sourceId: string): string {
@@ -103,25 +99,41 @@ export function DictionaryView({
 	const getSnapshot = useCallback(() => query.getSnapshot(), [query]);
 	const state = useSyncExternalStore(subscribe, getSnapshot);
 	const strings = dictionaryStrings(language);
-	const [copyStatus, setCopyStatus] = useState<ExampleCopyStatus | null>(null);
+	const [copied, setCopied] = useState(false);
+	const copyTimeoutRef = useRef<number | null>(null);
 	const sourceTablistRef = useRef<HTMLDivElement | null>(null);
 
 	const isLoading = state.status === "loading";
 	const canLookup = Boolean(state.input.trim()) && state.status !== "loading";
 	const queryWord = state.query;
 
+	useEffect(() => {
+		return () => {
+			if (copyTimeoutRef.current !== null) {
+				window.clearTimeout(copyTimeoutRef.current);
+			}
+		};
+	}, []);
+
 	const copyQuery = async (): Promise<void> => {
+		if (!state.query) return;
 		try {
 			await navigator.clipboard.writeText(state.query);
-			setCopyStatus({ isError: false, message: strings.copied });
+			setCopied(true);
+			if (copyTimeoutRef.current !== null) {
+				window.clearTimeout(copyTimeoutRef.current);
+			}
+			copyTimeoutRef.current = window.setTimeout(() => {
+				setCopied(false);
+			}, 1500);
 		} catch {
-			setCopyStatus({ isError: true, message: strings.errors.request });
+			// Clipboard write failure ignored
 		}
 	};
 
 	const lookupWord = useCallback(
 		(word: string): void => {
-			setCopyStatus(null);
+			setCopied(false);
 			void query.send({ type: "lookup", query: word });
 		},
 		[query],
@@ -136,88 +148,108 @@ export function DictionaryView({
 			)}
 			aria-busy={isLoading}
 		>
+			<h1 className={cls("flashcard-dictionary-visually-hidden", styles.visuallyHidden)}>
+				{strings.displayName}
+			</h1>
+
 			<div className={cls("flashcard-dictionary-chrome", styles.chrome)}>
-				<search className="flashcard-dictionary-search">
-					<form
-						className="flashcard-dictionary-search-form"
-						onSubmit={(event) => {
-							event.preventDefault();
-							if (canLookup) void query.send({ type: "lookup" });
-						}}
-					>
-						<fieldset
-							className={cls(
-								"flashcard-dictionary-search-controls",
-								styles.searchControls,
-							)}
+				<div className={cls("flashcard-dictionary-search-row", styles.searchRow)}>
+					<search className="flashcard-dictionary-search">
+						<form
+							className="flashcard-dictionary-search-form"
+							onSubmit={(event) => {
+								event.preventDefault();
+								if (canLookup) void query.send({ type: "lookup" });
+							}}
 						>
-							<legend
+							<fieldset
 								className={cls(
-									"flashcard-dictionary-visually-hidden",
-									styles.visuallyHidden,
+									"flashcard-dictionary-search-controls",
+									styles.searchControls,
 								)}
 							>
-								{strings.inputLabel}
-							</legend>
-							<FlashcardInput
-								id="dictionary-query"
-								ref={searchInputRef}
-								variant="unstyled"
-								className={cls(
-									"flashcard-dictionary-search-input",
-									styles.searchInput,
+								<legend
+									className={cls(
+										"flashcard-dictionary-visually-hidden",
+										styles.visuallyHidden,
+									)}
+								>
+									{strings.inputLabel}
+								</legend>
+								<FlashcardInput
+									id="dictionary-query"
+									ref={searchInputRef}
+									variant="unstyled"
+									className={cls(
+										"flashcard-dictionary-search-input",
+										styles.searchInput,
+									)}
+									value={state.input}
+									maxLength={128}
+									autoComplete="off"
+									spellCheck={false}
+									aria-label={strings.inputLabel}
+									placeholder={strings.inputPlaceholder}
+									onChange={(event) =>
+										void query.send({
+											type: "change-input",
+											value: event.target.value,
+										})
+									}
+								/>
+								{state.input && (
+									<FlashcardButton
+										type="button"
+										preset="icon"
+										size="sm"
+										icon={X}
+										title={strings.clear}
+										aria-label={strings.clear}
+										onClick={() => {
+											void query.send({ type: "change-input", value: "" });
+										}}
+									/>
 								)}
-								value={state.input}
-								maxLength={128}
-								autoComplete="off"
-								spellCheck={false}
-								aria-label={strings.inputLabel}
-								placeholder={strings.inputPlaceholder}
-								onChange={(event) =>
-									void query.send({
-										type: "change-input",
-										value: event.target.value,
-									})
-								}
-							/>
-							<FlashcardButton
-								type="button"
-								preset="icon"
-								icon={ListPlus}
-								title={strings.favoriteBatchOpen}
-								aria-label={strings.favoriteBatchOpen}
-								onClick={onOpenBatchFavorite}
-							/>
-							<FlashcardButton
-								preset="icon"
-								icon={Settings2}
-								title={strings.openSettings}
-								aria-label={strings.openSettings}
-								onClick={onOpenSettings}
-							/>
-							<FlashcardButton
-								preset="icon"
-								icon={Trash2}
-								title={strings.clear}
-								aria-label={strings.clear}
-								disabled={!state.input && !state.query}
-								onClick={() => {
-									setCopyStatus(null);
-									void query.send({ type: "clear" });
-								}}
-							/>
-							<FlashcardButton
-								type="submit"
-								variant="primary"
-								icon={Search}
-								iconSize={18}
-								disabled={!canLookup}
-							>
-								{strings.query}
-							</FlashcardButton>
-						</fieldset>
-					</form>
-				</search>
+								<FlashcardButton
+									type="submit"
+									variant="primary"
+									icon={Search}
+									iconSize={18}
+									disabled={!canLookup}
+								>
+									{strings.query}
+								</FlashcardButton>
+							</fieldset>
+						</form>
+					</search>
+					<div className={cls("flashcard-dictionary-toolbar", styles.toolbar)}>
+						<FlashcardButton
+							type="button"
+							preset="icon"
+							icon={ListPlus}
+							title={strings.favoriteBatchOpen}
+							aria-label={strings.favoriteBatchOpen}
+							onClick={onOpenBatchFavorite}
+						/>
+						<FlashcardButton
+							preset="icon"
+							icon={Settings2}
+							title={strings.openSettings}
+							aria-label={strings.openSettings}
+							onClick={onOpenSettings}
+						/>
+						<FlashcardButton
+							preset="icon"
+							icon={Trash2}
+							title={strings.clear}
+							aria-label={strings.clear}
+							disabled={!state.input && !state.query}
+							onClick={() => {
+								void query.send({ type: "clear" });
+							}}
+						/>
+					</div>
+				</div>
 
 				{state.history.length > 0 && (
 					<section className="flashcard-dictionary-saved" aria-label={strings.history}>
@@ -260,46 +292,6 @@ export function DictionaryView({
 						</div>
 					</section>
 				)}
-
-				{state.query && (
-					<section
-						className={cls("flashcard-dictionary-query-actions", styles.queryActions)}
-					>
-						<h2>{state.query}</h2>
-						<div>
-							<FlashcardButton
-								preset="icon"
-								size="sm"
-								icon={Bookmark}
-								title={strings.favoriteAction}
-								aria-label={strings.favoriteAction}
-								onClick={() => void onOpenFavorite(state.query)}
-							/>
-							<FlashcardButton
-								preset="icon"
-								size="sm"
-								icon={Copy}
-								title={strings.copyWord}
-								aria-label={strings.copyWord}
-								onClick={() => void copyQuery()}
-							/>
-						</div>
-					</section>
-				)}
-
-				{copyStatus && state.query && (
-					<p
-						className={cls(
-							"flashcard-dictionary-copy-status",
-							styles.copyStatus,
-							copyStatus.isError && ["is-error", styles.isError],
-						)}
-						role={copyStatus.isError ? "alert" : "status"}
-						aria-live={copyStatus.isError ? "assertive" : "polite"}
-					>
-						{copyStatus.message}
-					</p>
-				)}
 			</div>
 
 			{!state.query ? (
@@ -313,65 +305,92 @@ export function DictionaryView({
 			) : null}
 
 			{state.sources.length > 0 && (
-				<div
-					ref={sourceTablistRef}
-					className={cls("flashcard-dictionary-tabs", styles.tabs)}
-					role="tablist"
-					aria-label={strings.sourceMenu}
-				>
-					{state.sources.map((source, sourceIndex) => {
-						const selected = state.activeSourceId === source.id;
-						return (
-							<button
-								key={source.id}
-								id={sourceTabId(source.id)}
-								type="button"
-								role="tab"
-								className={cls(
-									"flashcard-dictionary-tab",
-									`is-${source.status}`,
-									styles.tab,
-									selected && ["is-active", styles.isActive],
-									source.status === "loading" && styles.isLoading,
-									source.status === "success" && styles.isSuccess,
-									source.status === "empty" && styles.isEmpty,
-									source.status === "error" && styles.isError,
-								)}
-								aria-controls={sourcePanelId(source.id)}
-								aria-label={`${source.label} · ${sourceStatusLabel(source, strings)}`}
-								aria-selected={selected}
-								tabIndex={selected ? 0 : -1}
-								onClick={() =>
-									void query.send({ type: "select-source", sourceId: source.id })
-								}
-								onKeyDown={(event) =>
-									moveTabFocus(
-										event,
-										sourceTablistRef.current,
-										sourceIndex,
-										state.sources.length,
-										(nextIndex) => {
-											const next = state.sources[nextIndex];
-											if (next)
-												void query.send({
-													type: "select-source",
-													sourceId: next.id,
-												});
-										},
-									)
-								}
-							>
-								<span
+				<div className={cls("flashcard-dictionary-tabs-header", styles.tabsHeader)}>
+					<div
+						ref={sourceTablistRef}
+						className={cls("flashcard-dictionary-tabs", styles.tabs)}
+						role="tablist"
+						aria-label={strings.sourceMenu}
+					>
+						{state.sources.map((source, sourceIndex) => {
+							const selected = state.activeSourceId === source.id;
+							return (
+								<button
+									key={source.id}
+									id={sourceTabId(source.id)}
+									type="button"
+									role="tab"
 									className={cls(
-										"flashcard-dictionary-tab-status",
-										styles.tabStatus,
+										"flashcard-dictionary-tab",
+										`is-${source.status}`,
+										styles.tab,
+										selected && ["is-active", styles.isActive],
+										source.status === "loading" && styles.isLoading,
+										source.status === "success" && styles.isSuccess,
+										source.status === "empty" && styles.isEmpty,
+										source.status === "error" && styles.isError,
 									)}
-									aria-hidden="true"
-								/>
-								<span>{source.label}</span>
-							</button>
-						);
-					})}
+									aria-controls={sourcePanelId(source.id)}
+									aria-label={`${source.label} · ${sourceStatusLabel(source, strings)}`}
+									aria-selected={selected}
+									tabIndex={selected ? 0 : -1}
+									onClick={() =>
+										void query.send({
+											type: "select-source",
+											sourceId: source.id,
+										})
+									}
+									onKeyDown={(event) =>
+										moveTabFocus(
+											event,
+											sourceTablistRef.current,
+											sourceIndex,
+											state.sources.length,
+											(nextIndex) => {
+												const next = state.sources[nextIndex];
+												if (next)
+													void query.send({
+														type: "select-source",
+														sourceId: next.id,
+													});
+											},
+										)
+									}
+								>
+									<span
+										className={cls(
+											"flashcard-dictionary-tab-status",
+											styles.tabStatus,
+										)}
+										aria-hidden="true"
+									/>
+									<span>{source.label}</span>
+								</button>
+							);
+						})}
+					</div>
+
+					{state.query && (
+						<div className={cls("flashcard-dictionary-tab-actions", styles.tabActions)}>
+							<FlashcardButton
+								preset="icon"
+								size="sm"
+								icon={Bookmark}
+								title={strings.favoriteAction}
+								aria-label={strings.favoriteAction}
+								onClick={() => void onOpenFavorite(state.query)}
+							/>
+							<FlashcardButton
+								preset="icon"
+								size="sm"
+								icon={copied ? Check : Copy}
+								title={copied ? strings.copied : strings.copyWord}
+								aria-label={copied ? strings.copied : strings.copyWord}
+								className={copied ? styles.isCopied : undefined}
+								onClick={() => void copyQuery()}
+							/>
+						</div>
+					)}
 				</div>
 			)}
 
@@ -524,7 +543,7 @@ export function DictionaryView({
 													)}
 												>
 													{source.kind !== "local" && (
-														<h4>{section.title}</h4>
+														<h3>{section.title}</h3>
 													)}
 													<DictionarySectionContentView
 														content={section.content}
@@ -533,6 +552,7 @@ export function DictionaryView({
 														title={`${source.label} · ${section.title}`}
 														onLookup={lookupWord}
 														strings={strings}
+														fitContent={true}
 													/>
 												</section>
 											);

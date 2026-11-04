@@ -104,7 +104,7 @@ export const SandboxDocumentFrame = React.memo(function SandboxDocumentFrame({
 			className={cls("flashcard-dictionary-sandbox", styles.sandbox, className)}
 			sandbox="allow-scripts"
 			referrerPolicy="no-referrer"
-			title={title ?? ""}
+			title={title && title.trim().length > 0 ? title : "Dictionary entry"}
 		/>
 	);
 });

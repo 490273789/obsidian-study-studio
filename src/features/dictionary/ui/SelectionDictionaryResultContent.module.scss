@@ -5,8 +5,8 @@
 .result {
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
-	padding: 12px 14px;
+	gap: var(--fc-space-2);
+	padding: var(--fc-space-4) var(--fc-space-5);
 	font-size: var(--fc-font-sm);
 	line-height: var(--fc-line-body);
 	overflow-wrap: anywhere;
@@ -20,13 +20,13 @@
 .detailTabs {
 	display: flex;
 	flex-shrink: 0;
-	gap: 4px;
+	gap: var(--fc-space-1);
 	overflow-x: auto;
-	padding: 4px;
+	padding: var(--fc-space-1);
 }
 
 .tab {
-	padding: 3px 8px;
+	padding: var(--fc-space-half) var(--fc-space-2);
 	font-size: var(--fc-font-xs);
 	border-radius: var(--fc-radius-sm);
 	background: transparent;

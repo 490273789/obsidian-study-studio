@@ -26,6 +26,7 @@ vi.mock("react", async (original) => ({
 	},
 	useRef: () => ({ current: null }),
 	useState: () => [null, () => {}],
+	useEffect: () => {},
 	useSyncExternalStore: (_subscribe: unknown, getSnapshot: () => unknown) => getSnapshot(),
 }));
 vi.mock("./SandboxDocumentFrame", () => ({ SandboxDocumentFrame: () => null }));

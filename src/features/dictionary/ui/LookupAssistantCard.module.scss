@@ -76,7 +76,10 @@
 			color: var(--text-muted);
 			border-radius: var(--fc-radius-sm);
 			cursor: pointer;
-			transition: all 0.12s ease;
+			transition:
+				color var(--fc-motion-quick) ease,
+				background-color var(--fc-motion-quick) ease,
+				border-color var(--fc-motion-quick) ease;
 
 			&:hover:not(:disabled) {
 				color: var(--text-normal);
@@ -109,6 +112,7 @@
 
 			kbd {
 				font-size: 10px;
+				font-weight: var(--fc-weight-semibold);
 				padding: 1px 4px;
 				background: var(--background-modifier-form-field);
 				border: 1px solid var(--fc-border-color);
@@ -143,7 +147,9 @@
 			border-bottom: 2px solid transparent;
 			cursor: pointer;
 			white-space: nowrap;
-			transition: all 0.12s ease;
+			transition:
+				color var(--fc-motion-quick) ease,
+				border-color var(--fc-motion-quick) ease;
 
 			&:hover {
 				color: var(--text-normal);
@@ -269,5 +275,11 @@
 	to {
 		opacity: 1;
 		transform: scale(1) translateY(0);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.card {
+		animation: none;
 	}
 }
