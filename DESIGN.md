@@ -5,6 +5,7 @@ colors:
     primary: "#00b8c4"
     primary-hover: "#00a0ab"
     primary-text: color-mix(in srgb, rgb(var(--fc-black-rgb)) 75%, var(--fc-primary))
+    primary-text-light: "#007a82"
     cyan: var(--interactive-accent)
     danger: var(--fc-red)
     lime: var(--color-green)

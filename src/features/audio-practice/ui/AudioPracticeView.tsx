@@ -8,6 +8,7 @@ import {
 	ListChecks,
 	ListMusic,
 	LoaderCircle,
+	Minus,
 	NotebookPen,
 	PanelRightClose,
 	PanelRightOpen,
@@ -29,6 +30,7 @@ import { cls } from "../../../core/shared/classNames";
 import type { Language } from "../../../core/shared/types";
 import { FlashcardButton as Button } from "../../../core/ui/primitives/Button";
 import { FlashcardCheckbox } from "../../../core/ui/primitives/Checkbox";
+import { ConfirmDialog } from "../../../core/ui/primitives/ConfirmDialog";
 import { FlashcardHeader } from "../../../core/ui/primitives/Header";
 import { FlashcardInput, FlashcardTextarea } from "../../../core/ui/primitives/Input";
 import { ModalSurface } from "../../../core/ui/primitives/Modal";
@@ -132,6 +134,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 	const [materialToolsOpen, setMaterialToolsOpen] = useState(false);
 	const [libraryCollapsed, setLibraryCollapsed] = useState(false);
 	const [playerOptionsOpen, setPlayerOptionsOpen] = useState(false);
+	const [regenerateConfirmOpen, setRegenerateConfirmOpen] = useState(false);
 	const libraryId = useId();
 	const materialActionsId = useId();
 	const playerOptionsId = useId();
@@ -271,13 +274,17 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 										icon={Sparkles}
 										disabled={busy || generating}
 										onClick={() => {
-											if (material)
+											if (!material) return;
+											if (snapshot.cues.length > 0) {
+												setRegenerateConfirmOpen(true);
+											} else {
 												void activeDraftEngine.generateForMaterial(
 													material,
 													{
 														force: true,
 													},
 												);
+											}
 										}}
 									>
 										{snapshot.cues.length ? t.regenerate : t.generate}
@@ -505,6 +512,21 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 					error={draft.error ? audioFailureCopy(language, draft.error).message : null}
 					onRequestClose={() => {
 						setReviewOpen(false);
+					}}
+				/>
+			)}
+			{regenerateConfirmOpen && material && (
+				<ConfirmDialog
+					kicker={t.regenerateConfirmKicker}
+					title={t.regenerateConfirmTitle}
+					message={t.regenerateConfirmDesc}
+					tone="danger"
+					cancelText={t.cancel}
+					confirmText={t.regenerateConfirmAction}
+					onCancel={() => setRegenerateConfirmOpen(false)}
+					onConfirm={() => {
+						setRegenerateConfirmOpen(false);
+						void activeDraftEngine.generateForMaterial(material, { force: true });
 					}}
 				/>
 			)}
@@ -737,27 +759,65 @@ export function PracticeSurface({
 			onKeyDown(event);
 			return;
 		}
+		const target = event.target as HTMLElement | null;
 		if (
 			event.defaultPrevented ||
 			event.altKey ||
 			event.ctrlKey ||
 			event.metaKey ||
 			event.nativeEvent?.isComposing ||
-			(event.target as HTMLElement).closest?.(
-				"button,input,textarea,select,[contenteditable=true]",
-			)
+			target?.closest?.("input,textarea,select,[contenteditable=true]")
 		) {
 			return;
 		}
-		if (event.key === " ") {
+		const key = event.key;
+		if (
+			(event.shiftKey && (key === "ArrowLeft" || key === "ArrowRight")) ||
+			key === "j" ||
+			key === "J" ||
+			key === "l" ||
+			key === "L"
+		) {
+			event.preventDefault();
+			const delta = key === "ArrowLeft" || key === "j" || key === "J" ? -3 : 3;
+			const duration = snapshot.duration ?? Number.POSITIVE_INFINITY;
+			runtime.seekTo(Math.max(0, Math.min(duration, snapshot.currentTime + delta)));
+			return;
+		}
+		if (key === "[" || key === "]") {
+			event.preventDefault();
+			const currentIndex = AUDIO_PLAYBACK_RATES.indexOf(snapshot.playbackRate);
+			if (currentIndex >= 0) {
+				const nextIndex =
+					key === "["
+						? Math.max(0, currentIndex - 1)
+						: Math.min(AUDIO_PLAYBACK_RATES.length - 1, currentIndex + 1);
+				runtime.setPlaybackRate(AUDIO_PLAYBACK_RATES[nextIndex]!);
+			}
+			return;
+		}
+		if (key === " ") {
 			event.preventDefault();
 			runtime.togglePlayback();
-		} else if (event.key === "ArrowLeft") {
+		} else if (key === "ArrowLeft" || key === "ArrowUp") {
 			event.preventDefault();
 			runtime.previous();
-		} else if (event.key === "ArrowRight") {
+		} else if (key === "ArrowRight" || key === "ArrowDown") {
 			event.preventDefault();
 			runtime.next();
+		} else if (key === "r" || key === "R") {
+			event.preventDefault();
+			runtime.repeat();
+		} else if (key === "s" || key === "S" || key === "d" || key === "D") {
+			if (snapshot.currentCueId) {
+				event.preventDefault();
+				runtime.toggleDifficult(snapshot.currentCueId);
+			}
+		} else if (key === "h" || key === "H") {
+			if (snapshot.blind && snapshot.currentCueId) {
+				event.preventDefault();
+				runtime.reveal();
+			}
 		}
 	};
 	return (
@@ -813,15 +873,14 @@ export function PracticeSurface({
 						size="sm"
 						icon={EyeOff}
 						disabled={!snapshot.currentCueId}
+						title={`${t.reveal} (H)`}
 						onClick={() => runtime.reveal()}
 					>
 						{t.reveal}
 					</Button>
 				)}
 				<span className={styles.toolbarSpacer} />
-				<span className={styles.shortcutHint} aria-hidden="true">
-					{t.shortcuts}
-				</span>
+				<span className={styles.shortcutHint}>{t.shortcuts}</span>
 				<span className={styles.cueCount}>{t.segments(cues.length)}</span>
 			</header>
 			<div className={styles.cueScroll}>
@@ -832,10 +891,11 @@ export function PracticeSurface({
 					</div>
 				) : (
 					<ol className={styles.cueList}>
-						{cues.map((cue) => {
+						{cues.map((cue, index) => {
 							const active = cue.id === snapshot.currentCueId;
 							const marked = marks.includes(cue.id);
 							const hidden = snapshot.blind && !(active && snapshot.revealed);
+							const isFocusTarget = active || (!snapshot.currentCueId && index === 0);
 							return (
 								<li
 									key={cue.id}
@@ -844,6 +904,7 @@ export function PracticeSurface({
 								>
 									<Button
 										variant="ghost"
+										tabIndex={isFocusTarget ? 0 : -1}
 										className={styles.cueSelect}
 										aria-current={active ? "true" : undefined}
 										onClick={() => runtime.selectCue(cue.id, true)}
@@ -873,6 +934,7 @@ export function PracticeSurface({
 									<Button
 										preset="icon"
 										variant="ghost"
+										tabIndex={active ? 0 : -1}
 										icon={Star}
 										iconSize={15}
 										className={cls(
@@ -882,7 +944,7 @@ export function PracticeSurface({
 										active={marked}
 										aria-pressed={marked}
 										aria-label={`${t.difficult}: ${timeLabel(cue.start)}`}
-										title={t.difficult}
+										title={`${t.difficult} (S)`}
 										onClick={() => runtime.toggleDifficult(cue.id)}
 									/>
 								</li>
@@ -953,7 +1015,7 @@ function renderPlayerDock(
 						variant="ghost"
 						icon={SkipBack}
 						aria-label={t.previous}
-						title={t.previous}
+						title={`${t.previous} (← / ↑)`}
 						disabled={!hasCues}
 						onClick={() => runtime.previous()}
 					/>
@@ -962,7 +1024,7 @@ function renderPlayerDock(
 						variant="ghost"
 						icon={RotateCcw}
 						aria-label={t.repeat}
-						title={t.repeat}
+						title={`${t.repeat} (R)`}
 						disabled={!hasCues}
 						onClick={() => runtime.repeat()}
 					/>
@@ -973,7 +1035,7 @@ function renderPlayerDock(
 						iconSize={20}
 						className={styles.playButton}
 						aria-label={snapshot.playing ? t.pause : t.play}
-						title={snapshot.playing ? t.pause : t.play}
+						title={`${snapshot.playing ? t.pause : t.play} (空格)`}
 						onClick={() => runtime.togglePlayback()}
 					/>
 					<Button
@@ -981,7 +1043,7 @@ function renderPlayerDock(
 						variant="ghost"
 						icon={SkipForward}
 						aria-label={t.next}
-						title={t.next}
+						title={`${t.next} (→ / ↓)`}
 						disabled={!hasCues}
 						onClick={() => runtime.next()}
 					/>
@@ -1012,22 +1074,60 @@ function renderPlayerDock(
 								)
 							}
 						/>
-						<label className={styles.option}>
-							<span>{t.offset}</span>
-							<FlashcardInput
-								type="number"
-								step="0.1"
-								inputSize="sm"
-								fullWidth={false}
-								className={styles.offsetInput}
-								aria-label={t.offset}
-								value={offset}
-								onChange={(event) => {
-									if (Number.isFinite(event.target.valueAsNumber))
-										runtime.setOffset(event.target.valueAsNumber);
-								}}
-							/>
-						</label>
+						<div className={styles.offsetControl}>
+							<span className={styles.offsetLabel}>{t.offset}</span>
+							<div className={styles.offsetStepper}>
+								<Button
+									preset="icon"
+									size="sm"
+									icon={Minus}
+									variant="ghost"
+									className={styles.offsetStepButton}
+									aria-label={t.offsetStepDown}
+									title={t.offsetStepDown}
+									onClick={() =>
+										runtime.setOffset(Number((offset - 0.1).toFixed(1)))
+									}
+								/>
+								<FlashcardInput
+									type="number"
+									step="0.1"
+									inputSize="sm"
+									fullWidth={false}
+									className={styles.offsetInput}
+									aria-label={t.offset}
+									value={offset}
+									onChange={(event) => {
+										if (Number.isFinite(event.target.valueAsNumber))
+											runtime.setOffset(event.target.valueAsNumber);
+									}}
+								/>
+								<Button
+									preset="icon"
+									size="sm"
+									icon={Plus}
+									variant="ghost"
+									className={styles.offsetStepButton}
+									aria-label={t.offsetStepUp}
+									title={t.offsetStepUp}
+									onClick={() =>
+										runtime.setOffset(Number((offset + 0.1).toFixed(1)))
+									}
+								/>
+							</div>
+							{Math.abs(offset) > 0.001 && (
+								<Button
+									preset="icon"
+									size="sm"
+									icon={RotateCcw}
+									variant="ghost"
+									className={styles.offsetResetButton}
+									aria-label={t.offsetReset}
+									title={t.offsetReset}
+									onClick={() => runtime.setOffset(0)}
+								/>
+							)}
+						</div>
 					</div>
 				</div>
 			</div>

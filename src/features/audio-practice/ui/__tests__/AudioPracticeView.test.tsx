@@ -16,6 +16,8 @@ interface ControlProps {
 	"data-expanded"?: boolean;
 	id?: string;
 	disabled?: boolean;
+	tabIndex?: number;
+	className?: string;
 	onClick?: () => void;
 	onChange?: (event: {
 		target: { value: string; checked?: boolean; valueAsNumber?: number };
@@ -207,6 +209,74 @@ describe("audio practice UI interaction", () => {
 		expect(runtime.getSnapshot().currentCueId).toBe(first);
 		expect(invoke("ArrowRight", false)).toBe(true);
 		expect(runtime.getSnapshot().currentCueId).not.toBe(first);
+		runtime.dispose();
+	});
+	it("steps subtitle offset with plus and minus stepper buttons", async () => {
+		const { runtime, t, click } = await setup();
+		expect(
+			runtime.getSnapshot().progress[runtime.getSnapshot().currentMaterialId!]?.offset ?? 0,
+		).toBe(0);
+		click(t.offsetStepUp);
+		expect(
+			runtime.getSnapshot().progress[runtime.getSnapshot().currentMaterialId!]!.offset,
+		).toBe(0.1);
+		click(t.offsetStepDown);
+		expect(
+			runtime.getSnapshot().progress[runtime.getSnapshot().currentMaterialId!]!.offset,
+		).toBe(0);
+		runtime.dispose();
+	});
+	it("sets tabIndex 0 on active cue and -1 on inactive cues", async () => {
+		const { runtime, render } = await setup();
+		const buttons = elements(render()).filter(
+			(element) =>
+				element.props.tabIndex !== undefined &&
+				element.props.className?.includes("cueSelect"),
+		);
+		expect(buttons).toHaveLength(2);
+		expect(buttons[0]?.props.tabIndex).toBe(0);
+		expect(buttons[1]?.props.tabIndex).toBe(-1);
+		runtime.selectCue(runtime.getSnapshot().cues[1]!.id);
+		const updatedButtons = elements(render()).filter(
+			(element) =>
+				element.props.tabIndex !== undefined &&
+				element.props.className?.includes("cueSelect"),
+		);
+		expect(updatedButtons[0]?.props.tabIndex).toBe(-1);
+		expect(updatedButtons[1]?.props.tabIndex).toBe(0);
+		runtime.dispose();
+	});
+	it("supports r for repeat and s for difficult toggle on focused surface", async () => {
+		const { runtime, render } = await setup();
+		const surface = render() as React.ReactElement<{
+			onKeyDown(event: React.KeyboardEvent<HTMLElement>): void;
+		}>;
+		const invoke = (key: string) => {
+			let prevented = false;
+			surface.props.onKeyDown({
+				key,
+				defaultPrevented: false,
+				altKey: false,
+				ctrlKey: false,
+				metaKey: false,
+				nativeEvent: { isComposing: false },
+				target: { closest: () => null },
+				preventDefault: () => {
+					prevented = true;
+				},
+			} as unknown as React.KeyboardEvent<HTMLElement>);
+			return prevented;
+		};
+		const currentCueId = runtime.getSnapshot().currentCueId!;
+		expect(
+			runtime.getSnapshot().progress[runtime.getSnapshot().currentMaterialId!]
+				?.difficultCueIds ?? [],
+		).not.toContain(currentCueId);
+		expect(invoke("s")).toBe(true);
+		expect(
+			runtime.getSnapshot().progress[runtime.getSnapshot().currentMaterialId!]
+				?.difficultCueIds ?? [],
+		).toContain(currentCueId);
 		runtime.dispose();
 	});
 });

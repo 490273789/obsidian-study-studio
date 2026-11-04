@@ -72,6 +72,7 @@
 	--fc-primary-hover: #00a0ab;
 	--fc-primary-bg: color-mix(in srgb, var(--fc-primary) 12%, var(--fc-surface-card));
 	--fc-primary-text: color-mix(in srgb, rgb(var(--fc-black-rgb)) 75%, var(--fc-primary));
+	--fc-primary-text-light: #007a82;
 	--fc-danger: var(--fc-red);
 
 	/* ── 表面层级（画布 → 区块 → 卡片 → 浮层 → 控件）───────────── */

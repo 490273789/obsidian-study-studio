@@ -48,6 +48,156 @@ describe("PracticeViewInteraction", () => {
 			target: { closest: () => null },
 		} as unknown as KeyboardEvent);
 		expect(next).toHaveBeenCalledTimes(1);
+
+		interaction.handleKeyDown({
+			key: "ArrowUp",
+			defaultPrevented: false,
+			preventDefault,
+			altKey: false,
+			ctrlKey: false,
+			metaKey: false,
+			target: { closest: () => null },
+		} as unknown as KeyboardEvent);
+		expect(previous).toHaveBeenCalledTimes(2);
+
+		interaction.handleKeyDown({
+			key: "ArrowDown",
+			defaultPrevented: false,
+			preventDefault,
+			altKey: false,
+			ctrlKey: false,
+			metaKey: false,
+			target: { closest: () => null },
+		} as unknown as KeyboardEvent);
+		expect(next).toHaveBeenCalledTimes(2);
+	});
+
+	it("dispatches repeat, difficult toggle and reveal shortcuts", () => {
+		const repeat = vi.fn();
+		const toggleDifficult = vi.fn();
+		const reveal = vi.fn();
+		const getSnapshot = vi.fn(() => ({
+			currentCueId: "cue-1",
+			blind: true,
+		}));
+
+		const interaction = new PracticeViewInteraction({
+			runtime: {
+				togglePlayback: vi.fn(),
+				previous: vi.fn(),
+				next: vi.fn(),
+				pause: vi.fn(),
+				bindMedia: vi.fn(() => () => {}),
+				repeat,
+				toggleDifficult,
+				reveal,
+				getSnapshot: getSnapshot as never,
+			},
+		});
+
+		const preventDefault = vi.fn();
+		interaction.handleKeyDown({
+			key: "r",
+			defaultPrevented: false,
+			preventDefault,
+			altKey: false,
+			ctrlKey: false,
+			metaKey: false,
+			target: { closest: () => null },
+		} as unknown as KeyboardEvent);
+		expect(repeat).toHaveBeenCalledTimes(1);
+
+		interaction.handleKeyDown({
+			key: "S",
+			defaultPrevented: false,
+			preventDefault,
+			altKey: false,
+			ctrlKey: false,
+			metaKey: false,
+			target: { closest: () => null },
+		} as unknown as KeyboardEvent);
+		expect(toggleDifficult).toHaveBeenCalledWith("cue-1");
+
+		interaction.handleKeyDown({
+			key: "h",
+			defaultPrevented: false,
+			preventDefault,
+			altKey: false,
+			ctrlKey: false,
+			metaKey: false,
+			target: { closest: () => null },
+		} as unknown as KeyboardEvent);
+		expect(reveal).toHaveBeenCalledTimes(1);
+	});
+
+	it("dispatches shift+arrow and j/l for seeking, and [ / ] for speed rate adjustments", () => {
+		const seekTo = vi.fn();
+		const setPlaybackRate = vi.fn();
+		const getSnapshot = vi.fn(() => ({
+			currentTime: 10,
+			duration: 60,
+			playbackRate: 1,
+		}));
+
+		const interaction = new PracticeViewInteraction({
+			runtime: {
+				togglePlayback: vi.fn(),
+				previous: vi.fn(),
+				next: vi.fn(),
+				pause: vi.fn(),
+				bindMedia: vi.fn(() => () => {}),
+				seekTo,
+				setPlaybackRate,
+				getSnapshot: getSnapshot as never,
+			},
+		});
+
+		const preventDefault = vi.fn();
+		interaction.handleKeyDown({
+			key: "ArrowLeft",
+			shiftKey: true,
+			defaultPrevented: false,
+			preventDefault,
+			altKey: false,
+			ctrlKey: false,
+			metaKey: false,
+			target: { closest: () => null },
+		} as unknown as KeyboardEvent);
+		expect(seekTo).toHaveBeenCalledWith(7);
+
+		interaction.handleKeyDown({
+			key: "l",
+			shiftKey: false,
+			defaultPrevented: false,
+			preventDefault,
+			altKey: false,
+			ctrlKey: false,
+			metaKey: false,
+			target: { closest: () => null },
+		} as unknown as KeyboardEvent);
+		expect(seekTo).toHaveBeenCalledWith(13);
+
+		interaction.handleKeyDown({
+			key: "[",
+			defaultPrevented: false,
+			preventDefault,
+			altKey: false,
+			ctrlKey: false,
+			metaKey: false,
+			target: { closest: () => null },
+		} as unknown as KeyboardEvent);
+		expect(setPlaybackRate).toHaveBeenCalledWith(0.75);
+
+		interaction.handleKeyDown({
+			key: "]",
+			defaultPrevented: false,
+			preventDefault,
+			altKey: false,
+			ctrlKey: false,
+			metaKey: false,
+			target: { closest: () => null },
+		} as unknown as KeyboardEvent);
+		expect(setPlaybackRate).toHaveBeenCalledWith(1.25);
 	});
 
 	it("ignores keyboard events from inputs or with modifier keys", () => {

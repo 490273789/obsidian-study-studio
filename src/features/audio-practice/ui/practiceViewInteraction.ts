@@ -1,10 +1,22 @@
 import type { AudioPracticeRuntime } from "../domain/audioPracticeRuntime";
+import { AUDIO_PLAYBACK_RATES } from "../domain/types";
 
 export interface PracticeViewInteractionOptions {
 	readonly runtime: Pick<
 		AudioPracticeRuntime,
 		"togglePlayback" | "previous" | "next" | "pause" | "bindMedia"
-	>;
+	> &
+		Partial<
+			Pick<
+				AudioPracticeRuntime,
+				| "repeat"
+				| "toggleDifficult"
+				| "reveal"
+				| "getSnapshot"
+				| "seekTo"
+				| "setPlaybackRate"
+			>
+		>;
 	readonly getContainer?: () => HTMLElement | null;
 	readonly containerRef?: { readonly current: HTMLElement | null };
 }
@@ -21,6 +33,7 @@ export class PracticeViewInteraction {
 
 	handleKeyDown = (event: React.KeyboardEvent | KeyboardEvent): void => {
 		if (this.disposed) return;
+		const target = event.target as HTMLElement | null;
 		if (
 			event.defaultPrevented ||
 			event.altKey ||
@@ -28,22 +41,70 @@ export class PracticeViewInteraction {
 			event.metaKey ||
 			(event as KeyboardEvent).isComposing ||
 			("nativeEvent" in event && event.nativeEvent.isComposing) ||
-			(event.target as HTMLElement).closest?.(
-				"button,input,textarea,select,[contenteditable=true]",
-			)
+			target?.closest?.("input,textarea,select,[contenteditable=true]")
 		) {
 			return;
 		}
 
-		if (event.key === " ") {
+		const key = event.key;
+		if (
+			(event.shiftKey && (key === "ArrowLeft" || key === "ArrowRight")) ||
+			key === "j" ||
+			key === "J" ||
+			key === "l" ||
+			key === "L"
+		) {
+			const snapshot = this.options.runtime.getSnapshot?.();
+			if (snapshot && typeof snapshot.currentTime === "number") {
+				event.preventDefault();
+				const delta = key === "ArrowLeft" || key === "j" || key === "J" ? -3 : 3;
+				const duration = snapshot.duration ?? Number.POSITIVE_INFINITY;
+				const targetTime = Math.max(0, Math.min(duration, snapshot.currentTime + delta));
+				this.options.runtime.seekTo?.(targetTime);
+				return;
+			}
+		}
+
+		if (key === "[" || key === "]") {
+			const snapshot = this.options.runtime.getSnapshot?.();
+			if (snapshot && snapshot.playbackRate) {
+				event.preventDefault();
+				const currentIndex = AUDIO_PLAYBACK_RATES.indexOf(snapshot.playbackRate);
+				if (currentIndex >= 0) {
+					const nextIndex =
+						key === "["
+							? Math.max(0, currentIndex - 1)
+							: Math.min(AUDIO_PLAYBACK_RATES.length - 1, currentIndex + 1);
+					this.options.runtime.setPlaybackRate?.(AUDIO_PLAYBACK_RATES[nextIndex]!);
+				}
+				return;
+			}
+		}
+
+		if (key === " ") {
 			event.preventDefault();
 			this.options.runtime.togglePlayback();
-		} else if (event.key === "ArrowLeft") {
+		} else if (key === "ArrowLeft" || key === "ArrowUp") {
 			event.preventDefault();
 			this.options.runtime.previous();
-		} else if (event.key === "ArrowRight") {
+		} else if (key === "ArrowRight" || key === "ArrowDown") {
 			event.preventDefault();
 			this.options.runtime.next();
+		} else if (key === "r" || key === "R") {
+			event.preventDefault();
+			this.options.runtime.repeat?.();
+		} else if (key === "s" || key === "S" || key === "d" || key === "D") {
+			const cueId = this.options.runtime.getSnapshot?.().currentCueId;
+			if (cueId) {
+				event.preventDefault();
+				this.options.runtime.toggleDifficult?.(cueId);
+			}
+		} else if (key === "h" || key === "H") {
+			const snapshot = this.options.runtime.getSnapshot?.();
+			if (snapshot?.blind && snapshot.currentCueId) {
+				event.preventDefault();
+				this.options.runtime.reveal?.();
+			}
 		}
 	};
 

@@ -420,7 +420,7 @@
 
 .shortcutHint {
 	flex: none;
-	color: var(--fc-faint);
+	color: var(--fc-muted);
 	font-size: var(--fc-font-xs);
 	white-space: nowrap;
 }
@@ -454,9 +454,11 @@
 	display: flex;
 	flex-direction: column;
 	gap: 2px;
-	margin: 0;
+	margin: 0 auto;
 	padding: 0;
 	list-style: none;
+	width: 100%;
+	max-width: 840px;
 }
 
 .cue {
@@ -475,20 +477,26 @@
 }
 
 .cueActive {
-	border-color: color-mix(in srgb, var(--fc-primary) 24%, transparent);
-	background: color-mix(in srgb, var(--fc-primary) 10%, var(--fc-surface-section));
+	border-color: color-mix(in srgb, var(--fc-primary) 32%, transparent);
+	background: color-mix(in srgb, var(--fc-primary) 12%, var(--fc-surface-section));
+	box-shadow: inset 3px 0 0 var(--fc-primary);
 
 	&:hover {
-		background: color-mix(in srgb, var(--fc-primary) 14%, var(--fc-surface-section));
+		background: color-mix(in srgb, var(--fc-primary) 16%, var(--fc-surface-section));
 	}
 
 	.cueTime {
 		color: var(--fc-primary);
+		font-weight: var(--fc-weight-semibold);
 	}
 
 	.cueText {
 		color: var(--fc-text);
 		font-weight: var(--fc-weight-medium);
+	}
+
+	.cueStar {
+		opacity: 0.85;
 	}
 }
 
@@ -526,10 +534,18 @@
 	line-height: var(--fc-line-reading);
 	overflow-wrap: anywhere;
 	white-space: normal;
+	user-select: text;
+	-webkit-user-select: text;
+	cursor: text;
 }
 
 .cueWordSpoken {
 	color: var(--fc-primary);
+	font-weight: var(--fc-weight-medium);
+}
+
+:global(.theme-light) .cueWordSpoken {
+	color: var(--fc-primary-text-light);
 }
 
 .draftWordFallback {
@@ -604,6 +620,10 @@
 .page .cue .cueStarActive:hover {
 	background: color-mix(in srgb, var(--fc-amber) 16%, transparent) !important;
 	color: var(--fc-amber) !important;
+
+	svg {
+		fill: currentColor;
+	}
 }
 
 .cueEmpty {
@@ -778,13 +798,77 @@
 	white-space: nowrap;
 }
 
+.offsetControl {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--fc-space-2);
+}
+
+.offsetLabel {
+	color: var(--fc-muted);
+	font-size: var(--fc-font-xs);
+	white-space: nowrap;
+}
+
+.offsetStepper {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 1px;
+	border: 1px solid var(--fc-line);
+	border-radius: var(--fc-radius-md);
+	background: var(--fc-surface-control);
+}
+
+.offsetStepButton {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	border-radius: var(--fc-radius-sm);
+	color: var(--fc-muted);
+
+	&:hover {
+		color: var(--fc-text);
+		background: var(--fc-surface-hover);
+	}
+}
+
+.offsetResetButton {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	border-radius: var(--fc-radius-sm);
+	color: var(--fc-muted);
+
+	&:hover {
+		color: var(--fc-text);
+		background: var(--fc-surface-hover);
+	}
+}
+
 .rateControl {
 	margin-block: 1px;
 }
 
 .offsetInput {
-	width: 62px;
+	width: 48px;
+	border: 0;
+	background: transparent;
+	font-family: var(--fc-font-data);
+	font-size: var(--fc-font-xs);
+	font-variant-numeric: tabular-nums;
 	text-align: center;
+
+	&:focus-visible {
+		outline: 1px solid var(--fc-primary);
+		border-radius: var(--fc-radius-sm);
+	}
 }
 
 /* Dialogs */
