@@ -30,9 +30,15 @@ export interface AiDictionaryDefinition {
 	synonyms: string[];
 }
 
+export interface DictionarySenseGroup {
+	partOfSpeech: string;
+	senses: { definition: string; examples: string[]; synonyms: string[] }[];
+}
+
 export type DictionarySectionContent =
 	| { definitions: AiDictionaryDefinition[]; kind: "ai-definitions" }
-	| { items: string[]; kind: "list" }
+	| { groups: DictionarySenseGroup[]; kind: "english-senses" }
+	| { items: string[]; kind: "list"; ordered?: false }
 	| { document: SandboxDocument; kind: "document" };
 
 export interface DictionarySection {

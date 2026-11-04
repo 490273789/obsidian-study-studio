@@ -176,7 +176,17 @@ describe("parseYoudaoFreeResponse", () => {
 		expect(sectionItems(result, "释义")).toEqual(["n. 测试；试验"]);
 		expect(sectionItems(result, "词源")).toEqual(["源自拉丁语 testum。"]);
 		expect(sectionItems(result, "例句")).toEqual(["This is a test.", "这是一次测试。"]);
-		expect(sectionItems(result, "英英释义")).toEqual(["n.", "an examination of something"]);
+		expect(result.sections.find(({ title }) => title === "英英释义")?.content).toEqual({
+			kind: "english-senses",
+			groups: [
+				{
+					partOfSpeech: "n.",
+					senses: [
+						{ definition: "an examination of something", examples: [], synonyms: [] },
+					],
+				},
+			],
+		});
 		expect(sectionItems(result, "词形变化")).toEqual(["复数 tests"]);
 		expect(sectionItems(result, "短语")).toEqual(["test case 测试用例"]);
 		expect(sectionItems(result, "近义词")).toEqual(["n.", "trial 测试"]);
@@ -197,6 +207,61 @@ describe("parseYoudaoFreeResponse", () => {
 		const serialized = JSON.stringify(parseYoudaoFreeResponse(FREE_FIXTURE, "test"));
 		expect(serialized).not.toContain("must-not-render");
 		expect(serialized).not.toContain("evil.example");
+	});
+
+	it("keeps each English example and synonym with its own sense and part of speech", () => {
+		const noun = {
+			exam: { i: { f: { l: [{ i: "It serves a purpose." }] } } },
+			l: { i: "what something is used for" },
+			"similar-words": [{ similar: "use" }],
+		};
+		const result = parseYoudaoFreeResponse(
+			{
+				ee: {
+					word: {
+						phone: "pəːpəs",
+						trs: [
+							{ pos: "n.", tr: [noun, { l: { i: "an intended outcome" } }] },
+							{ pos: "v.", tr: [{ l: { i: "propose or intend" } }] },
+						],
+					},
+				},
+			},
+			"purpose",
+		);
+
+		expect(result.sections[0]?.content).toEqual({
+			kind: "english-senses",
+			groups: [
+				{
+					partOfSpeech: "n.",
+					senses: [
+						{
+							definition: "what something is used for",
+							examples: ["It serves a purpose."],
+							synonyms: ["use"],
+						},
+						{ definition: "an intended outcome", examples: [], synonyms: [] },
+					],
+				},
+				{
+					partOfSpeech: "v.",
+					senses: [{ definition: "propose or intend", examples: [], synonyms: [] }],
+				},
+			],
+		});
+	});
+
+	it("keeps unfamiliar English content in an unnumbered fallback", () => {
+		const result = parseYoudaoFreeResponse(
+			{ ee: { word: { trs: [{ tr: ["plain source text"] }] } } },
+			"purpose",
+		);
+		expect(result.sections[0]?.content).toEqual({
+			kind: "list",
+			items: ["plain source text"],
+			ordered: false,
+		});
 	});
 
 	it("falls back to the query for the headword and the first usable word record", () => {

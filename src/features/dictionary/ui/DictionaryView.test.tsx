@@ -1,8 +1,10 @@
 import React from "react";
+import { FlashcardMenu, type FlashcardMenuItem } from "../../../core/ui/primitives/Menu";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createDictionaryQuerySession } from "../domain/querySession";
 import { DEFAULT_DICTIONARY_SETTINGS } from "../domain/configuration";
-import type { DictionarySettingsStore } from "../domain/types";
+import type { DictionarySection, DictionarySettingsStore } from "../domain/types";
+import { defineSandboxDocument } from "../domain/sandbox-document/document";
 import { DictionaryView, type DictionaryViewProps } from "./DictionaryView";
 
 // Exercise the view's emitted props in node; React's actual DOM reconciler and
@@ -37,6 +39,7 @@ beforeEach(() => {
 });
 
 interface ContentProps {
+	fitContent?: boolean;
 	content: unknown;
 	onLookup: (word: string) => void;
 	theme: string;
@@ -60,7 +63,22 @@ function contents(props: DictionaryViewProps): React.ReactElement<ContentProps>[
 	return found;
 }
 
-async function setup() {
+function dictionaryActions(tree: React.ReactNode): FlashcardMenuItem[] {
+	for (const child of React.Children.toArray(tree)) {
+		if (
+			!React.isValidElement<{ children?: React.ReactNode; items?: FlashcardMenuItem[] }>(
+				child,
+			)
+		)
+			continue;
+		if (child.type === FlashcardMenu) return child.props.items ?? [];
+		const nested = dictionaryActions(child.props.children);
+		if (nested.length > 0) return nested;
+	}
+	return [];
+}
+
+async function setup(resultSections?: () => DictionarySection[]) {
 	let dictionary = structuredClone(DEFAULT_DICTIONARY_SETTINGS);
 	dictionary.sources = ["first", "second", "third"].map((id) => ({
 		id,
@@ -87,13 +105,13 @@ async function setup() {
 		resolveSource: (source) => ({
 			...source,
 			lookup: async ({ text }) => ({
-				word: text,
+				word: text === "diagnose" ? "diagnosis" : text,
 				sourceId: source.id,
 				sourceLabel: source.label,
 				attribution: "",
 				pronunciations: [],
 				suggestions: [],
-				sections: [
+				sections: resultSections?.() ?? [
 					{
 						title: "Definition",
 						presentation: "stack",
@@ -117,26 +135,40 @@ async function setup() {
 }
 
 describe("dictionary result presentation", () => {
-	it("opens the batch favorite modal from the search controls", async () => {
+	it("lets a standalone local document scroll inside its frame and stacks multiple documents", async () => {
+		const documentSection = (): DictionarySection => ({
+			title: "Definition",
+			presentation: "stack",
+			content: {
+				kind: "document",
+				document: defineSandboxDocument("local", "<p>Dictionary entry</p>"),
+			},
+		});
+		const single = await setup(() => [documentSection()]);
+		expect(contents(single.props).map(({ props }) => props.fitContent)).toEqual([
+			false,
+			false,
+			false,
+		]);
+
+		const multiple = await setup(() => [documentSection(), documentSection()]);
+		expect(contents(multiple.props).map(({ props }) => props.fitContent)).toEqual(
+			Array(6).fill(true),
+		);
+	});
+
+	it("opens batch favorites and settings from the dictionary actions menu", async () => {
 		const { props } = await setup();
-		let action: (() => void) | null = null;
-		function visit(node: React.ReactNode): void {
-			React.Children.forEach(node, (child) => {
-				if (!React.isValidElement(child)) return;
-				const element = child as React.ReactElement<{
-					children?: React.ReactNode;
-					"aria-label"?: string;
-					onClick?: () => void;
-				}>;
-				if (element.props["aria-label"] === "批量收藏单词")
-					action = element.props.onClick ?? null;
-				visit(element.props.children);
-			});
-		}
-		visit(DictionaryView(props));
-		expect(action).not.toBeNull();
-		(action as (() => void) | null)?.();
+		const actions = dictionaryActions(DictionaryView(props));
+		expect(actions.map(({ label }) => label)).toEqual([
+			"批量收藏单词",
+			"打开字典设置",
+			"清除当前查询和结果",
+		]);
+		actions.find(({ key }) => key === "batch-favorite")?.onSelect();
+		actions.find(({ key }) => key === "settings")?.onSelect();
 		expect(props.onOpenBatchFavorite).toHaveBeenCalledOnce();
+		expect(props.onOpenSettings).toHaveBeenCalledOnce();
 	});
 
 	it("keeps section props stable across input and source selection, including hidden sources", async () => {
@@ -178,11 +210,104 @@ describe("dictionary result presentation", () => {
 		expect(query.getSnapshot().query).toBe("replacement");
 	});
 
-	it("provides accessible names for title action buttons and supports history item removal", async () => {
+	it("limits initial history and detail choices and keeps the selected extra tab visible", async () => {
+		const titles = ["英英释义", "词形变化", "柯林斯", "词义辨析", "短语", "近义词"];
+		const { query, props } = await setup(() =>
+			titles.map((title) => ({
+				title,
+				presentation: "tab",
+				content: { kind: "list", items: [title] },
+			})),
+		);
+		for (const word of ["first", "second", "third", "fourth"]) {
+			await query.send({ type: "lookup", query: word });
+		}
+
+		function visibleControls() {
+			hooks.cursor = 0;
+			const tabs: string[] = [];
+			const history: string[] = [];
+			function visit(node: React.ReactNode): void {
+				React.Children.forEach(node, (child) => {
+					if (
+						!React.isValidElement<{
+							children?: React.ReactNode;
+							role?: string;
+							title?: string;
+							id?: string;
+						}>(child)
+					)
+						return;
+					if (
+						child.props.role === "tab" &&
+						child.props.id?.startsWith("dictionary-section-tab-first-")
+					) {
+						tabs.push(String(child.props.children));
+					}
+					if (
+						child.props.title === child.props.children &&
+						typeof child.props.title === "string"
+					) {
+						history.push(child.props.title);
+					}
+					visit(child.props.children);
+				});
+			}
+			visit(DictionaryView(props));
+			return { tabs, history };
+		}
+
+		expect(visibleControls()).toEqual({
+			tabs: ["英英释义", "词形变化", "短语"],
+			history: ["fourth", "third", "second"],
+		});
+		await query.send({ type: "select-section", sourceId: "first", sectionIndex: 2 });
+		expect(visibleControls().tabs).toEqual(["英英释义", "词形变化", "柯林斯", "短语"]);
+	});
+
+	it("distinguishes clearing the input from clearing the submitted query", async () => {
+		const { query, props } = await setup();
+		await query.send({ type: "change-input", value: "draft" });
+		const actions = new Map<string, () => void>();
+		function visit(node: React.ReactNode): void {
+			React.Children.forEach(node, (child) => {
+				if (
+					!React.isValidElement<{
+						children?: React.ReactNode;
+						title?: string;
+						"aria-label"?: string;
+						onClick?: () => void;
+					}>(child)
+				)
+					return;
+				const { title, "aria-label": label, onClick } = child.props;
+				if (title && title === label && onClick) actions.set(title, onClick);
+				visit(child.props.children);
+			});
+		}
+		const view = DictionaryView(props);
+		visit(view);
+		actions.get("清空输入")?.();
+		expect(query.getSnapshot()).toMatchObject({ input: "", query: "word" });
+		const clear = dictionaryActions(view).find(({ key }) => key === "clear-query");
+		expect(clear?.disabled).toBe(false);
+		clear?.onSelect();
+		expect(query.getSnapshot()).toMatchObject({ input: "", query: "", history: ["word"] });
+		hooks.cursor = 0;
+		expect(
+			dictionaryActions(DictionaryView(props)).find(({ key }) => key === "clear-query")
+				?.disabled,
+		).toBe(true);
+	});
+
+	it("keeps the resolved headword and its actions independent of input edits", async () => {
 		const { query, props } = await setup();
 		await query.send({ type: "lookup", query: "diagnose" });
+		await query.send({ type: "change-input", value: "typing" });
 
 		const buttonLabels: string[] = [];
+		const headwords: string[] = [];
+		let favorite: (() => void) | undefined;
 		function visit(node: React.ReactNode): void {
 			React.Children.forEach(node, (child) => {
 				if (!React.isValidElement(child)) return;
@@ -190,7 +315,10 @@ describe("dictionary result presentation", () => {
 					children?: React.ReactNode;
 					"aria-label"?: string;
 					title?: string;
+					onClick?: () => void;
 				}>;
+				if (element.type === "h2") headwords.push(String(element.props.children));
+				if (element.props["aria-label"] === "收藏单词") favorite = element.props.onClick;
 				if (element.props["aria-label"]) {
 					buttonLabels.push(element.props["aria-label"]);
 				}
@@ -202,6 +330,9 @@ describe("dictionary result presentation", () => {
 		// WCAG 4.1.2: Bookmark and Copy buttons must provide accessible names
 		expect(buttonLabels).toContain("收藏单词");
 		expect(buttonLabels).toContain("复制单词");
-		expect(buttonLabels).toContain("从历史中移除“word”");
+		expect(buttonLabels).not.toContain("从历史中移除“word”");
+		expect(headwords).toEqual(["diagnosis", "diagnosis", "diagnosis"]);
+		favorite?.();
+		expect(props.onOpenFavorite).toHaveBeenCalledWith("diagnosis");
 	});
 });

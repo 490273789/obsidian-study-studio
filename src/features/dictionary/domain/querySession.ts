@@ -86,6 +86,17 @@ function freezeDictionaryResult(result: DictionaryResult): DictionaryResult {
 				Object.freeze(definition);
 			}
 			Object.freeze(section.content.definitions);
+		} else if (section.content.kind === "english-senses") {
+			for (const group of section.content.groups) {
+				for (const sense of group.senses) {
+					Object.freeze(sense.examples);
+					Object.freeze(sense.synonyms);
+					Object.freeze(sense);
+				}
+				Object.freeze(group.senses);
+				Object.freeze(group);
+			}
+			Object.freeze(section.content.groups);
 		} else if (section.content.kind === "list") {
 			Object.freeze(section.content.items);
 		}

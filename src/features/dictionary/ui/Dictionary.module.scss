@@ -129,95 +129,68 @@
 }
 
 .savedList {
-	@include fc-hide-scrollbar;
 	display: flex;
-	flex-wrap: nowrap;
 	align-items: center;
 	gap: var(--fc-space-2);
-	overflow-x: auto;
-	overscroll-behavior-x: contain;
-	padding: var(--fc-space-1) 0;
-	mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
-	-webkit-mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
 
 	strong {
 		flex: 0 0 auto;
-		color: var(--fc-faint);
+		color: var(--fc-muted);
 		font-size: var(--fc-font-xs);
 		font-weight: var(--fc-weight-medium);
 	}
 
-	.savedItem {
-		@include fc-button-reset;
-		display: inline-flex;
+	> button {
 		flex: 0 0 auto;
-		align-items: center;
-		gap: var(--fc-space-1);
-		min-height: 32px;
-		padding: var(--fc-space-1) var(--fc-space-2) var(--fc-space-1) var(--fc-space-3);
-		border: 1px solid var(--fc-line-soft);
-		border-radius: var(--fc-radius-pill);
-		color: var(--fc-text);
-		font-size: var(--fc-font-sm);
-		line-height: var(--fc-line-body);
-		transition:
-			border-color 0.15s ease,
-			color 0.15s ease,
-			background-color 0.15s ease;
+	}
+}
 
-		&:hover {
-			border-color: var(--fc-cyan);
-			color: var(--fc-cyan);
-			background: color-mix(in srgb, var(--fc-cyan) 6%, transparent);
-		}
+.recentWords {
+	@include fc-hide-scrollbar;
+	display: flex;
+	gap: var(--fc-space-1);
+	min-width: 0;
+	overflow-x: auto;
+	overscroll-behavior-x: contain;
 
-		&:focus-visible {
-			@include fc-focus-ring;
-		}
+	button {
+		display: block;
+		flex: 0 0 auto;
+		max-inline-size: 12rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+}
+
+.historyList {
+	@include fc-scrollbar;
+	max-block-size: 8rem;
+	overflow-y: auto;
+	overscroll-behavior-y: contain;
+	margin: var(--fc-space-1) 0 0;
+	padding: var(--fc-space-1);
+	border: 1px solid var(--fc-line-soft);
+	border-radius: var(--fc-radius-sm);
+	list-style: none;
+}
+
+.historyItem {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--fc-space-1);
+
+	> button:first-child {
+		display: block;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
-	.savedItemWord {
-		cursor: pointer;
-	}
-
-	.savedRemove {
-		@include fc-button-reset;
-		position: relative;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 20px;
-		height: 20px;
-		margin-left: 2px;
-		border-radius: var(--fc-radius-pill);
-		color: var(--fc-muted);
-		opacity: 0.8;
-		cursor: pointer;
-		transition:
-			opacity var(--fc-motion-quick) ease,
-			color var(--fc-motion-quick) ease,
-			background-color var(--fc-motion-quick) ease;
-
-		&::before {
-			content: "";
-			position: absolute;
-			top: 50%;
-			left: 50%;
-			transform: translate(-50%, -50%);
-			min-width: 36px;
-			min-height: 36px;
-		}
-
-		&:hover {
-			opacity: 1;
-			color: var(--fc-danger);
-			background: color-mix(in srgb, var(--fc-danger) 15%, transparent);
-		}
-
-		&:focus-visible {
-			@include fc-focus-ring;
-			opacity: 1;
-		}
+	> button:last-child {
+		flex: 0 0 auto;
 	}
 }
 
@@ -239,17 +212,9 @@
 
 /* Source tabs */
 
-.tabsHeader {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--fc-space-2);
-	min-width: 0;
-}
-
 .tabs {
 	display: flex;
-	flex: 1 1 auto;
+	flex: 0 0 auto;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--fc-space-1);
@@ -261,21 +226,6 @@
 	background: var(--fc-surface-section);
 
 	@include fc-scrollbar;
-}
-
-.tabActions {
-	display: inline-flex;
-	flex: 0 0 auto;
-	align-items: center;
-	gap: var(--fc-space-1);
-	padding: var(--fc-space-half);
-	border: 1px solid var(--fc-line);
-	border-radius: var(--fc-radius-sm);
-	background: var(--fc-surface-section);
-
-	.isCopied {
-		color: var(--fc-lime, #10b981) !important;
-	}
 }
 
 /* Outrank theme button rules so source tabs keep their quiet navigation surface. */
@@ -383,6 +333,38 @@
 	display: none;
 }
 
+.entryHeader {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--fc-space-3);
+	min-width: 0;
+
+	h2 {
+		min-width: 0;
+		margin: 0;
+		color: var(--fc-text);
+		font-size: var(--fc-font-2xl);
+		line-height: var(--fc-line-body);
+		overflow-wrap: anywhere;
+	}
+}
+
+.source:not([data-source-kind="youdao"], [data-source-kind="ai"]) .entryHeader {
+	padding: var(--fc-space-4) var(--fc-space-6) 0;
+}
+
+.entryActions {
+	display: flex;
+	flex: 0 0 auto;
+	gap: var(--fc-space-1);
+
+	.isCopied {
+		color: var(--fc-lime, #10b981) !important;
+	}
+}
+
 .aiAction {
 	display: flex;
 	flex-direction: column;
@@ -472,6 +454,12 @@
 	background: var(--fc-surface-card);
 }
 
+.sandbox.documentViewport {
+	flex-basis: 0;
+	height: auto;
+	min-height: 0;
+}
+
 .list {
 	display: flex;
 	flex-direction: column;
@@ -486,6 +474,50 @@
 	li {
 		min-width: 0;
 		overflow-wrap: anywhere;
+	}
+}
+
+.englishSenses {
+	display: grid;
+	gap: var(--fc-space-4);
+	max-inline-size: 72ch;
+	color: var(--fc-text);
+	line-height: var(--fc-line-body);
+	overflow-wrap: anywhere;
+
+	h3 {
+		margin: 0 0 var(--fc-space-1);
+		color: var(--fc-muted);
+		font-size: var(--fc-font-sm);
+	}
+
+	ol {
+		display: grid;
+		gap: var(--fc-space-3);
+		margin: 0;
+		padding-inline-start: var(--fc-space-5);
+	}
+
+	li::marker {
+		color: var(--fc-muted);
+	}
+
+	p,
+	dd {
+		margin: 0;
+	}
+
+	dl {
+		display: grid;
+		gap: var(--fc-space-1);
+		margin: var(--fc-space-1) 0 0;
+		color: var(--fc-muted);
+		font-size: var(--fc-font-sm);
+	}
+
+	dt {
+		font-size: var(--fc-font-xs);
+		font-weight: var(--fc-weight-semibold);
 	}
 }
 
@@ -655,13 +687,24 @@
 	min-width: 0;
 }
 
+.detailNavigation {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--fc-space-2);
+	border-bottom: 1px solid var(--fc-line-soft);
+	margin-bottom: var(--fc-space-3);
+
+	> button {
+		flex: 0 0 auto;
+	}
+}
+
 .detailTabs {
-	flex: 0 0 auto;
+	flex: 0 1 auto;
+	min-width: 0;
 	display: flex;
 	flex-wrap: wrap;
 	gap: var(--fc-space-1);
-	border-bottom: 1px solid var(--fc-line-soft);
-	margin-bottom: var(--fc-space-3);
 
 	button {
 		position: relative;
@@ -778,6 +821,11 @@
 	:global(.modal-content) {
 		min-height: 0;
 		overflow-y: auto;
+	}
+	:global(.setting-item-control) input[type="text"]:focus {
+		border-color: var(--interactive-accent);
+		outline: none;
+		box-shadow: none;
 	}
 }
 

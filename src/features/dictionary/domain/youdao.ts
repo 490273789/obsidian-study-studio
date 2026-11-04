@@ -13,6 +13,7 @@ import {
 	type DictionaryQuery,
 	type DictionaryResult,
 	type DictionarySection,
+	type DictionarySenseGroup,
 	type DictionarySource,
 	type Pronunciation,
 } from "./types";
@@ -172,6 +173,44 @@ function detailSection(title: string, value: unknown): DictionarySection | null 
 		: null;
 }
 
+function englishSenseGroups(value: unknown): DictionarySenseGroup[] {
+	const entries = firstRecord(value).trs;
+	if (!Array.isArray(entries)) return [];
+	const groups: DictionarySenseGroup[] = [];
+	let remaining = MAX_ITEMS_PER_SECTION;
+	for (const entry of entries) {
+		if (!isRecord(entry) || !Array.isArray(entry.tr) || entry.tr.length === 0) return [];
+		const partOfSpeech = readString(entry, "pos");
+		if (!partOfSpeech) return [];
+		const senses: DictionarySenseGroup["senses"] = [];
+		for (const item of entry.tr.slice(0, remaining)) {
+			if (!isRecord(item)) return [];
+			const definition = readString(firstRecord(item.l), "i");
+			if (!definition) return [];
+			const synonyms = collectStrings(item["similar-words"]);
+			const examples = collectStrings(item.exam);
+			senses.push({ definition, examples, synonyms });
+		}
+		groups.push({ partOfSpeech, senses });
+		remaining -= senses.length;
+		if (remaining === 0) break;
+	}
+	return groups;
+}
+
+function englishDefinitionsSection(value: unknown): DictionarySection | null {
+	const title = dictionaryText().sections.englishDefinitions;
+	const groups = englishSenseGroups(value);
+	if (groups.length > 0) {
+		return { content: { groups, kind: "english-senses" }, presentation: "tab", title };
+	}
+	const word = firstRecord(value);
+	const items = collectDetailStrings(word.trs ?? value);
+	return items.length > 0
+		? { content: { items, kind: "list", ordered: false }, presentation: "tab", title }
+		: null;
+}
+
 function audioUrl(word: string, accent: "uk" | "us"): string {
 	const type = accent === "uk" ? "1" : "2";
 	return `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(word)}&type=${type}`;
@@ -218,7 +257,7 @@ export function parseYoudaoFreeResponse(value: unknown, query: string): Dictiona
 	);
 	const sections = uniqueSections([
 		section(dictionaryText().sections.definitions, dictWord.trs),
-		detailSection(dictionaryText().sections.englishDefinitions, firstRecord(value.ee).word),
+		englishDefinitionsSection(firstRecord(value.ee).word),
 		detailSection(dictionaryText().sections.wordForms, ecWord.wfs),
 		section(dictionaryText().sections.etymology, firstRecord(value.etym).etym),
 		section(

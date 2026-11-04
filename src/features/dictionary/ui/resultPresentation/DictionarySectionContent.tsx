@@ -162,12 +162,51 @@ export const DictionarySectionContent = memo(function DictionarySectionContent({
 	strings: DictionaryStrings;
 }) {
 	if (content.kind === "list") {
+		const List = content.ordered === false ? "ul" : "ol";
 		return (
-			<ol className={cls("flashcard-dictionary-list", styles.list)}>
+			<List className={cls("flashcard-dictionary-list", styles.list)}>
 				{content.items.map((item, index) => (
 					<li key={`${index}-${item}`}>{item}</li>
 				))}
-			</ol>
+			</List>
+		);
+	}
+	if (content.kind === "english-senses") {
+		return (
+			<div className={styles.englishSenses}>
+				{content.groups.map(({ partOfSpeech, senses }, groupIndex) => (
+					<div key={`${partOfSpeech}-${groupIndex}`}>
+						<h3 lang="en">{partOfSpeech}</h3>
+						<ol>
+							{senses.map(({ definition, examples, synonyms }, index) => (
+								<li key={`${definition}-${index}`}>
+									<p lang="en">{definition}</p>
+									{(examples.length > 0 || synonyms.length > 0) && (
+										<dl>
+											{examples.length > 0 && (
+												<div>
+													<dt>{strings.sections.examples}</dt>
+													{examples.map((example) => (
+														<dd key={example} lang="en">
+															{highlightedSentence(example, word)}
+														</dd>
+													))}
+												</div>
+											)}
+											{synonyms.length > 0 && (
+												<div>
+													<dt>{strings.sections.synonyms}</dt>
+													<dd lang="en">{synonyms.join(", ")}</dd>
+												</div>
+											)}
+										</dl>
+									)}
+								</li>
+							))}
+						</ol>
+					</div>
+				))}
+			</div>
 		);
 	}
 	if (content.kind === "ai-definitions") {

@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore }
 import {
 	Bookmark,
 	Check,
+	ChevronDown,
+	ChevronUp,
 	Copy,
 	ListPlus,
 	Play,
@@ -22,6 +24,7 @@ import {
 import type { Language } from "../../../core/shared/types";
 import { FlashcardButton } from "../../../core/ui/primitives/Button";
 import { FlashcardInput } from "../../../core/ui/primitives/Input";
+import { FlashcardMenu } from "../../../core/ui/primitives/Menu";
 import { canPlayDictionaryAudio } from "./audio";
 import { cls } from "../../../core/shared/classNames";
 import styles from "./Dictionary.module.scss";
@@ -37,6 +40,14 @@ export interface DictionaryViewProps {
 	/** Obsidian theme, seeded before the sandbox document loads. */
 	theme: "dark" | "light";
 }
+
+const RECENT_HISTORY_COUNT = 3;
+const dictionarySectionTitles = dictionaryStrings("zh").sections;
+const primaryDetailTitles = [
+	dictionarySectionTitles.englishDefinitions,
+	dictionarySectionTitles.wordForms,
+	dictionarySectionTitles.phrases,
+];
 
 function sourceTabId(sourceId: string): string {
 	return `dictionary-source-tab-${sourceId}`;
@@ -99,7 +110,10 @@ export function DictionaryView({
 	const getSnapshot = useCallback(() => query.getSnapshot(), [query]);
 	const state = useSyncExternalStore(subscribe, getSnapshot);
 	const strings = dictionaryStrings(language);
-	const [copied, setCopied] = useState(false);
+	const [copiedWord, setCopiedWord] = useState<string | null>(null);
+	const [historyExpanded, setHistoryExpanded] = useState(false);
+	const [expandedDetailSourceId, setExpandedDetailSourceId] = useState<string | null>(null);
+	const historyToggleRef = useRef<HTMLButtonElement | null>(null);
 	const copyTimeoutRef = useRef<number | null>(null);
 	const sourceTablistRef = useRef<HTMLDivElement | null>(null);
 
@@ -115,16 +129,15 @@ export function DictionaryView({
 		};
 	}, []);
 
-	const copyQuery = async (): Promise<void> => {
-		if (!state.query) return;
+	const copyWord = async (word: string): Promise<void> => {
 		try {
-			await navigator.clipboard.writeText(state.query);
-			setCopied(true);
+			await navigator.clipboard.writeText(word);
+			setCopiedWord(word);
 			if (copyTimeoutRef.current !== null) {
 				window.clearTimeout(copyTimeoutRef.current);
 			}
 			copyTimeoutRef.current = window.setTimeout(() => {
-				setCopied(false);
+				setCopiedWord(null);
 			}, 1500);
 		} catch {
 			// Clipboard write failure ignored
@@ -133,7 +146,7 @@ export function DictionaryView({
 
 	const lookupWord = useCallback(
 		(word: string): void => {
-			setCopied(false);
+			setCopiedWord(null);
 			void query.send({ type: "lookup", query: word });
 		},
 		[query],
@@ -203,8 +216,8 @@ export function DictionaryView({
 										preset="icon"
 										size="sm"
 										icon={X}
-										title={strings.clear}
-										aria-label={strings.clear}
+										title={strings.clearInput}
+										aria-label={strings.clearInput}
 										onClick={() => {
 											void query.send({ type: "change-input", value: "" });
 										}}
@@ -223,30 +236,31 @@ export function DictionaryView({
 						</form>
 					</search>
 					<div className={cls("flashcard-dictionary-toolbar", styles.toolbar)}>
-						<FlashcardButton
-							type="button"
-							preset="icon"
-							icon={ListPlus}
-							title={strings.favoriteBatchOpen}
-							aria-label={strings.favoriteBatchOpen}
-							onClick={onOpenBatchFavorite}
-						/>
-						<FlashcardButton
-							preset="icon"
-							icon={Settings2}
-							title={strings.openSettings}
-							aria-label={strings.openSettings}
-							onClick={onOpenSettings}
-						/>
-						<FlashcardButton
-							preset="icon"
-							icon={Trash2}
-							title={strings.clear}
-							aria-label={strings.clear}
-							disabled={!state.input && !state.query}
-							onClick={() => {
-								void query.send({ type: "clear" });
-							}}
+						<FlashcardMenu
+							triggerTitle={strings.dictionaryActions}
+							ariaLabel={strings.dictionaryActions}
+							presentation="floating"
+							items={[
+								{
+									key: "batch-favorite",
+									icon: ListPlus,
+									label: strings.favoriteBatchOpen,
+									onSelect: onOpenBatchFavorite,
+								},
+								{
+									key: "settings",
+									icon: Settings2,
+									label: strings.openSettings,
+									onSelect: onOpenSettings,
+								},
+								{
+									key: "clear-query",
+									icon: Trash2,
+									label: strings.clearQueryAndResults,
+									disabled: !state.input && !state.query,
+									onSelect: () => void query.send({ type: "clear" }),
+								},
+							]}
 						/>
 					</div>
 				</div>
@@ -254,42 +268,79 @@ export function DictionaryView({
 				{state.history.length > 0 && (
 					<section className="flashcard-dictionary-saved" aria-label={strings.history}>
 						<div className={cls("flashcard-dictionary-saved-list", styles.savedList)}>
-							<strong className="flashcard-dictionary-saved-label">
-								{strings.history}
-							</strong>
-							{state.history.slice(0, 12).map((word) => (
-								<div
-									key={`history-${word}`}
-									className={cls(
-										"flashcard-dictionary-saved-item",
-										styles.savedItem,
-									)}
-								>
-									<button
-										type="button"
-										className={styles.savedItemWord}
+							<strong>{strings.history}</strong>
+							<div className={styles.recentWords}>
+								{state.history.slice(0, RECENT_HISTORY_COUNT).map((word) => (
+									<FlashcardButton
+										key={word}
+										size="sm"
+										variant="ghost"
+										title={word}
 										onClick={() => lookupWord(word)}
 									>
 										{word}
-									</button>
-									<button
-										type="button"
-										className={cls(
-											"flashcard-dictionary-saved-remove",
-											styles.savedRemove,
-										)}
-										title={strings.removeHistoryItem(word)}
-										aria-label={strings.removeHistoryItem(word)}
-										onClick={(event) => {
-											event.stopPropagation();
-											void query.send({ type: "remove-history", word });
-										}}
-									>
-										<X size={12} aria-hidden="true" />
-									</button>
-								</div>
-							))}
+									</FlashcardButton>
+								))}
+							</div>
+							<FlashcardButton
+								ref={historyToggleRef}
+								variant="ghost"
+								size="sm"
+								icon={historyExpanded ? ChevronUp : ChevronDown}
+								aria-expanded={historyExpanded}
+								aria-controls="dictionary-history"
+								onClick={() => setHistoryExpanded(!historyExpanded)}
+							>
+								{historyExpanded
+									? strings.collapseHistory
+									: state.history.length > RECENT_HISTORY_COUNT
+										? strings.moreHistory
+										: strings.manageHistory}
+							</FlashcardButton>
 						</div>
+						<ul
+							id="dictionary-history"
+							className={styles.historyList}
+							hidden={!historyExpanded}
+						>
+							{historyExpanded &&
+								state.history.map((word) => (
+									<li key={word} className={styles.historyItem}>
+										<FlashcardButton
+											size="sm"
+											variant="ghost"
+											onClick={() => {
+												setHistoryExpanded(false);
+												historyToggleRef.current?.focus();
+												lookupWord(word);
+											}}
+										>
+											{word}
+										</FlashcardButton>
+										<FlashcardButton
+											preset="icon"
+											size="sm"
+											icon={X}
+											title={strings.removeHistoryItem(word)}
+											aria-label={strings.removeHistoryItem(word)}
+											onClick={(event) => {
+												if (state.history.length === 1) {
+													setHistoryExpanded(false);
+													event.currentTarget
+														.closest("main")
+														?.querySelector<HTMLInputElement>(
+															"#dictionary-query",
+														)
+														?.focus();
+												} else {
+													historyToggleRef.current?.focus();
+												}
+												void query.send({ type: "remove-history", word });
+											}}
+										/>
+									</li>
+								))}
+						</ul>
 					</section>
 				)}
 			</div>
@@ -305,92 +356,68 @@ export function DictionaryView({
 			) : null}
 
 			{state.sources.length > 0 && (
-				<div className={cls("flashcard-dictionary-tabs-header", styles.tabsHeader)}>
-					<div
-						ref={sourceTablistRef}
-						className={cls("flashcard-dictionary-tabs", styles.tabs)}
-						role="tablist"
-						aria-label={strings.sourceMenu}
-					>
-						{state.sources.map((source, sourceIndex) => {
-							const selected = state.activeSourceId === source.id;
-							return (
-								<button
-									key={source.id}
-									id={sourceTabId(source.id)}
-									type="button"
-									role="tab"
+				<div
+					ref={sourceTablistRef}
+					className={cls("flashcard-dictionary-tabs", styles.tabs)}
+					role="tablist"
+					aria-label={strings.sourceMenu}
+				>
+					{state.sources.map((source, sourceIndex) => {
+						const selected = state.activeSourceId === source.id;
+						return (
+							<button
+								key={source.id}
+								id={sourceTabId(source.id)}
+								type="button"
+								role="tab"
+								className={cls(
+									"flashcard-dictionary-tab",
+									`is-${source.status}`,
+									styles.tab,
+									selected && ["is-active", styles.isActive],
+									source.status === "loading" && styles.isLoading,
+									source.status === "success" && styles.isSuccess,
+									source.status === "empty" && styles.isEmpty,
+									source.status === "error" && styles.isError,
+								)}
+								aria-controls={sourcePanelId(source.id)}
+								aria-label={`${source.label} · ${sourceStatusLabel(source, strings)}`}
+								aria-selected={selected}
+								tabIndex={selected ? 0 : -1}
+								onClick={() =>
+									void query.send({
+										type: "select-source",
+										sourceId: source.id,
+									})
+								}
+								onKeyDown={(event) =>
+									moveTabFocus(
+										event,
+										sourceTablistRef.current,
+										sourceIndex,
+										state.sources.length,
+										(nextIndex) => {
+											const next = state.sources[nextIndex];
+											if (next)
+												void query.send({
+													type: "select-source",
+													sourceId: next.id,
+												});
+										},
+									)
+								}
+							>
+								<span
 									className={cls(
-										"flashcard-dictionary-tab",
-										`is-${source.status}`,
-										styles.tab,
-										selected && ["is-active", styles.isActive],
-										source.status === "loading" && styles.isLoading,
-										source.status === "success" && styles.isSuccess,
-										source.status === "empty" && styles.isEmpty,
-										source.status === "error" && styles.isError,
+										"flashcard-dictionary-tab-status",
+										styles.tabStatus,
 									)}
-									aria-controls={sourcePanelId(source.id)}
-									aria-label={`${source.label} · ${sourceStatusLabel(source, strings)}`}
-									aria-selected={selected}
-									tabIndex={selected ? 0 : -1}
-									onClick={() =>
-										void query.send({
-											type: "select-source",
-											sourceId: source.id,
-										})
-									}
-									onKeyDown={(event) =>
-										moveTabFocus(
-											event,
-											sourceTablistRef.current,
-											sourceIndex,
-											state.sources.length,
-											(nextIndex) => {
-												const next = state.sources[nextIndex];
-												if (next)
-													void query.send({
-														type: "select-source",
-														sourceId: next.id,
-													});
-											},
-										)
-									}
-								>
-									<span
-										className={cls(
-											"flashcard-dictionary-tab-status",
-											styles.tabStatus,
-										)}
-										aria-hidden="true"
-									/>
-									<span>{source.label}</span>
-								</button>
-							);
-						})}
-					</div>
-
-					{state.query && (
-						<div className={cls("flashcard-dictionary-tab-actions", styles.tabActions)}>
-							<FlashcardButton
-								preset="icon"
-								size="sm"
-								icon={Bookmark}
-								title={strings.favoriteAction}
-								aria-label={strings.favoriteAction}
-								onClick={() => void onOpenFavorite(state.query)}
-							/>
-							<FlashcardButton
-								preset="icon"
-								size="sm"
-								icon={copied ? Check : Copy}
-								title={copied ? strings.copied : strings.copyWord}
-								aria-label={copied ? strings.copied : strings.copyWord}
-								className={copied ? styles.isCopied : undefined}
-								onClick={() => void copyQuery()}
-							/>
-						</div>
-					)}
+									aria-hidden="true"
+								/>
+								<span>{source.label}</span>
+							</button>
+						);
+					})}
 				</div>
 			)}
 
@@ -401,6 +428,22 @@ export function DictionaryView({
 				{state.sources.map((source) => {
 					const selected = state.activeSourceId === source.id;
 					const sections = getTabSections(source.result?.sections ?? []);
+					const preferredSections = sections
+						.filter(({ section }) => primaryDetailTitles.includes(section.title))
+						.slice(0, 3);
+					const primarySections =
+						preferredSections.length > 0 ? preferredSections : sections.slice(0, 3);
+					const hasMoreDetails = sections.length > 3;
+					const detailsExpanded = expandedDetailSourceId === source.id;
+					const visibleSections =
+						hasMoreDetails && !detailsExpanded
+							? sections.filter(
+									(item) =>
+										primarySections.includes(item) ||
+										item.index === source.activeSectionIndex,
+								)
+							: sections;
+
 					const result = source.result;
 					const word = result?.word || queryWord;
 					return (
@@ -420,6 +463,42 @@ export function DictionaryView({
 									styles.sourceBody,
 								)}
 							>
+								{word && (
+									<header className={styles.entryHeader}>
+										<h2 dir="auto">{word}</h2>
+										<div className={styles.entryActions}>
+											<FlashcardButton
+												preset="icon"
+												size="sm"
+												icon={Bookmark}
+												title={strings.favoriteAction}
+												aria-label={strings.favoriteAction}
+												onClick={() => void onOpenFavorite(word)}
+											/>
+											<FlashcardButton
+												preset="icon"
+												size="sm"
+												icon={copiedWord === word ? Check : Copy}
+												title={
+													copiedWord === word
+														? strings.copied
+														: strings.copyWord
+												}
+												aria-label={
+													copiedWord === word
+														? strings.copied
+														: strings.copyWord
+												}
+												className={
+													copiedWord === word
+														? styles.isCopied
+														: undefined
+												}
+												onClick={() => void copyWord(word)}
+											/>
+										</div>
+									</header>
+								)}
 								{source.kind === "ai" && source.status === "idle" ? (
 									<div
 										className={cls(
@@ -530,6 +609,11 @@ export function DictionaryView({
 
 										{result.sections.map((section, sectionIndex) => {
 											if (section.presentation !== "stack") return null;
+											const scrollInFrame =
+												source.kind === "local" &&
+												result.sections.length === 1 &&
+												result.suggestions.length === 0 &&
+												section.content.kind === "document";
 											return (
 												<section
 													key={`${source.id}-${section.title}-${sectionIndex}`}
@@ -552,7 +636,12 @@ export function DictionaryView({
 														title={`${source.label} · ${section.title}`}
 														onLookup={lookupWord}
 														strings={strings}
-														fitContent={true}
+														fitContent={!scrollInFrame}
+														className={
+															scrollInFrame
+																? styles.documentViewport
+																: undefined
+														}
 													/>
 												</section>
 											);
@@ -565,72 +654,104 @@ export function DictionaryView({
 													styles.details,
 												)}
 											>
-												<div
-													className={cls(
-														"flashcard-dictionary-detail-tabs",
-														styles.detailTabs,
+												<div className={styles.detailNavigation}>
+													<div
+														id={`dictionary-detail-tabs-${source.id}`}
+														className={cls(
+															"flashcard-dictionary-detail-tabs",
+															styles.detailTabs,
+														)}
+														role="tablist"
+														aria-label={`${source.label} · ${strings.details}`}
+													>
+														{visibleSections.map((item, tabIndex) => {
+															const active =
+																source.activeSectionIndex ===
+																item.index;
+															return (
+																<button
+																	key={`${source.id}-${item.index}`}
+																	id={sectionTabId(
+																		source.id,
+																		item.index,
+																	)}
+																	type="button"
+																	role="tab"
+																	className={cls(
+																		active && [
+																			"is-active",
+																			styles.isActive,
+																		],
+																	)}
+																	aria-controls={sectionPanelId(
+																		source.id,
+																		item.index,
+																	)}
+																	aria-selected={active}
+																	tabIndex={active ? 0 : -1}
+																	onClick={() =>
+																		void query.send({
+																			type: "select-section",
+																			sourceId: source.id,
+																			sectionIndex:
+																				item.index,
+																		})
+																	}
+																	onKeyDown={(event) =>
+																		moveTabFocus(
+																			event,
+																			event.currentTarget
+																				.parentElement,
+																			tabIndex,
+																			visibleSections.length,
+																			(nextIndex) => {
+																				const next =
+																					visibleSections[
+																						nextIndex
+																					];
+																				if (next)
+																					void query.send(
+																						{
+																							type: "select-section",
+																							sourceId:
+																								source.id,
+																							sectionIndex:
+																								next.index,
+																						},
+																					);
+																			},
+																		)
+																	}
+																>
+																	{item.section.title}
+																</button>
+															);
+														})}
+													</div>
+													{hasMoreDetails && (
+														<FlashcardButton
+															size="sm"
+															variant="ghost"
+															icon={
+																detailsExpanded
+																	? ChevronUp
+																	: ChevronDown
+															}
+															aria-expanded={detailsExpanded}
+															aria-controls={`dictionary-detail-tabs-${source.id}`}
+															onClick={() =>
+																setExpandedDetailSourceId(
+																	detailsExpanded
+																		? null
+																		: source.id,
+																)
+															}
+														>
+															{detailsExpanded
+																? strings.collapseDetails
+																: strings.moreDetails}
+														</FlashcardButton>
 													)}
-													role="tablist"
-													aria-label={`${source.label} · ${strings.details}`}
-												>
-													{sections.map((item, tabIndex) => {
-														const active =
-															source.activeSectionIndex ===
-															item.index;
-														return (
-															<button
-																key={`${source.id}-${item.index}`}
-																id={sectionTabId(
-																	source.id,
-																	item.index,
-																)}
-																type="button"
-																role="tab"
-																className={cls(
-																	active && [
-																		"is-active",
-																		styles.isActive,
-																	],
-																)}
-																aria-controls={sectionPanelId(
-																	source.id,
-																	item.index,
-																)}
-																aria-selected={active}
-																tabIndex={active ? 0 : -1}
-																onClick={() =>
-																	void query.send({
-																		type: "select-section",
-																		sourceId: source.id,
-																		sectionIndex: item.index,
-																	})
-																}
-																onKeyDown={(event) =>
-																	moveTabFocus(
-																		event,
-																		event.currentTarget
-																			.parentElement,
-																		tabIndex,
-																		sections.length,
-																		(nextIndex) => {
-																			const next =
-																				sections[nextIndex];
-																			if (next)
-																				void query.send({
-																					type: "select-section",
-																					sourceId:
-																						source.id,
-																					sectionIndex:
-																						next.index,
-																				});
-																		},
-																	)
-																}
-															>
-																{item.section.title}
-															</button>
-														);
-													})}
 												</div>
 												{sections.map((item) =>
 													source.activeSectionIndex === item.index ? (
