@@ -1,4 +1,4 @@
-import { Notice } from "obsidian";
+import { MarkdownView, Notice } from "obsidian";
 import { Languages } from "lucide-react";
 import type { AiService } from "../../core/ai";
 import type { OutboundPort } from "../../core/net";
@@ -175,6 +175,17 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 							language={language}
 							focusController={focusController}
 							onOpenSettings={() => host.settingsTab.open(TRANSLATION_SECTION_ID)}
+							onInsertNote={async (text, sourceText) => {
+								const activeView =
+									host.app.workspace.getActiveViewOfType(MarkdownView);
+								if (!activeView?.editor) {
+									return false;
+								}
+								const callout = `> [!quote] 翻译\n> ${sourceText.split("\n").join("\n> ")}\n>\n> ${text.split("\n").join("\n> ")}\n\n`;
+								activeView.editor.replaceSelection(callout);
+								new Notice(translationStrings(language).insertedNotice);
+								return true;
+							}}
 						/>
 					),
 				}),

@@ -33,6 +33,13 @@ const zh = {
 	completedProfiles: "已完成 {count} 个方案。",
 	partialProfiles: "已完成 {success}/{total} 个方案，{failed} 个失败。",
 	failedProfiles: "所有翻译方案都失败了。",
+	compareAll: "并排对比",
+	makeCard: "制为闪卡",
+	insertNote: "插入笔记",
+	insertedNotice: "已插入至当前笔记",
+	noActiveNote: "未检测到可编辑的 Markdown 笔记，已复制到剪贴板",
+	cardCopied: "已复制闪卡格式至剪贴板",
+	retry: "重试",
 };
 
 const en: typeof zh = {
@@ -68,6 +75,13 @@ const en: typeof zh = {
 	completedProfiles: "Completed {count} profiles.",
 	partialProfiles: "Completed {success}/{total} profiles; {failed} failed.",
 	failedProfiles: "All translation profiles failed.",
+	compareAll: "Compare all",
+	makeCard: "Make card",
+	insertNote: "Insert to note",
+	insertedNotice: "Inserted into active note",
+	noActiveNote: "No active Markdown note; copied to clipboard instead",
+	cardCopied: "Flashcard copied to clipboard",
+	retry: "Retry",
 };
 
 export function translationStrings(language: Language): typeof zh {

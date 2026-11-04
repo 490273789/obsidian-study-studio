@@ -1,8 +1,7 @@
 @use "../../../core/styles/mixins.scss" as *;
 
 /*
- * Page shell, panel surface, and their header/footer semantics live in
- * core/styles/layout.scss; only translator-specific rules stay here.
+ * Page shell, panel surface, and layout rules for the AI translation workbench.
  */
 
 .page {
@@ -23,13 +22,14 @@
 	align-items: center;
 	gap: var(--fc-space-2);
 	padding: var(--fc-space-1);
-	border: 1px solid color-mix(in srgb, var(--fc-cyan) 35%, transparent);
+	border: 1px solid var(--fc-line-soft);
 	border-radius: var(--fc-radius-sm);
 	background: var(--fc-surface-section);
 	text-align: center;
 
 	strong {
 		min-width: 3em;
+		font-weight: var(--fc-weight-semibold);
 	}
 }
 
@@ -48,46 +48,41 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: var(--fc-space-3);
-	padding: var(--fc-space-3);
-	border: 1px solid var(--fc-line);
-	border-left: 3px solid var(--fc-orange);
-	border-radius: var(--fc-radius-sm);
-	background: var(--fc-surface-section);
-	color: var(--fc-muted);
+	padding: var(--fc-space-3) var(--fc-space-4);
+	border: 1px solid var(--fc-line-soft);
+	border-radius: var(--fc-radius-md);
+	background: color-mix(in srgb, var(--fc-orange) 8%, var(--fc-surface-section));
+	color: var(--fc-normal);
 }
 
 .workspace {
 	display: grid;
-	min-height: 410px;
-	flex: 1 1 410px;
-	grid-template-columns: repeat(2, minmax(280px, 1fr));
-	gap: var(--fc-space-3);
+	min-height: 440px;
+	flex: 1 1 auto;
+	grid-template-columns: minmax(300px, 42%) minmax(360px, 58%);
+	gap: var(--fc-space-4);
 }
 
-.results {
-	display: grid;
-	min-width: 0;
+.inputPanel {
+	display: flex;
+	flex-direction: column;
 	min-height: 0;
-	grid-auto-rows: minmax(0, 1fr);
-	gap: var(--fc-space-3);
-}
-
-.panel {
-	display: grid;
-	grid-template-rows: auto minmax(0, 1fr) auto;
-	border: 1px solid color-mix(in srgb, var(--fc-cyan) 35%, transparent) !important;
-	box-shadow: var(--fc-shadow-sm) !important;
-
-	&:focus-within {
-		border-color: color-mix(in srgb, var(--fc-cyan) 55%, transparent) !important;
-	}
+	height: 100%;
+	border: 1px solid var(--fc-line-soft);
+	border-radius: var(--fc-radius-md);
+	background: var(--fc-surface-card);
+	box-shadow: var(--fc-shadow-xs);
 
 	> header {
-		border-bottom-color: color-mix(in srgb, var(--fc-cyan) 35%, transparent);
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: var(--fc-space-2) var(--fc-space-3);
+		border-bottom: 1px solid var(--fc-line-soft);
 
-		label,
-		strong {
+		label {
 			font-weight: var(--fc-weight-semibold);
+			color: var(--fc-normal);
 		}
 
 		> span {
@@ -97,81 +92,194 @@
 	}
 
 	> :global(.flashcard-textarea) {
-		min-height: 0;
+		flex: 1 1 auto;
+		min-height: 220px;
 		height: 100%;
-		padding: var(--fc-space-4);
-		border-radius: 0 0 var(--fc-radius-md) var(--fc-radius-md);
-		background: var(--fc-input-bg);
+		padding: var(--fc-space-3) var(--fc-space-4);
+		background: transparent;
+		border: none;
 		line-height: var(--fc-line-body);
 		resize: none;
 	}
 
 	> footer {
-		align-items: flex-start;
-		border-top-color: color-mix(in srgb, var(--fc-cyan) 35%, transparent);
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: var(--fc-space-2) var(--fc-space-3);
+		border-top: 1px solid var(--fc-line-soft);
+		background: var(--fc-surface-section);
+		border-radius: 0 0 var(--fc-radius-md) var(--fc-radius-md);
+	}
+}
 
-		p {
-			margin: 0;
-		}
+.inputActions {
+	display: flex;
+	align-items: center;
+	gap: var(--fc-space-2);
+}
 
-		.isError {
-			color: var(--fc-danger);
-		}
+.shortcutHint {
+	color: var(--fc-faint);
+	font-size: var(--fc-font-xs);
+}
+
+.outputSection {
+	display: flex;
+	flex-direction: column;
+	gap: var(--fc-space-2);
+	min-height: 0;
+	height: 100%;
+}
+
+.segmentedHeader {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--fc-space-2);
+	min-height: 32px;
+}
+
+.segmented {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 2px;
+	border: 1px solid var(--fc-line-soft);
+	border-radius: var(--fc-radius-md);
+	background: var(--fc-surface-section);
+}
+
+.segmentButton {
+	padding: var(--fc-space-1) var(--fc-space-3);
+	border: none;
+	border-radius: var(--fc-radius-sm);
+	background: transparent;
+	color: var(--fc-muted);
+	font-size: var(--fc-font-xs);
+	font-weight: var(--fc-weight-medium);
+	cursor: pointer;
+	transition:
+		background 0.15s ease,
+		color 0.15s ease;
+
+	&:hover {
+		color: var(--fc-normal);
+		background: var(--fc-surface-hover);
+	}
+
+	&.active {
+		background: var(--fc-surface-card);
+		color: var(--fc-normal);
+		font-weight: var(--fc-weight-semibold);
+		box-shadow: var(--fc-shadow-xs);
+	}
+}
+
+.resultPanel {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	height: 100%;
+	border: 1px solid var(--fc-line-soft);
+	border-radius: var(--fc-radius-md);
+	background: var(--fc-surface-card);
+	box-shadow: var(--fc-shadow-xs);
+
+	> header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--fc-space-2);
+		padding: var(--fc-space-2) var(--fc-space-3);
+		border-bottom: 1px solid var(--fc-line-soft);
+	}
+
+	> :global(.flashcard-textarea) {
+		flex: 1 1 auto;
+		min-height: 180px;
+		height: 100%;
+		padding: var(--fc-space-3) var(--fc-space-4);
+		background: transparent;
+		border: none;
+		line-height: var(--fc-line-body);
+		resize: none;
+	}
+
+	> footer {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: var(--fc-space-2) var(--fc-space-3);
+		border-top: 1px solid var(--fc-line-soft);
+		background: var(--fc-surface-section);
+		border-radius: 0 0 var(--fc-radius-md) var(--fc-radius-md);
+		font-size: var(--fc-font-xs);
 	}
 }
 
 .resultTitle {
 	display: flex;
 	min-width: 0;
-	align-items: flex-end;
-	gap: var(--fc-space-1);
+	align-items: baseline;
+	gap: var(--fc-space-2);
 
-	strong,
+	strong {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-weight: var(--fc-weight-semibold);
+		color: var(--fc-normal);
+	}
+
 	span {
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-	}
-
-	span {
 		color: var(--fc-muted);
 		font-size: var(--fc-font-xs);
 	}
 }
 
-.usage {
-	margin-left: auto;
-	color: var(--fc-faint);
-}
-
-.footer {
-	display: flex;
-	align-items: flex-start;
-	justify-content: space-between;
-	gap: var(--fc-space-3);
-}
-
-.actions {
+.cardActions {
 	display: flex;
 	align-items: center;
-	justify-content: flex-start;
-	flex-wrap: wrap;
-	gap: var(--fc-space-3);
-
-	> span {
-		color: var(--fc-faint);
-		font-size: var(--fc-font-xs);
-	}
+	gap: var(--fc-space-1);
 }
 
-.status {
+.compareGrid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+	gap: var(--fc-space-3);
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	@include fc-scrollbar;
+}
+
+.usage {
+	color: var(--fc-faint);
+	font-size: var(--fc-font-xs);
+	margin-left: auto;
+}
+
+.statusMessage {
 	margin: 0;
+	font-size: var(--fc-font-xs);
 	color: var(--fc-muted);
-	font-size: var(--fc-font-sm);
 
 	&.isError {
 		color: var(--fc-danger);
 	}
+}
+
+.feedbackTag {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--fc-space-1);
+	font-size: var(--fc-font-xs);
+	color: var(--fc-green);
+	font-weight: var(--fc-weight-medium);
 }
 
 @mixin mobile-layout {
@@ -182,35 +290,19 @@
 		flex-direction: column;
 	}
 
-	.results {
-		display: flex;
-		flex-direction: column;
-	}
-
-	.panel {
-		display: flex;
-		flex-direction: column;
-
-		> :global(.flashcard-textarea) {
-			min-height: 160px;
-			overflow-y: auto;
-			@include fc-scrollbar;
-		}
-	}
-
-	/* Keep each translation readable without allowing a long response to take
-	   over the whole phone view. The textarea owns the vertical scroll. */
-	.results > .panel > :global(.flashcard-textarea) {
-		height: min(40vh, 280px);
+	.inputPanel > :global(.flashcard-textarea) {
 		min-height: 140px;
-		overflow-y: auto;
-		scrollbar-gutter: stable;
+		height: 180px;
 	}
 
-	.footer {
-		align-items: stretch;
+	.resultPanel > :global(.flashcard-textarea) {
+		min-height: 140px;
+		height: 200px;
+	}
+
+	.compareGrid {
+		display: flex;
 		flex-direction: column;
-		flex-shrink: 0;
 	}
 }
 
