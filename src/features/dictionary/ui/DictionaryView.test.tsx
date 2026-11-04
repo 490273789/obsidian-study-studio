@@ -176,4 +176,31 @@ describe("dictionary result presentation", () => {
 		expect(replacement.query.getSnapshot().query).toBe("linked word");
 		expect(query.getSnapshot().query).toBe("replacement");
 	});
+
+	it("provides accessible names for title action buttons and supports history item removal", async () => {
+		const { query, props } = await setup();
+		await query.send({ type: "lookup", query: "diagnose" });
+
+		const buttonLabels: string[] = [];
+		function visit(node: React.ReactNode): void {
+			React.Children.forEach(node, (child) => {
+				if (!React.isValidElement(child)) return;
+				const element = child as React.ReactElement<{
+					children?: React.ReactNode;
+					"aria-label"?: string;
+					title?: string;
+				}>;
+				if (element.props["aria-label"]) {
+					buttonLabels.push(element.props["aria-label"]);
+				}
+				visit(element.props.children);
+			});
+		}
+		visit(DictionaryView(props));
+
+		// WCAG 4.1.2: Bookmark and Copy buttons must provide accessible names
+		expect(buttonLabels).toContain("收藏单词");
+		expect(buttonLabels).toContain("复制单词");
+		expect(buttonLabels).toContain("从历史中移除“word”");
+	});
 });

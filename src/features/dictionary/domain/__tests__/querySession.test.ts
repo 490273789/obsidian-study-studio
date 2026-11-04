@@ -279,6 +279,28 @@ describe("dictionary query session", () => {
 		await session.send({ type: "clear" });
 		expect(session.getSnapshot()).toMatchObject({ query: "", sources: [], status: "idle" });
 	});
+
+	it("removes individual entries from search history case-insensitively", async () => {
+		const settings = dictionarySettings([]);
+		const session = createDictionaryQuerySession({
+			settings: settings.store,
+			notify: vi.fn(),
+			aiEngineInfo: () => ({ configId: null, name: null }),
+			resolveSource: (source) =>
+				dictionarySource(source.id, source.kind, source.label, async (word) =>
+					result(source.id, source.label, word),
+				),
+		});
+
+		await session.send({ type: "lookup", query: "diagnose" });
+		await session.send({ type: "lookup", query: "dignose" });
+		await session.send({ type: "lookup", query: "polish" });
+		expect(session.getSnapshot().history).toEqual(["polish", "dignose", "diagnose"]);
+
+		await session.send({ type: "remove-history", word: "DIGNOSE" });
+		expect(session.getSnapshot().history).toEqual(["polish", "diagnose"]);
+		expect(settings.current().history).toEqual(["polish", "diagnose"]);
+	});
 });
 
 function dictionarySettings(sources: DictionarySettings["sources"]): {

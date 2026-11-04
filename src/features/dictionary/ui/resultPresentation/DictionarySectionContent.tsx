@@ -1,4 +1,5 @@
 import React, { memo } from "react";
+import { Copy } from "lucide-react";
 import { cls } from "../../../../core/shared/classNames";
 import { SandboxDocumentFrame } from "../SandboxDocumentFrame";
 import type {
@@ -96,9 +97,35 @@ export function AiSense({ definition, number, word, strings }: AiSenseProps) {
 						<dt>{strings.sections.examples}</dt>
 						<dd className={cls("flashcard-dictionary-ai-examples", styles.aiExamples)}>
 							{definition.examples.map((example, index) => (
-								<div key={`${index}-${example.sentence}`}>
-									<p lang="en">{highlightedSentence(example.sentence, word)}</p>
-									<p lang="zh-CN">{example.translation}</p>
+								<div
+									key={`${index}-${example.sentence}`}
+									className={cls(
+										"flashcard-dictionary-ai-example-item",
+										styles.aiExampleItem,
+									)}
+								>
+									<div className={styles.aiExampleText}>
+										<p lang="en">
+											{highlightedSentence(example.sentence, word)}
+										</p>
+										<p lang="zh-CN">{example.translation}</p>
+									</div>
+									<button
+										type="button"
+										className={cls(
+											"flashcard-dictionary-ai-example-copy",
+											styles.aiExampleCopy,
+										)}
+										title={strings.createExampleCard}
+										aria-label={strings.createExampleCard}
+										onClick={() => {
+											void navigator.clipboard.writeText(
+												`${example.sentence}\n${example.translation}`,
+											);
+										}}
+									>
+										<Copy size={13} aria-hidden="true" />
+									</button>
 								</div>
 							))}
 						</dd>

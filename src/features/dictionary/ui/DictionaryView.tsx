@@ -9,6 +9,7 @@ import {
 	Settings2,
 	Sparkles,
 	Trash2,
+	X,
 } from "lucide-react";
 import type { DictionaryQuerySession } from "../domain/querySession";
 import type { DictionarySourceState } from "../domain/types";
@@ -104,7 +105,6 @@ export function DictionaryView({
 	const strings = dictionaryStrings(language);
 	const [copyStatus, setCopyStatus] = useState<ExampleCopyStatus | null>(null);
 	const sourceTablistRef = useRef<HTMLDivElement | null>(null);
-	const sectionTablistRef = useRef<HTMLDivElement | null>(null);
 
 	const isLoading = state.status === "loading";
 	const canLookup = Boolean(state.input.trim()) && state.status !== "loading";
@@ -226,17 +226,36 @@ export function DictionaryView({
 								{strings.history}
 							</strong>
 							{state.history.slice(0, 12).map((word) => (
-								<button
-									type="button"
+								<div
 									key={`history-${word}`}
 									className={cls(
 										"flashcard-dictionary-saved-item",
 										styles.savedItem,
 									)}
-									onClick={() => lookupWord(word)}
 								>
-									{word}
-								</button>
+									<button
+										type="button"
+										className={styles.savedItemWord}
+										onClick={() => lookupWord(word)}
+									>
+										{word}
+									</button>
+									<button
+										type="button"
+										className={cls(
+											"flashcard-dictionary-saved-remove",
+											styles.savedRemove,
+										)}
+										title={strings.removeHistoryItem(word)}
+										aria-label={strings.removeHistoryItem(word)}
+										onClick={(event) => {
+											event.stopPropagation();
+											void query.send({ type: "remove-history", word });
+										}}
+									>
+										<X size={12} aria-hidden="true" />
+									</button>
+								</div>
 							))}
 						</div>
 					</section>
@@ -252,14 +271,18 @@ export function DictionaryView({
 								preset="icon"
 								size="sm"
 								icon={Bookmark}
+								title={strings.favoriteAction}
+								aria-label={strings.favoriteAction}
 								onClick={() => void onOpenFavorite(state.query)}
-							></FlashcardButton>
+							/>
 							<FlashcardButton
 								preset="icon"
 								size="sm"
 								icon={Copy}
+								title={strings.copyWord}
+								aria-label={strings.copyWord}
 								onClick={() => void copyQuery()}
-							></FlashcardButton>
+							/>
 						</div>
 					</section>
 				)}
@@ -272,6 +295,7 @@ export function DictionaryView({
 							copyStatus.isError && ["is-error", styles.isError],
 						)}
 						role={copyStatus.isError ? "alert" : "status"}
+						aria-live={copyStatus.isError ? "assertive" : "polite"}
 					>
 						{copyStatus.message}
 					</p>
@@ -522,7 +546,6 @@ export function DictionaryView({
 												)}
 											>
 												<div
-													ref={sectionTablistRef}
 													className={cls(
 														"flashcard-dictionary-detail-tabs",
 														styles.detailTabs,
@@ -565,7 +588,8 @@ export function DictionaryView({
 																onKeyDown={(event) =>
 																	moveTabFocus(
 																		event,
-																		sectionTablistRef.current,
+																		event.currentTarget
+																			.parentElement,
 																		tabIndex,
 																		sections.length,
 																		(nextIndex) => {
@@ -607,6 +631,7 @@ export function DictionaryView({
 																],
 															)}
 															role="tabpanel"
+															tabIndex={0}
 															aria-labelledby={sectionTabId(
 																source.id,
 																item.index,

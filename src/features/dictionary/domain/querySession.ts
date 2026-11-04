@@ -28,6 +28,8 @@ type DictionaryQueryIntent =
 			readonly sectionIndex: number;
 	  }
 	| { readonly type: "clear" }
+	| { readonly type: "remove-history"; readonly word: string }
+	| { readonly type: "clear-history" }
 	| { readonly type: "settings-changed" };
 
 /** The stable seam for one independent 词典查询会话. */
@@ -148,6 +150,10 @@ class DictionaryQuerySessionModule implements DictionaryQuerySession {
 			case "clear":
 				this.reset();
 				return;
+			case "remove-history":
+				return this.removeHistory(intent.word);
+			case "clear-history":
+				return this.clearHistory();
 			case "settings-changed":
 				this.refreshSettings();
 		}
@@ -276,6 +282,38 @@ class DictionaryQuerySessionModule implements DictionaryQuerySession {
 		this.state.sources = [];
 		this.state.status = "idle";
 		this.publish();
+	}
+
+	private async removeHistory(word: string): Promise<void> {
+		if (this.disposed) return;
+		const key = word.trim().toLocaleLowerCase();
+		if (!key) return;
+		let saved = false;
+		try {
+			saved = await this.options.settings.updateDictionarySettings((draft) => {
+				draft.history = draft.history.filter(
+					(candidate) => candidate.trim().toLocaleLowerCase() !== key,
+				);
+			});
+		} catch {
+			saved = false;
+		}
+		if (this.disposed) return;
+		if (saved) this.refreshSettings();
+	}
+
+	private async clearHistory(): Promise<void> {
+		if (this.disposed) return;
+		let saved = false;
+		try {
+			saved = await this.options.settings.updateDictionarySettings((draft) => {
+				draft.history = [];
+			});
+		} catch {
+			saved = false;
+		}
+		if (this.disposed) return;
+		if (saved) this.refreshSettings();
 	}
 
 	dispose(): void {

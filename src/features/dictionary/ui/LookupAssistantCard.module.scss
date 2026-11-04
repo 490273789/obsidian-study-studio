@@ -112,7 +112,7 @@
 				padding: 1px 4px;
 				background: var(--background-modifier-form-field);
 				border: 1px solid var(--fc-border-color);
-				border-radius: 3px;
+				border-radius: var(--fc-radius-xs);
 			}
 		}
 
@@ -255,7 +255,7 @@
 				padding: 1px 4px;
 				background: var(--background-modifier-form-field);
 				border: 1px solid var(--fc-border-color);
-				border-radius: 3px;
+				border-radius: var(--fc-radius-xs);
 			}
 		}
 	}

@@ -22,6 +22,8 @@ const zh = {
 	cambridgeAttribution: "Cambridge Dictionary · 非官方页面解析",
 	clear: "清空",
 	copied: "已复制。",
+	copyWord: "复制单词",
+	createExampleCard: "收藏例句",
 	description: "并行查询三部在线词典、本地 MDX/MDD/CSS/JS 与按需 AI 释义。",
 	details: "扩展释义",
 	disabled: "英语字典工具已禁用。",
@@ -91,6 +93,7 @@ const zh = {
 	favoriteOpenModeModal: "弹窗",
 	favoriteOpenModeSidebar: "右侧边栏",
 	favoriteOpenSourceFile: "打开源文件",
+	favoriteAction: "收藏单词",
 	favoriteCategory: "保存分类",
 	favoriteCategoryDescription: "每个分类对应仓库中的一个 Markdown 文件。",
 	favoriteCategoryCreate: "新建分类",
@@ -133,6 +136,8 @@ const zh = {
 	folderImport: "导入词典目录",
 	folderImportDescription: "选择目录后自动匹配 MDX、MDD、CSS、JS 与欧路 EUDIC 词典。",
 	history: "最近查询",
+	removeHistoryItem: (word: string) => `从历史中移除“${word}”`,
+	toggleHistory: "最近查询记录",
 	import: "导入本地词典",
 	importDescription:
 		"支持通用或图片型 .eudic 词典，以及同批选择 .mdx、同名 .mdd/.1.mdd、CSS 与 JS；本地配套脚本会在隔离词典页面中运行。",
@@ -249,6 +254,8 @@ const en: typeof zh = {
 	cambridge: "Cambridge Dictionary",
 	clear: "Clear",
 	copied: "Copied.",
+	copyWord: "Copy word",
+	createExampleCard: "Save example",
 	description:
 		"Queries three online dictionaries, local MDX/MDD/CSS/JS dictionaries, and on-demand AI definitions in parallel.",
 	details: "More definitions",
@@ -309,6 +316,7 @@ const en: typeof zh = {
 	favoriteOpenModeModal: "Modal",
 	favoriteOpenModeSidebar: "Right sidebar",
 	favoriteOpenSourceFile: "Open source file",
+	favoriteAction: "Save favorite",
 	favoriteCategory: "Save category",
 	favoriteCategoryDescription: "Each category uses one Markdown file in the vault.",
 	favoriteCategoryCreate: "New category",
@@ -356,6 +364,8 @@ const en: typeof zh = {
 	folderImportDescription:
 		"Pick a folder and matching MDX, MDD, CSS, JS, and Eudic EUDIC dictionaries are detected.",
 	history: "Recent searches",
+	removeHistoryItem: (word: string) => `Remove "${word}" from history`,
+	toggleHistory: "Recent searches",
 	import: "Import local dictionary",
 	importDescription:
 		"Supports general and image .eudic dictionaries, plus .mdx with same-name .mdd/.1.mdd, CSS, and JS; companion scripts run inside an isolated dictionary page.",
