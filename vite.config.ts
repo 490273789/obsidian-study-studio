@@ -174,7 +174,7 @@ export default defineConfig(({ mode }) => {
 				},
 			},
 			sourcemap: isProduction ? false : "inline",
-			target: "es2018",
+			target: "es2022",
 		},
 		define:
 			mode === "test"
