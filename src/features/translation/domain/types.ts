@@ -1,6 +1,6 @@
 import type { AiFailureCode } from "../../../core/ai";
 
-type TranslationDirection = "zh-en" | "en-zh";
+export type TranslationDirection = "zh-en" | "en-zh";
 export interface TranslationProfile {
 	id: string;
 	name: string;
@@ -32,6 +32,12 @@ export interface TranslationResultState extends TranslationOutput {
 export interface TranslationSnapshot {
 	settings: TranslationSettings;
 	input: string;
+	/** Input that produced the currently visible results. */
+	translatedInput: string;
+	/** Direction that produced the currently visible results. */
+	translatedDirection: TranslationDirection;
+	/** Results exist but the input or direction has changed since they were produced. */
+	stale: boolean;
 	clearUndoId: number | null;
 	results: readonly TranslationResultState[];
 	status: "idle" | "loading" | "success" | "error";

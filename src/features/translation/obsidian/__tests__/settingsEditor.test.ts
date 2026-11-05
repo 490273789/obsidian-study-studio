@@ -11,6 +11,9 @@ function snapshot(settings: TranslationSettings): TranslationSnapshot {
 	return {
 		settings,
 		input: "",
+		translatedInput: "",
+		translatedDirection: settings.direction,
+		stale: false,
 		clearUndoId: null,
 		results: [],
 		status: "idle",

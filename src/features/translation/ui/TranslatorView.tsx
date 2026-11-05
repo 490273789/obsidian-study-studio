@@ -15,6 +15,7 @@ import {
 	FileDiff,
 	FileText,
 	Languages,
+	RotateCcw,
 	Settings2,
 	Trash2,
 	Volume2,
@@ -147,6 +148,9 @@ export const TranslatorView = React.memo(function TranslatorView({
 	const feedbackTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 	const [speakingId, setSpeakingId] = useState<string | null>(null);
 	const [showDiff, setShowDiff] = useState<boolean>(false);
+	const [appliedMap, setAppliedMap] = useState<
+		Record<string, { kind: "inserted" | "card"; key: string }>
+	>({});
 	const focusAfterClear = useRef(false);
 	const inputRef = useRef<HTMLTextAreaElement>(null);
 	const viewId = useId();
@@ -209,6 +213,15 @@ export const TranslatorView = React.memo(function TranslatorView({
 	const isLoading = snapshot.status === "loading";
 	const results = snapshot.results;
 	const readyCount = results.filter((result) => !result.setupIssue).length;
+	const loadingCount = results.filter((result) => result.status === "loading").length;
+	const hasResults = results.some(
+		(result) => result.status === "success" || result.status === "error",
+	);
+	const resultsDirection = hasResults
+		? snapshot.translatedDirection
+		: snapshot.settings.direction;
+	const stale = snapshot.stale;
+	const hasCurrentResults = hasResults && !stale;
 	const visibleResults = results.filter(
 		(result) => result.setupIssue || result.status !== "idle",
 	);
@@ -222,7 +235,6 @@ export const TranslatorView = React.memo(function TranslatorView({
 			: readyCount === 0
 				? strings.noReadyProfiles
 				: null;
-
 	const canTranslate =
 		snapshot.settings.enabled &&
 		readyCount > 0 &&
@@ -235,48 +247,64 @@ export const TranslatorView = React.memo(function TranslatorView({
 		isLoading;
 	const sourceLanguage =
 		snapshot.settings.direction === "zh-en" ? strings.chinese : strings.english;
-	const targetLanguage =
-		snapshot.settings.direction === "zh-en" ? strings.english : strings.chinese;
+	const targetLanguage = resultsDirection === "zh-en" ? strings.english : strings.chinese;
+	const translatedSource = snapshot.translatedInput || snapshot.input;
+	const translationStamp = JSON.stringify([snapshot.translatedInput, snapshot.clearUndoId]);
+	const translateVariant = isLoading
+		? "primary"
+		: hasCurrentResults
+			? "secondary"
+			: canTranslate
+				? "primary"
+				: "neutral";
 	const succeeded = snapshot.results.filter((result) => result.status === "success").length;
 	const failed = snapshot.results.filter((result) => result.status === "error").length;
+	const memorySuffix = hasResults ? ` · ${strings.memoryOnly}` : "";
 	const statusText = isLoading
-		? formatTranslationString(strings.loadingProfiles, { count: readyCount })
-		: snapshot.status === "success" && failed > 0
-			? formatTranslationString(strings.partialProfiles, {
-					success: succeeded,
-					total: succeeded + failed,
-					failed,
-				})
-			: snapshot.status === "success"
-				? formatTranslationString(strings.completedProfiles, { count: succeeded })
-				: snapshot.status === "error" && failed > 0
-					? strings.failedProfiles
-					: snapshot.error
-						? aiErrorText(language, snapshot.error)
+		? formatTranslationString(strings.loadingProfiles, { count: loadingCount })
+		: snapshot.error
+			? aiErrorText(language, snapshot.error)
+			: snapshot.status === "success" && failed > 0
+				? formatTranslationString(strings.partialProfiles, {
+						success: succeeded,
+						total: succeeded + failed,
+						failed,
+					}) + memorySuffix
+				: snapshot.status === "success"
+					? formatTranslationString(strings.completedProfiles, { count: succeeded }) +
+						memorySuffix
+					: snapshot.status === "error" && failed > 0
+						? strings.failedProfiles
 						: null;
 
 	const speechUnavailable = strings.speechUnavailable;
-	const speak = useCallback(
-		(id: string, text: string, lang: "en" | "zh") => {
-			if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-				showFeedback({ id, type: "error", message: speechUnavailable });
-				return;
-			}
-			if (speakingId === id) {
-				window.speechSynthesis.cancel();
-				setSpeakingId(null);
-				return;
-			}
+	const speechFailed = strings.speechFailed;
+	const speak = (id: string, text: string, lang: "en" | "zh") => {
+		if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+			showFeedback({ id, type: "error", message: speechUnavailable });
+			return;
+		}
+		if (speakingId === id) {
+			window.speechSynthesis.cancel();
+			setSpeakingId(null);
+			return;
+		}
+		try {
 			window.speechSynthesis.cancel();
 			const utterance = new SpeechSynthesisUtterance(text);
 			utterance.lang = lang === "en" ? "en-US" : "zh-CN";
 			utterance.onend = () => setSpeakingId((curr) => (curr === id ? null : curr));
-			utterance.onerror = () => setSpeakingId((curr) => (curr === id ? null : curr));
+			utterance.onerror = () => {
+				setSpeakingId((curr) => (curr === id ? null : curr));
+				showFeedback({ id, type: "error", message: speechFailed });
+			};
 			setSpeakingId(id);
 			window.speechSynthesis.speak(utterance);
-		},
-		[showFeedback, speakingId, speechUnavailable],
-	);
+		} catch {
+			setSpeakingId(null);
+			showFeedback({ id, type: "error", message: speechUnavailable });
+		}
+	};
 
 	const handleClear = () => {
 		focusAfterClear.current = true;
@@ -301,13 +329,20 @@ export const TranslatorView = React.memo(function TranslatorView({
 
 	const insertToNote = async (result: TranslationResultState): Promise<void> => {
 		if (onInsertNote) {
-			const success = await onInsertNote(result.text, snapshot.input);
+			const success = await onInsertNote(result.text, translatedSource);
 			if (success) {
+				setAppliedMap((prev) => ({
+					...prev,
+					[result.id]: {
+						kind: "inserted",
+						key: JSON.stringify([translationStamp, result.text]),
+					},
+				}));
 				showFeedback({ id: result.id, type: "inserted", message: strings.insertedNotice });
 				return;
 			}
 		}
-		const callout = `> [!quote] 翻译 · ${result.name}\n> ${snapshot.input.split("\n").join("\n> ")}\n>\n> ${result.text.split("\n").join("\n> ")}\n\n`;
+		const callout = `> [!quote] 翻译 · ${result.name}\n> ${translatedSource.split("\n").join("\n> ")}\n>\n> ${result.text.split("\n").join("\n> ")}\n\n`;
 		try {
 			if (!navigator.clipboard) throw new Error("Clipboard API unavailable");
 			await navigator.clipboard.writeText(callout);
@@ -319,13 +354,20 @@ export const TranslatorView = React.memo(function TranslatorView({
 
 	const makeCard = async (result: TranslationResultState): Promise<void> => {
 		if (onCreateCard) {
-			const success = await onCreateCard(snapshot.input, result.text);
-			if (success !== false) {
+			const success = await onCreateCard(translatedSource, result.text);
+			if (success === true) {
+				setAppliedMap((prev) => ({
+					...prev,
+					[result.id]: {
+						kind: "card",
+						key: JSON.stringify([translationStamp, result.text]),
+					},
+				}));
 				showFeedback({ id: result.id, type: "card", message: strings.cardCreated });
 				return;
 			}
 		}
-		const cardFormat = `#flashcards\n\nQ: ${snapshot.input}\nA: ${result.text}\n\n`;
+		const cardFormat = `#flashcards\n\nQ: ${translatedSource}\nA: ${result.text}\n\n`;
 		try {
 			if (!navigator.clipboard) throw new Error("Clipboard API unavailable");
 			await navigator.clipboard.writeText(cardFormat);
@@ -350,7 +392,12 @@ export const TranslatorView = React.memo(function TranslatorView({
 		const subtitle = result.setupIssue
 			? strings.unavailable
 			: cleanProfileSubtitle(result.name, result.provider, result.model, strings);
-		const targetLang = snapshot.settings.direction === "zh-en" ? "en" : "zh";
+		const targetLang = resultsDirection === "zh-en" ? "en" : "zh";
+		const appliedEntry = appliedMap[result.id];
+		const applied =
+			appliedEntry?.key === JSON.stringify([translationStamp, result.text])
+				? appliedEntry.kind
+				: undefined;
 
 		return (
 			<article
@@ -363,45 +410,6 @@ export const TranslatorView = React.memo(function TranslatorView({
 						<strong>{result.name}</strong>
 						{subtitle && <span className={styles.subtitle}>{subtitle}</span>}
 					</div>
-					{hasText && (
-						<div className={styles.cardActions}>
-							<FlashcardButton
-								size="sm"
-								variant="ghost"
-								preset="icon"
-								icon={speakingId === result.id ? VolumeX : Volume2}
-								title={strings.speak}
-								aria-label={strings.speak}
-								onClick={() => speak(result.id, result.text, targetLang)}
-							/>
-							<FlashcardButton
-								size="sm"
-								variant="ghost"
-								preset="icon"
-								icon={isCard ? Check : BookmarkPlus}
-								title={strings.makeCard}
-								aria-label={strings.makeCard}
-								onClick={() => void makeCard(result)}
-							/>
-							<FlashcardButton
-								size="sm"
-								variant="ghost"
-								preset="icon"
-								icon={isInserted ? Check : FileText}
-								title={strings.insertNote}
-								aria-label={strings.insertNote}
-								onClick={() => void insertToNote(result)}
-							/>
-							<FlashcardButton
-								size="sm"
-								variant="ghost"
-								icon={isCopied ? Check : Copy}
-								onClick={() => void copyResult(result)}
-							>
-								{strings.copy}
-							</FlashcardButton>
-						</div>
-					)}
 				</header>
 				{result.setupIssue ? (
 					<div className={styles.setupMessage}>
@@ -427,7 +435,7 @@ export const TranslatorView = React.memo(function TranslatorView({
 										otherSuccessResults
 											.filter((r) => r.id !== result.id)
 											.map((r) => r.text),
-										snapshot.settings.direction === "zh-en",
+										resultsDirection === "zh-en",
 									)}
 								</div>
 							) : (
@@ -444,31 +452,105 @@ export const TranslatorView = React.memo(function TranslatorView({
 						</div>
 					)
 				)}
-				{(error || cardFeedback || usage) && (
+				{(hasText || error) && (
 					<footer>
-						{error ? (
-							<p className={cls(styles.statusMessage, styles.isError)} role="alert">
-								{error}
-							</p>
-						) : cardFeedback ? (
-							<span
-								className={cls(
-									styles.statusMessage,
-									cardFeedback.type === "error" && styles.isError,
-								)}
-								aria-hidden="true"
-							>
-								{cardFeedback.message}
-							</span>
-						) : null}
-						{usage && (
-							<span className={styles.usage} title={usage}>
-								{usage}
-							</span>
-						)}
+						<div className={styles.resultMeta}>
+							{error ? (
+								<p
+									className={cls(styles.statusMessage, styles.isError)}
+									role="alert"
+								>
+									{error}
+								</p>
+							) : cardFeedback ? (
+								<span
+									className={cls(
+										styles.statusMessage,
+										cardFeedback.type === "error" && styles.isError,
+									)}
+									aria-hidden="true"
+								>
+									{cardFeedback.message}
+								</span>
+							) : applied ? (
+								<span className={styles.appliedBadge}>
+									<Check size={12} aria-hidden="true" />
+									{applied === "inserted"
+										? strings.appliedInserted
+										: strings.appliedCard}
+								</span>
+							) : null}
+							{usage && (
+								<span className={styles.usage} title={usage}>
+									{usage}
+								</span>
+							)}
+						</div>
+						<div className={styles.cardActions}>
+							{hasText && (
+								<>
+									<FlashcardButton
+										size="sm"
+										variant="ghost"
+										preset="icon"
+										icon={speakingId === result.id ? VolumeX : Volume2}
+										title={strings.speak}
+										aria-label={strings.speak}
+										aria-pressed={speakingId === result.id}
+										onClick={() => speak(result.id, result.text, targetLang)}
+									/>
+									<FlashcardButton
+										size="sm"
+										variant="ghost"
+										preset="icon"
+										icon={isCopied ? Check : Copy}
+										title={isCopied ? strings.copied : strings.copy}
+										aria-label={isCopied ? strings.copied : strings.copy}
+										onClick={() => void copyResult(result)}
+									/>
+									<span className={styles.actionDivider} aria-hidden="true" />
+									<FlashcardButton
+										size="sm"
+										variant="ghost"
+										icon={isInserted ? Check : FileText}
+										onClick={() => void insertToNote(result)}
+									>
+										{strings.insertNote}
+									</FlashcardButton>
+									<FlashcardButton
+										size="sm"
+										variant="secondary"
+										icon={isCard ? Check : BookmarkPlus}
+										onClick={() => void makeCard(result)}
+									>
+										{strings.makeCard}
+									</FlashcardButton>
+								</>
+							)}
+							{error && (
+								<FlashcardButton
+									size="sm"
+									variant="secondary"
+									icon={RotateCcw}
+									disabled={isLoading || snapshot.saving}
+									onClick={() => void runtime.retryResult(result.id)}
+								>
+									{strings.retry}
+								</FlashcardButton>
+							)}
+						</div>
 					</footer>
 				)}
-				{hasText && <output className={styles.srOnly}>{cardFeedback?.message}</output>}
+				{hasText && (
+					<output className={styles.srOnly}>
+						{cardFeedback?.message ??
+							(applied
+								? applied === "inserted"
+									? strings.appliedInserted
+									: strings.appliedCard
+								: "")}
+					</output>
+				)}
 			</article>
 		);
 	};
@@ -515,6 +597,7 @@ export const TranslatorView = React.memo(function TranslatorView({
 
 	return (
 		<main className={cls("fc-page", styles.page)}>
+			<h1 className={styles.srOnly}>{strings.title}</h1>
 			<FlashcardHeader
 				icon={Languages}
 				title={strings.title}
@@ -540,7 +623,7 @@ export const TranslatorView = React.memo(function TranslatorView({
 			/>
 
 			<section className={cls("fc-page__content", styles.workspace)}>
-				<article className={styles.inputPanel}>
+				<article className={styles.inputPanel} aria-label={strings.inputLabel}>
 					<header>
 						<div className={styles.inputHeaderTitle}>
 							<label htmlFor={`${viewId}-translator-input`}>
@@ -571,6 +654,7 @@ export const TranslatorView = React.memo(function TranslatorView({
 								icon={speakingId === "source" ? VolumeX : Volume2}
 								title={strings.speak}
 								aria-label={strings.speak}
+								aria-pressed={speakingId === "source"}
 								disabled={!snapshot.input.trim()}
 								onClick={() =>
 									speak(
@@ -590,7 +674,7 @@ export const TranslatorView = React.memo(function TranslatorView({
 						lang={snapshot.settings.direction === "zh-en" ? "zh" : "en"}
 						placeholder={strings.inputPlaceholder}
 						aria-describedby={setupHint ? undefined : shortcutId}
-						disabled={isLoading || !snapshot.settings.enabled}
+						disabled={!snapshot.settings.enabled}
 						spellCheck
 						rows={5}
 						onChange={(event) => runtime.setInput(event.target.value)}
@@ -614,6 +698,7 @@ export const TranslatorView = React.memo(function TranslatorView({
 									<button
 										type="button"
 										className={styles.undoBtn}
+										aria-label={strings.undoClear}
 										onClick={handleUndo}
 									>
 										{strings.undo}
@@ -636,8 +721,8 @@ export const TranslatorView = React.memo(function TranslatorView({
 								preset="icon"
 								variant="ghost"
 								icon={Trash2}
-								title={strings.clear}
-								aria-label={strings.clear}
+								title={isLoading ? strings.stopClear : strings.clear}
+								aria-label={isLoading ? strings.stopClear : strings.clear}
 								disabled={!canClear}
 								onClick={handleClear}
 							/>
@@ -647,23 +732,29 @@ export const TranslatorView = React.memo(function TranslatorView({
 								</FlashcardButton>
 							) : (
 								<FlashcardButton
-									variant={canTranslate || isLoading ? "primary" : "neutral"}
+									variant={translateVariant}
 									disabled={!canTranslate}
 									onClick={submitTranslation}
 									aria-keyshortcuts="Control+Enter Meta+Enter"
 								>
 									{isLoading
 										? strings.translating
-										: formatTranslationString(strings.translate, {
-												count: readyCount,
-											})}
+										: hasCurrentResults
+											? strings.translateAgain
+											: formatTranslationString(strings.translate, {
+													count: readyCount,
+												})}
 								</FlashcardButton>
 							)}
 						</div>
 					</footer>
 				</article>
 
-				<section className={styles.outputSection} aria-label={strings.outputLabel}>
+				<section
+					className={styles.outputSection}
+					aria-label={strings.outputLabel}
+					aria-busy={isLoading}
+				>
 					<header>
 						<div className={styles.outputHeading}>
 							<span className={styles.outputLabelText}>{strings.outputLabel}</span>
@@ -681,8 +772,21 @@ export const TranslatorView = React.memo(function TranslatorView({
 							</FlashcardButton>
 						)}
 					</header>
+					{stale && hasResults && (
+						<output className={styles.staleNotice}>{strings.staleNotice}</output>
+					)}
 					{isWaitingForResults ? (
-						<p className={styles.outputEmpty}>{strings.outputPlaceholder}</p>
+						<div className={styles.outputEmpty}>
+							<p className={styles.outputEmptyTitle}>{strings.outputPlaceholder}</p>
+							{readyCount > 0 && (
+								<p className={styles.outputEmptyHint}>
+									{formatTranslationString(strings.profilesReady, {
+										count: readyCount,
+									})}
+								</p>
+							)}
+							<p className={styles.outputEmptyMeta}>{strings.memoryNote}</p>
+						</div>
 					) : showTabs ? (
 						<>
 							<div
@@ -721,6 +825,14 @@ export const TranslatorView = React.memo(function TranslatorView({
 									hidden={index !== activeIndex}
 									className={styles.resultStack}
 								>
+									{index === 0 && showDiff && canHighlight && (
+										<p className={styles.diffLegend}>
+											<mark className={styles.diffMark}>
+												{strings.diffLegendSample}
+											</mark>
+											<span>{strings.diffLegend}</span>
+										</p>
+									)}
 									{index === activeIndex &&
 										renderResults(
 											index === 0

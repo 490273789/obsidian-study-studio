@@ -53,6 +53,9 @@ function mockSnapshot(overrides: Partial<TranslationSnapshot> = {}): Translation
 			],
 		},
 		input: "你好世界",
+		translatedInput: "你好世界",
+		translatedDirection: "zh-en",
+		stale: false,
 		clearUndoId: null,
 		results: [
 			{
@@ -88,6 +91,7 @@ function createMockRuntime(snapshot: TranslationSnapshot): TranslationRuntime {
 		undoClear: vi.fn(() => true),
 		swapDirection: vi.fn(),
 		translate: vi.fn(),
+		retryResult: vi.fn(),
 	} as unknown as TranslationRuntime;
 }
 
@@ -277,7 +281,7 @@ describe("TranslatorView UI", () => {
 		expect(onOpenSettings).toHaveBeenCalledOnce();
 		expect(all.find((el) => el.props.value === snapshot.input)?.props.disabled).toBe(false);
 		expect(textOf(all.find((el) => el.props.right)?.props.right)).toContain(
-			"已配置 0/2 个已启用方案",
+			"已就绪 0/2 个方案",
 		);
 		expect(textOf(tree)).not.toContain("翻译（");
 		expect(textOf(tree)).not.toContain("复制译文");
@@ -299,7 +303,7 @@ describe("TranslatorView UI", () => {
 		expect(shortcut?.props.id).toBeTruthy();
 		expect(input?.props["aria-describedby"]).toBe(shortcut?.props.id);
 		const footer = all.find(
-			(element) => element.type === "footer" && textOf(element).includes("翻译（2 个方案）"),
+			(element) => element.type === "footer" && textOf(element).includes("重新翻译"),
 		);
 		expect(footer).toBeDefined();
 		expect(textOf(footer)).not.toContain("Ctrl/Cmd + Enter");
@@ -322,8 +326,9 @@ describe("TranslatorView UI", () => {
 	it("shows the submission count and waits for two successful translations to offer highlighting", () => {
 		const base = mockSnapshot();
 		const snapshot = mockSnapshot({
+			status: "idle",
 			results: [
-				base.results[0]!,
+				{ ...base.results[0]!, status: "idle", text: "" },
 				{
 					...base.results[1]!,
 					status: "idle",
@@ -358,27 +363,53 @@ describe("TranslatorView UI", () => {
 
 		const all = elements(tree);
 		// Check that action buttons exist (朗读, 制卡, 插入笔记, 复制)
-		const makeCardBtns = all.filter(
-			(el) => el.props.title === "制为闪卡" || el.props["aria-label"] === "制为闪卡",
-		);
+		const makeCardBtns = all.filter((el) => el.props.children === "制为闪卡");
 		expect(makeCardBtns.length).toBeGreaterThanOrEqual(2);
 
-		const insertBtns = all.filter(
-			(el) => el.props.title === "插入笔记" || el.props["aria-label"] === "插入笔记",
-		);
+		const insertBtns = all.filter((el) => el.props.children === "插入笔记");
 		expect(insertBtns.length).toBeGreaterThanOrEqual(2);
 
 		const speakBtns = all.filter(
 			(el) => el.props.title === "朗读发音" || el.props["aria-label"] === "朗读发音",
 		);
 		expect(speakBtns.length).toBeGreaterThanOrEqual(2);
-		expect(all.filter((el) => el.props.children === "复制译文")).toHaveLength(2);
-		const highlight = all.find((el) => el.props.children === "词汇差异高亮");
+		expect(all.filter((el) => el.props["aria-label"] === "复制译文")).toHaveLength(2);
+		const highlight = all.find((el) => el.props.children === "对比用词差异");
 		expect(highlight?.props["aria-pressed"]).toBe(false);
 		highlight?.props.onClick?.();
 		const updated = elements(renderView({ runtime, language: "zh", onOpenSettings: vi.fn() }));
 		expect(
-			updated.find((el) => el.props.children === "词汇差异高亮")?.props["aria-pressed"],
+			updated.find((el) => el.props.children === "对比用词差异")?.props["aria-pressed"],
 		).toBe(true);
+		expect(textOf(updated)).toContain("标出的字词并非所有版本共有");
+	});
+
+	it("preserves results as stale and offers a full retranslation", () => {
+		const snapshot = mockSnapshot({ stale: true });
+		const runtime = createMockRuntime(snapshot);
+		const tree = renderView({ runtime, language: "zh", onOpenSettings: vi.fn() });
+		const all = elements(tree);
+		expect(textOf(tree)).toContain("原文或方向已修改；以下译文对应上一次翻译。");
+		const submit = all.find((el) => el.props.children === "翻译（2 个方案）");
+		expect(submit).toBeDefined();
+		expect(textOf(tree)).not.toContain("重新翻译");
+	});
+
+	it("offers a per-result retry on failed cards", () => {
+		const base = mockSnapshot();
+		const snapshot = mockSnapshot({
+			status: "success",
+			results: [
+				base.results[0]!,
+				{ ...base.results[1]!, status: "error", text: "", error: "network" },
+			],
+		});
+		const runtime = createMockRuntime(snapshot);
+		const retryResult = vi.spyOn(runtime, "retryResult");
+		const tree = renderView({ runtime, language: "zh", onOpenSettings: vi.fn() });
+		const retry = elements(tree).find((el) => el.props.children === "重试");
+		expect(retry).toBeDefined();
+		retry?.props.onClick?.();
+		expect(retryResult).toHaveBeenCalledWith("youdao");
 	});
 });

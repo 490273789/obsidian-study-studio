@@ -36,6 +36,9 @@ function setup(): {
 			draft: settings,
 			snapshot: {
 				input: "",
+				translatedInput: "",
+				translatedDirection: settings.direction,
+				stale: false,
 				clearUndoId: null,
 				results: [],
 				status: "idle",

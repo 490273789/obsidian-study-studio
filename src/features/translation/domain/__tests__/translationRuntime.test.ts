@@ -342,6 +342,102 @@ describe("translation session", () => {
 		runtime.dispose();
 	});
 
+	it("keeps results and marks them stale when the source changes", async () => {
+		const { runtime, request } = setup();
+		runtime.setInput("你好");
+		await runtime.translate();
+		expect(runtime.getSnapshot().results[0]?.text).toBe("Hello");
+		expect(request).toHaveBeenCalledTimes(1);
+
+		runtime.setInput("你好，世界");
+		let snapshot = runtime.getSnapshot();
+		expect(snapshot.results[0]).toMatchObject({ status: "success", text: "Hello" });
+		expect(snapshot.translatedInput).toBe("你好");
+		expect(snapshot.stale).toBe(true);
+		expect(request).toHaveBeenCalledTimes(1);
+
+		runtime.setInput("你好");
+		snapshot = runtime.getSnapshot();
+		expect(snapshot.stale).toBe(false);
+		runtime.dispose();
+	});
+
+	it("keeps results across a direction swap and marks them stale", async () => {
+		const { runtime } = setup();
+		runtime.setInput("你好");
+		await runtime.translate();
+		await runtime.swapDirection();
+		let snapshot = runtime.getSnapshot();
+		expect(snapshot.settings.direction).toBe("en-zh");
+		expect(snapshot.translatedDirection).toBe("zh-en");
+		expect(snapshot.results[0]?.text).toBe("Hello");
+		expect(snapshot.stale).toBe(true);
+
+		await runtime.translate();
+		snapshot = runtime.getSnapshot();
+		expect(snapshot.stale).toBe(false);
+		expect(snapshot.translatedDirection).toBe("en-zh");
+		runtime.dispose();
+	});
+
+	it("does not abort a running translation when the source changes", async () => {
+		const { runtime, request } = setup();
+		const gate = deferred<OutboundResponse>();
+		request.mockReturnValueOnce(gate.promise);
+		runtime.setInput("你好");
+		const pending = runtime.translate();
+		expect(runtime.getSnapshot().status).toBe("loading");
+		runtime.setInput("你好，世界");
+		gate.resolve(response("Hello"));
+		await pending;
+		const snapshot = runtime.getSnapshot();
+		expect(snapshot.input).toBe("你好，世界");
+		expect(snapshot.translatedInput).toBe("你好");
+		expect(snapshot.results[0]?.text).toBe("Hello");
+		expect(snapshot.stale).toBe(true);
+		runtime.dispose();
+	});
+
+	it("retries only the failed profile", async () => {
+		const { runtime, request, youdao } = setup();
+		youdao.mockRejectedValueOnce(new TransportError("unauthorized"));
+		runtime.setInput("你好");
+		await runtime.translate();
+		expect(runtime.getSnapshot().results[1]?.status).toBe("error");
+
+		await runtime.retryResult("b");
+		expect(request).toHaveBeenCalledTimes(1);
+		expect(youdao).toHaveBeenCalledTimes(2);
+		const snapshot = runtime.getSnapshot();
+		expect(snapshot.results[0]).toMatchObject({ status: "success", text: "Hello" });
+		expect(snapshot.results[1]).toMatchObject({ status: "success", text: "Hi" });
+		expect(snapshot.status).toBe("success");
+		runtime.dispose();
+	});
+
+	it("restores translated metadata with clear undo", async () => {
+		const { runtime } = setup();
+		runtime.setInput("original input");
+		await runtime.translate();
+		runtime.clear({ undoable: true });
+		const id = runtime.getSnapshot().clearUndoId!;
+		expect(runtime.undoClear(id)).toBe(true);
+		const snapshot = runtime.getSnapshot();
+		expect(snapshot.translatedInput).toBe("original input");
+		expect(snapshot.translatedDirection).toBe("zh-en");
+		expect(snapshot.stale).toBe(false);
+		runtime.dispose();
+	});
+
+	it("does not retry a result that is not an error", async () => {
+		const { runtime, request } = setup();
+		runtime.setInput("你好");
+		await runtime.translate();
+		await runtime.retryResult("a");
+		expect(request).toHaveBeenCalledTimes(1);
+		runtime.dispose();
+	});
+
 	it.each(["prefill", "direction", "engine"] as const)(
 		"invalidates undo after a %s change",
 		async (change) => {

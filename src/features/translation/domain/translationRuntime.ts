@@ -22,8 +22,10 @@ interface TranslationDependencies {
 /** Shared session authority for every translator view; owns no UI or Obsidian I/O. */
 export class TranslationRuntime {
 	private settings: TranslationSettings;
-	private state: Omit<TranslationSnapshot, "settings" | "clearUndoId"> = {
+	private state: Omit<TranslationSnapshot, "settings" | "clearUndoId" | "stale"> = {
 		input: "",
+		translatedInput: "",
+		translatedDirection: "zh-en",
 		results: [],
 		status: "idle",
 		saving: false,
@@ -33,7 +35,10 @@ export class TranslationRuntime {
 	private listeners = new Set<() => void>();
 	private cache = new Map<string, TranslationOutput>();
 	private generation = 0;
-	private cleared: Pick<TranslationSnapshot, "input" | "results"> | null = null;
+	private cleared: Pick<
+		TranslationSnapshot,
+		"input" | "results" | "translatedInput" | "translatedDirection"
+	> | null = null;
 	private controller: AbortController | null = null;
 	private testController: AbortController | null = null;
 	private views = 0;
@@ -48,6 +53,7 @@ export class TranslationRuntime {
 		private deps: TranslationDependencies,
 	) {
 		this.settings = normalizeTranslationSettings(settings);
+		this.state.translatedDirection = this.settings.direction;
 		this.execution = new TranslationExecution({
 			ai,
 			readSettings: () => this.settings,
@@ -80,7 +86,9 @@ export class TranslationRuntime {
 	}
 	setInput(text: string): void {
 		if (this.disposed) return;
-		this.invalidate(false);
+		// Keep the previous results visible; they become stale instead of disappearing.
+		// Any explicit clear undo no longer applies once the user starts a new draft.
+		this.cleared = null;
 		this.state.input = text;
 		this.publish();
 	}
@@ -108,7 +116,13 @@ export class TranslationRuntime {
 		const cleared = undoable ? this.snapshot : null;
 		this.invalidate(true);
 		this.state.input = "";
-		if (cleared) this.cleared = { input: cleared.input, results: cleared.results };
+		if (cleared)
+			this.cleared = {
+				input: cleared.input,
+				results: cleared.results,
+				translatedInput: cleared.translatedInput,
+				translatedDirection: cleared.translatedDirection,
+			};
 		this.publish();
 		return true;
 	}
@@ -117,6 +131,8 @@ export class TranslationRuntime {
 		if (this.disposed || this.state.saving || !cleared || id !== this.generation) return false;
 		this.invalidate(false);
 		this.state.input = cleared.input;
+		this.state.translatedInput = cleared.translatedInput;
+		this.state.translatedDirection = cleared.translatedDirection;
 		this.state.results = this.state.results.map((current) => {
 			const previous = cleared.results.find((result) => result.id === current.id);
 			return previous?.status === "success" || previous?.status === "error"
@@ -131,7 +147,10 @@ export class TranslationRuntime {
 		this.publish();
 		return true;
 	}
-	async configure(input: TranslationSettings): Promise<void> {
+	async configure(
+		input: TranslationSettings,
+		{ preserveResults = false }: { preserveResults?: boolean } = {},
+	): Promise<void> {
 		if (this.disposed) throw new AiError("disposed");
 		if (this.state.saving) throw new AiError("busy");
 		validateTranslationSettings(input);
@@ -146,7 +165,11 @@ export class TranslationRuntime {
 				throw new AiError("save-failed");
 			}
 			this.settings = next;
-			this.invalidate(true);
+			if (preserveResults) {
+				this.state.error = undefined;
+			} else {
+				this.invalidate(true);
+			}
 		} finally {
 			this.state.saving = false;
 			this.publish();
@@ -155,10 +178,13 @@ export class TranslationRuntime {
 	async swapDirection(): Promise<void> {
 		if (this.state.status === "loading" || this.state.saving) return;
 		try {
-			await this.configure({
-				...this.settings,
-				direction: this.settings.direction === "zh-en" ? "en-zh" : "zh-en",
-			});
+			await this.configure(
+				{
+					...this.settings,
+					direction: this.settings.direction === "zh-en" ? "en-zh" : "zh-en",
+				},
+				{ preserveResults: true },
+			);
 		} catch (error) {
 			this.state.error = error instanceof AiError ? error.code : "save-failed";
 			this.publish();
@@ -197,6 +223,8 @@ export class TranslationRuntime {
 		}
 		const settings = normalizeTranslationSettings(this.settings);
 		const text = this.state.input;
+		this.state.translatedInput = text;
+		this.state.translatedDirection = settings.direction;
 		const generation = this.generation;
 		const controller = new AbortController();
 		this.controller = controller;
@@ -239,10 +267,53 @@ export class TranslationRuntime {
 		);
 		if (generation !== this.generation || this.disposed) return;
 		this.controller = null;
-		this.state.status = this.state.results.some((result) => result.status === "success")
-			? "success"
-			: "error";
+		this.state.status = this.deriveStatus();
 		this.publish();
+	}
+	async retryResult(id: string): Promise<void> {
+		if (this.disposed || this.state.saving || this.state.status === "loading") return;
+		const result = this.state.results.find((candidate) => candidate.id === id);
+		const profile = this.settings.profiles.find(
+			(candidate) => candidate.id === id && candidate.enabled,
+		);
+		if (!result || result.status !== "error" || result.setupIssue || !profile) return;
+		const text = this.state.translatedInput || this.state.input;
+		if (!text.trim()) return;
+		const direction = this.state.translatedDirection;
+		const generation = this.generation;
+		const controller = new AbortController();
+		this.controller = controller;
+		this.state.error = undefined;
+		this.state.status = "loading";
+		this.state.results = this.state.results.map((current) =>
+			current.id === id ? { ...current, status: "loading", error: undefined } : current,
+		);
+		this.publish();
+		try {
+			const request = this.execution.prepare(profile.id, direction);
+			const key = JSON.stringify([request.signature, text.trim()]);
+			let output = this.cache.get(key);
+			if (output) {
+				this.cache.delete(key);
+				this.cache.set(key, output);
+			} else {
+				output = await request.translate(text, controller.signal);
+				if (generation !== this.generation || this.disposed) return;
+				this.cache.set(key, output);
+				if (this.cache.size > 30) this.cache.delete(this.cache.keys().next().value!);
+			}
+			if (generation !== this.generation || this.disposed) return;
+			this.updateResult(id, { ...output, status: "success", error: undefined });
+		} catch (error) {
+			if (generation !== this.generation || this.disposed) return;
+			this.updateResult(id, { status: "error", error: aiFailureCode(error) });
+		} finally {
+			if (generation === this.generation && !this.disposed) {
+				this.controller = null;
+				this.state.status = this.deriveStatus();
+				this.publish();
+			}
+		}
 	}
 	dispose(): void {
 		this.disposed = true;
@@ -259,7 +330,14 @@ export class TranslationRuntime {
 		if (clearCache) this.cache.clear();
 		this.state.status = "idle";
 		this.state.error = undefined;
+		this.state.translatedInput = "";
+		this.state.translatedDirection = this.settings.direction;
 		this.replaceResults();
+	}
+	private deriveStatus(): TranslationSnapshot["status"] {
+		if (this.state.results.some((result) => result.status === "success")) return "success";
+		if (this.state.results.some((result) => result.status === "error")) return "error";
+		return "idle";
 	}
 	private replaceResults(): void {
 		const configs = this.ai.getSnapshot().settings.configs;
@@ -309,8 +387,16 @@ export class TranslationRuntime {
 		Object.freeze(settings.profiles);
 		Object.freeze(settings.youdao);
 		Object.freeze(settings);
+		const hasResults = this.state.results.some(
+			(result) => result.status === "success" || result.status === "error",
+		);
+		const stale =
+			hasResults &&
+			(this.state.input !== this.state.translatedInput ||
+				settings.direction !== this.state.translatedDirection);
 		this.snapshot = Object.freeze({
 			...this.state,
+			stale,
 			settings,
 			clearUndoId: this.cleared && !this.state.saving ? this.generation : null,
 			results: Object.freeze(
