@@ -793,8 +793,8 @@ describe("renderSettingsControls", () => {
 		} finally {
 			vi.unstubAllGlobals();
 		}
-		expect(document.createdFragments).toBe(1);
-		expect(unrelatedDocument.createdFragments).toBe(0);
+		expect(named(container, "Owned document").ownerDocument).toBe(document);
+		expect(named(container, "Owned document").ownerDocument).not.toBe(unrelatedDocument);
 		expect(named(container, "Owned document").tagName).toBe("p");
 
 		const card = one(container, "fc-profile-card");
@@ -841,5 +841,33 @@ describe("renderSettingsControls", () => {
 		const secondHeading = named(container, "保存分类").parentElement;
 		expect(secondHeading?.classList.contains("setting-item-heading")).toBe(true);
 		expect(secondHeading?.classList.contains("fc-heading-redundant")).toBe(false);
+	});
+
+	it("renders row structured description directly into descEl without document fragments", () => {
+		const presentation = defineSettings("example", (page) => {
+			page.group("help", "Help", (group) => {
+				group.row("usage", {
+					name: "Card format and shortcuts",
+					description: [
+						{ kind: "paragraph", text: "Format:" },
+						{ kind: "code", text: "Front :: Back" },
+						{ kind: "paragraph", text: "Shortcuts:" },
+						{ kind: "list", items: ["Space: Show", "1: Again"] },
+					],
+				});
+			});
+		});
+		const container = new MockElement("div", new MockDocument());
+		renderSettingsControls({} as never, container as never, presentation);
+
+		const nameEl = named(container, "Card format and shortcuts");
+		expect(nameEl.tagName).toBe("div");
+		const help = one(container, "flashcard-help");
+		expect(named(help, "Format:").tagName).toBe("p");
+		const code = findAll(help, (node) => node.tagName === "code")[0]!;
+		expect(code.textContent).toBe("Front :: Back");
+		expect(named(help, "Shortcuts:").tagName).toBe("p");
+		const listItems = findAll(help, (node) => node.tagName === "li");
+		expect(listItems.map((li) => li.textContent)).toEqual(["Space: Show", "1: Again"]);
 	});
 });

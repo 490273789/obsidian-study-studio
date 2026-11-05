@@ -29,7 +29,7 @@ export function renderSettingsControls(
 	language: Language = "zh",
 	options?: { redundantHeading?: string },
 ): () => void {
-	const renderer = new SettingsControlRenderer(app, container.ownerDocument, language);
+	const renderer = new SettingsControlRenderer(app, language);
 	try {
 		renderer.render(container, presentation, options?.redundantHeading);
 	} catch (error) {
@@ -44,7 +44,6 @@ class SettingsControlRenderer {
 
 	constructor(
 		private readonly app: App,
-		private readonly document: Document,
 		private readonly language: Language,
 	) {}
 
@@ -555,7 +554,7 @@ class SettingsControlRenderer {
 				const fieldSetting = new Setting(body);
 				fieldSetting.setClass("fc-profile-field-setting");
 				fieldSetting.setName(field.name);
-				if (field.description) fieldSetting.setDesc(this.renderContent(field.description));
+				if (field.description) this.renderDescription(fieldSetting, field.description);
 				for (const fieldControl of field.controls) {
 					this.renderControl(fieldSetting, fieldControl, presentation);
 				}
@@ -572,7 +571,7 @@ class SettingsControlRenderer {
 		if (row.layout === "wide") setting.setClass("fc-profile-cards-setting");
 		if (row.tone !== "neutral") setting.setClass(`fc-settings-tone-${row.tone}`);
 		setting.setName(row.name);
-		if (row.description) setting.setDesc(this.renderContent(row.description));
+		if (row.description) this.renderDescription(setting, row.description);
 		for (const control of row.controls) this.renderControl(setting, control, presentation);
 	}
 
@@ -586,21 +585,23 @@ class SettingsControlRenderer {
 		});
 	}
 
-	private renderContent(content: SettingsContent): string | DocumentFragment {
-		if (typeof content === "string") return content;
-		const fragment = this.document.createDocumentFragment();
-		const help = fragment.createDiv({ cls: "flashcard-help" });
+	private renderDescription(setting: Setting, content: SettingsContent): void {
+		if (typeof content === "string") {
+			setting.setDesc(content);
+			return;
+		}
+		setting.descEl.empty();
+		const help = setting.descEl.createDiv({ cls: "flashcard-help" });
 		for (const block of content) {
 			if (block.kind === "paragraph") help.createEl("p", { text: block.text });
 			else if (block.kind === "code") {
 				const codeBlock = help.createEl("pre");
-				codeBlock.createEl("code").textContent = block.text;
+				codeBlock.createEl("code", { text: block.text });
 			} else {
 				const list = help.createEl("ul");
 				for (const item of block.items) list.createEl("li", { text: item });
 			}
 		}
-		return fragment;
 	}
 
 	private renderEditableTextList(
