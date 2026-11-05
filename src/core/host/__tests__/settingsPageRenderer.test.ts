@@ -9,6 +9,7 @@ class MockElement {
 	listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
 	attributes: Record<string, string> = {};
 	text = "";
+	value = "";
 	scrollTop = 0;
 	scrollLeft = 0;
 	scrollIntoView = vi.fn();
@@ -136,18 +137,52 @@ function setup() {
 }
 
 function navigation(container: MockElement): MockElement {
-	const nav = container.children.find((child) => child.classList.has("fc-settings-tab-nav"));
+	const nav = container.children[0]!.children.find((child) =>
+		child.classList.has("fc-settings-tab-nav"),
+	);
 	if (!nav) throw new Error("Expected navigation strip");
 	return nav;
 }
 
 function content(container: MockElement): MockElement {
-	const pane = container.children.find((child) => child.classList.has("fc-settings-tab-content"));
+	const pane = container.children[0]!.children.find((child) =>
+		child.classList.has("fc-settings-tab-content"),
+	);
 	if (!pane) throw new Error("Expected content pane");
 	return pane;
 }
 
 describe("SettingsPageRenderer", () => {
+	it("offers every section in a compact selector and keeps keyboard focus after selection", () => {
+		const { container, render, onSelectSection } = setup();
+		render();
+		const selector = container.children[0]!.children[0]!.children[1]!;
+		expect(selector.getAttribute("aria-label")).toBe("设置分类");
+		expect(selector.children.map((option) => option.text)).toEqual(["flashcards", "ai"]);
+		container.ownerDocument!.activeElement = selector;
+		selector.value = "ai";
+		selector.emit("change");
+		expect(onSelectSection).toHaveBeenCalledWith("ai");
+		const nextSelector = container.children[0]!.children[0]!.children[1]!;
+		expect(nextSelector.value).toBe("ai");
+		expect(nextSelector.focus).toHaveBeenCalledWith({ preventScroll: true });
+	});
+
+	it("groups contributed sections without changing their identities or active selection", () => {
+		const { container, sections, render } = setup();
+		sections[0]!.category = "learning";
+		sections[1]!.category = "general";
+		render();
+		const nav = navigation(container);
+		expect(nav.getAttribute("aria-orientation")).toBe("vertical");
+		expect(nav.children.map((child) => child.text)).toEqual([
+			"通用",
+			"ai",
+			"学习",
+			"flashcards",
+		]);
+		expect(nav.children[3]!.getAttribute("aria-selected")).toBe("true");
+	});
 	it("restores focus on the same sorting handle across a rebuild", () => {
 		const { container, render, handles } = setup();
 		expect(render()).toBe(true);
@@ -229,7 +264,8 @@ describe("SettingsPageRenderer", () => {
 				preserveScroll: false,
 			}),
 		).toBe(true);
-		expect(content(container).children).toHaveLength(0);
+		expect(content(container).children).toHaveLength(1);
+		expect(content(container).children[0]!.text).toBe("soon");
 	});
 
 	it("applies WAI-ARIA tablist and tab semantics to navigation and content pane", () => {

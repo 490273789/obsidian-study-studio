@@ -114,9 +114,13 @@ vi.mock("obsidian", () => ({
 	Setting: class {
 		descEl = new MockElement();
 		controlEl = new MockElement();
-		settingEl = this as unknown as MockElement;
+		settingEl = new MockElement();
 		constructor(public parent: MockElement) {
-			parent.children.push(this as unknown as MockElement);
+			parent.children.push(this.settingEl);
+		}
+		setClass(value: string) {
+			this.settingEl.addClass(value);
+			return this;
 		}
 		setName() {
 			return this;
@@ -348,7 +352,7 @@ describe("FlashcardSettingTab", () => {
 		tab.display();
 
 		const container = tab.containerEl as unknown as MockElement;
-		const navEl = container.children.find((c: MockElement) =>
+		const navEl = container.children[0]!.children.find((c: MockElement) =>
 			c.classList.has("fc-settings-tab-nav"),
 		);
 		expect(navEl).toBeDefined();
@@ -364,7 +368,7 @@ describe("FlashcardSettingTab", () => {
 		expect(tabButtons[2]?.text).toContain("翻译");
 		expect(tabButtons[3]?.text).toBe("英语字典");
 
-		const contentEl = container.children.find((c: MockElement) =>
+		const contentEl = container.children[0]!.children.find((c: MockElement) =>
 			c.classList.has("fc-settings-tab-content"),
 		);
 		expect(contentEl).toBeDefined();
@@ -375,10 +379,12 @@ describe("FlashcardSettingTab", () => {
 		const tab = new FlashcardSettingTab({} as never, plugin as never);
 		tab.display();
 		const container = tab.containerEl as unknown as MockElement;
-		const navEl = container.children.find((c) => c.classList.has("fc-settings-tab-nav"));
+		const navEl = container.children[0]!.children.find((c) =>
+			c.classList.has("fc-settings-tab-nav"),
+		);
 		navEl?.children[2]?.click();
-		const contentEl = (tab.containerEl as unknown as MockElement).children.find((c) =>
-			c.classList.has("fc-settings-tab-content"),
+		const contentEl = (tab.containerEl as unknown as MockElement).children[0]!.children.find(
+			(c) => c.classList.has("fc-settings-tab-content"),
 		);
 		expect(contentEl).toBeDefined();
 		expect(contentEl?.children.length).toBeGreaterThan(0);
@@ -390,7 +396,7 @@ describe("FlashcardSettingTab", () => {
 		tab.display();
 
 		const container = tab.containerEl as unknown as MockElement;
-		const navEl = container.children.find((c: MockElement) =>
+		const navEl = container.children[0]!.children.find((c: MockElement) =>
 			c.classList.has("fc-settings-tab-nav"),
 		);
 		const aiTabBtn = navEl?.children[1];
@@ -399,14 +405,14 @@ describe("FlashcardSettingTab", () => {
 		aiTabBtn?.click();
 
 		const newContainer = tab.containerEl as unknown as MockElement;
-		const newNavEl = newContainer.children.find((c: MockElement) =>
+		const newNavEl = newContainer.children[0]!.children.find((c: MockElement) =>
 			c.classList.has("fc-settings-tab-nav"),
 		);
 		const newButtons = newNavEl?.children ?? [];
 		expect(newButtons[0]?.classList.has("is-active")).toBe(false);
 		expect(newButtons[1]?.classList.has("is-active")).toBe(true);
 
-		const contentEl = newContainer.children.find((c: MockElement) =>
+		const contentEl = newContainer.children[0]!.children.find((c: MockElement) =>
 			c.classList.has("fc-settings-tab-content"),
 		);
 		expect(contentEl).toBeDefined();
@@ -445,7 +451,7 @@ describe("FlashcardSettingTab", () => {
 
 		tab.display();
 		const container = tab.containerEl as unknown as MockElement;
-		const navEl = container.children.find((c: MockElement) =>
+		const navEl = container.children[0]!.children.find((c: MockElement) =>
 			c.classList.has("fc-settings-tab-nav"),
 		);
 		const tabButtons =
@@ -560,9 +566,9 @@ describe("FlashcardSettingTab", () => {
 		plugin.flashcardsSection.presentation = vi.fn(() => first);
 		const tab = new FlashcardSettingTab({} as never, plugin as never);
 		tab.display();
-		const contentBeforeFailure = (tab.containerEl as unknown as MockElement).children.find(
-			(child) => child.classList.has("fc-settings-tab-content"),
-		);
+		const contentBeforeFailure = (
+			tab.containerEl as unknown as MockElement
+		).children[0]!.children.find((child) => child.classList.has("fc-settings-tab-content"));
 
 		plugin.flashcardsSection.presentation = vi.fn(() => {
 			throw new Error("invalid definition");
@@ -570,7 +576,7 @@ describe("FlashcardSettingTab", () => {
 		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
 		tab.refresh();
 		expect(firstDispose).not.toHaveBeenCalled();
-		expect((tab.containerEl as unknown as MockElement).children).toContain(
+		expect((tab.containerEl as unknown as MockElement).children[0]!.children).toContain(
 			contentBeforeFailure,
 		);
 
@@ -590,7 +596,9 @@ describe("FlashcardSettingTab", () => {
 		container.scrollTop = 400;
 
 		// Switch to AI tab
-		const navEl = container.children.find((c) => c.classList.has("fc-settings-tab-nav"));
+		const navEl = container.children[0]!.children.find((c) =>
+			c.classList.has("fc-settings-tab-nav"),
+		);
 		const aiTabBtn = navEl?.children[1];
 		aiTabBtn?.click();
 
@@ -603,7 +611,9 @@ describe("FlashcardSettingTab", () => {
 		expect(container.scrollTop).toBe(150);
 
 		// Switch back to flashcards tab
-		const updatedNavEl = container.children.find((c) => c.classList.has("fc-settings-tab-nav"));
+		const updatedNavEl = container.children[0]!.children.find((c) =>
+			c.classList.has("fc-settings-tab-nav"),
+		);
 		const flashcardTabBtn = updatedNavEl?.children[0];
 		flashcardTabBtn?.click();
 
@@ -617,15 +627,17 @@ describe("FlashcardSettingTab", () => {
 		tab.display();
 
 		const container = tab.containerEl as unknown as MockElement;
-		const navEl = container.children.find((c) => c.classList.has("fc-settings-tab-nav"));
+		const navEl = container.children[0]!.children.find((c) =>
+			c.classList.has("fc-settings-tab-nav"),
+		);
 		navEl!.scrollLeft = 96;
 
 		// Rendering replaces the strip; without remembering its offset the active
 		// tab would jump back to the left edge on every refresh.
 		tab.refresh();
 
-		const nextNavEl = (tab.containerEl as unknown as MockElement).children.find((c) =>
-			c.classList.has("fc-settings-tab-nav"),
+		const nextNavEl = (tab.containerEl as unknown as MockElement).children[0]!.children.find(
+			(c) => c.classList.has("fc-settings-tab-nav"),
 		);
 		expect(nextNavEl?.scrollLeft).toBe(96);
 	});
@@ -641,7 +653,9 @@ describe("FlashcardSettingTab", () => {
 		tab.display();
 
 		const container = tab.containerEl as unknown as MockElement;
-		const navEl = container.children.find((c) => c.classList.has("fc-settings-tab-nav"));
+		const navEl = container.children[0]!.children.find((c) =>
+			c.classList.has("fc-settings-tab-nav"),
+		);
 		const tabButtons = navEl?.children ?? [];
 		expect(tabButtons[3]?.scrollIntoView).toHaveBeenCalledWith({
 			block: "nearest",

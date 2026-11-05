@@ -3,6 +3,7 @@ import type { Language } from "../shared/types";
 import type { SettingsPresentation } from "../settings/presentation";
 import type { WorkbenchSettingsSection } from "./workbench";
 import { renderSettingsControls } from "./settingsControlRenderer";
+import { createSharedTranslator } from "../i18n";
 
 interface SettingsPageRendererOptions {
 	readonly app: App;
@@ -25,8 +26,10 @@ export class SettingsPageRenderer {
 	private activePresentation: SettingsPresentation | null = null;
 	private disposeControls: (() => void) | null = null;
 	private navEl: HTMLElement | null = null;
+	private sectionSelectEl: HTMLSelectElement | null = null;
 	private navScrollLeft = 0;
 	private pendingSortFocus: string | null = null;
+	private pendingControlFocus: string | null = null;
 	private renderedSectionId = "";
 	private readonly sectionScrollPositions = new Map<string, number>();
 
@@ -65,14 +68,19 @@ export class SettingsPageRenderer {
 		}
 
 		const focused = containerEl.ownerDocument?.activeElement;
+		const selectFocused = Boolean(focused && focused === this.sectionSelectEl);
 		const navFocused = Boolean(
 			focused && this.navEl && containerEl.contains(focused) && this.navEl.contains(focused),
 		);
-		if (activeSectionId !== this.renderedSectionId) this.pendingSortFocus = null;
-		else if (focused && containerEl.contains(focused)) {
+		if (activeSectionId !== this.renderedSectionId) {
+			this.pendingSortFocus = null;
+			this.pendingControlFocus = null;
+		} else if (focused && containerEl.contains(focused)) {
 			this.pendingSortFocus = focused.getAttribute("data-sortable-id");
+			this.pendingControlFocus = focused.getAttribute("data-settings-focus");
 		} else if (focused && focused !== containerEl.ownerDocument.body) {
 			this.pendingSortFocus = null;
+			this.pendingControlFocus = null;
 		}
 		const sectionChanged = activeSectionId !== this.renderedSectionId;
 		this.rememberNavScroll();
@@ -84,8 +92,30 @@ export class SettingsPageRenderer {
 		this.activePresentation = nextPresentation;
 
 		this.renderedSectionId = activeSectionId;
-		const navEl = containerEl.createDiv({ cls: "fc-settings-tab-nav" });
+		const layoutEl = containerEl.createDiv({ cls: "fc-settings-layout" });
+		const t = createSharedTranslator(input.language);
+		const compactNav = layoutEl.createDiv({ cls: "fc-settings-compact-nav" });
+		compactNav.createEl("label", {
+			text: t("settings.navigation"),
+			attr: { for: "fc-settings-section-select" },
+		});
+		const sectionSelect = compactNav.createEl("select", {
+			cls: "dropdown fc-settings-section-select",
+		});
+		sectionSelect.setAttribute("id", "fc-settings-section-select");
+		sectionSelect.setAttribute("aria-label", t("settings.navigation"));
+		const selectSection = (id: string) => {
+			if (input.activeSection?.id === id) return;
+			const currentScroll = this.getScrollContainer().scrollTop;
+			if (activeSectionId)
+				this.sectionScrollPositions.set(activeSectionId, currentScroll || 0);
+			this.options.onSelectSection(id);
+		};
+		sectionSelect.addEventListener("change", () => selectSection(sectionSelect.value));
+		this.sectionSelectEl = sectionSelect;
+		const navEl = layoutEl.createDiv({ cls: "fc-settings-tab-nav" });
 		navEl.setAttribute?.("role", "tablist");
+		navEl.setAttribute?.("aria-orientation", "vertical");
 		navEl.setAttribute?.(
 			"aria-label",
 			input.language === "zh" ? "设置模块导航" : "Settings sections navigation",
@@ -93,7 +123,27 @@ export class SettingsPageRenderer {
 		let activeTabEl: HTMLButtonElement | null = null;
 		const tabButtons: HTMLButtonElement[] = [];
 
-		for (const section of input.sections) {
+		const categories = ["general", "learning", "content", "language", undefined] as const;
+		const sections = categories.flatMap((category) =>
+			input.sections.filter((section) => section.category === category),
+		);
+		let previousCategory: WorkbenchSettingsSection["category"];
+		let optionParent: HTMLElement = sectionSelect;
+		for (const section of sections) {
+			if (section.category && section.category !== previousCategory) {
+				const categoryLabel = t(`settings.category.${section.category}`);
+				navEl
+					.createDiv({ cls: "fc-settings-nav-category", text: categoryLabel })
+					.setAttribute("role", "presentation");
+				optionParent = sectionSelect.createEl("optgroup", {
+					attr: { label: categoryLabel },
+				});
+			} else if (!section.category) optionParent = sectionSelect;
+			previousCategory = section.category;
+			optionParent.createEl("option", {
+				value: section.id,
+				text: section.label(input.language),
+			});
 			const isActive = input.activeSection?.id === section.id;
 			const tabBtn = navEl.createEl("button", {
 				type: "button",
@@ -109,15 +159,7 @@ export class SettingsPageRenderer {
 
 			if (isActive) activeTabEl = tabBtn;
 			tabBtn.addEventListener("click", () => {
-				if (input.activeSection?.id === section.id) return;
-				const currentScroll = this.getScrollContainer().scrollTop;
-				if (activeSectionId) {
-					this.sectionScrollPositions.set(
-						activeSectionId,
-						typeof currentScroll === "number" ? currentScroll : 0,
-					);
-				}
-				this.options.onSelectSection(section.id);
+				selectSection(section.id);
 			});
 
 			tabBtn.addEventListener("keydown", (event: KeyboardEvent) => {
@@ -144,16 +186,22 @@ export class SettingsPageRenderer {
 			});
 		}
 
+		sectionSelect.value = activeSectionId;
 		this.navEl = navEl;
 		navEl.scrollLeft = this.navScrollLeft;
 
-		const contentEl = containerEl.createDiv({ cls: "fc-settings-tab-content" });
+		const contentEl = layoutEl.createDiv({ cls: "fc-settings-tab-content" });
 		contentEl.setAttribute?.("role", "tabpanel");
 		if (activeSectionId) {
 			contentEl.setAttribute?.("id", `fc-settings-panel-${activeSectionId}`);
 			contentEl.setAttribute?.("aria-labelledby", `fc-settings-tab-${activeSectionId}`);
 		}
 
+		if (input.activeSection)
+			contentEl.createEl("h2", {
+				cls: "fc-settings-page-title",
+				text: input.activeSection.label(input.language),
+			});
 		if (nextPresentation) {
 			this.disposeControls = renderSettingsControls(
 				this.options.app,
@@ -172,8 +220,22 @@ export class SettingsPageRenderer {
 				this.pendingSortFocus = null;
 			}
 		}
+		if (this.pendingControlFocus) {
+			const control = Array.from(
+				contentEl.querySelectorAll<HTMLInputElement>("[data-settings-focus]"),
+			).find(
+				(element) =>
+					element.getAttribute("data-settings-focus") === this.pendingControlFocus &&
+					!element.disabled,
+			);
+			if (control) {
+				control.focus({ preventScroll: true });
+				this.pendingControlFocus = null;
+			}
+		}
 
 		if (sectionChanged) this.revealActiveTab(activeTabEl);
+		if (selectFocused) sectionSelect.focus({ preventScroll: true });
 		if (navFocused) {
 			activeTabEl?.focus({ preventScroll: true });
 		}
@@ -192,7 +254,9 @@ export class SettingsPageRenderer {
 		this.disposeControls?.();
 		this.disposeControls = null;
 		this.pendingSortFocus = null;
+		this.pendingControlFocus = null;
 		this.navEl = null;
+		this.sectionSelectEl = null;
 	}
 
 	/** Forget a section's remembered scroll offset, e.g. when it is opened programmatically. */

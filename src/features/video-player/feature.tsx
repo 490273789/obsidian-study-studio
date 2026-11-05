@@ -173,6 +173,7 @@ export function createVideoPlayerFeature(
 
 			const section: WorkbenchSettingsSection = {
 				id: VIDEO_PLAYER_SECTION_ID,
+				category: "content",
 				order: 4,
 				label: (language) => videoPlayerStrings(language).settingsHeading,
 				presentation: (language) =>

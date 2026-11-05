@@ -100,6 +100,8 @@ export interface WorkbenchFeatureShortcut {
 /** One section of the plugin settings tab, contributed by a feature or the host. */
 export interface WorkbenchSettingsSection {
 	id: string;
+	/** Feature-owned navigation grouping; ungrouped contributions remain available. */
+	category?: "general" | "learning" | "content" | "language";
 	/** Position in the settings tab; lower comes first. */
 	order: number;
 	label(language: Language): string;

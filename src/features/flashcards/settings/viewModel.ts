@@ -20,6 +20,7 @@ export interface SettingsViewModelState {
 	availableTags: string[];
 	isLoadingTags: boolean;
 	hasLoadedTags: boolean;
+	tagScanFailed?: boolean;
 	language: Language;
 	pronunciation: PronunciationSnapshot;
 	tagsCollapsed?: boolean;
@@ -50,8 +51,6 @@ export interface SettingsViewModelActions {
 	clearPronunciationCache: () => SettingsActionResult;
 }
 
-const LANGUAGE_OPTIONS: readonly Language[] = ["zh", "en"];
-
 export function buildSettingsViewModel(
 	state: SettingsViewModelState,
 	actions: SettingsViewModelActions,
@@ -63,7 +62,7 @@ export function buildSettingsViewModel(
 	const pronunciationBusy = pronunciation.management !== "idle";
 
 	return defineSettings("flashcards", (page) => {
-		page.group("flashcards", t("settings.flashcardGroup"), (group) => {
+		page.group("flashcards", t("settings.deckSourcesGroup"), (group) => {
 			const tagCount = state.settings.flashcardTags.length;
 			const isTagsCollapsed = state.tagsCollapsed ?? tagCount > 3;
 			const toggleTagsCollapsed = actions.toggleTagsCollapsed;
@@ -81,13 +80,6 @@ export function buildSettingsViewModel(
 					description: tagsSummary,
 				},
 				(row) => {
-					row.button("refresh", {
-						label: state.isLoadingTags
-							? t("settings.refreshingTags")
-							: t("settings.refreshAndCleanTags"),
-						disabled: state.isLoadingTags,
-						onPress: () => actions.refreshTags({ cleanConfiguredTags: true }),
-					});
 					if (toggleTagsCollapsed && tagCount > 1) {
 						row.button("toggle-collapse", {
 							label: isTagsCollapsed
@@ -101,7 +93,8 @@ export function buildSettingsViewModel(
 							values: state.settings.flashcardTags,
 							placeholder: t("settings.flashcardTagPlaceholder"),
 							addLabel: t("settings.addTag"),
-							removeAriaLabel: t("settings.delete"),
+							removeAriaLabel: t("settings.removeTag"),
+							disabled: state.isLoadingTags,
 							onChange: actions.updateFlashcardTag,
 							onAdd: actions.addFlashcardTag,
 							onRemove: actions.removeFlashcardTag,
@@ -125,37 +118,32 @@ export function buildSettingsViewModel(
 					});
 					row.choiceButtons("tags", {
 						choices: unusedTags.map((tag) => ({ id: tag, label: tag })),
-						emptyText: state.hasLoadedTags
-							? t("settings.noDiscoveredTags")
-							: t("settings.discoveredTagsNotLoaded"),
+						disabled: state.isLoadingTags,
+						emptyText: state.isLoadingTags
+							? t("settings.refreshingTags")
+							: !state.hasLoadedTags
+								? t("settings.discoveredTagsNotLoaded")
+								: state.availableTags.length > 0
+									? t("settings.allDiscoveredTagsAdded")
+									: t("settings.noDiscoveredTags"),
 						onChoose: actions.addDiscoveredTag,
 					});
 				},
 			);
-		});
-
-		page.group("interface", t("settings.interfaceGroup"), (group) => {
-			group.select(
-				"language",
-				{ name: t("settings.languageName"), description: t("settings.languageDesc") },
-				{
-					value: state.language,
-					options: LANGUAGE_OPTIONS.map((language) => ({
-						value: language,
-						label:
-							language === "zh" ? t("settings.languageZh") : t("settings.languageEn"),
-					})),
-					onChange: actions.setLanguage,
-				},
-			);
+			group.row("tag-scan-error", {
+				name: t("settings.tagsRefreshFailedName"),
+				description: t("settings.tagsRefreshFailedDesc"),
+				tone: "warning",
+				visible: state.tagScanFailed === true,
+			});
 		});
 
 		page.group("study", t("settings.defaultStudyGroup"), (group) => {
 			group.row("scope", {
-				name: t("settings.scopeName"),
+				name: "",
 				description: t("settings.scopeDesc"),
 			});
-			group.slider(
+			group.integer(
 				"daily-new",
 				{ name: t("settings.dailyNewName"), description: t("settings.dailyNewDesc") },
 				{
@@ -164,11 +152,12 @@ export function buildSettingsViewModel(
 					onChange: actions.setDailyNewCards,
 				},
 			);
-			group.slider(
+			group.integer(
 				"daily-review",
 				{ name: t("settings.dailyReviewName"), description: t("settings.dailyReviewDesc") },
 				{
 					...STUDY_SETTINGS_LIMITS.dailyReviewCards,
+					step: 1,
 					value: state.settings.dailyReviewCards,
 					onChange: actions.setDailyReviewCards,
 				},
@@ -379,6 +368,21 @@ export function buildSettingsViewModel(
 			);
 		});
 
+		page.group("maintenance", t("settings.deckMaintenanceGroup"), (group) => {
+			group.button(
+				"clean-tags",
+				{
+					name: t("settings.cleanTagsName"),
+					description: t("settings.cleanTagsDesc"),
+				},
+				{
+					label: t("settings.refreshAndCleanTags"),
+					disabled: state.isLoadingTags || state.settings.flashcardTags.length === 0,
+					onPress: () => actions.refreshTags({ cleanConfiguredTags: true }),
+				},
+			);
+		});
+
 		page.group("help", t("settings.helpGroup"), (group) => {
 			group.row("usage", {
 				name: t("settings.helpName"),
@@ -405,7 +409,8 @@ export function buildSettingsViewModel(
 }
 
 function getUnusedTags(availableTags: string[], configuredTags: string[]): string[] {
-	return availableTags.filter((tag) => !configuredTags.includes(tag));
+	const configured = new Set(configuredTags.map((tag) => tag.trim().toLowerCase()));
+	return availableTags.filter((tag) => !configured.has(tag.trim().toLowerCase()));
 }
 
 function parsePronunciationAccent(value: string): PronunciationAccent {

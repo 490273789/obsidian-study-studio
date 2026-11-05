@@ -90,6 +90,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 	let availableTags: string[] = [];
 	let isLoadingTags = false;
 	let hasLoadedTags = false;
+	let tagScanFailed = false;
 
 	const t = (host: FlashcardWorkbenchHost) => createTranslator(host.settings.read().language);
 
@@ -362,10 +363,16 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 		if (isLoadingTags) return;
 		const strings = t(host);
 		isLoadingTags = true;
+		tagScanFailed = false;
 		host.settingsTab.refresh(FLASHCARD_SECTION_ID);
 
 		try {
-			await activeServices().cardIdentityContinuity.synchronize();
+			const outcome = await activeServices().cardIdentityContinuity.synchronize();
+			if (outcome.kind === "failed") {
+				tagScanFailed = true;
+				new Notice(strings("settings.tagsRefreshFailed"));
+				return;
+			}
 			availableTags = activeRepository().tags.read();
 			hasLoadedTags = true;
 
@@ -384,6 +391,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 					: strings("settings.tagsRefreshed"),
 			);
 		} catch (error) {
+			tagScanFailed = true;
 			console.error("Failed to refresh flashcard tags:", error);
 			new Notice(strings("settings.tagsRefreshFailed"));
 		} finally {
@@ -530,6 +538,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 
 	const section = (host: FlashcardWorkbenchHost): WorkbenchSettingsSection => ({
 		id: FLASHCARD_SECTION_ID,
+		category: "learning",
 		order: 0,
 		label: (language: Language) => createTranslator(language)("settings.tabFlashcards"),
 		presentation: (language) => {
@@ -542,6 +551,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 					availableTags,
 					isLoadingTags,
 					hasLoadedTags,
+					tagScanFailed,
 					language,
 					pronunciation: activeServices().pronunciationRuntime.getSnapshot(),
 					tagsCollapsed: isTagsCollapsed,

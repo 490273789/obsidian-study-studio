@@ -81,7 +81,12 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 
 	private navigationKey(sections: WorkbenchSettingsSection[], language: Language): string {
 		return JSON.stringify(
-			sections.map((section) => [section.id, section.order, section.label(language)]),
+			sections.map((section) => [
+				section.id,
+				section.order,
+				section.category,
+				section.label(language),
+			]),
 		);
 	}
 

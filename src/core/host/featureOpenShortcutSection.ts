@@ -133,6 +133,7 @@ export function createFeatureOpenShortcutSection(
 
 	return {
 		id: FEATURE_OPEN_SHORTCUT_SECTION_ID,
+		category: "general",
 		order: 1.5,
 		label: (nextLanguage) => (nextLanguage === "zh" ? "功能快捷键" : "Feature shortcuts"),
 		presentation,

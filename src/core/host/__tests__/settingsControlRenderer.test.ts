@@ -75,6 +75,11 @@ class MockElement {
 	disabled = false;
 	checked = false;
 	rows = 0;
+	hidden = false;
+	validationMessage = "";
+	setCustomValidity(message: string) {
+		this.validationMessage = message;
+	}
 	draggable = false;
 	icon = "";
 	ownerDocument: MockDocument;
@@ -176,6 +181,15 @@ class MockDocument {
 }
 
 class MockValueComponent {
+	get selectEl() {
+		return this.inputEl;
+	}
+	get sliderEl() {
+		return this.inputEl;
+	}
+	get toggleEl() {
+		return this.inputEl;
+	}
 	constructor(
 		readonly inputEl: MockElement,
 		private readonly value: () => string | number | boolean,
@@ -354,6 +368,105 @@ async function settle(): Promise<void> {
 }
 
 describe("renderSettingsControls", () => {
+	it("accepts repeated precise edits including returning to the original value before saving finishes", async () => {
+		const finishes: (() => void)[] = [];
+		const changed = vi.fn(
+			(_value: number) => new Promise<void>((resolve) => finishes.push(resolve)),
+		);
+		const build = () =>
+			defineSettings("numbers", (page) =>
+				page.group("limits", "Limits", (group) =>
+					group.integer(
+						"daily",
+						{ name: "Daily limit" },
+						{ value: 20, min: 1, max: 500, step: 1, onChange: changed },
+					),
+				),
+			);
+		const container = new MockElement("div", new MockDocument());
+		renderSettingsControls({} as never, container as never, build());
+		const input = one(container, "fc-settings-number-input");
+		input.value = "30";
+		input.emit("keydown", new MockEvent("Enter"));
+		input.emit("change");
+		expect(changed).toHaveBeenCalledTimes(1);
+		input.value = "20";
+		input.emit("change");
+		expect(changed.mock.calls.map((call) => call[0])).toEqual([30, 20]);
+		for (const finish of finishes) finish();
+		await settle();
+		const replacement = new MockElement("div", new MockDocument());
+		renderSettingsControls({} as never, replacement as never, build());
+		expect(
+			one(replacement, "fc-settings-number-input").attributes.get("data-settings-focus"),
+		).toBe(input.attributes.get("data-settings-focus"));
+	});
+	it("keeps a precise number draft while typing and blocks empty, fractional and out-of-range submissions", async () => {
+		const changed = vi.fn();
+		const presentation = defineSettings("numbers", (page) => {
+			page.group("limits", "Limits", (group) =>
+				group.integer(
+					"daily",
+					{ name: "Daily limit" },
+					{ value: 20, min: 1, max: 500, step: 1, onChange: changed },
+				),
+			);
+		});
+		const container = new MockElement("div", new MockDocument());
+		renderSettingsControls({} as never, container as never, presentation);
+		const input = one(container, "fc-settings-number-input");
+		input.value = "101";
+		input.emit("input");
+		expect(changed).not.toHaveBeenCalled();
+		for (const value of ["", "0", "501", "1.5"]) {
+			input.value = value;
+			input.emit("change");
+			expect(input.attributes.get("aria-invalid")).toBe("true");
+			expect(input.validationMessage).toContain("1–500");
+		}
+		await settle();
+		expect(changed).not.toHaveBeenCalled();
+		input.value = "101";
+		input.emit("keydown", new MockEvent("Enter"));
+		await settle();
+		expect(changed).toHaveBeenCalledWith(101);
+		expect(input.attributes.get("aria-invalid")).toBe("false");
+		expect(one(container, "fc-settings-input-error").hidden).toBe(true);
+	});
+
+	it("reports action failures accessibly and ignores late feedback after disposal", async () => {
+		const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		let fail!: (error: Error) => void;
+		const presentation = defineSettings("actions", (page) => {
+			page.group("general", "General", (group) =>
+				group.button(
+					"save",
+					{ name: "Save" },
+					{
+						label: "Run",
+						onPress: () =>
+							new Promise<void>((_resolve, reject) => {
+								fail = reject;
+							}),
+					},
+				),
+			);
+		});
+		const container = new MockElement("div", new MockDocument());
+		const dispose = renderSettingsControls({} as never, container as never, presentation);
+		named(container, "Run").click();
+		fail(new Error("unavailable"));
+		await settle();
+		expect(one(container, "fc-settings-action-error").attributes.get("role")).toBe("alert");
+		expect(one(container, "fc-settings-action-error").textContent).toContain("重试");
+		named(container, "Run").click();
+		dispose();
+		const oldMessage = one(container, "fc-settings-action-error").textContent;
+		fail(new Error("late failure"));
+		await settle();
+		expect(one(container, "fc-settings-action-error").textContent).toBe(oldMessage);
+		log.mockRestore();
+	});
 	it("connects dictionary drag sorting to presentation actions and releases the binding", async () => {
 		const moved = vi.fn();
 		const presentation = defineSettings("example", (page) => {
@@ -662,8 +775,8 @@ describe("renderSettingsControls", () => {
 		);
 		const removeBtn = one(container, "fc-btn-remove");
 		expect(removeBtn.classList.contains("flashcard-btn")).toBe(true);
-		expect(removeBtn.classList.contains("flashcard-btn-icon")).toBe(true);
-		expect(removeBtn.classList.contains("flashcard-btn-danger")).toBe(true);
+		expect(removeBtn.textContent).toBe("Remove value");
+		expect(removeBtn.classList.contains("flashcard-btn-ghost")).toBe(true);
 	});
 
 	it("captures valid keybindings while cancelling Escape and reporting conflicts", async () => {

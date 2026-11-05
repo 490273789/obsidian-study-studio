@@ -167,6 +167,7 @@ export function createAudioPracticeFeature(deps: {
 			});
 			host.settingsSection({
 				id: SECTION,
+				category: "learning",
 				order: 5,
 				label: (language) => audioPracticeStrings(language).title,
 				presentation: (language) =>

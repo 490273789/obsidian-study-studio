@@ -154,6 +154,7 @@ releases all observers and frames and supports setup/cleanup/setup replay.
 - Add common renderer-neutral recipes to the closed composer catalog only when multiple settings sections need them. Keep feature-specific shapes out of the shared module.
 - Preserve async tag discovery/refresh and runtime subscription cleanup; both live behind the section assembled in `src/features/flashcards/feature.tsx`.
 - Pronunciation controls derive values and busy/cache state from `PronunciationRuntime`; do not duplicate transient state in the settings adapter.
+- Host-owned general settings contain the shared interface language. Sections declare their optional navigation category; the page renderer owns the wide sidebar / narrow native selector, group layout, numeric validation, and restoring focus after a refresh. Feature editors retain persistence and scan/error state.
 - After settings changes, explicitly verify that the settings tab is not blank when manual Obsidian testing is feasible.
 
 ## Styling

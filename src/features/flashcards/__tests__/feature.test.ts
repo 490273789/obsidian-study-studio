@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { Layers } from "lucide-react";
+import { Notice } from "obsidian";
+import type {
+	SettingsPresentation,
+	SettingsButtonSnapshot,
+} from "../../../core/settings/presentation";
 import { DEFAULT_SETTINGS } from "../../../core/host/settingsSlices";
 import { createFlashcardFeature } from "../feature";
 import { createFakeWorkbenchHost } from "../../../core/host/__tests__/fakeWorkbenchHost";
@@ -14,6 +19,7 @@ const deep = vi.hoisted(() => ({
 	deckHome: null as unknown,
 	pronunciation: null as unknown,
 	repository: null as unknown,
+	synchronize: vi.fn(),
 }));
 
 vi.mock("../domain/storage/flashcardPersistence", () => ({
@@ -89,7 +95,7 @@ vi.mock("../domain/sessions/sessionLifecycle", () => ({
 vi.mock("../domain/identity/cardIdentityContinuity", () => ({
 	createCardIdentityContinuity: vi.fn(() => ({
 		inspect: () => ({ issues: [], migration: null }),
-		synchronize: vi.fn(),
+		synchronize: deep.synchronize,
 		resolve: vi.fn(),
 		prepareEdit: vi.fn(),
 	})),
@@ -136,11 +142,38 @@ function renderFeature() {
 	return { feature, fake };
 }
 
+function tagButton(
+	presentation: SettingsPresentation,
+	rowKey: string,
+	controlKey: string,
+	groupKey: string = "flashcards",
+): SettingsButtonSnapshot {
+	const button = presentation.snapshot.groups
+		.find((group) => group.key === groupKey)
+		?.rows.find((row) => row.key === rowKey)
+		?.controls.find((control) => control.key === controlKey);
+	if (button?.kind !== "button") throw new Error("Expected tag button");
+	return button;
+}
+
+function hasTagError(presentation: SettingsPresentation): boolean {
+	return (
+		presentation.snapshot.groups
+			.find((group) => group.key === "flashcards")
+			?.rows.some((row) => row.key === "tag-scan-error") ?? false
+	);
+}
+
 describe("flashcard feature", () => {
 	beforeEach(() => {
 		deep.deckHome = null;
 		deep.pronunciation = null;
 		deep.repository = null;
+		deep.synchronize.mockReset().mockResolvedValue({
+			kind: "current",
+			change: { changedDeckIds: [], removedDeckIds: [], tagsChanged: false },
+		});
+		vi.mocked(Notice).mockClear();
 	});
 
 	it("registers its view, catalog entry, commands, and settings section", () => {
@@ -177,6 +210,89 @@ describe("flashcard feature", () => {
 
 		expect(presentation.snapshot.groups.length).toBeGreaterThan(0);
 		expect(JSON.stringify(presentation.snapshot)).toContain("每日新卡");
+		feature.stop();
+	});
+
+	it("keeps configured tags on a failed synchronization and clears the inline error after retry", async () => {
+		const { feature, fake } = renderFeature();
+		const section = fake.sections.get("flashcards")!;
+		deep.synchronize.mockResolvedValueOnce({
+			kind: "failed",
+			retryable: true,
+			message: "Source is still changing",
+		});
+		const initial = section.presentation("zh");
+		const cleanup = tagButton(initial, "clean-tags", "control", "maintenance");
+		const configured = [...fake.host.settings.read().flashcardTags];
+		await initial.invoke({ action: cleanup.action, value: undefined });
+
+		expect(fake.host.settings.read().flashcardTags).toEqual(configured);
+		expect(fake.updateSettings).not.toHaveBeenCalled();
+		expect(hasTagError(section.presentation("zh"))).toBe(true);
+		expect(Notice).toHaveBeenLastCalledWith("标签更新未完成，请重试扫描或清理操作。");
+
+		const retry = section.presentation("zh");
+		const scan = tagButton(retry, "discovered-tags", "refresh");
+		await retry.invoke({ action: scan.action, value: undefined });
+		expect(hasTagError(section.presentation("zh"))).toBe(false);
+		expect(Notice).toHaveBeenLastCalledWith("标签扫描完成");
+		feature.stop();
+	});
+
+	it("shows an inline retry hint when a tag scan throws", async () => {
+		const { feature, fake } = renderFeature();
+		const section = fake.sections.get("flashcards")!;
+		const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+		try {
+			deep.synchronize.mockRejectedValueOnce(new Error("Read failed"));
+			const initial = section.presentation("en");
+			const scan = tagButton(initial, "discovered-tags", "refresh");
+			await initial.invoke({ action: scan.action, value: undefined });
+			expect(hasTagError(section.presentation("en"))).toBe(true);
+			expect(fake.updateSettings).not.toHaveBeenCalled();
+		} finally {
+			errorLog.mockRestore();
+			feature.stop();
+		}
+	});
+
+	it("clears the previous tag error and disables scan controls while retrying", async () => {
+		const { feature, fake } = renderFeature();
+		const section = fake.sections.get("flashcards")!;
+		deep.synchronize.mockResolvedValueOnce({
+			kind: "failed",
+			retryable: true,
+			message: "Retry",
+		});
+		const first = section.presentation("en");
+		await first.invoke({
+			action: tagButton(first, "discovered-tags", "refresh").action,
+			value: undefined,
+		});
+		expect(hasTagError(section.presentation("en"))).toBe(true);
+		let finish: ((outcome: unknown) => void) | undefined;
+		deep.synchronize.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve;
+				}),
+		);
+		const retry = section.presentation("en");
+		const pending = retry.invoke({
+			action: tagButton(retry, "discovered-tags", "refresh").action,
+			value: undefined,
+		});
+		const busy = section.presentation("en");
+		expect(hasTagError(busy)).toBe(false);
+		expect(tagButton(busy, "discovered-tags", "refresh").disabled).toBe(true);
+		finish?.({
+			kind: "current",
+			change: { changedDeckIds: [], removedDeckIds: [], tagsChanged: false },
+		});
+		await pending;
+		expect(tagButton(section.presentation("en"), "discovered-tags", "refresh").disabled).toBe(
+			false,
+		);
 		feature.stop();
 	});
 

@@ -14,6 +14,10 @@ import { FlashcardSettings } from "../shared/types";
 import { DEFAULT_SETTINGS } from "./settingsSlices";
 import { WorkbenchStore } from "../storage/workbenchStore";
 import { FlashcardSettingTab } from "./settingsTab";
+import {
+	GENERAL_SETTINGS_SECTION_ID,
+	createGeneralSettingsSection,
+} from "./generalSettingsSection";
 import { createOutboundPort, type OutboundPort } from "../net";
 
 /**
@@ -58,6 +62,13 @@ export default class StudyStudioPlugin extends Plugin {
 					plugin: this,
 				}),
 		});
+		this.workbench.addSettingsSection(
+			createGeneralSettingsSection({
+				readLanguage: () => this.settings.language,
+				updateLanguage: (language) => this.commitSettings({ language }),
+				refresh: () => this.workbench.settingsTab.refresh(GENERAL_SETTINGS_SECTION_ID),
+			}),
+		);
 		this.workbench.addSettingsSection(
 			createAiEngineSection({
 				ai: this.aiService,

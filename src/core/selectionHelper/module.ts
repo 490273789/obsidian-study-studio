@@ -60,6 +60,7 @@ export function createSelectionHelperModule(
 					: ("idle" as const);
 	const section = (host: SelectionHelperWorkbenchHost): WorkbenchSettingsSection => ({
 		id: SELECTION_HELPER_SECTION_ID,
+		category: "language",
 		order: 4,
 		label: (language) => selectionHelperStrings(language).settingsHeading,
 		presentation: (language) => {

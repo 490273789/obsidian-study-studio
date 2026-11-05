@@ -1,4 +1,5 @@
 import { App, SecretComponent, Setting } from "obsidian";
+import { createSharedTranslator } from "../i18n";
 import type { Language } from "../shared/types";
 import { mountSettingsSorting, type SortableSettingRow } from "./settingsSorting";
 import { SortableInteraction } from "../ui/primitives/Sortable/sortableInteraction";
@@ -41,6 +42,9 @@ export function renderSettingsControls(
 
 class SettingsControlRenderer {
 	private readonly disposers: (() => void)[] = [];
+	private disposed = false;
+	private errorEl: HTMLElement | null = null;
+	private container: HTMLElement | null = null;
 
 	constructor(
 		private readonly app: App,
@@ -48,6 +52,7 @@ class SettingsControlRenderer {
 	) {}
 
 	dispose(): void {
+		this.disposed = true;
 		for (const dispose of this.disposers.splice(0).reverse()) dispose();
 	}
 
@@ -56,11 +61,15 @@ class SettingsControlRenderer {
 		presentation: SettingsPresentation,
 		redundantHeading?: string,
 	): void {
+		this.container = container;
 		for (let i = 0; i < presentation.snapshot.groups.length; i++) {
 			const group = presentation.snapshot.groups[i];
 			if (!group) continue;
+			const groupEl = container.createEl("section", { cls: "fc-settings-group" });
+			groupEl.setAttribute("data-settings-group", group.key);
+			if (group.heading) groupEl.setAttribute("aria-label", group.heading);
 			if (group.heading) {
-				const headingSetting = new Setting(container).setName(group.heading).setHeading();
+				const headingSetting = new Setting(groupEl).setName(group.heading).setHeading();
 				if (
 					i === 0 &&
 					redundantHeading &&
@@ -72,7 +81,7 @@ class SettingsControlRenderer {
 					el?.addClass?.("fc-heading-redundant");
 				}
 			}
-			for (const row of group.rows) this.renderSetting(container, row, presentation);
+			for (const row of group.rows) this.renderSetting(groupEl, row, presentation);
 		}
 	}
 
@@ -109,8 +118,9 @@ class SettingsControlRenderer {
 						.setValue(control.value)
 						.setDisabled(control.disabled);
 					text.inputEl.rows = 5;
+					text.inputEl.setAttribute("aria-label", setting.nameEl.textContent ?? "");
 					text.inputEl.addEventListener("change", () => {
-						this.dispatch(presentation, control.action, text.getValue());
+						void this.dispatch(presentation, control.action, text.getValue());
 					});
 				});
 				break;
@@ -173,7 +183,7 @@ class SettingsControlRenderer {
 		control: SettingsEditableListSnapshot,
 		presentation: SettingsPresentation,
 	): void {
-		this.renderEditableTextList(setting.descEl, {
+		this.renderEditableTextList(setting.settingEl, {
 			values: [...control.values],
 			listClass: "flashcard-tags-list-settings",
 			itemClass: "flashcard-tag-item-settings",
@@ -183,15 +193,16 @@ class SettingsControlRenderer {
 			placeholder: control.placeholder,
 			addLabel: control.addLabel,
 			removeAriaLabel: control.removeAriaLabel,
+			focusKey: stableFocusKey(control.changeAction),
 			disabled: control.disabled,
 			onChange: (index, value) => {
-				this.dispatch(presentation, control.changeAction, { index, value });
+				void this.dispatch(presentation, control.changeAction, { index, value });
 			},
 			onAdd: () => {
-				this.dispatch(presentation, control.addAction, undefined);
+				void this.dispatch(presentation, control.addAction, undefined);
 			},
 			onRemove: (index) => {
-				this.dispatch(presentation, control.removeAction, index);
+				void this.dispatch(presentation, control.removeAction, index);
 			},
 		});
 	}
@@ -202,7 +213,7 @@ class SettingsControlRenderer {
 		presentation: SettingsPresentation,
 	): void {
 		if (control.choices.length > 0) {
-			const tagsContainer = setting.descEl.createDiv({
+			const tagsContainer = setting.settingEl.createDiv({
 				cls: "flashcard-tags-container",
 			});
 			for (const choice of control.choices) {
@@ -212,14 +223,15 @@ class SettingsControlRenderer {
 					cls: "flashcard-btn flashcard-btn-outline flashcard-btn-sm flashcard-tag-button",
 				});
 				tagBtn.disabled = control.disabled;
-				tagBtn.addEventListener("click", () =>
-					this.dispatch(presentation, control.action, choice.id),
+				tagBtn.addEventListener(
+					"click",
+					() => void this.dispatch(presentation, control.action, choice.id),
 				);
 			}
 			return;
 		}
 
-		setting.descEl.createDiv({
+		setting.settingEl.createDiv({
 			text: control.emptyText,
 			cls: "flashcard-tags-empty",
 		});
@@ -231,6 +243,7 @@ class SettingsControlRenderer {
 		presentation: SettingsPresentation,
 	): void {
 		setting.addDropdown((dropdown) => {
+			dropdown.selectEl.setAttribute("aria-label", setting.nameEl.textContent ?? "");
 			for (const option of control.options) {
 				dropdown.addOption(option.value, option.label);
 			}
@@ -238,7 +251,7 @@ class SettingsControlRenderer {
 				.setValue(control.value)
 				.setDisabled(control.disabled)
 				.onChange((value) => {
-					this.dispatch(presentation, control.action, value);
+					void this.dispatch(presentation, control.action, value);
 				});
 		});
 	}
@@ -248,15 +261,16 @@ class SettingsControlRenderer {
 		control: SettingsNumberSnapshot,
 		presentation: SettingsPresentation,
 	): void {
-		setting.addSlider((slider) =>
+		setting.addSlider((slider) => {
+			slider.sliderEl.setAttribute("aria-label", setting.nameEl.textContent ?? "");
 			slider
 				.setLimits(control.min, control.max, control.step)
 				.setValue(control.value)
 				.setDisabled(control.disabled)
 				.onChange((value) => {
-					this.dispatch(presentation, control.action, value);
-				}),
-		);
+					void this.dispatch(presentation, control.action, value);
+				});
+		});
 	}
 
 	private renderIntegerControl(
@@ -264,15 +278,64 @@ class SettingsControlRenderer {
 		control: SettingsNumberSnapshot,
 		presentation: SettingsPresentation,
 	): void {
-		setting.addText((text) =>
-			text
-				.setPlaceholder(String(control.value))
+		setting.addText((text) => {
+			text.setPlaceholder(String(control.value))
 				.setValue(String(control.value))
-				.setDisabled(control.disabled)
-				.onChange((value) => {
-					this.dispatch(presentation, control.action, value);
-				}),
-		);
+				.setDisabled(control.disabled);
+			const input = text.inputEl;
+			input.type = "number";
+			input.min = String(control.min);
+			input.max = String(control.max);
+			input.step = String(control.step);
+			input.addClass("fc-settings-number-input");
+			input.setAttribute("aria-label", setting.nameEl.textContent ?? "");
+			input.setAttribute("data-settings-focus", stableFocusKey(control.action));
+			const error = setting.controlEl.createSpan({ cls: "fc-settings-input-error" });
+			const errorId = `fc-number-error-${presentation.snapshot.generation}-${control.action.id.replace(/[^a-zA-Z0-9-]/g, "-")}`;
+			error.setAttribute("id", errorId);
+			error.setAttribute("role", "alert");
+			error.hidden = true;
+			input.setAttribute("aria-describedby", errorId);
+			const validate = (): boolean => {
+				const value = Number(input.value);
+				const valid =
+					input.value.trim() !== "" &&
+					Number.isInteger(value) &&
+					value >= control.min &&
+					value <= control.max;
+				const message = valid
+					? ""
+					: createSharedTranslator(this.language)("settings.numberRange", {
+							min: control.min,
+							max: control.max,
+						});
+				input.setCustomValidity(message);
+				input.setAttribute("aria-invalid", String(!valid));
+				error.textContent = message;
+				error.hidden = valid;
+				return valid;
+			};
+			let lastRequestedValue: number | undefined = control.value;
+			const commit = () => {
+				if (control.disabled || !validate()) return;
+				const value = Number(input.value);
+				if (value === lastRequestedValue) return;
+				lastRequestedValue = value;
+				void this.dispatch(presentation, control.action, value).then((applied) => {
+					if (!applied && lastRequestedValue === value) lastRequestedValue = undefined;
+				});
+			};
+			input.addEventListener("input", () => {
+				if (!error.hidden) validate();
+			});
+			input.addEventListener("change", commit);
+			input.addEventListener("keydown", (event) => {
+				if (event.key === "Enter") {
+					event.preventDefault();
+					commit();
+				}
+			});
+		});
 	}
 
 	private renderToggleControl(
@@ -280,15 +343,16 @@ class SettingsControlRenderer {
 		control: SettingsToggleSnapshot,
 		presentation: SettingsPresentation,
 	): void {
-		setting.addToggle((toggle) =>
+		setting.addToggle((toggle) => {
 			toggle
 				.setValue(control.value)
 				.setDisabled(control.disabled)
 				.setTooltip(control.tooltip ?? "")
 				.onChange((value) => {
-					this.dispatch(presentation, control.action, value);
-				}),
-		);
+					void this.dispatch(presentation, control.action, value);
+				});
+			toggle.toggleEl.setAttribute("aria-label", setting.nameEl.textContent ?? "");
+		});
 	}
 
 	private renderTextControl(
@@ -297,11 +361,12 @@ class SettingsControlRenderer {
 		presentation: SettingsPresentation,
 	): void {
 		setting.addText((text) => {
+			text.inputEl.setAttribute("aria-label", setting.nameEl.textContent ?? "");
 			text.setPlaceholder(control.placeholder)
 				.setValue(control.value)
 				.setDisabled(control.disabled);
 			text.inputEl.addEventListener("change", () => {
-				this.dispatch(presentation, control.action, text.getValue());
+				void this.dispatch(presentation, control.action, text.getValue());
 			});
 		});
 	}
@@ -345,7 +410,7 @@ class SettingsControlRenderer {
 			error.textContent = "";
 			button.classList.remove("has-error");
 			button.textContent = shortcut;
-			this.dispatch(presentation, control.action, shortcut);
+			void this.dispatch(presentation, control.action, shortcut);
 			button.blur();
 		});
 	}
@@ -360,7 +425,7 @@ class SettingsControlRenderer {
 			.setValue(control.value)
 			.setDisabled(control.disabled)
 			.onChange((value) => {
-				this.dispatch(presentation, control.action, value);
+				void this.dispatch(presentation, control.action, value);
 			});
 	}
 
@@ -521,8 +586,9 @@ class SettingsControlRenderer {
 					cls: "fc-profile-name-input",
 				});
 				nameInput.disabled = title.disabled;
-				nameInput.addEventListener("change", () =>
-					this.dispatch(presentation, title.action, nameInput.value),
+				nameInput.addEventListener(
+					"change",
+					() => void this.dispatch(presentation, title.action, nameInput.value),
 				);
 			}
 			if (item.toggle) {
@@ -568,8 +634,18 @@ class SettingsControlRenderer {
 		presentation: SettingsPresentation,
 	): void {
 		const setting = new Setting(parentEl);
+		setting.settingEl.setAttribute("data-settings-row", row.key);
+		if (!row.name && !row.controls.length) setting.setClass("fc-settings-description-row");
+		if (
+			row.controls.some(
+				(control) => control.kind === "editableList" || control.kind === "choiceButtons",
+			)
+		)
+			setting.setClass("fc-settings-extended-row");
 		if (row.layout === "wide") setting.setClass("fc-profile-cards-setting");
 		if (row.tone !== "neutral") setting.setClass(`fc-settings-tone-${row.tone}`);
+		if (row.tone === "warning" || row.tone === "danger")
+			setting.settingEl.setAttribute("role", "alert");
 		setting.setName(row.name);
 		if (row.description) this.renderDescription(setting, row.description);
 		for (const control of row.controls) this.renderControl(setting, control, presentation);
@@ -579,9 +655,19 @@ class SettingsControlRenderer {
 		presentation: SettingsPresentation,
 		action: SettingsActionRef<unknown>,
 		value: unknown,
-	): void {
-		void presentation.invoke({ action, value }).then((result) => {
-			if (result.status === "failed") console.error("Settings action failed:", result.error);
+	): Promise<boolean> {
+		return presentation.invoke({ action, value }).then((result) => {
+			if (result.status === "failed") {
+				console.error("Settings action failed:", result.error);
+				if (!this.disposed && this.container) {
+					this.errorEl ??= this.container.createDiv({ cls: "fc-settings-action-error" });
+					this.errorEl.setAttribute("role", "alert");
+					this.errorEl.textContent = createSharedTranslator(this.language)(
+						"settings.actionFailed",
+					);
+				}
+			} else if (result.status === "applied" && this.errorEl) this.errorEl.textContent = "";
+			return result.status === "applied";
 		});
 	}
 
@@ -616,6 +702,7 @@ class SettingsControlRenderer {
 			placeholder: string;
 			addLabel: string;
 			removeAriaLabel: string;
+			focusKey: string;
 			disabled: boolean;
 			onChange: (index: number, value: string) => void;
 			onAdd: () => void;
@@ -643,6 +730,8 @@ class SettingsControlRenderer {
 				cls: `fc-settings-input ${options.inputClass}`,
 			});
 			input.disabled = options.disabled;
+			input.setAttribute("aria-label", `${options.placeholder} ${index + 1}`);
+			input.setAttribute("data-settings-focus", `${options.focusKey}/${index}`);
 
 			input.addEventListener("change", () => {
 				options.onChange(index, input.value);
@@ -651,10 +740,10 @@ class SettingsControlRenderer {
 			if (hasRemoveButton) {
 				const removeBtn = item.createEl("button", {
 					type: "button",
-					text: "✕",
-					cls: `flashcard-btn flashcard-btn-icon flashcard-btn-danger flashcard-btn-md fc-btn-remove ${options.removeButtonClass}`,
+					text: options.removeAriaLabel,
+					cls: `flashcard-btn flashcard-btn-ghost flashcard-btn-sm fc-btn-remove ${options.removeButtonClass}`,
 				});
-				removeBtn.setAttr("aria-label", options.removeAriaLabel);
+				removeBtn.setAttr("aria-label", `${options.removeAriaLabel} ${value}`);
 				removeBtn.disabled = options.disabled;
 				removeBtn.addEventListener("click", () => {
 					options.onRemove(index);
@@ -665,13 +754,18 @@ class SettingsControlRenderer {
 		const addBtn = listContainer.createEl("button", {
 			type: "button",
 			text: options.addLabel,
-			cls: `flashcard-btn flashcard-btn-secondary flashcard-btn-md fc-btn-add ${options.addButtonClass}`,
+			cls: `flashcard-btn flashcard-btn-secondary flashcard-btn-sm fc-btn-add ${options.addButtonClass}`,
 		});
 		addBtn.disabled = options.disabled;
 		addBtn.addEventListener("click", () => {
 			options.onAdd();
 		});
 	}
+}
+
+/** The action carries a generation for safety; focus identifies the same field across generations. */
+function stableFocusKey(action: SettingsActionRef<unknown>): string {
+	return action.id.replace(/@\d+(?=\/)/, "");
 }
 
 function settingsShortcutFromEvent(event: KeyboardEvent): string | null {

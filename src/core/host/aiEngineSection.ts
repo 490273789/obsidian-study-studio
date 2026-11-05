@@ -28,6 +28,7 @@ export function createAiEngineSection(options: AiEngineSectionOptions): Workbenc
 
 	return {
 		id: AI_ENGINE_SECTION_ID,
+		category: "language",
 		order: 1,
 		label: (next) => createSharedTranslator(next)("settings.tabAi"),
 		presentation: (next) => {

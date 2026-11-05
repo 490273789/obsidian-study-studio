@@ -98,6 +98,7 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 	const section = (editor: TranslationSettingsEditor): WorkbenchSettingsSection => {
 		return {
 			id: TRANSLATION_SECTION_ID,
+			category: "language",
 			order: 2,
 			label: (language) => translationSettingsStrings(language).heading,
 			presentation: () => editor.presentation(),

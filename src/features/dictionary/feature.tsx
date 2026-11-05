@@ -194,6 +194,7 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 	const section = (editor: DictionarySettingsEditor): WorkbenchSettingsSection => {
 		return {
 			id: DICTIONARY_SECTION_ID,
+			category: "content",
 			order: 3,
 			label: (language) => dictionaryStrings(language).settingsHeading,
 			presentation: () => editor.presentation(),

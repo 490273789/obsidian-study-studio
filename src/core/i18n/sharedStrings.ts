@@ -10,6 +10,18 @@ import { createTranslatorFactory, type TranslationDictionary, type Translator } 
  */
 export const sharedTranslations = {
 	zh: {
+		"settings.general": "通用",
+		"settings.interface": "界面",
+		"settings.language": "界面语言 / Language",
+		"settings.languageDescription": "应用于 Study Studio 的所有功能。",
+		"settings.saveFailed": "设置未能保存，请重新选择后重试。",
+		"settings.navigation": "设置分类",
+		"settings.category.general": "通用",
+		"settings.category.learning": "学习",
+		"settings.category.content": "内容",
+		"settings.category.language": "AI 与划词",
+		"settings.numberRange": "请输入 {min}–{max} 范围内的整数。",
+		"settings.actionFailed": "操作未完成，请重试。若仍失败，请检查相关配置。",
 		"sort.instructions": "按空格键提起，使用方向键调整顺序，再按空格键放下，或按 Escape 取消。",
 		"sort.pickedUp": "已提起第 {position} 项，共 {total} 项。",
 		"sort.moved": "移动至第 {position} 项，共 {total} 项。",
@@ -76,6 +88,19 @@ export const sharedTranslations = {
 		"settings.tabAi": "AI 引擎设置",
 	},
 	en: {
+		"settings.general": "General",
+		"settings.interface": "Interface",
+		"settings.language": "Interface language / 语言",
+		"settings.languageDescription": "Applies to every Study Studio feature.",
+		"settings.saveFailed": "Settings could not be saved. Select the value again to retry.",
+		"settings.navigation": "Settings category",
+		"settings.category.general": "General",
+		"settings.category.learning": "Learning",
+		"settings.category.content": "Content",
+		"settings.category.language": "AI and selection",
+		"settings.numberRange": "Enter a whole number from {min} to {max}.",
+		"settings.actionFailed":
+			"The action could not be completed. Retry and check its configuration if it fails again.",
 		"sort.instructions":
 			"Press Space to pick up, arrow keys to reorder, Space to drop, or Escape to cancel.",
 		"sort.pickedUp": "Picked up item {position} of {total}.",
