@@ -26,7 +26,7 @@ export type AudioFailure =
 	| { readonly kind: "busy" }
 	| {
 			readonly kind: "config-invalid";
-			readonly field: "workspace" | "base-url" | "model" | "secret" | "security";
+			readonly field: "engine" | "workspace" | "base-url" | "model" | "secret" | "security";
 	  }
 	| {
 			readonly kind: "provider-failure";

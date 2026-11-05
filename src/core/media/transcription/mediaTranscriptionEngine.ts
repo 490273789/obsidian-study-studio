@@ -1,6 +1,8 @@
 import type { OutboundPort } from "../../net/types";
 import { TransportError } from "../../net/types";
 import { mediaFailure, MediaFailureError } from "../failures";
+import { selectedEngine } from "../../ai/configuration";
+import type { AiSettings, AsrEngineConfig } from "../../ai/types";
 import { transcriptionConfigFingerprint, validateTranscriptionConfig } from "./transcriptionConfig";
 import { createTranscriptionProvider } from "./providers";
 import type {
@@ -8,23 +10,14 @@ import type {
 	DraftCue,
 	TimedWord,
 	TranscriptionConfig,
-	TranscriptionProviderId,
 	TranscribeAudio,
 } from "../transcriptionTypes";
 
-export interface MediaTranscriptionSettings {
-	provider: TranscriptionProviderId;
-	bailianWorkspaceId: string;
-	bailianWorkspaceSecretId: string;
-	bailianSecretId: string;
-	bailianModel: string;
-	openaiBaseUrl: string;
-	openaiSecretId: string;
-	openaiModel: string;
-}
-
 export interface MediaTranscriptionEngineDeps {
-	readonly readSettings: () => MediaTranscriptionSettings;
+	/** The committed AI engine registry; ASR engines are selected from it. */
+	readonly readRegistry: () => AiSettings;
+	/** The use-site selection; an empty id means the default ASR engine. */
+	readonly resolveEngineId: () => string;
 	readonly readSecret: (id: string) => Promise<string | null> | string | null;
 	readonly outbound: OutboundPort;
 	readonly chunkAudio?: (
@@ -35,7 +28,8 @@ export interface MediaTranscriptionEngineDeps {
 
 export interface TranscribeMediaInput {
 	readonly audio: ArrayBuffer | AudioChunk;
-	readonly provider?: TranscriptionProviderId;
+	/** Explicit ASR engine override; omitted uses this engine instance's selection. */
+	readonly engineId?: string;
 	readonly expectedSignature?: string;
 	readonly signal?: AbortSignal;
 	readonly onProgress?: (progress: { completedChunks: number; totalChunks: number }) => void;
@@ -84,7 +78,9 @@ function sanitizeTranscriptCues(cues: readonly DraftCue[], chunkIndex: number): 
 
 /**
  * Deep core module managing speech recognition execution, secret resolution,
- * configuration drift detection, and cue timestamp hygiene (ADR-0012).
+ * configuration drift detection, and cue timestamp hygiene (ADR-0012). Engine
+ * identity comes from the shared AI engine registry (ADR-0016); both listening
+ * practice and video shadowing execute the same ASR engine kind.
  */
 export class MediaTranscriptionEngine {
 	private readonly transcribeProvider: TranscribeAudio;
@@ -93,42 +89,53 @@ export class MediaTranscriptionEngine {
 		this.transcribeProvider = createTranscriptionProvider(deps.outbound);
 	}
 
-	private readConfig(overrideProvider?: TranscriptionProviderId): TranscriptionConfig {
-		const settings = this.deps.readSettings();
-		const provider = overrideProvider ?? settings.provider;
-		if (provider === "bailian") {
+	private async resolveConfig(engineIdOverride?: string): Promise<TranscriptionConfig> {
+		const selection = (
+			engineIdOverride === undefined ? this.deps.resolveEngineId() : engineIdOverride
+		).trim();
+		const engine = selectedEngine(this.deps.readRegistry(), "asr", selection);
+		if (!engine || engine.kind !== "asr")
+			throw mediaFailure({ kind: "config-invalid", field: "engine" });
+		return this.configFor(engine);
+	}
+
+	private async configFor(engine: AsrEngineConfig): Promise<TranscriptionConfig> {
+		if (engine.provider === "bailian") {
+			const workspaceId = engine.workspaceSecretId
+				? ((await this.deps.readSecret(engine.workspaceSecretId)) ?? "")
+				: engine.workspaceId;
 			return {
 				provider: "bailian",
-				workspaceId: settings.bailianWorkspaceId,
-				secretId: settings.bailianSecretId,
-				model: settings.bailianModel,
+				workspaceId,
+				secretId: engine.secretId,
+				model: engine.model,
 			};
 		}
 		return {
 			provider: "openai-compatible",
-			baseUrl: settings.openaiBaseUrl,
-			secretId: settings.openaiSecretId,
-			model: settings.openaiModel,
+			baseUrl: engine.baseUrl,
+			secretId: engine.secretId,
+			model: engine.model,
 		};
 	}
 
 	/** Pure computation of deterministic configuration fingerprint. */
-	async getSignature(provider?: TranscriptionProviderId): Promise<string> {
-		const config = this.readConfig(provider);
+	async getSignature(engineId?: string): Promise<string> {
+		const config = await this.resolveConfig(engineId);
 		return transcriptionConfigFingerprint(config);
 	}
 
 	/** Preflight settings and SecretStorage credentials without media I/O. */
 	async preflight(
 		options: {
-			provider?: TranscriptionProviderId;
+			engineId?: string;
 			expectedSignature?: string;
 			signal?: AbortSignal;
 		} = {},
 	): Promise<{ signature: string; config: TranscriptionConfig }> {
 		if (options.signal?.aborted) throw mediaFailure({ kind: "cancelled" });
 
-		const config = this.readConfig(options.provider);
+		const config = await this.resolveConfig(options.engineId);
 		validateTranscriptionConfig(config);
 
 		const secret = await this.deps.readSecret(config.secretId);
@@ -151,7 +158,7 @@ export class MediaTranscriptionEngine {
 		if (input.signal?.aborted) throw mediaFailure({ kind: "cancelled" });
 
 		const { signature, config } = await this.preflight({
-			provider: input.provider,
+			engineId: input.engineId,
 			expectedSignature: input.expectedSignature,
 			signal: input.signal,
 		});

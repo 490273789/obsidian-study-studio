@@ -2,10 +2,10 @@ import type { AiService } from "../ai";
 import { createSharedTranslator } from "../i18n";
 import type { Language } from "../shared/types";
 import { AiSettingsEditor } from "./aiSettingsEditor";
+import { AI_ENGINE_SECTION_ID } from "./sectionIds";
 import type { WorkbenchSettingsSection } from "./workbench";
 
-/** Settings section id; also the section features target when opening AI settings. */
-export const AI_ENGINE_SECTION_ID = "ai";
+export { AI_ENGINE_SECTION_ID };
 
 interface AiEngineSectionOptions {
 	ai: AiService;
@@ -24,7 +24,6 @@ export function createAiEngineSection(options: AiEngineSectionOptions): Workbenc
 		options.ai,
 		() => language,
 		() => options.refresh(),
-		"standard",
 	);
 
 	return {

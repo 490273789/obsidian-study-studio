@@ -1,117 +1,129 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { SettingsPresentation } from "../../../../core/settings/presentation";
-import { audioPracticeSettingsPresentation } from "../viewModel";
-import {
-	DEFAULT_BAILIAN_MODEL,
-	DEFAULT_OPENAI_BASE_URL,
-	DEFAULT_OPENAI_MODEL,
-	type AudioPracticeSettings,
-} from "../slice";
+import { audioPracticeSettingsPresentation, type AudioPracticeAsrEngine } from "../viewModel";
+import type { AudioPracticeSettings } from "../slice";
 
-const base: AudioPracticeSettings = {
-	enabled: true,
-	provider: "bailian",
-	bailianWorkspaceId: "workspace",
-	bailianWorkspaceSecretId: "workspace-secret",
-	bailianSecretId: "secret",
-	bailianModel: DEFAULT_BAILIAN_MODEL,
-	openaiBaseUrl: DEFAULT_OPENAI_BASE_URL,
-	openaiSecretId: "",
-	openaiModel: DEFAULT_OPENAI_MODEL,
-};
+const asrEngines: AudioPracticeAsrEngine[] = [
+	{ id: "bailian-main", name: "百炼语音识别" },
+	{ id: "gateway-whisper", name: "OpenAI 兼容语音识别" },
+];
 
 function rows(presentation: SettingsPresentation) {
 	return presentation.snapshot.groups.flatMap((group) => group.rows);
 }
 
-function build(settings: AudioPracticeSettings) {
+function build(
+	settings: AudioPracticeSettings,
+	engines: readonly AudioPracticeAsrEngine[] = asrEngines,
+	language: "zh" | "en" = "zh",
+) {
 	const updates: Partial<AudioPracticeSettings>[] = [];
+	const onOpenAiSettings = vi.fn();
 	const presentation = audioPracticeSettingsPresentation(
 		settings,
+		engines,
 		async (patch) => {
 			updates.push(patch);
 		},
-		"zh",
+		onOpenAiSettings,
+		language,
 	);
-	return { updates, presentation };
+	return { updates, onOpenAiSettings, presentation };
 }
 
 describe("audio practice settings presentation", () => {
-	it("shows the Bailian fields and hides the compatible-service fields", () => {
-		const { presentation } = build(base);
+	it("only shows the enable toggle and the shared ASR engine choice", () => {
+		const { presentation } = build({ enabled: true, transcriptionEngineId: "" });
 		const keys = rows(presentation).map((row) => row.key);
-		expect(keys).toEqual([
-			"enabled",
-			"provider",
-			"workspace",
-			"model",
-			"secret",
-			"explanation",
-		]);
-		const provider = rows(presentation).find((row) => row.key === "provider")?.controls[0];
-		expect(provider).toMatchObject({
+		expect(keys).toEqual(["enabled", "engine", "open-ai-settings"]);
+	});
+
+	it("lists the registered ASR engines with the default choice first", () => {
+		const { presentation } = build({ enabled: true, transcriptionEngineId: "" });
+		const engine = rows(presentation).find((row) => row.key === "engine")?.controls[0];
+		expect(engine).toMatchObject({
 			kind: "select",
-			value: "bailian",
-			options: [{ value: "bailian" }, { value: "openai-compatible" }],
-		});
-		const workspace = rows(presentation).find((row) => row.key === "workspace")?.controls[0];
-		expect(workspace).toMatchObject({ kind: "secret", value: "workspace-secret" });
-		const model = rows(presentation).find((row) => row.key === "model")?.controls[0];
-		expect(model).toMatchObject({
-			kind: "select",
-			value: DEFAULT_BAILIAN_MODEL,
+			value: "",
 			options: [
-				{ value: "fun-asr-flash-2026-06-15" },
-				{ value: "qwen-audio-3.1-asr-flash" },
-				{ value: "qwen-audio-3.0-asr-flash" },
+				{ value: "", label: "默认引擎（使用 AI 引擎设置中的默认项）" },
+				{ value: "bailian-main", label: "百炼语音识别" },
+				{ value: "gateway-whisper", label: "OpenAI 兼容语音识别" },
 			],
 		});
 	});
-	it("stores a workspace secret reference and clears the legacy plaintext value", async () => {
-		const { updates, presentation } = build(base);
-		const workspace = rows(presentation).find((row) => row.key === "workspace")?.controls[0];
-		if (workspace?.kind !== "secret") throw new Error("Expected workspace secret picker");
+
+	it("routes the engine choice through the update seam", async () => {
+		const { updates, presentation } = build({ enabled: true, transcriptionEngineId: "" });
+		const engine = rows(presentation).find((row) => row.key === "engine")?.controls[0];
+		if (engine?.kind !== "select") throw new Error("Expected an engine select");
 		const result = await presentation.invoke({
-			action: workspace.action,
-			value: "new-workspace-secret",
+			action: engine.action,
+			value: "gateway-whisper",
 		});
 		expect(result).toEqual({ status: "applied" });
-		expect(updates).toEqual([
-			{ bailianWorkspaceSecretId: "new-workspace-secret", bailianWorkspaceId: "" },
-		]);
+		expect(updates).toEqual([{ transcriptionEngineId: "gateway-whisper" }]);
 	});
-	it("shows the compatible-service fields and hides the Bailian fields", () => {
-		const { presentation } = build({ ...base, provider: "openai-compatible" });
-		const keys = rows(presentation).map((row) => row.key);
-		expect(keys).toEqual(["enabled", "provider", "base-url", "model", "secret", "explanation"]);
-		expect(keys).not.toContain("workspace");
-		const baseUrl = rows(presentation).find((row) => row.key === "base-url")?.controls[0];
-		expect(baseUrl).toMatchObject({ kind: "text", value: DEFAULT_OPENAI_BASE_URL });
-		const model = rows(presentation).find((row) => row.key === "model")?.controls[0];
-		expect(model).toMatchObject({ kind: "text", value: DEFAULT_OPENAI_MODEL });
-	});
-	it("preserves an older model value until a supported model is selected", async () => {
-		const { updates, presentation } = build({ ...base, bailianModel: "fun-asr" });
-		const model = rows(presentation).find((row) => row.key === "model")?.controls[0];
-		if (model?.kind !== "select") throw new Error("Expected model select");
-		expect(model.value).toBe("fun-asr");
-		expect(model.options[0]).toMatchObject({ value: "fun-asr" });
-		const result = await presentation.invoke({
-			action: model.action,
-			value: "qwen-audio-3.1-asr-flash",
+
+	it("keeps a stale selection visible and selectable", () => {
+		const { presentation } = build({
+			enabled: true,
+			transcriptionEngineId: "deleted-engine",
 		});
-		expect(result).toEqual({ status: "applied" });
-		expect(updates).toEqual([{ bailianModel: "qwen-audio-3.1-asr-flash" }]);
-	});
-	it("routes the provider choice through the update seam", async () => {
-		const { updates, presentation } = build(base);
-		const provider = rows(presentation).find((row) => row.key === "provider")?.controls[0];
-		if (provider?.kind !== "select") throw new Error("Expected provider select");
-		const result = await presentation.invoke({
-			action: provider.action,
-			value: "openai-compatible",
+		const engine = rows(presentation).find((row) => row.key === "engine")?.controls[0];
+		if (engine?.kind !== "select") throw new Error("Expected an engine select");
+		expect(engine.value).toBe("deleted-engine");
+		expect(engine.options[0]).toEqual({
+			value: "deleted-engine",
+			label: "已不可用的引擎: deleted-engine",
 		});
+	});
+
+	it("toggles the feature through the update seam", async () => {
+		const { updates, presentation } = build({ enabled: true, transcriptionEngineId: "" });
+		const toggle = rows(presentation).find((row) => row.key === "enabled")?.controls[0];
+		if (toggle?.kind !== "toggle") throw new Error("Expected the enabled toggle");
+		const result = await presentation.invoke({ action: toggle.action, value: false });
 		expect(result).toEqual({ status: "applied" });
-		expect(updates).toEqual([{ provider: "openai-compatible" }]);
+		expect(updates).toEqual([{ enabled: false }]);
+	});
+
+	it("opens the shared AI engine section instead of editing credentials here", async () => {
+		const { onOpenAiSettings, presentation } = build({
+			enabled: true,
+			transcriptionEngineId: "",
+		});
+		const button = rows(presentation).find((row) => row.key === "open-ai-settings")
+			?.controls[0];
+		if (button?.kind !== "button") throw new Error("Expected the AI settings button");
+		expect(button.label).toBe("打开 AI 引擎设置");
+		const result = await presentation.invoke({ action: button.action, value: undefined });
+		expect(result).toEqual({ status: "applied" });
+		expect(onOpenAiSettings).toHaveBeenCalledTimes(1);
+	});
+
+	it("never shows credential, model, or Base URL controls", () => {
+		for (const language of ["zh", "en"] as const) {
+			const { presentation } = build(
+				{ enabled: true, transcriptionEngineId: "bailian-main" },
+				asrEngines,
+				language,
+			);
+			for (const row of rows(presentation)) {
+				for (const control of row.controls) {
+					expect(["button", "toggle", "select"]).toContain(control.kind);
+				}
+			}
+		}
+	});
+
+	it("names the management entry in English", () => {
+		const { presentation } = build(
+			{ enabled: true, transcriptionEngineId: "" },
+			asrEngines,
+			"en",
+		);
+		const button = rows(presentation).find((row) => row.key === "open-ai-settings")
+			?.controls[0];
+		expect(button).toMatchObject({ kind: "button", label: "Open AI engine settings" });
 	});
 });

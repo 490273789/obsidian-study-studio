@@ -17,18 +17,12 @@ function setup(): {
 				id: "engine",
 				name: "Primary",
 				enabled: true,
-				kind: "engine" as const,
-				configId: "deepseek",
+				engineId: "deepseek",
 			},
-			{ id: "youdao", name: "Youdao", enabled: true, kind: "youdao" as const, configId: "" },
+			{ id: "youdao", name: "Youdao", enabled: true, engineId: "youdao-engine" },
 		],
 		promptTemplate: "Translate {source_language} to {target_language}",
 		thinkingEnabled: false,
-		youdao: {
-			baseUrl: "https://youdao.example",
-			appKeySecretId: "app",
-			appSecretSecretId: "secret",
-		},
 	};
 	return {
 		state: {
@@ -43,30 +37,42 @@ function setup(): {
 				results: [],
 				status: "idle",
 				saving: false,
-				testing: false,
 				settings,
 			},
 			aiSnapshot: {
 				settings: {
-					configs: [
+					engines: [
 						{
 							id: "deepseek",
+							kind: "llm" as const,
 							name: "Translation",
-							provider: "deepseek",
+							provider: "deepseek" as const,
 							baseUrl: "https://api.deepseek.com",
 							secretId: "key",
 							model: "deepseek-chat",
 						},
 						{
-							id: "gateway",
-							name: "Gateway",
-							provider: "youdao",
-							baseUrl: "https://gateway",
-							secretId: "key",
-							model: "model",
+							id: "youdao-engine",
+							kind: "translation" as const,
+							name: "Youdao",
+							provider: "youdao" as const,
+							baseUrl: "https://openapi.youdao.com/api",
+							appKeySecretId: "app-key",
+							appSecretSecretId: "app-secret",
+						},
+						{
+							id: "speech",
+							kind: "asr" as const,
+							name: "Speech",
+							provider: "openai-compatible" as const,
+							baseUrl: "https://api.openai.com/v1",
+							workspaceId: "",
+							workspaceSecretId: "",
+							secretId: "speech-key",
+							model: "whisper-1",
 						},
 					],
-					defaultConfigId: null,
+					defaults: { llm: "deepseek", asr: "speech" },
 				},
 				models: {},
 				loadingModels: [],
@@ -81,18 +87,17 @@ function setup(): {
 			moveProfile: vi.fn(),
 			resetPrompt: vi.fn(),
 			save: vi.fn(),
-			testYoudao: vi.fn(),
 		},
 	};
 }
 
 describe("translation settings presentation", () => {
-	it("opens the unified Youdao settings page from translation settings", async () => {
+	it("links to the unified AI engine settings page", async () => {
 		const { state, actions } = setup();
-		const openYoudao = vi.fn();
+		const openAiSettings = vi.fn();
 		const presentation = buildTranslationSettingsViewModel(
 			state,
-			{ ...actions, openYoudao },
+			{ ...actions, openAiSettings },
 			"zh",
 		);
 		const control = presentation.snapshot.groups
@@ -100,14 +105,14 @@ describe("translation settings presentation", () => {
 			.flatMap((row) => row.controls)
 			.find(
 				(candidate) =>
-					candidate.kind === "button" && candidate.label === "打开有道智云设置",
+					candidate.kind === "button" && candidate.label === "打开 AI 引擎设置",
 			);
-		if (control?.kind !== "button") throw new Error("Missing Youdao link");
+		if (control?.kind !== "button") throw new Error("Missing AI settings link");
 		await presentation.invoke({ action: control.action, value: undefined });
-		expect(openYoudao).toHaveBeenCalledOnce();
+		expect(openAiSettings).toHaveBeenCalledOnce();
 	});
 
-	it("keeps service credentials on the Youdao page and offers all configured AI engines", () => {
+	it("offers only non-ASR engines and no credential fields", () => {
 		const { state, actions } = setup();
 		const presentation = buildTranslationSettingsViewModel(state, actions, "zh");
 		const groups = presentation.snapshot.groups;
@@ -123,41 +128,42 @@ describe("translation settings presentation", () => {
 			.find((control) => control.kind === "cards");
 		if (cards?.kind !== "cards") throw new Error("Expected cards");
 		expect(cards.items).toHaveLength(2);
-		const providerField = cards.items[0]?.fields.find((field) => field.key === "provider");
-		expect(providerField?.controls).toHaveLength(2);
-		const engineSelect = providerField?.controls.find((control) => control.key === "engine");
+		const engineField = cards.items[0]?.fields.find((field) => field.key === "engine");
+		const engineSelect = engineField?.controls.find((control) => control.key === "engine");
 		if (engineSelect?.kind !== "select") throw new Error("Expected engine select");
 		expect(engineSelect.options.map((option) => option.value)).toEqual([
 			"",
 			"deepseek",
-			"gateway",
+			"youdao-engine",
 		]);
-		const youdao = buildTranslationSettingsViewModel(state, actions, "zh", "youdao");
-		expect(youdao.snapshot.groups.map((group) => group.heading)).toEqual([
-			"文本翻译 API（应用 ID / 应用密钥）",
-			"保存设置",
-		]);
+		expect(
+			presentation.snapshot.groups
+				.flatMap((group) => group.rows)
+				.flatMap((row) => row.controls)
+				.some((control) => control.kind === "text" || control.kind === "secret"),
+		).toBe(false);
 	});
 
 	it("keeps a missing selected engine available for repair", () => {
 		const { state, actions } = setup();
-		state.draft.profiles[0] = { ...state.draft.profiles[0]!, configId: "deleted" };
+		state.draft.profiles[0] = { ...state.draft.profiles[0]!, engineId: "deleted" };
 		const cards = buildTranslationSettingsViewModel(state, actions, "en")
 			.snapshot.groups.flatMap((group) => group.rows)
 			.flatMap((row) => row.controls)
 			.find((control) => control.kind === "cards");
 		if (cards?.kind !== "cards") throw new Error("Expected cards");
 		const select = cards.items[0]?.fields
-			.find((field) => field.key === "provider")
+			.find((field) => field.key === "engine")
 			?.controls.find((control) => control.key === "engine");
 		if (select?.kind !== "select") throw new Error("Expected engine select");
+		expect(select.value).toBe("deleted");
 		expect(select.options[0]).toEqual({
 			value: "deleted",
 			label: "Deleted engine configuration",
 		});
 	});
 
-	it("dispatches profile movement and prompt reset through action references", async () => {
+	it("dispatches profile movement, engine selection, and prompt reset", async () => {
 		const { state, actions } = setup();
 		const presentation = buildTranslationSettingsViewModel(state, actions, "en");
 		const cards = presentation.snapshot.groups
@@ -166,6 +172,9 @@ describe("translation settings presentation", () => {
 			.find((control) => control.kind === "cards");
 		if (cards?.kind !== "cards") throw new Error("Expected cards");
 		const move = cards.items[0]?.actions.find((action) => action.icon === "move-down");
+		const engine = cards.items[0]?.fields
+			.find((field) => field.key === "engine")
+			?.controls.find((control) => control.key === "engine");
 		const reset = presentation.snapshot.groups
 			.flatMap((group) => group.rows)
 			.flatMap((row) => row.controls)
@@ -173,10 +182,33 @@ describe("translation settings presentation", () => {
 				(control) =>
 					control.kind === "button" && control.label === "Restore default prompt",
 			);
-		if (!move || reset?.kind !== "button") throw new Error("Expected actions");
+		if (!move || engine?.kind !== "select" || reset?.kind !== "button")
+			throw new Error("Expected actions");
 		await presentation.invoke({ action: move.action, value: undefined });
+		await presentation.invoke({ action: engine.action, value: "youdao-engine" });
 		await presentation.invoke({ action: reset.action, value: undefined });
 		expect(actions.moveProfile).toHaveBeenCalledWith("engine", 1);
+		expect(actions.patchProfile).toHaveBeenCalledWith("engine", {
+			engineId: "youdao-engine",
+		});
 		expect(actions.resetPrompt).toHaveBeenCalledOnce();
+	});
+
+	it("explains when no engine can be selected yet", () => {
+		const { state, actions } = setup();
+		state.aiSnapshot = {
+			...state.aiSnapshot,
+			settings: { engines: [], defaults: { llm: null, asr: null } },
+		};
+		const groups = buildTranslationSettingsViewModel(state, actions, "zh").snapshot.groups;
+		const cards = groups
+			.flatMap((group) => group.rows)
+			.flatMap((row) => row.controls)
+			.find((control) => control.kind === "cards");
+		if (cards?.kind !== "cards") throw new Error("Expected cards");
+		const engineField = cards.items[0]?.fields.find((field) => field.key === "engine");
+		expect(engineField?.description).toBe(
+			"尚无可用于翻译的 AI 引擎配置，请先在 AI 引擎设置中添加。",
+		);
 	});
 });

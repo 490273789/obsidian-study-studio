@@ -236,7 +236,11 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 					store: favoriteStore,
 					generator: createFavoriteDraftGenerator(deps.ai),
 					hasAiConfig: (id) =>
-						deps.ai.getSnapshot().settings.configs.some((config) => config.id === id),
+						deps.ai
+							.getSnapshot()
+							.settings.engines.some(
+								(engine) => engine.id === id && engine.kind === "llm",
+							),
 					language: () => host.settings.read().language,
 				});
 				batchModal = new DictionaryFavoriteBatchModal(

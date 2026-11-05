@@ -3,12 +3,12 @@ import { TransportError } from "../net/types";
 import {
 	AiError,
 	type AiDependencies,
-	type AiEngineConfig,
+	type LlmEngineConfig,
 	type AiMessage,
 	type AiModel,
 } from "./types";
 
-export function knownImageInput(config: AiEngineConfig): AiModel["imageInput"] {
+export function knownImageInput(config: LlmEngineConfig): AiModel["imageInput"] {
 	// Limit static knowledge to the official endpoint; proxies may remap model IDs.
 	if (config.provider === "deepseek" && new URL(config.baseUrl).hostname === "api.deepseek.com") {
 		if (["deepseek-v4-flash", "deepseek-v4-pro"].includes(config.model)) return "unsupported";
@@ -19,7 +19,7 @@ export function knownImageInput(config: AiEngineConfig): AiModel["imageInput"] {
 
 export async function callAiJson(
 	deps: AiDependencies,
-	config: AiEngineConfig,
+	config: LlmEngineConfig,
 	url: string,
 	body?: unknown,
 	requestOptions: { signal?: AbortSignal; timeoutMs?: number } = {},
@@ -126,7 +126,7 @@ export function readUsage(
 
 export async function fetchAiModels(
 	deps: AiDependencies,
-	config: AiEngineConfig,
+	config: LlmEngineConfig,
 	checkActive: () => void,
 	requestOptions: { signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<AiModel[]> {

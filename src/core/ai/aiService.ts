@@ -1,4 +1,4 @@
-import { cleanAiConfig, normalizeAiSettings, validateAiConnection } from "./configuration";
+import { cleanEngine, normalizeAiSettings, validateAiConnection } from "./configuration";
 import { TransportError } from "../net/types";
 import {
 	callAiJson,
@@ -12,14 +12,27 @@ import {
 	AiError,
 	type AiDependencies,
 	type AiEngineConfig,
+	type AiEngineKind,
 	type AiGenerateRequest,
 	type AiModel,
 	type AiRequestOptions,
 	type AiSettings,
 	type AiSnapshot,
 	type AiTextResult,
+	type LlmEngineConfig,
+	type TranslationEngineConfig,
 } from "./types";
 
+function isLlmEngine(engine: AiEngineConfig): engine is LlmEngineConfig {
+	return engine.kind === "llm";
+}
+
+/**
+ * Authority for the shared AI engine registry and for text-generation requests.
+ * Every feature selects engine ids; only this service resolves them and talks to
+ * providers. ASR execution belongs to `core/media`, translation execution to the
+ * translation feature; both read the same committed registry through this snapshot.
+ */
 export class AiService {
 	private settings: AiSettings;
 	private models = new Map<string, AiModel[]>();
@@ -45,39 +58,51 @@ export class AiService {
 		return () => this.listeners.delete(listener);
 	};
 
-	async saveConfig(input: Omit<AiEngineConfig, "id"> & { id?: string }): Promise<string> {
-		const updating = input.id !== undefined;
-		const id = input.id ?? this.deps.createId();
-		const config = cleanAiConfig({ ...input, id });
-		await this.write((next) => {
-			const index = next.configs.findIndex((item) => item.id === id);
-			if (updating && index < 0) throw new AiError("config-not-found");
-			if (index < 0) next.configs.push(config);
-			else next.configs[index] = config;
-		});
-		return id;
+	/** Stable id for an unsaved engine form; ids are opaque elsewhere. */
+	createEngineId(): string {
+		return this.deps.createId();
 	}
 
-	async deleteConfig(id: string): Promise<void> {
+	/** Upserts one engine for its kind; the first engine of a kind becomes its default. */
+	async saveEngine(input: AiEngineConfig): Promise<string> {
+		const engine = cleanEngine(input);
+		const updating = this.settings.engines.some((item) => item.id === engine.id);
+		if (updating && this.engineKind(engine.id) !== engine.kind)
+			throw new AiError("config-not-found");
 		await this.write((next) => {
-			if (!next.configs.some((config) => config.id === id))
+			const index = next.engines.findIndex((item) => item.id === engine.id);
+			if (index < 0) next.engines.push(engine);
+			else next.engines[index] = engine;
+			if (engine.kind !== "translation" && !next.defaults[engine.kind])
+				next.defaults[engine.kind] = engine.id;
+		});
+		return engine.id;
+	}
+
+	async deleteEngine(id: string): Promise<void> {
+		await this.write((next) => {
+			if (!next.engines.some((engine) => engine.id === id))
 				throw new AiError("config-not-found");
-			next.configs = next.configs.filter((config) => config.id !== id);
-			if (next.defaultConfigId === id) next.defaultConfigId = null;
+			next.engines = next.engines.filter((engine) => engine.id !== id);
+			if (next.defaults.llm === id) next.defaults.llm = null;
+			if (next.defaults.asr === id) next.defaults.asr = null;
 		});
 	}
 
-	async setDefault(id: string | null): Promise<void> {
+	async setDefault(kind: Exclude<AiEngineKind, "translation">, id: string | null): Promise<void> {
 		await this.write((next) => {
-			if (id !== null && !next.configs.some((config) => config.id === id))
+			if (
+				id !== null &&
+				!next.engines.some((engine) => engine.id === id && engine.kind === kind)
+			)
 				throw new AiError("config-not-found");
-			next.defaultConfigId = id;
+			next.defaults[kind] = id;
 		});
 	}
 
 	async generate(request: AiGenerateRequest): Promise<AiTextResult> {
 		this.assertActive();
-		const config = this.resolve(request.configId);
+		const config = this.resolveLlm(request.configId);
 		const messages = encodeMessages(request.messages);
 		const imageInput =
 			this.models.get(connectionKey(config))?.find((item) => item.id === config.model)
@@ -117,15 +142,30 @@ export class AiService {
 		});
 	}
 
+	/** Tests one engine by kind: LLM inline, translation through the injected port. */
+	async testEngine(target: AiEngineConfig): Promise<void> {
+		this.assertActive();
+		if (target.kind === "llm") return this.testConnection(target);
+		if (target.kind === "translation") {
+			const tester = this.deps.testers?.translation;
+			if (!tester) throw new AiError("invalid-input");
+			const engine = cleanEngine(target) as TranslationEngineConfig;
+			await this.withTesting(engine.id, () => tester(engine));
+			return;
+		}
+		throw new AiError("invalid-input");
+	}
+
 	async testConnection(
-		target: string | AiEngineConfig,
+		target: string | LlmEngineConfig,
 		options: AiRequestOptions = {},
 	): Promise<void> {
 		this.assertActive();
 		const config =
 			typeof target === "string"
-				? this.resolve(target)
-				: cleanAiConfig({ ...target, name: target.name.trim() || "Test" });
+				? this.resolveLlm(target)
+				: cleanEngine({ ...target, name: target.name.trim() || "Test" });
+		if (!isLlmEngine(config)) throw new AiError("invalid-config");
 		const testingKey = typeof target === "string" ? config.id : target.id;
 		if (this.testing.has(testingKey)) throw new AiError("busy");
 		this.testing.add(testingKey);
@@ -150,7 +190,7 @@ export class AiService {
 	}
 
 	/** Can query a draft connection before choosing a model or saving it. */
-	async listModels(config: AiEngineConfig, options: AiRequestOptions = {}): Promise<AiModel[]> {
+	async listModels(config: LlmEngineConfig, options: AiRequestOptions = {}): Promise<AiModel[]> {
 		this.assertActive();
 		const captured = { ...config, baseUrl: config.baseUrl.trim().replace(/\/+$/, "") };
 		validateAiConnection(captured);
@@ -185,20 +225,33 @@ export class AiService {
 	replaceSettings(settings: unknown): void {
 		this.assertActive();
 		const next = normalizeAiSettings(settings);
-		for (const previous of this.settings.configs) {
-			if (!next.configs.some((current) => connectionKey(current) === connectionKey(previous)))
-				this.models.delete(connectionKey(previous));
-		}
+		this.dropStaleModelCaches(next);
 		this.settings = next;
 		this.publish();
 	}
 
-	private resolve(id: string | undefined): AiEngineConfig {
-		const selected = id === undefined ? this.settings.defaultConfigId : id;
+	private engineKind(id: string): AiEngineKind | undefined {
+		return this.settings.engines.find((engine) => engine.id === id)?.kind;
+	}
+
+	private resolveLlm(id: string | undefined): LlmEngineConfig {
+		const selected = id === undefined ? this.settings.defaults.llm : id;
 		if (selected === null) throw new AiError("no-default");
-		const config = this.settings.configs.find((item) => item.id === selected);
-		if (!config) throw new AiError("config-not-found");
-		return cleanAiConfig(config);
+		const engine = this.settings.engines.find((item) => item.id === selected);
+		if (!engine || engine.kind !== "llm") throw new AiError("config-not-found");
+		return cleanEngine(engine) as LlmEngineConfig;
+	}
+
+	private async withTesting(engineId: string, action: () => Promise<void>): Promise<void> {
+		if (this.testing.has(engineId)) throw new AiError("busy");
+		this.testing.add(engineId);
+		this.publish();
+		try {
+			await action();
+		} finally {
+			this.testing.delete(engineId);
+			this.publish();
+		}
 	}
 
 	private async write(change: (settings: AiSettings) => void): Promise<void> {
@@ -216,12 +269,22 @@ export class AiService {
 		} catch {
 			throw new AiError("save-failed");
 		}
-		for (const previous of this.settings.configs) {
-			if (!next.configs.some((current) => connectionKey(current) === connectionKey(previous)))
-				this.models.delete(connectionKey(previous));
-		}
+		this.dropStaleModelCaches(next);
 		this.settings = next;
 		this.publish();
+	}
+
+	private dropStaleModelCaches(next: AiSettings): void {
+		for (const previous of this.settings.engines) {
+			if (!isLlmEngine(previous)) continue;
+			if (
+				!next.engines.some(
+					(current) =>
+						isLlmEngine(current) && connectionKey(current) === connectionKey(previous),
+				)
+			)
+				this.models.delete(connectionKey(previous));
+		}
 	}
 
 	private async run<T>(
@@ -254,21 +317,22 @@ export class AiService {
 	}
 
 	private publish(): void {
+		const llmEngines = this.settings.engines.filter(isLlmEngine);
 		this.snapshot = Object.freeze({
 			settings: Object.freeze({
-				configs: Object.freeze(
-					this.settings.configs.map((config) => Object.freeze({ ...config })),
+				engines: Object.freeze(
+					this.settings.engines.map((engine) => Object.freeze({ ...engine })),
 				),
-				defaultConfigId: this.settings.defaultConfigId,
+				defaults: Object.freeze({ ...this.settings.defaults }),
 			}),
 			models: Object.freeze(
 				Object.fromEntries(
-					this.settings.configs.flatMap((config) => {
-						const models = this.models.get(connectionKey(config));
+					llmEngines.flatMap((engine) => {
+						const models = this.models.get(connectionKey(engine));
 						return models
 							? [
 									[
-										config.id,
+										engine.id,
 										Object.freeze(
 											models.map((model) => Object.freeze({ ...model })),
 										),
@@ -291,6 +355,6 @@ export class AiService {
 	}
 }
 
-function connectionKey(config: AiEngineConfig): string {
+function connectionKey(config: LlmEngineConfig): string {
 	return JSON.stringify([config.provider, config.baseUrl, config.secretId]);
 }

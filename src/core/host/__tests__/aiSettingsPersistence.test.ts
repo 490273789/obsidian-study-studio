@@ -60,9 +60,10 @@ it("applies concurrent feature patches to the settings committed at write time",
 	const { plugin, commit } = await createPlugin();
 	const persistAi: (ai: AiSettings) => Promise<void> = Reflect.get(plugin, "persistAiSettings");
 	const ai: AiSettings = {
-		configs: [
+		engines: [
 			{
 				id: "engine",
+				kind: "llm",
 				name: "Translate",
 				provider: "deepseek",
 				baseUrl: "https://api.deepseek.com",
@@ -70,7 +71,7 @@ it("applies concurrent feature patches to the settings committed at write time",
 				model: "deepseek-v4-flash",
 			},
 		],
-		defaultConfigId: "engine",
+		defaults: { llm: "engine", asr: null },
 	};
 
 	await Promise.all([

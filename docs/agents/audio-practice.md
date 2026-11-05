@@ -35,14 +35,26 @@
 
 ## 转写配置
 
-`domain/transcriptionConfiguration.ts` 的 `TranscriptionConfiguration` 是设置解释的唯一 owner：
-provider 选择、workspace 密钥引用优先级、字段归一化和生成前校验都留在这里。
-选定的 workspace 密钥缺失或读取失败时不回退旧明文值。`AudioPracticeRuntime` 在读取音频前
-取得已校验的不可变配置，文件与草稿流程继续由 runtime 和字幕草稿引擎拥有。
+转写服务不再由听说练习设置自己声明；它在工作台「AI 引擎设置」的“语音识别”类型中配置
+（ADR-0016）。`audioPractice.transcriptionEngineId` 只保存所选 ASR 引擎 id，空值表示使用
+默认 ASR 引擎。设置页只渲染引擎下拉与“打开 AI 引擎设置”，不再出现任何密钥、Workspace、
+Base URL 或模型字段。
 
-视频经 `features/index.ts` 借用同一个配置 module，在请求前匹配任务指纹并取得对应配置；
-异步计算指纹后还会核对当前设置，不能按旧签名执行新设置。仅读取指纹不要求 API 密钥可用，
-避免影响仅翻译导入字幕。指纹与旧草稿匹配仍使用 `core/media`，不另造版本或迁移规则。
+`core/media/transcription/MediaTranscriptionEngine` 是执行与设置解释的 owner：它从
+`ai.engines` 中解析选中的 `asr` 引擎，按 provider 读取 Workspace 密钥（Secret Storage 优先，
+旧明文仅作为迁移兜底）、校验配置并计算指纹。选定服务缺失或密钥读取失败时不回退别的引擎。
+`AudioPracticeRuntime` 在读取音频前取得已校验的不可变配置，文件与草稿流程继续由 runtime 和
+字幕草稿引擎拥有。
+
+视频经 `features/index.ts` 借用同一引擎能力（自己的选择 id），在请求前匹配任务指纹并取得
+对应配置；异步计算指纹后还会核对当前设置，不能按旧签名执行新设置。仅读取指纹不要求 API
+密钥可用，避免影响仅翻译导入字幕。指纹与旧草稿匹配仍使用 `core/media`，不另造版本或迁移规则。
+
+## 迁移
+
+旧设置中的转写字段（`mediaTranscription` 与更早的 `audioPractice` 转写字段）在首次加载时
+由 `core/ai/legacy.ts` 迁移为新注册表中的 `asr` 引擎（稳定 legacy id），并把旧的 provider
+选择映射为 `transcriptionEngineId`。迁移只复制 SecretStorage 引用，不复制密钥值。
 
 ## 测试
 
@@ -51,5 +63,6 @@ provider 选择、workspace 密钥引用优先级、字段归一化和生成前�
 - `ui/__tests__/MaterialEditView.test.tsx`：view 只断言渲染与 intent 转发，并保留“发起对话框失败、其他视图 alert”的可见行为。
 - `domain/__tests__/subtitleDraftEngine.test.ts`：涵盖 Unicode 分词对齐、分块转写流水线、指纹校验及草稿单接缝编辑动作。
 - runtime、转写 provider 与草稿引擎的测试继续在 `domain/__tests__/` 覆盖；编辑会话测试不 mock React。
-- `domain/__tests__/transcriptionConfiguration.test.ts` 覆盖配置准备、密钥失败、任务匹配与异步变化；
-  `src/__tests__/mediaComposition.test.ts` 验证真实组合路径将已接受的配置用于请求。
+- `settings/__tests__/slice.test.ts` 覆盖旧转写字段到引擎选择的迁移；
+  `core/media/transcription/__tests__/mediaTranscriptionEngine.test.ts` 覆盖引擎解析、密钥失败、
+  任务指纹与异步变化。

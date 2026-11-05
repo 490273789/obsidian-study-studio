@@ -193,7 +193,7 @@ export class VideoShadowingDesktopAdapter {
 		if (!this.services) return "";
 		const settings = this.readSettings();
 		return this.services.getSignature({
-			transcriptionProvider: settings.shadowTranscriptionProvider,
+			transcriptionEngineId: settings.shadowTranscriptionEngineId,
 			translationProfileId: settings.shadowTranslationProfileId,
 		});
 	}

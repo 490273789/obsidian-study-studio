@@ -22,7 +22,7 @@ export type MediaFailure =
 	| { readonly kind: "subtitle-invalid"; readonly problems: readonly SubtitleProblem[] }
 	| {
 			readonly kind: "config-invalid";
-			readonly field: "workspace" | "base-url" | "model" | "secret" | "security";
+			readonly field: "engine" | "workspace" | "base-url" | "model" | "secret" | "security";
 	  }
 	| { readonly kind: "config-drift" }
 	| { readonly kind: "cancelled" }

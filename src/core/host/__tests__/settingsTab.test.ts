@@ -308,8 +308,8 @@ describe("FlashcardSettingTab", () => {
 				subscribe: vi.fn(() => () => {}),
 				getSnapshot: () => ({
 					settings: {
-						configs: [],
-						defaultConfigId: null,
+						engines: [],
+						defaults: { llm: null, asr: null },
 					},
 					loadingModels: [],
 					testing: [],

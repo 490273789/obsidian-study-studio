@@ -14,7 +14,7 @@ import type { SettingsPresentation } from "../../../core/settings/presentation";
 
 export type TranslationSettingsRuntime = Pick<
 	TranslationRuntime,
-	"getSnapshot" | "subscribe" | "configure" | "testYoudao"
+	"getSnapshot" | "subscribe" | "configure"
 >;
 
 /** Holds one unsaved settings draft; TranslationRuntime remains the committed authority. */
@@ -29,7 +29,7 @@ export class TranslationSettingsEditor {
 		private readonly ai: AiService,
 		private readonly language: () => Language,
 		private readonly refresh: () => void,
-		private readonly openYoudao?: () => void,
+		private readonly openAiSettings?: () => void,
 	) {
 		this.draft = normalizeTranslationSettings(runtime.getSnapshot().settings);
 	}
@@ -48,7 +48,7 @@ export class TranslationSettingsEditor {
 			this.draft = normalizeTranslationSettings(this.runtime.getSnapshot().settings);
 	}
 
-	presentation(view: "translation" | "youdao" = "translation"): SettingsPresentation {
+	presentation(): SettingsPresentation {
 		const snapshot = this.runtime.getSnapshot();
 		return buildTranslationSettingsViewModel(
 			{
@@ -57,13 +57,12 @@ export class TranslationSettingsEditor {
 				aiSnapshot: this.ai.getSnapshot(),
 				saving: this.saving || snapshot.saving,
 			},
-			this.actions(view),
+			this.actions(),
 			this.language(),
-			view,
 		);
 	}
 
-	private actions(view: "translation" | "youdao"): TranslationSettingsEditorActions {
+	private actions(): TranslationSettingsEditorActions {
 		return {
 			patch: (patch) => this.patch(patch),
 			patchProfile: (id, patch) => {
@@ -75,7 +74,6 @@ export class TranslationSettingsEditor {
 			},
 			addProfile: () => {
 				const number = this.draft.profiles.length + 1;
-				const firstEngine = this.ai.getSnapshot().settings.configs[0];
 				this.patch({
 					profiles: [
 						...this.draft.profiles,
@@ -85,8 +83,8 @@ export class TranslationSettingsEditor {
 								number,
 							),
 							enabled: true,
-							kind: "engine",
-							configId: firstEngine?.id ?? "",
+							// ADR-0016: a profile always selects its engine explicitly.
+							engineId: "",
 						},
 					],
 				});
@@ -99,9 +97,8 @@ export class TranslationSettingsEditor {
 			},
 			moveProfile: (id, offset) => this.moveProfile(id, offset),
 			resetPrompt: () => this.patch({ promptTemplate: DEFAULT_TRANSLATION_PROMPT }),
-			...(this.openYoudao ? { openYoudao: this.openYoudao } : {}),
-			save: () => this.save(view),
-			testYoudao: () => this.testYoudao(),
+			...(this.openAiSettings ? { openAiSettings: this.openAiSettings } : {}),
+			save: () => this.save(),
 		};
 	}
 
@@ -123,42 +120,20 @@ export class TranslationSettingsEditor {
 		this.patch({ profiles });
 	}
 
-	private async save(view: "translation" | "youdao"): Promise<void> {
+	private async save(): Promise<void> {
 		if (this.saving || this.runtime.getSnapshot().saving) return;
 		this.saving = true;
 		this.refresh();
 		try {
+			// The translation view owns direction and swaps it independently of settings.
 			const committed = this.runtime.getSnapshot().settings;
-			await this.runtime.configure(
-				view === "youdao"
-					? { ...committed, youdao: this.draft.youdao }
-					: { ...this.draft, youdao: committed.youdao, direction: committed.direction },
-			);
-			const saved = normalizeTranslationSettings(this.runtime.getSnapshot().settings);
-			this.draft =
-				view === "youdao"
-					? { ...this.draft, youdao: saved.youdao }
-					: { ...saved, youdao: this.draft.youdao };
-			new Notice(
-				view === "youdao"
-					? translationSettingsStrings(this.language()).youdaoSaved
-					: translationSettingsStrings(this.language()).saved,
-			);
+			await this.runtime.configure({ ...this.draft, direction: committed.direction });
+			this.draft = normalizeTranslationSettings(this.runtime.getSnapshot().settings);
+			new Notice(translationSettingsStrings(this.language()).saved);
 		} catch (error) {
 			this.report(error);
 		} finally {
 			this.saving = false;
-			if (this.unsubscribeRuntime) this.refresh();
-		}
-	}
-
-	private async testYoudao(): Promise<void> {
-		try {
-			await this.runtime.testYoudao();
-			new Notice(translationSettingsStrings(this.language()).testSuccess);
-		} catch (error) {
-			this.report(error);
-		} finally {
 			if (this.unsubscribeRuntime) this.refresh();
 		}
 	}

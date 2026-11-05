@@ -1,6 +1,4 @@
-import { AiError, aiFailureCode, type AiService } from "../../../core/ai";
-import { cleanAiConfig } from "../../../core/ai/configuration";
-import { validateHttpEndpoint } from "../../../core/net/endpoint";
+import { AiError, aiFailureCode, validateEngine, type AiService } from "../../../core/ai";
 import {
 	detectTranslationDirection,
 	normalizeTranslationSettings,
@@ -29,7 +27,6 @@ export class TranslationRuntime {
 		results: [],
 		status: "idle",
 		saving: false,
-		testing: false,
 	};
 	private snapshot!: TranslationSnapshot;
 	private listeners = new Set<() => void>();
@@ -40,7 +37,6 @@ export class TranslationRuntime {
 		"input" | "results" | "translatedInput" | "translatedDirection"
 	> | null = null;
 	private controller: AbortController | null = null;
-	private testController: AbortController | null = null;
 	private views = 0;
 	private disposed = false;
 	private unsubscribe: () => void;
@@ -190,21 +186,6 @@ export class TranslationRuntime {
 			this.publish();
 		}
 	}
-	async testYoudao(): Promise<void> {
-		if (this.disposed) throw new AiError("disposed");
-		if (this.state.testing) throw new AiError("busy");
-		this.state.testing = true;
-		const controller = new AbortController();
-		this.testController = controller;
-		this.publish();
-		try {
-			await this.deps.youdao({ ...this.settings.youdao }, "你好", "zh-en", controller.signal);
-		} finally {
-			this.state.testing = false;
-			this.testController = null;
-			this.publish();
-		}
-	}
 	async translate(): Promise<void> {
 		if (
 			this.disposed ||
@@ -318,7 +299,6 @@ export class TranslationRuntime {
 	dispose(): void {
 		this.disposed = true;
 		this.unsubscribe();
-		this.testController?.abort();
 		this.clear();
 		this.listeners.clear();
 	}
@@ -339,38 +319,32 @@ export class TranslationRuntime {
 		if (this.state.results.some((result) => result.status === "error")) return "error";
 		return "idle";
 	}
+	/** Resolves each profile against the shared engine registry (ADR-0016). */
 	private replaceResults(): void {
-		const configs = this.ai.getSnapshot().settings.configs;
-		const youdao = this.settings.youdao;
+		const engines = this.ai.getSnapshot().settings.engines;
 		this.state.results = this.settings.profiles
 			.filter((profile) => profile.enabled)
 			.map((profile) => {
-				const config = configs.find((config) => config.id === profile.configId);
+				const engine = engines.find((candidate) => candidate.id === profile.engineId);
 				let setupIssue: TranslationResultState["setupIssue"];
-				if (profile.kind === "youdao") {
+				// An ASR engine can never translate; a stale reference is an engine setup
+				// issue and no other engine is substituted.
+				if (!engine || engine.kind === "asr") {
+					setupIssue = "engineSetup";
+				} else {
 					try {
-						validateHttpEndpoint(youdao.baseUrl);
-						if (!youdao.appKeySecretId || !youdao.appSecretSecretId)
-							setupIssue = "youdaoSetup";
-					} catch {
-						setupIssue = "youdaoSetup";
-					}
-				} else if (config) {
-					try {
-						cleanAiConfig(config);
+						validateEngine(engine);
 					} catch {
 						setupIssue = "engineSetup";
 					}
-				} else {
-					setupIssue = "engineSetup";
 				}
 				return {
 					id: profile.id,
 					name: profile.name,
 					text: "",
 					status: "idle",
-					model: profile.kind === "youdao" ? "" : (config?.model ?? ""),
-					provider: profile.kind === "youdao" ? "youdao" : (config?.provider ?? ""),
+					model: engine?.kind === "llm" ? engine.model : "",
+					provider: engine?.provider ?? "",
 					...(setupIssue ? { setupIssue } : {}),
 				};
 			});
@@ -385,7 +359,6 @@ export class TranslationRuntime {
 		const settings = normalizeTranslationSettings(this.settings);
 		settings.profiles.forEach(Object.freeze);
 		Object.freeze(settings.profiles);
-		Object.freeze(settings.youdao);
 		Object.freeze(settings);
 		const hasResults = this.state.results.some(
 			(result) => result.status === "success" || result.status === "error",

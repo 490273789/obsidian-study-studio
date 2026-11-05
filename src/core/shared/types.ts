@@ -6,7 +6,6 @@ import type { FlashcardStudySettings } from "../../features/flashcards/settings/
 import type { HostSettings } from "../settings/hostSlice";
 import type { VideoPlayerSettings } from "../../features/video-player/settings/slice";
 import type { AudioPracticeSettings } from "../../features/audio-practice/settings/slice";
-import type { MediaTranscriptionSettings } from "../media/transcription/mediaTranscriptionEngine";
 import type { FeatureOpenShortcuts } from "../settings/featureOpenShortcuts";
 import { Card } from "ts-fsrs";
 
@@ -63,9 +62,9 @@ export interface StudySettings {
  *
  * The document is flat on disk and composed of one slice per owner: the host
  * (language), the 闪卡 feature (tags, deck order, study parameters, practice
- * messages), pronunciation, AI engines, AI 翻译, and 词典. Each slice is the
- * authority for its own defaults, normalization, and cloning in
- * `src/settings/settingsSlices.ts`.
+ * messages), pronunciation, the shared AI engine registry (ADR-0016), AI 翻译,
+ * and 词典. Each slice is the authority for its own defaults, normalization,
+ * and cloning in `src/core/host/settingsSlices.ts`.
  */
 export interface FlashcardSettings extends HostSettings, FlashcardStudySettings {
 	/** Default hotkeys for opening the five primary study tools. */
@@ -81,7 +80,6 @@ export interface FlashcardSettings extends HostSettings, FlashcardStudySettings 
 	/** Availability of the desktop local-video feature; paths remain device-local. */
 	videoPlayer: VideoPlayerSettings;
 	audioPractice: AudioPracticeSettings;
-	mediaTranscription: MediaTranscriptionSettings;
 }
 
 /**

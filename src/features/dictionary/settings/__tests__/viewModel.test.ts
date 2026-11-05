@@ -12,17 +12,29 @@ function setup() {
 		settings: structuredClone(DEFAULT_DICTIONARY_SETTINGS),
 		aiSnapshot: {
 			settings: {
-				configs: [
+				engines: [
 					{
 						id: "engine",
+						kind: "llm",
 						name: "Favorite engine",
 						provider: "deepseek",
 						baseUrl: "https://api.deepseek.com",
 						secretId: "key",
 						model: "deepseek-chat",
 					},
+					{
+						id: "speech",
+						kind: "asr",
+						name: "Speech engine",
+						provider: "bailian",
+						baseUrl: "",
+						workspaceId: "workspace",
+						workspaceSecretId: "",
+						secretId: "key",
+						model: "fun-asr-flash-2026-06-15",
+					},
 				],
-				defaultConfigId: "engine",
+				defaults: { llm: "engine", asr: "speech" },
 			},
 			models: {},
 			loadingModels: [],
@@ -210,7 +222,7 @@ describe("favorite words AI settings", () => {
 		state.settings.favoriteAiConfigId = "deleted";
 		state.aiSnapshot = {
 			...state.aiSnapshot,
-			settings: { ...state.aiSnapshot.settings, configs: [] },
+			settings: { ...state.aiSnapshot.settings, engines: [] },
 		};
 		const { presentation, select } = favoriteSelect(state, actions);
 		expect(select.value).toBe("deleted");

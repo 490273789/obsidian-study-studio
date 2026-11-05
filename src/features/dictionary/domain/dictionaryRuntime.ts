@@ -73,10 +73,10 @@ export class DictionaryRuntime {
 			configId: () => options.settings.getDictionarySettings().favoriteAiConfigId,
 			engineKey: () => {
 				const id = options.settings.getDictionarySettings().favoriteAiConfigId;
-				const config = options.ai
+				const engine = options.ai
 					.getSnapshot()
-					.settings.configs.find((item) => item.id === id);
-				return config ? JSON.stringify(config) : null;
+					.settings.engines.find((item) => item.id === id && item.kind === "llm");
+				return engine ? JSON.stringify(engine) : null;
 			},
 		});
 		this.unsubscribeFavoriteAi = options.ai.subscribe(() => this.favorites.refreshSettings());
@@ -217,10 +217,12 @@ export class DictionaryRuntime {
 	private aiEngineInfo(): { readonly configId: string | null; readonly name: string | null } {
 		const configId = this.options.settings.getDictionarySettings().ai.configId;
 		if (!configId) return { configId: null, name: null };
-		const config = this.options.ai
+		const engine = this.options.ai
 			.getSnapshot()
-			.settings.configs.find((candidate) => candidate.id === configId);
-		return { configId, name: config?.name ?? null };
+			.settings.engines.find(
+				(candidate) => candidate.id === configId && candidate.kind === "llm",
+			);
+		return { configId, name: engine?.name ?? null };
 	}
 
 	private resolveSource(

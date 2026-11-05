@@ -88,7 +88,7 @@ export function buildDictionarySettingsViewModel(
 		settings.youdao.accessMode === "free"
 			? t.freeModeDescription
 			: t.officialCredentialsDescription;
-	const aiConfigs = state.aiSnapshot.settings.configs;
+	const aiConfigs = state.aiSnapshot.settings.engines.filter((engine) => engine.kind === "llm");
 	return defineSettings("dictionary", (page) => {
 		page.group("dictionary", t.settingsHeading, (group) => {
 			group.toggle(

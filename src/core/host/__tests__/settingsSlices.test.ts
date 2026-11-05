@@ -38,7 +38,6 @@ describe("settings slices registry", () => {
 			"flashcardTags",
 			"fsrsParameters",
 			"language",
-			"mediaTranscription",
 			"practiceErrorMessages",
 			"practiceMessagesCustomized",
 			"practicePerfectMessages",
@@ -107,10 +106,34 @@ describe("settings slices registry", () => {
 	it("normalizes each slice in isolation when the document is partial", () => {
 		const normalized = normalizeSettingsDocument({
 			language: "en",
-			ai: { configs: [{ id: "engine" }], defaultConfigId: "engine" },
+			ai: {
+				configs: [
+					{
+						id: "engine",
+						name: "Engine",
+						provider: "deepseek",
+						baseUrl: "https://api.deepseek.com",
+						secretId: "secret",
+						model: "model",
+					},
+				],
+				defaultConfigId: "engine",
+			},
 		});
 
 		expect(normalized.language).toBe("en");
+		expect(normalized.ai.engines).toEqual([
+			{
+				id: "engine",
+				kind: "llm",
+				name: "Engine",
+				provider: "deepseek",
+				baseUrl: "https://api.deepseek.com",
+				secretId: "secret",
+				model: "model",
+			},
+		]);
+		expect(normalized.ai.defaults.llm).toBe("engine");
 		// Every other slice keeps its own defaults.
 		expect(normalized.translation).toEqual(DEFAULT_SETTINGS.translation);
 		expect(normalized.dictionary).toEqual(DEFAULT_SETTINGS.dictionary);

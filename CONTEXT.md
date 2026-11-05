@@ -218,3 +218,17 @@ _Avoid_: Playback session, saved recording
 A learner-approved microphone recording of one practice segment, stored with its
 source identity, range, and playback rate in the vault.
 _Avoid_: Temporary take, difficult segment
+
+## AI capabilities
+
+**AI engine (AI 引擎)**:
+One configured AI connection with a capability type: large-language-model text
+generation, speech recognition, or text translation. Engines are stored and edited
+only in the shared AI engine settings; features store just the selected engine id.
+_Avoid_: Provider, model configuration, AI setting
+
+**AI engine kind (引擎类型)**:
+The capability an engine serves, which decides its fields and the features that may
+select it. A feature can only select an engine of the kind it consumes; audio
+listening practice and video subtitles share the speech-recognition kind.
+_Avoid_: Engine provider, service type

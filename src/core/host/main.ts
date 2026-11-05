@@ -1,7 +1,7 @@
 import "../styles/index.scss";
 import { Plugin } from "obsidian";
 import { createWorkbench, type Workbench } from "./workbench";
-import { createWorkbenchModules } from "../../features";
+import { createAiEngineTesters, createWorkbenchModules } from "../../features";
 import { AI_ENGINE_SECTION_ID, createAiEngineSection } from "./aiEngineSection";
 import {
 	FEATURE_OPEN_SHORTCUT_SECTION_ID,
@@ -41,6 +41,7 @@ export default class StudyStudioPlugin extends Plugin {
 			this.settings.ai,
 			this.persistAiSettings,
 			this.net,
+			createAiEngineTesters({ net: this.net }),
 		);
 		await this.store.load();
 

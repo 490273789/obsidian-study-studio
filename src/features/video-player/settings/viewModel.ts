@@ -4,22 +4,24 @@ import { videoPlayerStrings } from "../strings/videoPlayer";
 import { DEFAULT_VIDEO_PLAYER_SHORTCUTS, type VideoPlayerShortcuts } from "./keyboardShortcut";
 import { VIDEO_SKIP_INTERVALS, type VideoPlayerSettings, type VideoSkipInterval } from "./slice";
 
-interface VideoPlayerSettingsActions {
+export interface VideoPlayerSettingsActions {
 	setEnabled: (enabled: boolean) => void | Promise<void>;
 	setSkipInterval: (seconds: VideoSkipInterval) => void | Promise<void>;
 	setShortcut: (key: keyof VideoPlayerShortcuts, shortcut: string) => void | Promise<void>;
 	clearLocalData: () => void | Promise<void>;
-	setShadowTranscriptionProvider?: (
-		provider: "bailian" | "openai-compatible",
-	) => void | Promise<void>;
+	setShadowTranscriptionEngineId?: (engineId: string) => void | Promise<void>;
 	setShadowTranslationProfileId?: (profileId: string) => void | Promise<void>;
 	setShadowVaultFolder?: (folder: string) => void | Promise<void>;
 	setShadowFfmpegPath?: (path: string) => void | Promise<void>;
 }
 
 export interface ShadowingSettingsChoices {
+	/** ASR engines from the shared registry, shared with listening practice. */
+	transcriptionEngines: readonly { id: string; name: string }[];
 	translationProfiles: readonly { id: string; name: string }[];
 	ffmpegPath: string;
+	/** Opens the host-owned AI engine settings section. */
+	openAiSettings?: () => void;
 }
 
 export function buildVideoPlayerSettingsViewModel(
@@ -91,20 +93,27 @@ export function buildVideoPlayerSettingsViewModel(
 		if (shadowing)
 			page.group("shadowing", t.shadowSettings, (group) => {
 				group.select(
-					"transcription-provider",
+					"transcription-engine",
 					{ name: t.shadowProvider, description: t.shadowProviderDescription },
 					{
-						value: settings.shadowTranscriptionProvider,
+						value: settings.shadowTranscriptionEngineId,
 						options: [
-							{ value: "bailian", label: "百炼" },
-							{ value: "openai-compatible", label: "OpenAI compatible" },
+							{ value: "", label: t.shadowProviderDefault },
+							...shadowing.transcriptionEngines.map((engine) => ({
+								value: engine.id,
+								label: engine.name,
+							})),
 						],
-						onChange: (value) =>
-							actions.setShadowTranscriptionProvider?.(
-								value as "bailian" | "openai-compatible",
-							),
+						missingValueLabel: t.shadowProviderMissing,
+						onChange: (value) => actions.setShadowTranscriptionEngineId?.(value),
 					},
 				);
+				if (shadowing.openAiSettings)
+					group.button(
+						"open-ai-settings",
+						{ name: t.aiSettings, description: t.aiSettingsDescription },
+						{ label: t.openAiSettings, onPress: shadowing.openAiSettings },
+					);
 				group.select(
 					"translation-profile",
 					{ name: t.shadowTranslation, description: t.shadowTranslationDescription },

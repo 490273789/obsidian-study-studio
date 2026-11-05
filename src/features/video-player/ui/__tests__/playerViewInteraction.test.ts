@@ -187,7 +187,7 @@ const defaultSettings: VideoPlayerSettings = {
 	enabled: true,
 	skipInterval: 10,
 	shortcuts: { togglePlayback: "Space", seekBackward: "ArrowLeft", seekForward: "ArrowRight" },
-	shadowTranscriptionProvider: "bailian",
+	shadowTranscriptionEngineId: "",
 	shadowTranslationProfileId: "",
 	shadowVaultFolder: "Study Studio/影子跟读",
 };

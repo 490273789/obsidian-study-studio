@@ -1,86 +1,95 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
-	audioPracticeSettingsSlice,
-	DEFAULT_BAILIAN_MODEL,
-	DEFAULT_OPENAI_BASE_URL,
-	DEFAULT_OPENAI_MODEL,
-} from "../slice";
+	LEGACY_ASR_BAILIAN_ENGINE_ID,
+	LEGACY_ASR_OPENAI_ENGINE_ID,
+} from "../../../../core/ai/legacy";
+import { audioPracticeSettingsSlice } from "../slice";
 
 const normalize = (raw: unknown) => audioPracticeSettingsSlice.normalize(raw).audioPractice;
 
 describe("audio practice settings slice", () => {
-	it("defaults to the Bailian synchronous transcription service", () => {
+	it("defaults to enabled with the default ASR engine", () => {
 		expect(audioPracticeSettingsSlice.defaults().audioPractice).toEqual({
 			enabled: true,
-			provider: "bailian",
-			bailianWorkspaceId: "",
-			bailianWorkspaceSecretId: "",
-			bailianSecretId: "",
-			bailianModel: DEFAULT_BAILIAN_MODEL,
-			openaiBaseUrl: DEFAULT_OPENAI_BASE_URL,
-			openaiSecretId: "",
-			openaiModel: DEFAULT_OPENAI_MODEL,
+			transcriptionEngineId: "",
 		});
 	});
-	it("migrates the legacy workspace and secret fields", () => {
-		const settings = normalize({
-			audioPractice: { enabled: false, workspaceId: " ws ", secretId: " key " },
-		});
-		expect(settings).toMatchObject({
-			enabled: false,
-			provider: "bailian",
-			bailianWorkspaceId: "ws",
-			bailianWorkspaceSecretId: "",
-			bailianSecretId: "key",
-			bailianModel: DEFAULT_BAILIAN_MODEL,
-		});
-	});
-	it("prefers explicit provider fields over legacy ones", () => {
+
+	it("keeps an explicit engine selection and drops unknown fields", () => {
 		const settings = normalize({
 			audioPractice: {
-				workspaceId: "legacy",
-				secretId: "legacy-secret",
-				bailianWorkspaceId: "current",
-				bailianWorkspaceSecretId: "workspace-secret",
-				bailianSecretId: "current-secret",
-				bailianModel: "qwen-audio-3.1-asr-flash",
-				provider: "openai-compatible",
-				openaiBaseUrl: "https://gateway.test/v1",
-				openaiSecretId: "gateway-secret",
-				openaiModel: "whisper-large-v3",
-			},
-		});
-		expect(settings).toMatchObject({
-			provider: "openai-compatible",
-			bailianWorkspaceId: "",
-			bailianWorkspaceSecretId: "workspace-secret",
-			bailianSecretId: "current-secret",
-			bailianModel: "qwen-audio-3.1-asr-flash",
-			openaiBaseUrl: "https://gateway.test/v1",
-			openaiSecretId: "gateway-secret",
-			openaiModel: "whisper-large-v3",
-		});
-	});
-	it("repairs unknown providers and keeps only known fields", () => {
-		const settings = normalize({
-			audioPractice: {
-				provider: "something-else",
-				workspaceId: "legacy",
-				secretId: "legacy-secret",
+				enabled: false,
+				transcriptionEngineId: " custom-asr ",
 				manifest: "unexpected",
 			},
 		});
-		expect(settings.provider).toBe("bailian");
-		expect(settings).not.toHaveProperty("workspaceId");
-		expect(settings).not.toHaveProperty("secretId");
-		expect(settings).not.toHaveProperty("manifest");
-	});
-	it("ignores non-string model and URL values", () => {
-		const settings = normalize({
-			audioPractice: { bailianModel: 42, openaiBaseUrl: false, openaiModel: null },
+		expect(settings).toEqual({
+			enabled: false,
+			transcriptionEngineId: "custom-asr",
 		});
-		expect(settings.bailianModel).toBe(DEFAULT_BAILIAN_MODEL);
-		expect(settings.openaiBaseUrl).toBe(DEFAULT_OPENAI_BASE_URL);
-		expect(settings.openaiModel).toBe(DEFAULT_OPENAI_MODEL);
+	});
+
+	it("keeps no transcription credential fields of its own", () => {
+		const settings = normalize({
+			audioPractice: {
+				provider: "openai-compatible",
+				openaiSecretId: "secret",
+				bailianWorkspaceId: "workspace",
+				openaiModel: "whisper-1",
+			},
+		});
+		expect(Object.keys(settings).sort()).toEqual(["enabled", "transcriptionEngineId"]);
+	});
+
+	it("migrates the removed mediaTranscription choice to a stable engine id", () => {
+		const settings = normalize({
+			mediaTranscription: { provider: "bailian", bailianSecretId: "key" },
+		});
+		expect(settings.transcriptionEngineId).toBe(LEGACY_ASR_BAILIAN_ENGINE_ID);
+	});
+
+	it("migrates the legacy audio practice provider as fallback", () => {
+		const settings = normalize({
+			audioPractice: {
+				enabled: true,
+				provider: "openai-compatible",
+				openaiSecretId: "gateway-secret",
+			},
+		});
+		expect(settings.transcriptionEngineId).toBe(LEGACY_ASR_OPENAI_ENGINE_ID);
+	});
+
+	it("prefers the newest legacy owner over the audio practice fields", () => {
+		const settings = normalize({
+			mediaTranscription: { provider: "openai-compatible", openaiSecretId: "gateway" },
+			audioPractice: { provider: "bailian", secretId: "bailian-key" },
+		});
+		expect(settings.transcriptionEngineId).toBe(LEGACY_ASR_OPENAI_ENGINE_ID);
+	});
+
+	it("prefers a new selection over migration", () => {
+		const settings = normalize({
+			audioPractice: { transcriptionEngineId: "custom-asr" },
+			mediaTranscription: { provider: "bailian", bailianSecretId: "key" },
+		});
+		expect(settings.transcriptionEngineId).toBe("custom-asr");
+	});
+
+	it("leaves the selection empty when no engine was ever configured", () => {
+		expect(normalize({ audioPractice: { enabled: true } }).transcriptionEngineId).toBe("");
+	});
+
+	it("ignores non-string selections", () => {
+		expect(normalize({ audioPractice: { transcriptionEngineId: 42 } })).toEqual({
+			enabled: true,
+			transcriptionEngineId: "",
+		});
+	});
+
+	it("is idempotent for the normalized document", () => {
+		const first = normalize({
+			mediaTranscription: { provider: "bailian", bailianSecretId: "key" },
+		});
+		expect(normalize({ audioPractice: first })).toEqual(first);
 	});
 });

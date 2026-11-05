@@ -40,24 +40,31 @@ and `词典` own their runtimes the same way. Shared services reach a feature th
 
 `src/core/selectionHelper/` is the 工作台-owned 选区助手 interaction module, not a 工作台功能. It runs through the same `WorkbenchModule` lifecycle without contributing a catalog entry. 词典 and AI 翻译 each provide a narrow adapter, and 词典 also injects its result-body renderer through the composition module; the composition module connects them without reading either feature's runtime.
 
+`src/core/ai/` is the single AI engine registry (ADR-0016): engines are typed by capability
+(`llm`, `asr`, `translation`), the workbench host renders one settings section for all of
+them, and every feature stores only the engine id it selected. `AiService` resolves LLM
+engines and owns text-generation requests; it never executes ASR or translation requests.
+Non-LLM connection tests reach it through narrow tester ports injected by the composition
+root.
+
 `src/features/translation/domain/translationExecution.ts` owns translation profile selection,
-effective request identity, prompt/thinking rules, and Youdao/AI dispatch. The translator
+effective request identity, prompt/thinking rules, and engine dispatch. The translator
 session and the video composition adapter use this same module with independent settings
 readers; they never share view/session state. A prepared translation rechecks the accepted
 identity immediately before dispatching from the same captured configuration. Video tasks
 pass their persisted translation identity through the composition seam instead of interpreting
-translation settings. Changes to the selected engine's provider, model, endpoint, credential
-reference, prompt, or thinking setting invalidate that identity. Legacy incomplete identities
-are rejected rather than inferred from today's settings; already saved subtitles remain.
+translation settings. Changes to the selected engine's kind, provider, model, endpoint,
+credential reference, prompt, or thinking setting invalidate that identity. Legacy incomplete
+identities are rejected rather than inferred from today's settings; already saved subtitles
+remain.
 
-`src/features/audio-practice/domain/transcriptionConfiguration.ts` owns transcription settings
-interpretation, workspace-secret precedence, preflight validation, and matching video work to
-an accepted configuration. Audio practice prepares one immutable configuration before reading
-audio; the video composition adapter obtains the exact configuration admitted against its task
-identity, including a recheck after asynchronous fingerprinting. Both use the existing
-`core/media` protocol validation and fingerprints, preserving draft reuse and legacy matching.
-Reading an identity alone does not require an available API key. Draft/session ownership and
-cross-feature wiring remain unchanged.
+`src/core/media/transcription/mediaTranscriptionEngine.ts` resolves the selected ASR engine
+from the shared registry, reads its Workspace secret, validates it, and executes
+transcription. Listening practice and the video composition adapter construct their own
+instances with different selection readers; both use the same `core/media` protocol
+validation and fingerprints, preserving draft reuse and drift detection. Reading a
+fingerprint resolves the Workspace value but not the API key, so draft identity checks do not
+require an available key. Draft/session ownership and cross-feature wiring remain unchanged.
 
 For selection-source registration, expiry, or delayed capture ordering, read
 [Selection helper sources](ui-and-obsidian.md#selection-helper-sources).

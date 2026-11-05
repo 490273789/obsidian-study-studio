@@ -1,5 +1,4 @@
 import { MediaFailureError } from "../failures";
-import type { TranscriptionProviderId } from "../transcriptionTypes";
 import type { MediaTranscriptionEngine } from "../transcription/mediaTranscriptionEngine";
 
 export interface VideoShadowingCue {
@@ -21,7 +20,8 @@ export interface SubtitleTranslationPort {
 }
 
 export interface SubtitlePipelineSignatureOptions {
-	readonly transcriptionProvider: TranscriptionProviderId;
+	/** Selected ASR engine id; an empty id means the default ASR engine. */
+	readonly transcriptionEngineId: string;
 	readonly translationProfileId?: string;
 }
 
@@ -31,8 +31,8 @@ export interface MediaSubtitlePipelineDeps {
 }
 
 interface SerializedPipelineSignature {
-	v: 1;
-	p: TranscriptionProviderId;
+	v: 2;
+	e: string;
 	ts: string;
 	tp: string;
 	tls: string;
@@ -42,13 +42,13 @@ export class MediaSubtitlePipeline {
 	constructor(private readonly deps: MediaSubtitlePipelineDeps) {}
 
 	async getSignature(options: SubtitlePipelineSignatureOptions): Promise<string> {
-		const provider = options.transcriptionProvider;
-		const transcriptionSig = await this.deps.transcription.getSignature(provider);
+		const engineId = options.transcriptionEngineId;
+		const transcriptionSig = await this.deps.transcription.getSignature(engineId);
 		const profileId = this.deps.translation.getProfileId(options.translationProfileId ?? "");
 		const translationSig = profileId ? this.deps.translation.getSignature(profileId) : "";
 		return encodePipelineSignature({
-			v: 1,
-			p: provider,
+			v: 2,
+			e: engineId,
 			ts: transcriptionSig,
 			tp: profileId,
 			tls: translationSig,
@@ -64,14 +64,14 @@ export class MediaSubtitlePipeline {
 		if (!parsed) {
 			throw new Error("转写配置已变化，请重新生成字幕。");
 		}
-		const currentTransSig = await this.deps.transcription.getSignature(parsed.p);
+		const currentTransSig = await this.deps.transcription.getSignature(parsed.e);
 		if (currentTransSig !== parsed.ts) {
 			throw new Error("转写配置已变化，请重新生成字幕。");
 		}
 		try {
 			const result = await this.deps.transcription.transcribe({
 				audio,
-				provider: parsed.p,
+				engineId: parsed.e,
 				expectedSignature: parsed.ts,
 				signal,
 			});
@@ -121,8 +121,8 @@ export class MediaSubtitlePipeline {
 		return this.deps.translation.getProfileId(selected);
 	}
 
-	getTranscriptionSignature(provider: TranscriptionProviderId): Promise<string> {
-		return this.deps.transcription.getSignature(provider);
+	getTranscriptionSignature(engineId: string): Promise<string> {
+		return this.deps.transcription.getSignature(engineId);
 	}
 
 	getTranslationSignature(profileId: string): string {
@@ -136,25 +136,21 @@ function encodePipelineSignature(sig: SerializedPipelineSignature): string {
 
 export function decodePipelineSignature(signature: string): SerializedPipelineSignature | null {
 	try {
-		const parsed = JSON.parse(signature);
-		if (parsed && typeof parsed === "object") {
-			if (parsed.v === 1 && typeof parsed.p === "string") {
-				return parsed as SerializedPipelineSignature;
-			}
-			// Backward compatibility with legacy format:
-			// { provider, transcription, translationProfileId, translation }
-			if ("provider" in parsed && typeof parsed.provider === "string") {
-				return {
-					v: 1,
-					p: parsed.provider,
-					ts: typeof parsed.transcription === "string" ? parsed.transcription : "",
-					tp:
-						typeof parsed.translationProfileId === "string"
-							? parsed.translationProfileId
-							: "",
-					tls: typeof parsed.translation === "string" ? parsed.translation : "",
-				};
-			}
+		const parsed = JSON.parse(signature) as Partial<SerializedPipelineSignature> | null;
+		if (
+			parsed &&
+			typeof parsed === "object" &&
+			parsed.v === 2 &&
+			typeof parsed.e === "string" &&
+			typeof parsed.ts === "string"
+		) {
+			return {
+				v: 2,
+				e: parsed.e,
+				ts: parsed.ts,
+				tp: typeof parsed.tp === "string" ? parsed.tp : "",
+				tls: typeof parsed.tls === "string" ? parsed.tls : "",
+			};
 		}
 		return null;
 	} catch {

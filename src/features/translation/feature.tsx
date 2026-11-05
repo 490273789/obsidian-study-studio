@@ -11,8 +11,7 @@ import { createSharedTranslator } from "../../core/i18n";
 import { TranslatorFocusController, TranslatorView } from "./ui";
 import { createReactItemView } from "../../core/host/reactItemView";
 import { TranslationSettingsEditor } from "./obsidian/settingsEditor";
-import { AiSettingsEditor } from "../../core/host/aiSettingsEditor";
-import { combineSettingsPresentations } from "../../core/settings/presentation";
+import { AI_ENGINE_SECTION_ID } from "../../core/host/sectionIds";
 import type {
 	WorkbenchHost,
 	WorkbenchModule,
@@ -27,7 +26,6 @@ import type {
 
 /** Settings section id this feature contributes. */
 const TRANSLATION_SECTION_ID = "translation";
-const YOUDAO_SECTION_ID = "youdao";
 
 /** Obsidian view type of the translator view. */
 const VIEW_TYPE_TRANSLATOR = "flashcard-translator-view";
@@ -119,8 +117,18 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 							translation: normalizeTranslationSettings(settings),
 						});
 					},
-					youdao: (connection, text, direction, signal) =>
-						translateYoudao(connection, text, direction, deps.net, signal),
+					youdao: (engine, text, direction, signal) =>
+						translateYoudao(
+							{
+								baseUrl: engine.baseUrl,
+								appKeySecretId: engine.appKeySecretId,
+								appSecretSecretId: engine.appSecretSecretId,
+							},
+							text,
+							direction,
+							deps.net,
+							signal,
+						),
 				}),
 			);
 			active = { host, runtime: translation, focusController };
@@ -129,17 +137,8 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 				translation,
 				deps.ai,
 				() => host.settings.read().language,
-				() => {
-					host.settingsTab.refresh(TRANSLATION_SECTION_ID);
-					host.settingsTab.refresh(YOUDAO_SECTION_ID);
-				},
-				() => host.settingsTab.open(YOUDAO_SECTION_ID),
-			);
-			const gatewayEditor = new AiSettingsEditor(
-				deps.ai,
-				() => host.settings.read().language,
-				() => host.settingsTab.refresh(YOUDAO_SECTION_ID),
-				"youdao",
+				() => host.settingsTab.refresh(TRANSLATION_SECTION_ID),
+				() => host.settingsTab.open(AI_ENGINE_SECTION_ID),
 			);
 			const openViews = new Set<() => void>();
 			let lastActiveMarkdownLeaf: unknown = null;
@@ -159,7 +158,6 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 
 			lifetime.defer(() => {
 				editor.hide();
-				gatewayEditor.hide();
 				for (const detach of openViews) detach();
 				openViews.clear();
 				active = null;
@@ -256,24 +254,6 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 			});
 
 			host.settingsSection(section(editor));
-			host.settingsSection({
-				id: YOUDAO_SECTION_ID,
-				order: 1.5,
-				label: (language) => translationSettingsStrings(language).youdaoServices,
-				presentation: () =>
-					combineSettingsPresentations(YOUDAO_SECTION_ID, [
-						gatewayEditor.presentation(),
-						editor.presentation("youdao"),
-					]),
-				activate: () => {
-					gatewayEditor.activate();
-					editor.activate();
-				},
-				hide: () => {
-					gatewayEditor.hide();
-					editor.hide();
-				},
-			});
 
 			return () => {
 				const strings = translationStrings(host.settings.read().language);

@@ -18,7 +18,6 @@ function snapshot(settings: TranslationSettings): TranslationSnapshot {
 		results: [],
 		status: "idle",
 		saving: false,
-		testing: false,
 	};
 }
 
@@ -27,30 +26,38 @@ function createRuntime(initial: TranslationSettings) {
 	const configure = vi.fn(async (next: TranslationSettings) => {
 		settings = next;
 	});
-	const testYoudao = vi.fn(async () => {});
 	const runtime: TranslationSettingsRuntime = {
 		getSnapshot: () => snapshot(settings),
 		subscribe: vi.fn(() => () => {}),
 		configure,
-		testYoudao,
 	};
-	return { runtime, configure, testYoudao, settings: () => settings };
+	return { runtime, configure, settings: () => settings };
 }
 
 function createAi(): AiService {
 	const aiSnapshot: AiSnapshot = {
 		settings: {
-			configs: [
+			engines: [
 				{
 					id: "deepseek",
+					kind: "llm",
 					name: "DeepSeek",
 					provider: "deepseek",
 					baseUrl: "https://api.deepseek.com",
 					secretId: "secret",
 					model: "chat",
 				},
+				{
+					id: "youdao-engine",
+					kind: "translation",
+					name: "Youdao",
+					provider: "youdao",
+					baseUrl: "https://openapi.youdao.com/api",
+					appKeySecretId: "app-key",
+					appSecretSecretId: "app-secret",
+				},
 			],
-			defaultConfigId: null,
+			defaults: { llm: "deepseek", asr: null },
 		},
 		models: {},
 		loadingModels: [],
@@ -65,14 +72,9 @@ function createAi(): AiService {
 const initial: TranslationSettings = {
 	enabled: false,
 	direction: "zh-en",
-	profiles: [{ id: "first", name: "First", enabled: true, kind: "engine", configId: "deepseek" }],
+	profiles: [{ id: "first", name: "First", enabled: true, engineId: "deepseek" }],
 	promptTemplate: "Prompt",
 	thinkingEnabled: false,
-	youdao: {
-		baseUrl: "https://youdao.example",
-		appKeySecretId: "key",
-		appSecretSecretId: "secret",
-	},
 };
 
 function findControl(presentation: SettingsPresentation, kind: string, label?: string) {
@@ -87,31 +89,31 @@ function findControl(presentation: SettingsPresentation, kind: string, label?: s
 }
 
 describe("TranslationSettingsEditor", () => {
-	it("saves translation and Youdao connection drafts independently", async () => {
+	it("stores only the shared engine id in a profile draft", async () => {
 		const { runtime, settings } = createRuntime(initial);
 		const editor = new TranslationSettingsEditor(runtime, createAi(), () => "zh", vi.fn());
-		const translation = editor.presentation();
-		const enabled = findControl(translation, "toggle");
-		const youdao = editor.presentation("youdao");
-		const endpoint = findControl(youdao, "text");
-		const saveYoudao = findControl(youdao, "button", "保存有道翻译连接");
-		if (
-			enabled?.kind !== "toggle" ||
-			endpoint?.kind !== "text" ||
-			saveYoudao?.kind !== "button"
-		)
-			throw new Error("Missing settings controls");
-		await translation.invoke({ action: enabled.action, value: true });
-		await youdao.invoke({ action: endpoint.action, value: "https://custom.example/api" });
-		await youdao.invoke({ action: saveYoudao.action, value: undefined });
-		expect(settings().enabled).toBe(false);
-		expect(settings().youdao.baseUrl).toBe("https://custom.example/api");
-		const updated = editor.presentation();
-		const saveTranslation = findControl(updated, "button", "保存翻译设置");
-		if (saveTranslation?.kind !== "button") throw new Error("Missing translation save");
-		await updated.invoke({ action: saveTranslation.action, value: undefined });
-		expect(settings().enabled).toBe(true);
-		expect(settings().youdao.baseUrl).toBe("https://custom.example/api");
+		const engineSelect = (presentation: SettingsPresentation) => {
+			const cards = findControl(presentation, "cards");
+			if (cards?.kind !== "cards") throw new Error("Missing profile cards");
+			const select = cards.items[0]?.fields
+				.find((field) => field.key === "engine")
+				?.controls.find((control) => control.key === "engine");
+			if (select?.kind !== "select") throw new Error("Missing engine select");
+			return select;
+		};
+		const presentation = editor.presentation();
+		await presentation.invoke({
+			action: engineSelect(presentation).action,
+			value: "youdao-engine",
+		});
+		expect(engineSelect(editor.presentation()).value).toBe("youdao-engine");
+		// The committed runtime is untouched until Save.
+		expect(settings().profiles[0]).toEqual({
+			id: "first",
+			name: "First",
+			enabled: true,
+			engineId: "deepseek",
+		});
 	});
 
 	it("holds a draft and persists it only through Save", async () => {
@@ -134,22 +136,40 @@ describe("TranslationSettingsEditor", () => {
 		expect(configure).toHaveBeenCalledOnce();
 		expect(settings().enabled).toBe(true);
 		expect(settings().profiles).toHaveLength(2);
+		expect(settings().profiles[1]?.engineId).toBe("");
 		expect(Notice).toHaveBeenCalledWith("翻译设置已保存");
 	});
 
-	it("disables removal below one profile and tests Youdao without saving", async () => {
-		const { runtime, configure, testYoudao } = createRuntime(initial);
-		const editor = new TranslationSettingsEditor(runtime, createAi(), () => "en", vi.fn());
+	it("disables removal below one profile and opens AI engine settings without saving", async () => {
+		const { runtime, configure } = createRuntime(initial);
+		const openAiSettings = vi.fn();
+		const editor = new TranslationSettingsEditor(
+			runtime,
+			createAi(),
+			() => "en",
+			vi.fn(),
+			openAiSettings,
+		);
 		const presentation = editor.presentation();
 		const cards = findControl(presentation, "cards");
-		const youdao = editor.presentation("youdao");
-		const test = findControl(youdao, "button", "Test Youdao connection");
-		if (cards?.kind !== "cards" || test?.kind !== "button") throw new Error("Missing controls");
+		const open = findControl(presentation, "button", "Open AI engine settings");
+		if (cards?.kind !== "cards" || open?.kind !== "button") throw new Error("Missing controls");
 		expect(cards.items[0]?.actions.find((action) => action.icon === "remove")?.disabled).toBe(
 			true,
 		);
-		await youdao.invoke({ action: test.action, value: undefined });
-		expect(testYoudao).toHaveBeenCalledOnce();
+		await presentation.invoke({ action: open.action, value: undefined });
+		expect(openAiSettings).toHaveBeenCalledOnce();
 		expect(configure).not.toHaveBeenCalled();
+	});
+
+	it("reports persistence failures without losing the draft", async () => {
+		const { runtime, configure } = createRuntime(initial);
+		const editor = new TranslationSettingsEditor(runtime, createAi(), () => "zh", vi.fn());
+		configure.mockRejectedValueOnce(new Error("disk"));
+		const presentation = editor.presentation();
+		const save = findControl(presentation, "button", "保存翻译设置");
+		if (save?.kind !== "button") throw new Error("Missing save action");
+		await presentation.invoke({ action: save.action, value: undefined });
+		expect(Notice).toHaveBeenCalledWith(expect.stringContaining("翻译设置操作失败："));
 	});
 });

@@ -1,4 +1,6 @@
 import { Headphones } from "lucide-react";
+import type { AiService } from "../../core/ai";
+import { AI_ENGINE_SECTION_ID } from "../../core/host/sectionIds";
 import { defineFeatureLifetime } from "../../core/host/featureLifetime";
 import { createReactItemView } from "../../core/host/reactItemView";
 import type { WorkbenchModule } from "../../core/host/workbench";
@@ -10,10 +12,7 @@ import { AudioPracticeRuntime } from "./domain/audioPracticeRuntime";
 import { SubtitleDraftEngine, normalizeGenerationDraft } from "./domain/subtitleDraftEngine";
 import type { SubtitleTranscriptionPort } from "./domain/types";
 import { createBrowserAudioPreparation } from "./domain/transcription/browserAudio";
-import {
-	MediaTranscriptionEngine,
-	type MediaTranscriptionSettings,
-} from "../../core/media/transcription/mediaTranscriptionEngine";
+import { MediaTranscriptionEngine } from "../../core/media/transcription/mediaTranscriptionEngine";
 import { createAudioSourceFiles } from "./obsidian/audioSourceFiles";
 import { createAudioPracticeRepository } from "./obsidian/repositoryAdapter";
 import { createAudioPracticeCatalog, createAudioPracticeFiles } from "./obsidian/vaultFiles";
@@ -27,6 +26,7 @@ const SECTION = "audio-practice";
 const DRAFT_PREFIX = "study-studio.audio-practice.draft.";
 
 export function createAudioPracticeFeature(deps: {
+	ai: AiService;
 	store: WorkbenchStore;
 	net: OutboundPort;
 }): WorkbenchModule<"audioPractice"> {
@@ -38,11 +38,24 @@ export function createAudioPracticeFeature(deps: {
 			const source = createAudioSourceFiles(host.app);
 			let mediaWindow: Window = window;
 			const readSettings = () => host.settings.read();
-			const readMediaSettings = () => deps.store.getSettings().mediaTranscription;
 			const openSettings = () => host.settingsTab.open(SECTION);
+			const openAiSettings = () => host.settingsTab.open(AI_ENGINE_SECTION_ID);
+			/** ASR engines come from the shared registry; credentials stay in its section. */
+			const asrEngines = () =>
+				deps.ai
+					.getSnapshot()
+					.settings.engines.filter((engine) => engine.kind === "asr")
+					.map((engine) => ({ id: engine.id, name: engine.name }));
+			let unsubscribeAiSettings: (() => void) | null = null;
+			const stopAiSubscription = () => {
+				unsubscribeAiSettings?.();
+				unsubscribeAiSettings = null;
+			};
+			lifetime.defer(stopAiSubscription);
 
 			const transcriptionEngine = new MediaTranscriptionEngine({
-				readSettings: readMediaSettings,
+				readRegistry: () => deps.store.getSettings().ai,
+				resolveEngineId: () => readSettings().audioPractice.transcriptionEngineId,
 				readSecret: (id) => deps.net.readSecret(id),
 				outbound: deps.net,
 			});
@@ -156,62 +169,28 @@ export function createAudioPracticeFeature(deps: {
 				id: SECTION,
 				order: 5,
 				label: (language) => audioPracticeStrings(language).title,
-				presentation: (language) => {
-					const currentMedia = readMediaSettings();
-					const combinedSettings: AudioPracticeSettings = {
-						...readSettings().audioPractice,
-						provider: currentMedia.provider,
-						bailianWorkspaceId: currentMedia.bailianWorkspaceId,
-						bailianWorkspaceSecretId: currentMedia.bailianWorkspaceSecretId,
-						bailianSecretId: currentMedia.bailianSecretId,
-						bailianModel: currentMedia.bailianModel,
-						openaiBaseUrl: currentMedia.openaiBaseUrl,
-						openaiSecretId: currentMedia.openaiSecretId,
-						openaiModel: currentMedia.openaiModel,
-					};
-					return audioPracticeSettingsPresentation(
-						combinedSettings,
+				presentation: (language) =>
+					audioPracticeSettingsPresentation(
+						readSettings().audioPractice,
+						asrEngines(),
 						async (patch: Partial<AudioPracticeSettings>) => {
-							const audioPatch: Partial<AudioPracticeSettings> = {};
-							const mediaPatch: Partial<MediaTranscriptionSettings> = {};
-							if ("enabled" in patch) audioPatch.enabled = patch.enabled;
-							if ("provider" in patch) mediaPatch.provider = patch.provider;
-							if ("bailianWorkspaceId" in patch)
-								mediaPatch.bailianWorkspaceId = patch.bailianWorkspaceId;
-							if ("bailianWorkspaceSecretId" in patch)
-								mediaPatch.bailianWorkspaceSecretId =
-									patch.bailianWorkspaceSecretId;
-							if ("bailianSecretId" in patch)
-								mediaPatch.bailianSecretId = patch.bailianSecretId;
-							if ("bailianModel" in patch)
-								mediaPatch.bailianModel = patch.bailianModel;
-							if ("openaiBaseUrl" in patch)
-								mediaPatch.openaiBaseUrl = patch.openaiBaseUrl;
-							if ("openaiSecretId" in patch)
-								mediaPatch.openaiSecretId = patch.openaiSecretId;
-							if ("openaiModel" in patch) mediaPatch.openaiModel = patch.openaiModel;
-
 							await host.settings.update({
 								audioPractice: {
 									...readSettings().audioPractice,
 									...patch,
-									...audioPatch,
 								},
 							});
-							if (Object.keys(mediaPatch).length > 0) {
-								const allSettings = deps.store.getSettings();
-								await deps.store.saveSettings({
-									...allSettings,
-									mediaTranscription: {
-										...allSettings.mediaTranscription,
-										...mediaPatch,
-									},
-								});
-							}
 						},
+						openAiSettings,
 						language,
+					),
+				activate: () => {
+					if (unsubscribeAiSettings) return;
+					unsubscribeAiSettings = deps.ai.subscribe(() =>
+						host.settingsTab.refresh(SECTION),
 					);
 				},
+				hide: stopAiSubscription,
 			});
 			return () => {
 				if (!readSettings().audioPractice.enabled) {

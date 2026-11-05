@@ -34,21 +34,18 @@ function mockSnapshot(overrides: Partial<TranslationSnapshot> = {}): Translation
 			direction: "zh-en",
 			promptTemplate: "",
 			thinkingEnabled: false,
-			youdao: { baseUrl: "", appKeySecretId: "", appSecretSecretId: "" },
 			profiles: [
 				{
 					id: "deepseek",
 					name: "DeepSeek",
 					enabled: true,
-					kind: "engine",
-					configId: "ds-1",
+					engineId: "ds-1",
 				},
 				{
 					id: "youdao",
 					name: "有道智云",
 					enabled: true,
-					kind: "youdao",
-					configId: "yd-1",
+					engineId: "yd-1",
 				},
 			],
 		},
@@ -77,7 +74,6 @@ function mockSnapshot(overrides: Partial<TranslationSnapshot> = {}): Translation
 		],
 		status: "success",
 		saving: false,
-		testing: false,
 		...overrides,
 	};
 }
@@ -333,7 +329,7 @@ describe("TranslatorView UI", () => {
 					...base.results[1]!,
 					status: "idle",
 					text: "",
-					setupIssue: "youdaoSetup",
+					setupIssue: "engineSetup",
 				},
 			],
 		});
@@ -344,7 +340,7 @@ describe("TranslatorView UI", () => {
 		expect(submit).toBeDefined();
 		submit?.props.onClick?.();
 		expect(translate).toHaveBeenCalledOnce();
-		expect(textOf(tree)).toContain("请填写有道接口地址并选择应用密钥");
+		expect(textOf(tree)).toContain("该方案还未配置完整，请先补全设置");
 		expect(textOf(tree)).not.toContain("词汇差异高亮");
 	});
 	it("provides speak, card creation, and note insertion actions", () => {

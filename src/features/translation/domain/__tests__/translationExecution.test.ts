@@ -1,20 +1,36 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { AiService, type AiEngineConfig } from "../../../../core/ai";
+import {
+	AiService,
+	type AsrEngineConfig,
+	type LlmEngineConfig,
+	type TranslationEngineConfig,
+} from "../../../../core/ai";
 import type { OutboundPort } from "../../../../core/net/types";
 import { normalizeTranslationSettings } from "../configuration";
 import {
 	TranslationConfigurationChangedError,
 	TranslationExecution,
+	type YoudaoTranslation,
 } from "../translationExecution";
 
 function setup() {
-	const engine: AiEngineConfig = {
+	const llmEngine: LlmEngineConfig = {
 		id: "engine",
+		kind: "llm",
 		name: "Engine",
 		provider: "deepseek",
 		baseUrl: "https://api.deepseek.com",
 		secretId: "credential-reference",
 		model: "model",
+	};
+	const translationEngine: TranslationEngineConfig = {
+		id: "youdao-engine",
+		kind: "translation",
+		name: "Youdao",
+		provider: "youdao",
+		baseUrl: "https://openapi.youdao.com/api",
+		appKeySecretId: "app-key-reference",
+		appSecretSecretId: "app-secret-reference",
 	};
 	const request = vi.fn<OutboundPort["request"]>().mockResolvedValue({
 		status: 200,
@@ -23,7 +39,10 @@ function setup() {
 		}),
 	});
 	const ai = new AiService(
-		{ configs: [engine], defaultConfigId: engine.id },
+		{
+			engines: [llmEngine, translationEngine],
+			defaults: { llm: llmEngine.id, asr: null },
+		},
 		{
 			net: { request, readSecret: () => "credential-value" },
 			persist: async () => {},
@@ -37,20 +56,21 @@ function setup() {
 				id: "engine-profile",
 				name: "Engine",
 				enabled: true,
-				kind: "engine",
-				configId: engine.id,
+				engineId: llmEngine.id,
 			},
-			{ id: "youdao-profile", name: "Youdao", enabled: true, kind: "youdao", configId: "" },
+			{
+				id: "youdao-profile",
+				name: "Youdao",
+				enabled: true,
+				engineId: translationEngine.id,
+			},
 		],
-		youdao: {
-			baseUrl: "https://openapi.youdao.com/api",
-			appKeySecretId: "app-key-reference",
-			appSecretSecretId: "app-secret-reference",
-		},
 	});
-	const youdao = vi.fn().mockResolvedValue({ text: "Youdao translation", usage: null });
+	const youdao = vi
+		.fn<YoudaoTranslation>()
+		.mockResolvedValue({ text: "Youdao translation", usage: null });
 	const execution = new TranslationExecution({ ai, readSettings: () => settings, youdao });
-	return { ai, engine, settings, execution, request, youdao };
+	return { ai, llmEngine, translationEngine, settings, execution, request, youdao };
 }
 
 describe("translation execution", () => {
@@ -78,27 +98,60 @@ describe("translation execution", () => {
 		}
 	});
 
-	it("routes Youdao with its captured connection and direction", async () => {
-		const { ai, execution, settings, request, youdao } = setup();
+	it("routes a translation engine to Youdao with the captured engine and direction", async () => {
+		const { ai, execution, translationEngine, request, youdao } = setup();
 		try {
 			const operation = execution.prepare("youdao-profile", "en-zh");
 			const signal = new AbortController().signal;
 			await expect(operation.translate("Hello", signal)).resolves.toMatchObject({
 				text: "Youdao translation",
 			});
-			expect(youdao).toHaveBeenCalledWith(settings.youdao, "Hello", "en-zh", signal);
+			expect(youdao).toHaveBeenCalledWith(
+				expect.objectContaining({
+					id: translationEngine.id,
+					baseUrl: translationEngine.baseUrl,
+					appKeySecretId: translationEngine.appKeySecretId,
+					appSecretSecretId: translationEngine.appSecretSecretId,
+				}),
+				"Hello",
+				"en-zh",
+				signal,
+			);
 			expect(request).not.toHaveBeenCalled();
 			expect(operation.signature).not.toContain("app-key-reference");
+			expect(operation.signature).not.toContain("app-secret-reference");
 		} finally {
 			ai.dispose();
 		}
 	});
 
-	it("rejects an operation prepared before its Youdao connection changes", async () => {
-		const { ai, execution, settings, youdao } = setup();
+	it("routes an LLM engine through the shared generate request", async () => {
+		const { ai, execution, llmEngine, request, youdao } = setup();
+		try {
+			const operation = execution.prepare("engine-profile");
+			await expect(
+				operation.translate("Hello", new AbortController().signal),
+			).resolves.toMatchObject({ text: "Translation" });
+			expect(request).toHaveBeenCalledWith(
+				expect.objectContaining({
+					url: `${llmEngine.baseUrl}/chat/completions`,
+					headers: expect.objectContaining({ Authorization: "Bearer credential-value" }),
+				}),
+			);
+			expect(youdao).not.toHaveBeenCalled();
+		} finally {
+			ai.dispose();
+		}
+	});
+
+	it("rejects an operation prepared before its Youdao engine changes", async () => {
+		const { ai, execution, translationEngine, youdao } = setup();
 		try {
 			const operation = execution.prepare("youdao-profile");
-			settings.youdao.appSecretSecretId = "replacement-reference";
+			await ai.saveEngine({
+				...translationEngine,
+				appSecretSecretId: "replacement-reference",
+			});
 			await expect(
 				operation.translate("Hello", new AbortController().signal),
 			).rejects.toBeInstanceOf(TranslationConfigurationChangedError);
@@ -109,21 +162,60 @@ describe("translation execution", () => {
 	});
 
 	it("rejects prepared AI work after the selected engine changes and never falls back to a default", async () => {
-		const { ai, engine, execution, request } = setup();
+		const { ai, llmEngine, execution, request } = setup();
 		try {
 			const operation = execution.prepare("engine-profile");
-			await ai.saveConfig({ ...engine, model: "replacement" });
+			await ai.saveEngine({ ...llmEngine, model: "replacement" });
 			await expect(
 				operation.translate("Hello", new AbortController().signal),
 			).rejects.toBeInstanceOf(TranslationConfigurationChangedError);
-			const fallbackId = await ai.saveConfig({ ...engine, id: undefined, name: "Fallback" });
-			await ai.setDefault(fallbackId);
-			await ai.deleteConfig(engine.id);
+			const fallbackId = ai.createEngineId();
+			await ai.saveEngine({ ...llmEngine, id: fallbackId, name: "Fallback" });
+			await ai.setDefault("llm", fallbackId);
+			await ai.deleteEngine(llmEngine.id);
 			const missing = execution.prepare("engine-profile");
 			await expect(
 				missing.translate("Hello", new AbortController().signal),
 			).rejects.toMatchObject({ code: "config-not-found" });
 			expect(request).not.toHaveBeenCalled();
+		} finally {
+			ai.dispose();
+		}
+	});
+
+	it("never substitutes an ASR engine for a translation profile", async () => {
+		const { ai, request, youdao } = setup();
+		try {
+			const asr: AsrEngineConfig = {
+				id: "speech",
+				kind: "asr",
+				name: "Speech",
+				provider: "openai-compatible",
+				baseUrl: "https://api.openai.com/v1",
+				workspaceId: "",
+				workspaceSecretId: "",
+				secretId: "speech-key",
+				model: "whisper-1",
+			};
+			await ai.saveEngine(asr);
+			const settings = normalizeTranslationSettings({
+				enabled: true,
+				profiles: [
+					{ id: "speech-profile", name: "Speech", enabled: true, engineId: asr.id },
+				],
+			});
+			const asrExecution = new TranslationExecution({
+				ai,
+				readSettings: () => settings,
+				youdao,
+			});
+			await expect(
+				asrExecution
+					.prepare("speech-profile")
+					.translate("Hello", new AbortController().signal),
+			).rejects.toMatchObject({ code: "config-not-found" });
+			expect(request).not.toHaveBeenCalled();
+			expect(youdao).not.toHaveBeenCalled();
 		} finally {
 			ai.dispose();
 		}

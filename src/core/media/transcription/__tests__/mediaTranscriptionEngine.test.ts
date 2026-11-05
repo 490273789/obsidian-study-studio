@@ -1,9 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { OutboundPort } from "../../../net/types";
-import {
-	MediaTranscriptionEngine,
-	type MediaTranscriptionSettings,
-} from "../mediaTranscriptionEngine";
+import type { AiSettings, AsrEngineConfig } from "../../../ai/types";
+import { MediaTranscriptionEngine } from "../mediaTranscriptionEngine";
 import type { AudioChunk } from "../../transcriptionTypes";
 
 function createFakeOutbound() {
@@ -23,138 +21,152 @@ function createFakeOutbound() {
 	};
 }
 
+const bailian: AsrEngineConfig = {
+	id: "asr-bailian",
+	kind: "asr",
+	name: "Bailian",
+	provider: "bailian",
+	baseUrl: "",
+	workspaceId: "llm-test-ws",
+	workspaceSecretId: "",
+	secretId: "secret-bailian-key",
+	model: "fun-asr-flash-2026-06-15",
+};
+
+const openAi: AsrEngineConfig = {
+	id: "asr-openai",
+	kind: "asr",
+	name: "Whisper",
+	provider: "openai-compatible",
+	baseUrl: "https://api.openai.com/v1",
+	workspaceId: "",
+	workspaceSecretId: "",
+	secretId: "secret-openai-key",
+	model: "whisper-1",
+};
+
+function registry(
+	engines: AsrEngineConfig[] = [bailian],
+	defaultId = engines[0]?.id ?? "",
+): AiSettings {
+	return { engines: [...engines], defaults: { llm: null, asr: defaultId || null } };
+}
+
+function createEngine(
+	settings: AiSettings = registry(),
+	select: () => string = () => "",
+	readSecret: (id: string) => string | null = () => "valid-key",
+) {
+	const fake = createFakeOutbound();
+	fake.readSecret.mockImplementation((id) => readSecret(id));
+	const engine = new MediaTranscriptionEngine({
+		readRegistry: () => settings,
+		resolveEngineId: select,
+		readSecret: (id) => {
+			fake.readSecret(id);
+			return readSecret(id);
+		},
+		outbound: fake.outbound,
+	});
+	return { engine, fake };
+}
+
 describe("MediaTranscriptionEngine", () => {
-	const validBailianSettings: MediaTranscriptionSettings = {
-		provider: "bailian",
-		bailianWorkspaceId: "llm-test-ws",
-		bailianWorkspaceSecretId: "",
-		bailianSecretId: "secret-bailian-key",
-		bailianModel: "fun-asr-flash-2026-06-15",
-		openaiBaseUrl: "https://api.openai.com/v1",
-		openaiSecretId: "",
-		openaiModel: "whisper-1",
-	};
-
-	const validOpenAiSettings: MediaTranscriptionSettings = {
-		provider: "openai-compatible",
-		bailianWorkspaceId: "",
-		bailianWorkspaceSecretId: "",
-		bailianSecretId: "",
-		bailianModel: "fun-asr-flash-2026-06-15",
-		openaiBaseUrl: "https://api.openai.com/v1",
-		openaiSecretId: "secret-openai-key",
-		openaiModel: "whisper-1",
-	};
-
-	it("computes deterministic signature without reading secrets or performing network I/O", async () => {
-		const readSecret = vi.fn();
-		const fakeOutbound = createFakeOutbound();
-		const engine = new MediaTranscriptionEngine({
-			readSettings: () => validBailianSettings,
-			readSecret,
-			outbound: fakeOutbound.outbound,
-		});
+	it("computes a deterministic signature from the selected ASR engine", async () => {
+		const { engine, fake } = createEngine();
 
 		const signature = await engine.getSignature();
 		expect(signature).toMatch(/^bailian\|[a-f0-9]{64}\|fun-asr-flash-2026-06-15$/);
-		expect(readSecret).not.toHaveBeenCalled();
-		expect(fakeOutbound.request).not.toHaveBeenCalled();
+		expect(fake.request).not.toHaveBeenCalled();
+	});
+
+	it("resolves a Workspace ID stored in Secret Storage", async () => {
+		const secretEngine: AsrEngineConfig = {
+			...bailian,
+			workspaceId: "",
+			workspaceSecretId: "workspace-secret",
+		};
+		const { engine, fake } = createEngine(
+			registry([secretEngine]),
+			() => "",
+			(id) => (id === "workspace-secret" ? "resolved-workspace" : "valid-key"),
+		);
+		const signature = await engine.getSignature();
+		expect(fake.readSecret).toHaveBeenCalledWith("workspace-secret");
+		expect(signature).toMatch(/^bailian\|[a-f0-9]{64}\|fun-asr-flash-2026-06-15$/);
+	});
+
+	it("fails with config-invalid (engine) when no ASR engine is configured", async () => {
+		const { engine } = createEngine(registry([]));
+		await expect(engine.preflight()).rejects.toMatchObject({
+			failure: { kind: "config-invalid", field: "engine" },
+		});
+	});
+
+	it("honours an explicit engine override and the configured selection", async () => {
+		const { engine } = createEngine(registry([bailian, openAi]), () => "asr-openai");
+		expect(await engine.getSignature()).toMatch(/^openai-compatible\|/);
+		expect(await engine.getSignature("asr-bailian")).toMatch(/^bailian\|/);
 	});
 
 	describe("preflight", () => {
-		it("fails with config-invalid (secret) when secret cannot be resolved", async () => {
-			const engine = new MediaTranscriptionEngine({
-				readSettings: () => validBailianSettings,
-				readSecret: () => null,
-				outbound: createFakeOutbound().outbound,
-			});
-
+		it("fails with config-invalid (secret) when the API key cannot be resolved", async () => {
+			const { engine } = createEngine(
+				registry(),
+				() => "",
+				() => null,
+			);
 			await expect(engine.preflight()).rejects.toMatchObject({
 				failure: { kind: "config-invalid", field: "secret" },
 			});
 		});
 
-		it("fails with config-invalid (workspace) when Bailian workspace is invalid", async () => {
-			const engine = new MediaTranscriptionEngine({
-				readSettings: () => ({
-					...validBailianSettings,
-					bailianWorkspaceId: "invalid space!",
-				}),
-				readSecret: () => "valid-key",
-				outbound: createFakeOutbound().outbound,
-			});
-
+		it("fails with config-invalid (workspace) when the Bailian workspace id is invalid", async () => {
+			const invalid: AsrEngineConfig = { ...bailian, workspaceId: "invalid space!" };
+			const { engine } = createEngine(registry([invalid]));
 			await expect(engine.preflight()).rejects.toMatchObject({
 				failure: { kind: "config-invalid", field: "workspace" },
 			});
 		});
 
-		it("fails with config-invalid (security) when OpenAI Base URL is non-loopback HTTP", async () => {
-			const engine = new MediaTranscriptionEngine({
-				readSettings: () => ({
-					...validOpenAiSettings,
-					openaiBaseUrl: "http://api.remote.com/v1",
-				}),
-				readSecret: () => "valid-key",
-				outbound: createFakeOutbound().outbound,
-			});
-
+		it("fails with config-invalid (security) for a non-loopback HTTP Base URL", async () => {
+			const invalid: AsrEngineConfig = {
+				...openAi,
+				baseUrl: "http://api.remote.com/v1",
+			};
+			const { engine } = createEngine(registry([invalid]));
 			await expect(engine.preflight()).rejects.toMatchObject({
 				failure: { kind: "config-invalid", field: "security" },
 			});
 		});
 
-		it("fails with config-drift when expectedSignature does not match", async () => {
-			const engine = new MediaTranscriptionEngine({
-				readSettings: () => validBailianSettings,
-				readSecret: () => "valid-key",
-				outbound: createFakeOutbound().outbound,
-			});
-
+		it("fails with config-drift when the expected signature is stale", async () => {
+			const { engine } = createEngine();
 			await expect(
 				engine.preflight({ expectedSignature: "bailian|stale-hash|old-model" }),
-			).rejects.toMatchObject({
-				failure: { kind: "config-drift" },
-			});
+			).rejects.toMatchObject({ failure: { kind: "config-drift" } });
 		});
 
-		it("succeeds and returns signature when configuration and secrets are valid", async () => {
-			const engine = new MediaTranscriptionEngine({
-				readSettings: () => validBailianSettings,
-				readSecret: () => "valid-key",
-				outbound: createFakeOutbound().outbound,
-			});
-
+		it("returns the signature when the engine and credentials are valid", async () => {
+			const { engine } = createEngine();
 			const result = await engine.preflight();
 			expect(result.signature).toMatch(/^bailian\|[a-f0-9]{64}\|fun-asr-flash-2026-06-15$/);
 		});
 	});
 
 	describe("transcribe", () => {
-		it("fails with config-drift before sending requests when expectedSignature does not match", async () => {
-			const fakeOutbound = createFakeOutbound();
-			const engine = new MediaTranscriptionEngine({
-				readSettings: () => validBailianSettings,
-				readSecret: () => "valid-key",
-				outbound: fakeOutbound.outbound,
-			});
-
+		it("fails with config-drift before sending requests when the signature does not match", async () => {
+			const { engine, fake } = createEngine();
 			await expect(
 				engine.transcribe({
 					audio: new ArrayBuffer(16),
 					expectedSignature: "bailian|old-signature|model",
 				}),
-			).rejects.toMatchObject({
-				failure: { kind: "config-drift" },
-			});
-
-			expect(fakeOutbound.request).not.toHaveBeenCalled();
+			).rejects.toMatchObject({ failure: { kind: "config-drift" } });
+			expect(fake.request).not.toHaveBeenCalled();
 		});
 
-		it("transcribes single chunk, sanitizing dirty cues and extracting words", async () => {
-			const fakeOutbound = createFakeOutbound();
-			fakeOutbound.readSecret.mockReturnValue("valid-bailian-key");
-			// Mock successful Bailian SSE response with sentence events
+		it("transcribes a chunk, sanitizing dirty cues and extracting words", async () => {
 			const event = (
 				id: number,
 				start: number,
@@ -180,7 +192,8 @@ describe("MediaTranscriptionEngine", () => {
 					usage: { duration: 3 },
 				})}\n\n`;
 
-			fakeOutbound.request.mockResolvedValueOnce({
+			const { engine, fake } = createEngine();
+			fake.request.mockResolvedValueOnce({
 				status: 200,
 				headers: {},
 				text:
@@ -189,12 +202,6 @@ describe("MediaTranscriptionEngine", () => {
 						["world", 800, 1500],
 					]) + event(2, 1500, 3000, "Second valid sentence.", [["Second", 1500, 2000]]),
 				arrayBuffer: new ArrayBuffer(0),
-			});
-
-			const engine = new MediaTranscriptionEngine({
-				readSettings: () => validBailianSettings,
-				readSecret: (id) => fakeOutbound.readSecret(id) as string | null,
-				outbound: fakeOutbound.outbound,
 			});
 
 			const chunk: AudioChunk = {
@@ -234,20 +241,13 @@ describe("MediaTranscriptionEngine", () => {
 			const controller = new AbortController();
 			controller.abort();
 
-			const engine = new MediaTranscriptionEngine({
-				readSettings: () => validBailianSettings,
-				readSecret: () => "valid-key",
-				outbound: createFakeOutbound().outbound,
-			});
-
+			const { engine } = createEngine();
 			await expect(
 				engine.transcribe({
 					audio: new ArrayBuffer(16),
 					signal: controller.signal,
 				}),
-			).rejects.toMatchObject({
-				failure: { kind: "cancelled" },
-			});
+			).rejects.toMatchObject({ failure: { kind: "cancelled" } });
 		});
 	});
 });

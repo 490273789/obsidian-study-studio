@@ -1,3 +1,8 @@
+import {
+	legacyAsrEngineId,
+	readLegacyTranscriptionSettings,
+	readLegacyVideoTranscriptionProvider,
+} from "../../../core/ai/legacy";
 import { settingsRecord, type SettingsSlice } from "../../../core/settings/slice";
 import { validShadowVaultFolder } from "../domain/shadowVaultFolder";
 import {
@@ -13,12 +18,16 @@ export interface VideoPlayerSettings {
 	enabled: boolean;
 	skipInterval: VideoSkipInterval;
 	shortcuts: VideoPlayerShortcuts;
-	shadowTranscriptionProvider: "bailian" | "openai-compatible";
+	/** Selected ASR engine shared with listening practice; empty means the default engine. */
+	shadowTranscriptionEngineId: string;
 	shadowTranslationProfileId: string;
 	shadowVaultFolder: string;
 }
 
-export function normalizeVideoPlayerSettings(value: unknown): VideoPlayerSettings {
+export function normalizeVideoPlayerSettings(
+	value: unknown,
+	legacyDocument?: unknown,
+): VideoPlayerSettings {
 	const data = settingsRecord(value);
 	const shortcuts = settingsRecord(data.shortcuts);
 	const normalizedShortcuts: VideoPlayerShortcuts = {
@@ -41,10 +50,7 @@ export function normalizeVideoPlayerSettings(value: unknown): VideoPlayerSetting
 			? (data.skipInterval as VideoSkipInterval)
 			: 10,
 		shortcuts: makeShortcutsUnique(normalizedShortcuts),
-		shadowTranscriptionProvider:
-			data.shadowTranscriptionProvider === "openai-compatible"
-				? "openai-compatible"
-				: "bailian",
+		shadowTranscriptionEngineId: shadowTranscriptionEngineId(data, legacyDocument),
 		shadowTranslationProfileId:
 			typeof data.shadowTranslationProfileId === "string"
 				? data.shadowTranslationProfileId
@@ -66,13 +72,13 @@ export const videoPlayerSettingsSlice: SettingsSlice<{
 			enabled: true,
 			skipInterval: 10,
 			shortcuts: { ...DEFAULT_VIDEO_PLAYER_SHORTCUTS },
-			shadowTranscriptionProvider: "bailian",
+			shadowTranscriptionEngineId: "",
 			shadowTranslationProfileId: "",
 			shadowVaultFolder: "Study Studio/影子跟读",
 		},
 	}),
 	normalize: (raw) => ({
-		videoPlayer: normalizeVideoPlayerSettings(settingsRecord(raw).videoPlayer),
+		videoPlayer: normalizeVideoPlayerSettings(settingsRecord(raw).videoPlayer, raw),
 	}),
 	clone: (document) => ({
 		videoPlayer: {
@@ -81,6 +87,26 @@ export const videoPlayerSettingsSlice: SettingsSlice<{
 		},
 	}),
 };
+
+/**
+ * ADR-0016: the video player selects an ASR engine from the shared registry
+ * instead of owning a provider enum. The new id wins; the old provider is mapped
+ * to the legacy engine that the AI settings migration creates. An empty result
+ * means "use the default ASR engine".
+ */
+function shadowTranscriptionEngineId(
+	data: Record<string, unknown>,
+	legacyDocument: unknown,
+): string {
+	const selected = data.shadowTranscriptionEngineId;
+	if (typeof selected === "string" && selected.trim()) return selected.trim();
+	const provider = readLegacyVideoTranscriptionProvider(
+		legacyDocument === undefined ? { videoPlayer: data } : legacyDocument,
+	);
+	if (!provider) return "";
+	const legacy = readLegacyTranscriptionSettings(legacyDocument);
+	return legacy ? legacyAsrEngineId(legacy, provider) : "";
+}
 
 function makeShortcutsUnique(shortcuts: VideoPlayerShortcuts): VideoPlayerShortcuts {
 	const used = new Set<string>();

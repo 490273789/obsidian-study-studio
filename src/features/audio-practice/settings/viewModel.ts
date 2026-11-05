@@ -1,12 +1,23 @@
 import { defineSettings } from "../../../core/settings/presentation";
 import type { Language } from "../../../core/shared/types";
-import type { TranscriptionProviderId } from "../domain/transcriptionTypes";
 import type { AudioPracticeSettings } from "./slice";
 import { audioSettingsCopy } from "./copy";
 
+/** One selectable speech-recognition engine from the shared AI registry. */
+export interface AudioPracticeAsrEngine {
+	readonly id: string;
+	readonly name: string;
+}
+
+/**
+ * Listening practice only selects an ASR engine; credentials, models and Base
+ * URLs are edited in the shared AI engine section (ADR-0016).
+ */
 export function audioPracticeSettingsPresentation(
 	settings: AudioPracticeSettings,
+	engines: readonly AudioPracticeAsrEngine[],
 	update: (patch: Partial<AudioPracticeSettings>) => Promise<void>,
+	onOpenAiSettings: () => void,
 	language: Language,
 ) {
 	const t = audioSettingsCopy(language);
@@ -20,97 +31,26 @@ export function audioPracticeSettingsPresentation(
 					onChange: (enabled) => update({ enabled }),
 				},
 			);
-		});
-		page.group("service", t.service, (group) => {
-			group.select<TranscriptionProviderId>(
-				"provider",
-				{ name: t.provider, description: t.providerHint },
+			group.select(
+				"engine",
+				{ name: t.engineLabel, description: t.engineHint },
 				{
-					value: settings.provider,
+					value: settings.transcriptionEngineId,
 					options: [
-						{ value: "bailian", label: t.providerBailian },
-						{ value: "openai-compatible", label: t.providerOpenAi },
+						{ value: "", label: t.defaultEngine },
+						...engines.map((engine) => ({ value: engine.id, label: engine.name })),
 					],
-					onChange: (provider) => update({ provider }),
+					missingValueLabel: `${t.missingEngine}: ${settings.transcriptionEngineId}`,
+					onChange: (transcriptionEngineId) => update({ transcriptionEngineId }),
 				},
 			);
-			if (settings.provider === "bailian") {
-				group.secret(
-					"workspace",
-					{ name: t.workspace, description: t.workspaceHint },
-					{
-						value: settings.bailianWorkspaceSecretId,
-						onChange: (bailianWorkspaceSecretId) =>
-							update({ bailianWorkspaceSecretId, bailianWorkspaceId: "" }),
-					},
-				);
-				group.select(
-					"model",
-					{ name: t.bailianModel, description: t.bailianModelHint },
-					{
-						value: settings.bailianModel,
-						options: [
-							{
-								value: "fun-asr-flash-2026-06-15",
-								label: "fun-asr-flash-2026-06-15",
-							},
-							{
-								value: "qwen-audio-3.1-asr-flash",
-								label: "qwen-audio-3.1-asr-flash",
-							},
-							{
-								value: "qwen-audio-3.0-asr-flash",
-								label: "qwen-audio-3.0-asr-flash",
-							},
-						],
-						missingValueLabel: `${t.bailianLegacyModel}: ${settings.bailianModel}`,
-						onChange: (bailianModel) => update({ bailianModel }),
-					},
-				);
-				group.secret(
-					"secret",
-					{ name: t.bailianSecret, description: t.bailianSecretHint },
-					{
-						value: settings.bailianSecretId,
-						onChange: (bailianSecretId) => update({ bailianSecretId }),
-					},
-				);
-				group.row(
-					"explanation",
-					{ name: t.service, description: t.bailianServiceHint },
-					() => {},
-				);
-				return;
-			}
-			group.text(
-				"base-url",
-				{ name: t.baseUrl, description: t.baseUrlHint },
+			group.button(
+				"open-ai-settings",
+				{ name: t.manageHeading, description: t.manageHint },
 				{
-					value: settings.openaiBaseUrl,
-					placeholder: "https://api.openai.com/v1",
-					onChange: (openaiBaseUrl) => update({ openaiBaseUrl: openaiBaseUrl.trim() }),
+					label: t.openAiSettings,
+					onPress: () => onOpenAiSettings(),
 				},
-			);
-			group.text(
-				"model",
-				{ name: t.openaiModel, description: t.openaiModelHint },
-				{
-					value: settings.openaiModel,
-					onChange: (openaiModel) => update({ openaiModel: openaiModel.trim() }),
-				},
-			);
-			group.secret(
-				"secret",
-				{ name: t.openaiSecret, description: t.openaiSecretHint },
-				{
-					value: settings.openaiSecretId,
-					onChange: (openaiSecretId) => update({ openaiSecretId }),
-				},
-			);
-			group.row(
-				"explanation",
-				{ name: t.service, description: t.openaiServiceHint },
-				() => {},
 			);
 		});
 	});

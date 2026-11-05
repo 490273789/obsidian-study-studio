@@ -60,6 +60,24 @@ describe("audio failure copy", () => {
 		});
 	});
 
+	it("explains a missing ASR engine and points at the shared AI settings", () => {
+		expect(audioFailureCopy("zh", { kind: "config-invalid", field: "engine" })).toEqual({
+			message: "未选择可用的语音识别引擎，请在 AI 引擎设置中添加 ASR 引擎。",
+			action: "open-settings",
+		});
+		expect(
+			audioFailureCopy("en", { kind: "config-invalid", field: "engine" }).message,
+		).toContain("Add an ASR engine in AI engine settings");
+	});
+
+	it("covers every config-invalid field with copy", () => {
+		const fields = ["engine", "workspace", "base-url", "model", "secret", "security"] as const;
+		for (const field of fields) {
+			expect(audioFailureCopy("zh", { kind: "config-invalid", field }).message).toBeTruthy();
+			expect(audioFailureCopy("en", { kind: "config-invalid", field }).message).toBeTruthy();
+		}
+	});
+
 	it("exposes one recovery action per failure kind", () => {
 		const cases: [AudioFailure, string | null][] = [
 			[{ kind: "missing-file" }, "choose-file"],
@@ -67,6 +85,7 @@ describe("audio failure copy", () => {
 			[{ kind: "no-speech" }, "regenerate"],
 			[{ kind: "source-changed" }, "regenerate"],
 			[{ kind: "config-invalid", field: "secret" }, "open-settings"],
+			[{ kind: "config-invalid", field: "engine" }, "open-settings"],
 			[{ kind: "provider-failure", code: "timeout" }, "retry"],
 			[{ kind: "subtitle-invalid", problems: [] }, "regenerate"],
 			[{ kind: "cancelled" }, null],

@@ -1,5 +1,5 @@
 import type { Plugin } from "obsidian";
-import type { AiService } from "../core/ai";
+import type { AiEngineTesters, AiService, TranslationEngineConfig } from "../core/ai";
 import type { WorkbenchStore } from "../core/storage/workbenchStore";
 import type { AnyWorkbenchModule } from "../core/host/workbench";
 import type { OutboundPort } from "../core/net";
@@ -32,20 +32,33 @@ export interface VideoShadowingServicesDeps {
 /**
  * Creates the video shadowing adapter combining the deep core media subtitle
  * pipeline and translation execution without borrowing feature-internal runtimes (ADR-0012).
+ * Both halves read the shared AI engine registry (ADR-0016): ASR engines for
+ * transcription, LLM/translation engines for translation.
  */
 export function createVideoShadowingServices(
 	deps: VideoShadowingServicesDeps,
 ): VideoShadowingServices {
 	const transcription = new MediaTranscriptionEngine({
-		readSettings: () => deps.store.getSettings().mediaTranscription,
+		readRegistry: () => deps.store.getSettings().ai,
+		resolveEngineId: () => deps.store.getSettings().videoPlayer.shadowTranscriptionEngineId,
 		readSecret: (id) => deps.net.readSecret(id),
 		outbound: deps.net,
 	});
 	const translation = new TranslationExecution({
 		ai: deps.ai,
 		readSettings: () => deps.store.getSettings().translation,
-		youdao: (connection, text, direction, signal) =>
-			translateYoudao(connection, text, direction, deps.net, signal),
+		youdao: (engine, text, direction, signal) =>
+			translateYoudao(
+				{
+					baseUrl: engine.baseUrl,
+					appKeySecretId: engine.appKeySecretId,
+					appSecretSecretId: engine.appSecretSecretId,
+				},
+				text,
+				direction,
+				deps.net,
+				signal,
+			),
 	});
 
 	const translationPort: SubtitleTranslationPort = {
@@ -64,6 +77,28 @@ export function createVideoShadowingServices(
 		transcription,
 		translation: translationPort,
 	});
+}
+
+/**
+ * Narrow connection testers for non-LLM engines injected into the shared AI
+ * service by the composition root (ADR-0016). The engine settings page never
+ * imports a feature runtime to test a translation connection.
+ */
+export function createAiEngineTesters(deps: { net: OutboundPort }): AiEngineTesters {
+	return {
+		async translation(engine: TranslationEngineConfig): Promise<void> {
+			await translateYoudao(
+				{
+					baseUrl: engine.baseUrl,
+					appKeySecretId: engine.appKeySecretId,
+					appSecretSecretId: engine.appSecretSecretId,
+				},
+				"你好",
+				"zh-en",
+				deps.net,
+			);
+		},
+	};
 }
 
 interface WorkbenchModuleDeps {
@@ -92,9 +127,14 @@ export function createWorkbenchModules(deps: WorkbenchModuleDeps): AnyWorkbenchM
 		sourceEdits: flashcards.sourceEditAdapter,
 	});
 	const videoPlayer = createVideoPlayerFeature({
+		ai: deps.ai,
 		shadowing: createVideoShadowingServices(deps),
 	});
-	const audioPractice = createAudioPracticeFeature({ store: deps.store, net: deps.net });
+	const audioPractice = createAudioPracticeFeature({
+		ai: deps.ai,
+		store: deps.store,
+		net: deps.net,
+	});
 
 	const selectionHelper = createSelectionHelperModule({
 		actions: [dictionary.selectionAction, translation.selectionAction],
@@ -105,7 +145,6 @@ export function createWorkbenchModules(deps: WorkbenchModuleDeps): AnyWorkbenchM
 			sources: dictionary.sources,
 		},
 		renderLookupSlot: dictionary.renderLookupSlot,
-		translation: translation.selectionAdapter,
 	});
 
 	return [flashcards, translation, dictionary, videoPlayer, audioPractice, selectionHelper];

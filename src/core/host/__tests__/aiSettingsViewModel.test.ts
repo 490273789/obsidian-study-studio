@@ -1,37 +1,54 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { SettingsPresentation } from "../../settings/presentation";
+import type { AiEngineConfig } from "../../ai";
 import {
 	buildAiSettingsViewModel,
 	type AiEditorActions,
 	type AiEditorState,
 } from "../aiSettingsViewModel";
 
-function setup(view: "list" | "form" = "form") {
-	const draft = {
-		id: "saved",
-		name: "Translate",
-		provider: "deepseek" as const,
-		baseUrl: "https://api.deepseek.com",
-		secretId: "secret-id",
-		model: "deepseek-v4-flash",
-	};
+const llm: AiEngineConfig = {
+	id: "saved",
+	kind: "llm",
+	name: "Translate",
+	provider: "deepseek",
+	baseUrl: "https://api.deepseek.com",
+	secretId: "secret-id",
+	model: "deepseek-v4-flash",
+};
+const asr: AiEngineConfig = {
+	id: "asr",
+	kind: "asr",
+	name: "Speech",
+	provider: "bailian",
+	baseUrl: "",
+	workspaceId: "",
+	workspaceSecretId: "workspace-secret",
+	secretId: "asr-secret",
+	model: "fun-asr-flash-2026-06-15",
+};
+
+function setup(kind: AiEditorState["kind"] = "llm", view: "list" | "form" = "list") {
 	const state: AiEditorState = {
-		draft,
+		kind,
+		draft: kind === "llm" ? llm : asr,
 		view,
 		draftIsNew: false,
 		saving: false,
 		models: [],
 		snapshot: {
-			settings: { configs: [draft], defaultConfigId: "saved" },
+			settings: {
+				engines: [llm, asr],
+				defaults: { llm: llm.id, asr: asr.id },
+			},
 			models: {},
 			loadingModels: [],
 			testing: [],
 		},
 	};
 	const actions: AiEditorActions = {
-		select: vi.fn(),
+		kind: vi.fn(),
 		add: vi.fn(),
-		toAdd: vi.fn(),
 		toEdit: vi.fn(),
 		back: vi.fn(),
 		patch: vi.fn(),
@@ -47,79 +64,100 @@ function setup(view: "list" | "form" = "form") {
 }
 
 const rows = (presentation: SettingsPresentation) =>
-	presentation.snapshot.groups.flatMap((g) => g.rows);
+	presentation.snapshot.groups.flatMap((group) => group.rows);
 
 describe("AI settings presentation", () => {
-	it("separates Youdao gateway configurations from standard engines", () => {
-		const { state, actions } = setup("list");
-		state.snapshot = {
-			...state.snapshot,
-			settings: {
-				...state.snapshot.settings,
-				configs: [
-					...state.snapshot.settings.configs,
-					{ ...state.draft, id: "gateway", name: "Gateway", provider: "youdao" },
-				],
-			},
-		};
-		const standard = buildAiSettingsViewModel(state, actions, "zh", "standard");
-		const youdao = buildAiSettingsViewModel(state, actions, "zh", "youdao");
-		expect(rows(standard).some((row) => row.name === "Gateway")).toBe(false);
-		expect(rows(youdao).some((row) => row.name === "Gateway")).toBe(true);
-		expect(youdao.snapshot.groups[0]?.heading).toBe("大模型网关（API Key）");
+	it("groups every engine by service type and switches the visible list", async () => {
+		const { state, actions } = setup("llm");
+		const presentation = buildAiSettingsViewModel(state, actions, "zh");
+		expect(presentation.snapshot.groups[0]?.heading).toBe("服务类型");
+		const kinds = rows(presentation).find((row) => row.key === "kind")?.controls[0];
+		if (kinds?.kind !== "choiceButtons") throw new Error("Missing kind tabs");
+		expect(kinds.choices.map((choice) => choice.id)).toEqual(["llm", "asr", "translation"]);
+		await presentation.invoke({ action: kinds.action, value: "asr" });
+		expect(actions.kind).toHaveBeenCalledWith("asr");
+
+		const texts = rows(presentation).map((row) => row.name);
+		expect(texts.some((name) => name.includes("Translate"))).toBe(true);
+		expect(texts.some((name) => name.includes("Speech"))).toBe(false);
 	});
 
-	it("presents configured engines and dispatches list actions", async () => {
-		const { state, actions } = setup("list");
+	it("presents the ASR engine list with its default and edits", async () => {
+		const { state, actions } = setup("asr");
 		const presentation = buildAiSettingsViewModel(state, actions, "zh");
-		expect(presentation.snapshot.groups[0]?.heading).toBe("AI 引擎");
-		const add = rows(presentation).find((row) => row.name === "已配置引擎")?.controls[0];
-		const engine = rows(presentation).find((row) => row.name.includes("Translate"));
-		expect(engine?.description).toContain("DeepSeek");
-		const edit = engine?.controls.find(
-			(control) => control.kind === "button" && control.label === "编辑",
-		);
+		const engine = rows(presentation).find((row) => row.key === "engine-asr");
+		expect(engine?.name).toContain("Speech");
+		expect(engine?.name).toContain("默认");
 		const remove = engine?.controls.find(
 			(control) => control.kind === "button" && control.label === "删除",
 		);
-		if (add?.kind !== "button" || edit?.kind !== "button" || remove?.kind !== "button") {
-			throw new Error("Expected engine actions");
-		}
-		await presentation.invoke({ action: add.action, value: undefined });
-		await presentation.invoke({ action: edit.action, value: undefined });
+		if (remove?.kind !== "button") throw new Error("Missing delete");
 		await presentation.invoke({ action: remove.action, value: undefined });
-		expect(actions.toAdd).toHaveBeenCalledOnce();
-		expect(actions.toEdit).toHaveBeenCalledWith("saved");
-		expect(actions.remove).toHaveBeenCalledWith("saved");
+		expect(actions.remove).toHaveBeenCalledWith("asr");
+		const defaultSelect = rows(presentation).find((row) => row.key === "default")?.controls[0];
+		expect(defaultSelect).toMatchObject({ kind: "select", value: "asr" });
 	});
 
-	it("keeps manual model input and saves through semantic actions", async () => {
-		const { state, actions } = setup("form");
+	it("shows type-specific fields instead of a shared credential form", () => {
+		const llmFormState = setup("llm", "form");
+		const llmForm = buildAiSettingsViewModel(llmFormState.state, llmFormState.actions, "zh");
+		expect(rows(llmForm).map((row) => row.key)).toEqual(
+			expect.arrayContaining(["provider", "base-url", "secret", "model"]),
+		);
+
+		const asrFormState = setup("asr", "form");
+		const asrForm = buildAiSettingsViewModel(asrFormState.state, asrFormState.actions, "zh");
+		expect(rows(asrForm).map((row) => row.key)).toEqual(
+			expect.arrayContaining(["workspace", "model", "secret"]),
+		);
+		expect(rows(asrForm).map((row) => row.key)).not.toContain("app-key");
+	});
+
+	it("keeps the translation form credential-shaped and testable", async () => {
+		const translation: AiEngineConfig = {
+			id: "tr",
+			kind: "translation",
+			name: "Youdao",
+			provider: "youdao",
+			baseUrl: "https://openapi.youdao.com/api",
+			appKeySecretId: "app-key",
+			appSecretSecretId: "app-secret",
+		};
+		const state: AiEditorState = {
+			kind: "translation",
+			draft: translation,
+			view: "form",
+			draftIsNew: true,
+			saving: false,
+			models: [],
+			snapshot: {
+				settings: { engines: [translation], defaults: { llm: null, asr: null } },
+				models: {},
+				loadingModels: [],
+				testing: [],
+			},
+		};
+		const actions = setup().actions;
 		const presentation = buildAiSettingsViewModel(state, actions, "zh");
-		const input = rows(presentation).find((row) => row.name === "模型 ID")?.controls[0];
-		const save = rows(presentation)
-			.flatMap((row) => row.controls)
-			.find((control) => control.kind === "button" && control.label === "保存配置");
-		if (input?.kind !== "text" || save?.kind !== "button") throw new Error("Missing controls");
-		await presentation.invoke({ action: input.action, value: "custom-model" });
-		await presentation.invoke({ action: save.action, value: undefined });
-		expect(actions.patch).toHaveBeenCalledWith({ model: "custom-model" });
-		expect(actions.save).toHaveBeenCalledOnce();
+		const keys = rows(presentation).map((row) => row.key);
+		expect(keys).toEqual(expect.arrayContaining(["app-key", "app-secret", "test"]));
+		expect(keys).not.toContain("workspace");
+
+		const test = rows(presentation).find((row) => row.key === "test")?.controls[0];
+		if (test?.kind !== "button") throw new Error("Missing translation test");
+		await presentation.invoke({ action: test.action, value: undefined });
+		expect(actions.test).toHaveBeenCalledOnce();
 	});
 
-	it("presents secrets, testing and back navigation without callbacks in the snapshot", async () => {
-		const { state, actions } = setup("form");
-		state.draftIsNew = true;
+	it("keeps secrets and manual model input free of callbacks in the snapshot", async () => {
+		const { state, actions } = setup("llm", "form");
 		const presentation = buildAiSettingsViewModel(state, actions, "en");
-		const secret = rows(presentation).find((row) => row.name === "API Key")?.controls[0];
-		const test = rows(presentation).find((row) => row.name === "Test connection")?.controls[0];
-		const back = rows(presentation).find((row) => row.name === "Back to list")?.controls[0];
+		const secret = rows(presentation).find((row) => row.key === "secret")?.controls[0];
+		const model = rows(presentation).find((row) => row.key === "model")?.controls[0];
 		expect(secret).toMatchObject({ kind: "secret", value: "secret-id" });
-		if (test?.kind !== "button" || back?.kind !== "button") throw new Error("Missing actions");
-		await presentation.invoke({ action: test.action, value: undefined });
-		await presentation.invoke({ action: back.action, value: undefined });
-		expect(actions.test).toHaveBeenCalledOnce();
-		expect(actions.back).toHaveBeenCalledOnce();
+		if (model?.kind !== "text") throw new Error("Missing model input");
+		await presentation.invoke({ action: model.action, value: "custom-model" });
+		expect(actions.patch).toHaveBeenCalledWith({ model: "custom-model" });
 		expect(JSON.stringify(presentation.snapshot)).not.toContain("onClick");
 	});
 });

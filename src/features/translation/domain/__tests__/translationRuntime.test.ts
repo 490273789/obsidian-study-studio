@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { AiService } from "../../../../core/ai";
+import { AiService, type TranslationEngineConfig } from "../../../../core/ai";
 import { TransportError, type OutboundResponse } from "../../../../core/net/types";
 import { normalizeTranslationSettings, renderTranslationPrompt } from "../configuration";
 import { TranslationRuntime } from "../translationRuntime";
@@ -18,21 +18,32 @@ const response = (text: string): OutboundResponse => ({
 	status: 200,
 	text: JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: text } }] }),
 });
+const translationEngine: TranslationEngineConfig = {
+	id: "youdao-engine",
+	kind: "translation",
+	name: "Youdao",
+	provider: "youdao",
+	baseUrl: "https://openapi.youdao.com/api",
+	appKeySecretId: "youdao-app-key",
+	appSecretSecretId: "youdao-app-secret",
+};
 function setup() {
 	const request = vi.fn<() => Promise<OutboundResponse>>().mockResolvedValue(response("Hello"));
 	const ai = new AiService(
 		{
-			configs: [
+			engines: [
 				{
 					id: "a",
+					kind: "llm",
 					name: "A",
 					provider: "deepseek",
 					baseUrl: "https://api.deepseek.com",
 					secretId: "key",
 					model: "model",
 				},
+				translationEngine,
 			],
-			defaultConfigId: "a",
+			defaults: { llm: "a", asr: null },
 		},
 		{
 			net: { request, readSecret: () => "secret" },
@@ -43,14 +54,9 @@ function setup() {
 	const settings: TranslationSettings = {
 		...normalizeTranslationSettings(undefined),
 		enabled: true,
-		youdao: {
-			baseUrl: "https://openapi.youdao.com/api",
-			appKeySecretId: "youdao-app-key",
-			appSecretSecretId: "youdao-app-secret",
-		},
 		profiles: [
-			{ id: "a", name: "A", kind: "engine", configId: "a", enabled: true },
-			{ id: "b", name: "B", kind: "youdao", configId: "", enabled: true },
+			{ id: "a", name: "A", engineId: "a", enabled: true },
+			{ id: "b", name: "B", engineId: translationEngine.id, enabled: true },
 		],
 	};
 	const persist = vi.fn<(_: TranslationSettings) => Promise<void>>().mockResolvedValue(undefined);
@@ -62,9 +68,11 @@ function setup() {
 }
 
 describe("translation session", () => {
-	it("uses a configured Youdao LLM gateway as an AI translation engine", async () => {
+	it("uses any selected LLM engine for translations", async () => {
 		const { runtime, ai, request, youdao, settings } = setup();
-		const id = await ai.saveConfig({
+		const id = await ai.saveEngine({
+			id: ai.createEngineId(),
+			kind: "llm",
 			name: "Gateway",
 			provider: "youdao",
 			baseUrl: "https://openapi.youdao.com/llmgateway/api/v1",
@@ -73,9 +81,7 @@ describe("translation session", () => {
 		});
 		await runtime.configure({
 			...settings,
-			profiles: [
-				{ id: "gateway", name: "Gateway", kind: "engine", configId: id, enabled: true },
-			],
+			profiles: [{ id: "gateway", name: "Gateway", engineId: id, enabled: true }],
 		});
 		runtime.setInput("你好");
 		await runtime.translate();
@@ -88,6 +94,44 @@ describe("translation session", () => {
 		expect(youdao).not.toHaveBeenCalled();
 		expect(runtime.getSnapshot().results[0]?.text).toBe("Hello");
 		runtime.dispose();
+	});
+
+	it("shows the provider and model of each profile's selected engine", () => {
+		const { runtime } = setup();
+		expect(runtime.getSnapshot().results.map((result) => result.provider)).toEqual([
+			"deepseek",
+			"youdao",
+		]);
+		expect(runtime.getSnapshot().results.map((result) => result.model)).toEqual(["model", ""]);
+		runtime.dispose();
+	});
+
+	it("marks a profile whose translation engine is incomplete as a setup issue", () => {
+		const ai = new AiService(
+			{
+				engines: [{ ...translationEngine, appSecretSecretId: "" }],
+				defaults: { llm: null, asr: null },
+			},
+			{
+				net: { request: async () => response(""), readSecret: () => "secret" },
+				createId: () => "new",
+				persist: async () => {},
+			},
+		);
+		const settings = normalizeTranslationSettings({
+			enabled: true,
+			profiles: [{ id: "b", name: "B", engineId: translationEngine.id, enabled: true }],
+		});
+		const runtime = new TranslationRuntime(settings, ai, {
+			persist: async () => {},
+			youdao: async () => ({ text: "", usage: null }),
+		});
+		expect(runtime.getSnapshot().results[0]).toMatchObject({
+			setupIssue: "engineSetup",
+			status: "idle",
+		});
+		runtime.dispose();
+		ai.dispose();
 	});
 
 	it("prefills without requesting and preserves order when results finish out of order", async () => {
@@ -120,7 +164,7 @@ describe("translation session", () => {
 	});
 	it("skips a missing engine while still translating with a configured profile", async () => {
 		const { runtime, ai, request } = setup();
-		await ai.deleteConfig("a");
+		await ai.deleteEngine("a");
 		runtime.setInput("你好");
 		await runtime.translate();
 		expect(runtime.getSnapshot().results[0]).toMatchObject({
@@ -131,19 +175,16 @@ describe("translation session", () => {
 		expect(runtime.getSnapshot().results[1]?.status).toBe("success");
 		runtime.dispose();
 	});
-	it("preserves the source and sends nothing if no profile is configured", async () => {
-		const { runtime, settings, ai, request, youdao } = setup();
-		await ai.deleteConfig("a");
-		await runtime.configure({
-			...settings,
-			youdao: { ...settings.youdao, appSecretSecretId: "" },
-		});
+	it("preserves the source and sends nothing if no profile has an engine", async () => {
+		const { runtime, ai, request, youdao } = setup();
+		await ai.deleteEngine("a");
+		await ai.deleteEngine(translationEngine.id);
 		runtime.setInput("保留原文");
 		await runtime.translate();
 		expect(runtime.getSnapshot().input).toBe("保留原文");
 		expect(runtime.getSnapshot().results.map((result) => result.setupIssue)).toEqual([
 			"engineSetup",
-			"youdaoSetup",
+			"engineSetup",
 		]);
 		expect(request).not.toHaveBeenCalled();
 		expect(youdao).not.toHaveBeenCalled();
@@ -203,7 +244,8 @@ describe("translation session", () => {
 		await runtime.translate();
 		await runtime.translate();
 		expect(request).toHaveBeenCalledTimes(1);
-		await ai.saveConfig({ ...ai.getSnapshot().settings.configs[0]!, model: "other" });
+		const llm = ai.getSnapshot().settings.engines.find((engine) => engine.kind === "llm")!;
+		await ai.saveEngine({ ...llm, model: "other" });
 		await runtime.translate();
 		expect(request).toHaveBeenCalledTimes(2);
 		runtime.dispose();
@@ -241,7 +283,17 @@ describe("translation session", () => {
 				normalizeTranslationSettings({
 					...settings,
 					apiKey: "private",
-					youdao: { ...settings.youdao, appSecret: "private" },
+					profiles: [
+						{
+							id: "legacy",
+							name: "Legacy",
+							enabled: true,
+							kind: "youdao",
+							configId: "",
+							apiKey: "private",
+						},
+					],
+					youdao: { appKeySecretId: "private" },
 				}),
 			),
 		).not.toContain("private");
@@ -448,7 +500,7 @@ describe("translation session", () => {
 			const id = runtime.getSnapshot().clearUndoId!;
 			if (change === "prefill") await runtime.openPrefilled("新选区");
 			if (change === "direction") await runtime.swapDirection();
-			if (change === "engine") await ai.deleteConfig("a");
+			if (change === "engine") await ai.deleteEngine("a");
 
 			expect(runtime.getSnapshot().clearUndoId).toBeNull();
 			expect(runtime.undoClear(id)).toBe(false);

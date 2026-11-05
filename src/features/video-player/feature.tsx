@@ -1,8 +1,10 @@
 import { Notice } from "obsidian";
 import { CirclePlay } from "lucide-react";
+import type { AiService } from "../../core/ai";
 import { FlashcardButton } from "../../core/ui/primitives/Button";
 import { createReactItemView } from "../../core/host/reactItemView";
 import { defineFeatureLifetime } from "../../core/host/featureLifetime";
+import { AI_ENGINE_SECTION_ID } from "../../core/host/sectionIds";
 import type {
 	WorkbenchHost,
 	WorkbenchModule,
@@ -38,11 +40,16 @@ type VideoPlayerWorkbenchHost = WorkbenchHost<"videoPlayer">;
 export type { VideoShadowingCue, VideoShadowingServices };
 
 export function createVideoPlayerFeature(
-	deps: { shadowing?: VideoShadowingServices } = {},
+	deps: { ai?: AiService; shadowing?: VideoShadowingServices } = {},
 ): WorkbenchModule<"videoPlayer"> {
 	return defineFeatureLifetime({
 		id: "videoPlayer",
 		start(host, lifetime) {
+			if (deps.ai) {
+				lifetime.defer(
+					deps.ai.subscribe(() => host.settingsTab.refresh(VIDEO_PLAYER_SECTION_ID)),
+				);
+			}
 			const runtime = lifetime.own(
 				new VideoPlayerRuntime({
 					store: new ObsidianVideoPlayerStateStore(host.app),
@@ -191,8 +198,8 @@ export function createVideoPlayerFeature(
 								runtime.clearLocalData();
 								new Notice(videoPlayerStrings(language).cleared);
 							},
-							setShadowTranscriptionProvider: (shadowTranscriptionProvider) =>
-								updateSettings(host, { shadowTranscriptionProvider }),
+							setShadowTranscriptionEngineId: (shadowTranscriptionEngineId) =>
+								updateSettings(host, { shadowTranscriptionEngineId }),
 							setShadowTranslationProfileId: (shadowTranslationProfileId) =>
 								updateSettings(host, { shadowTranslationProfileId }),
 							setShadowVaultFolder: (shadowVaultFolder) => {
@@ -209,8 +216,11 @@ export function createVideoPlayerFeature(
 						language,
 						deps.shadowing
 							? {
+									transcriptionEngines: asrEngineChoices(deps.ai),
 									translationProfiles: deps.shadowing.listTranslationProfiles(),
 									ffmpegPath: desktopAdapter.getFfmpegPath(),
+									openAiSettings: () =>
+										host.settingsTab.open(AI_ENGINE_SECTION_ID),
 								}
 							: undefined,
 					),
@@ -228,7 +238,7 @@ async function updateSettings(
 			| "enabled"
 			| "skipInterval"
 			| "shortcuts"
-			| "shadowTranscriptionProvider"
+			| "shadowTranscriptionEngineId"
 			| "shadowTranslationProfileId"
 			| "shadowVaultFolder"
 		>
@@ -238,4 +248,13 @@ async function updateSettings(
 	await host.settings.update({
 		videoPlayer: { ...current, ...patch } satisfies VideoPlayerSettings,
 	});
+}
+
+/** ASR engines from the shared registry, offered by the same order the user sees elsewhere. */
+function asrEngineChoices(ai: AiService | undefined): readonly { id: string; name: string }[] {
+	if (!ai) return [];
+	return ai
+		.getSnapshot()
+		.settings.engines.filter((engine) => engine.kind === "asr")
+		.map((engine) => ({ id: engine.id, name: engine.name }));
 }

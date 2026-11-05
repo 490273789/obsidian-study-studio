@@ -31,19 +31,18 @@ vi.mock("../domain/translationRuntime", () => ({
 		readonly subscribe = vi.fn(() => () => {});
 		readonly configure = vi.fn();
 		readonly translate = vi.fn();
-		readonly testYoudao = vi.fn();
 		readonly getSnapshot = () => ({
 			settings: {
 				enabled: true,
 				direction: "zh-en",
 				promptTemplate: "",
+				thinkingEnabled: false,
 				profiles: [],
 			},
 			input: "",
 			results: [],
 			status: "idle",
 			saving: false,
-			testing: false,
 		});
 		constructor() {
 			runtimeSpies.instances.push(this);
@@ -63,6 +62,32 @@ function lastRuntime(): {
 	return runtimeSpies.instances[runtimeSpies.instances.length - 1] as never;
 }
 
+/** The feature only reads the engine registry through the snapshot it is given. */
+function createAi() {
+	return {
+		getSnapshot: () => ({
+			settings: {
+				engines: [
+					{
+						id: "deepseek",
+						kind: "llm",
+						name: "DeepSeek",
+						provider: "deepseek",
+						baseUrl: "https://api.deepseek.com",
+						secretId: "key",
+						model: "chat",
+					},
+				],
+				defaults: { llm: "deepseek", asr: null },
+			},
+			models: {},
+			loadingModels: [],
+			testing: [],
+		}),
+		subscribe: () => () => {},
+	} as never;
+}
+
 describe("translation feature", () => {
 	beforeEach(() => {
 		runtimeSpies.instances.length = 0;
@@ -70,18 +95,7 @@ describe("translation feature", () => {
 	});
 
 	it("registers its view, its chrome, and its settings section", () => {
-		const feature = createTranslationFeature({
-			ai: {
-				getSnapshot: () => ({
-					settings: { configs: [], defaultConfigId: null },
-					models: {},
-					loadingModels: [],
-					testing: [],
-				}),
-				subscribe: () => () => {},
-			} as never,
-			net: {} as never,
-		});
+		const feature = createTranslationFeature({ ai: createAi(), net: {} as never });
 		const fake = createFakeWorkbenchHost("translation", enabledSettings);
 
 		feature.render(fake.host);
@@ -98,19 +112,40 @@ describe("translation feature", () => {
 		// command is registered here.
 		expect(fake.commands.map((command) => command.id)).toEqual(["translate-selection"]);
 		expect(fake.ribbons).toEqual([]);
+		// ADR-0016: the standalone Youdao section is gone; translation settings only
+		// reference the shared AI engine registry.
+		expect([...fake.sections.keys()]).toEqual(["translation"]);
 		expect(fake.sections.get("translation")!.order).toBe(2);
 		expect(fake.sections.get("translation")!.label("zh")).toBe(
 			translationSettingsStrings("zh").heading,
 		);
-		expect(fake.sections.get("youdao")!.label("zh")).toBe("有道智云");
-		expect(fake.sections.get("youdao")!.order).toBe(1.5);
-		const youdao = fake.sections.get("youdao")!.presentation("zh");
-		expect(youdao.snapshot.groups.map((group) => group.heading)).toEqual([
-			"大模型网关（API Key）",
-			"文本翻译 API（应用 ID / 应用密钥）",
+		const translationSection = fake.sections.get("translation")!.presentation("zh");
+		expect(translationSection.snapshot.groups.map((group) => group.heading)).toEqual([
+			"常规设置",
+			"翻译方案管理",
+			"提示词模板",
+			"服务连接",
 			"保存设置",
 		]);
-		youdao.dispose();
+		translationSection.dispose();
+
+		feature.stop();
+	});
+
+	it("opens the host-owned AI engine settings from the translation section", async () => {
+		const feature = createTranslationFeature({ ai: createAi(), net: {} as never });
+		const fake = createFakeWorkbenchHost("translation", enabledSettings);
+		feature.render(fake.host);
+
+		const presentation = fake.sections.get("translation")!.presentation("zh");
+		const open = presentation.snapshot.groups
+			.flatMap((group) => group.rows)
+			.flatMap((row) => row.controls)
+			.find((control) => control.kind === "button" && control.label === "打开 AI 引擎设置");
+		if (open?.kind !== "button") throw new Error("Missing AI engine settings button");
+		await presentation.invoke({ action: open.action, value: undefined });
+		expect(fake.settingsTab.open).toHaveBeenCalledWith("ai");
+		presentation.dispose();
 
 		feature.stop();
 	});

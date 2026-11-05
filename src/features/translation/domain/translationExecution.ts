@@ -1,10 +1,17 @@
-import { AiError, type AiService } from "../../../core/ai";
+import {
+	AiError,
+	findEngine,
+	type AiEngineConfig,
+	type AiService,
+	type AiSettings,
+	type TranslationEngineConfig,
+} from "../../../core/ai";
 import { TransportError } from "../../../core/net/types";
 import { normalizeTranslationSettings, renderTranslationPrompt } from "./configuration";
 import type { TranslationOutput, TranslationSettings } from "./types";
 
 export type YoudaoTranslation = (
-	connection: TranslationSettings["youdao"],
+	engine: TranslationEngineConfig,
 	text: string,
 	direction: TranslationSettings["direction"],
 	signal: AbortSignal,
@@ -57,12 +64,15 @@ export class TranslationExecution {
 					throw new TranslationConfigurationChangedError();
 				if (!current.profile?.enabled) throw new AiError("config-not-found");
 				if (!text.trim()) throw new AiError("invalid-input");
-				if (current.profile.kind === "youdao")
-					return this.deps.youdao(current.youdao, text, current.direction, signal);
-				if (!current.engine) throw new AiError("config-not-found");
+				const engine = current.engine;
+				// An ASR engine is never a translation target, even when selected by a
+				// stale profile; there is no fallback to another engine.
+				if (!engine || engine.kind === "asr") throw new AiError("config-not-found");
+				if (engine.kind === "translation")
+					return this.deps.youdao(engine, text, current.direction, signal);
 				// No await separates capture/check from generate(), which captures the engine synchronously.
 				return this.deps.ai.generate({
-					configId: current.engine.id,
+					configId: engine.id,
 					thinkingEnabled: current.thinkingEnabled,
 					signal,
 					messages: [
@@ -80,34 +90,20 @@ export class TranslationExecution {
 			selected.trim() || settings.profiles.find((profile) => profile.enabled)?.id || "";
 		const profile = settings.profiles.find((profile) => profile.id === profileId);
 		const resolvedDirection = direction ?? settings.direction;
-		const engine =
-			profile?.kind === "engine"
-				? this.deps.ai
-						.getSnapshot()
-						.settings.configs.find((config) => config.id === profile.configId)
-				: undefined;
+		const engine = profile ? findEngine(this.registry(), profile.engineId) : undefined;
 		const prompt = renderTranslationPrompt(settings.promptTemplate, resolvedDirection);
 		const signature = profileId
 			? fingerprint({
 					profileId,
 					enabled: profile?.enabled,
-					kind: profile?.kind,
 					direction: resolvedDirection,
-					...(profile?.kind === "youdao"
-						? { youdao: settings.youdao }
-						: {
-								configId: profile?.configId,
-								engine: engine
-									? {
-											provider: engine.provider,
-											baseUrl: engine.baseUrl,
-											model: engine.model,
-											secretId: engine.secretId,
-										}
-									: null,
-								prompt,
-								thinkingEnabled: settings.thinkingEnabled,
-							}),
+					engineId: profile?.engineId,
+					engine: engineIdentity(engine),
+					// Prompt and thinking only shape LLM requests; a translation API
+					// engine's identity is its endpoint and credential references.
+					...(engine?.kind === "translation"
+						? {}
+						: { prompt, thinkingEnabled: settings.thinkingEnabled }),
 				})
 			: "none";
 		return {
@@ -118,8 +114,36 @@ export class TranslationExecution {
 			direction: resolvedDirection,
 			prompt,
 			thinkingEnabled: settings.thinkingEnabled,
-			youdao: settings.youdao,
 		};
+	}
+
+	/** The shared AI registry snapshot, adapted to the settings value core/ai resolves. */
+	private registry(): AiSettings {
+		const settings = this.deps.ai.getSnapshot().settings;
+		return { engines: [...settings.engines], defaults: settings.defaults };
+	}
+}
+
+/** Opaque per-kind engine identity; secret *references* only, never secret values. */
+function engineIdentity(engine: AiEngineConfig | undefined): unknown {
+	if (!engine) return null;
+	switch (engine.kind) {
+		case "llm":
+			return {
+				provider: engine.provider,
+				baseUrl: engine.baseUrl,
+				model: engine.model,
+				secretId: engine.secretId,
+			};
+		case "translation":
+			return {
+				provider: engine.provider,
+				baseUrl: engine.baseUrl,
+				appKeySecretId: engine.appKeySecretId,
+				appSecretSecretId: engine.appSecretSecretId,
+			};
+		case "asr":
+			return { provider: engine.provider, baseUrl: engine.baseUrl };
 	}
 }
 

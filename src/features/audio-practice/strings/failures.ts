@@ -23,10 +23,11 @@ const zh = {
 	parseEmpty: "未找到可用字幕，请选择 SRT 或 VTT 文件。",
 	sourceChanged: "音频或原文已改变，请重新生成字幕后保存。",
 	staleMaterial: "材料或字幕已更新，请重新保存。",
-	workspace: "请在设置中选择包含有效百炼 Workspace ID 的密钥。",
-	baseUrl: "请填写有效的语音服务 Base URL。",
-	model: "请填写语音服务模型。",
-	secret: "请在设置中为字幕生成服务配置 API Key 密钥。",
+	engine: "未选择可用的语音识别引擎，请在 AI 引擎设置中添加 ASR 引擎。",
+	workspace: "所选语音识别引擎的百炼 Workspace ID 无效，请在 AI 引擎设置中修正。",
+	baseUrl: "所选语音识别引擎的语音服务 Base URL 无效，请在 AI 引擎设置中修正。",
+	model: "所选语音识别引擎缺少模型，请在 AI 引擎设置中修正。",
+	secret: "所选语音识别引擎缺少 API Key 密钥，请在 AI 引擎设置中配置。",
 	security: "自定义服务只允许 https，或本机回环地址的 http。",
 	unauthorized: "语音服务鉴权失败，请检查 API Key 与服务配置。",
 	notFound: "语音服务地址不存在，请检查 Workspace ID 或 Base URL。",
@@ -68,10 +69,13 @@ const en: typeof zh = {
 	parseEmpty: "No usable subtitles were found. Choose an SRT or VTT file.",
 	sourceChanged: "Audio or reference text has changed. Generate subtitles again before saving.",
 	staleMaterial: "The material or subtitles changed. Save again.",
-	workspace: "Select a secret containing a valid Model Studio Workspace ID in settings.",
-	baseUrl: "Enter a valid speech-service Base URL.",
-	model: "Enter a speech-service model.",
-	secret: "Configure an API key for subtitle generation in settings.",
+	engine: "No usable speech-recognition engine is selected. Add an ASR engine in AI engine settings.",
+	workspace:
+		"The selected speech-recognition engine has an invalid Model Studio Workspace ID. Fix it in AI engine settings.",
+	baseUrl:
+		"The selected speech-recognition engine has an invalid Base URL. Fix it in AI engine settings.",
+	model: "The selected speech-recognition engine has no model. Fix it in AI engine settings.",
+	secret: "The selected speech-recognition engine has no API key secret. Configure it in AI engine settings.",
 	security: "Custom services must use https, or http on a loopback host.",
 	unauthorized:
 		"The speech service rejected the credentials. Check the API key and service configuration.",
@@ -180,6 +184,8 @@ function message(copy: typeof zh, failure: AudioPracticeFailure): string {
 			return copy.staleMaterial;
 		case "config-invalid":
 			switch (failure.field) {
+				case "engine":
+					return copy.engine;
 				case "workspace":
 					return copy.workspace;
 				case "base-url":

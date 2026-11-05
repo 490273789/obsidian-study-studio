@@ -6,6 +6,7 @@ import { TransportError, type OutboundRequest, type OutboundResponse } from "../
 
 const config: AiEngineConfig = {
 	id: "engine-1",
+	kind: "llm",
 	name: "Translation",
 	provider: "deepseek",
 	baseUrl: "https://api.deepseek.com",
@@ -33,7 +34,9 @@ function abortablePending(signal?: AbortSignal): Promise<OutboundResponse> {
 		else signal?.addEventListener("abort", cancel, { once: true });
 	});
 }
-function setup(settings: AiSettings = { configs: [config], defaultConfigId: config.id }) {
+function setup(
+	settings: AiSettings = { engines: [config], defaults: { llm: config.id, asr: null } },
+) {
 	const request = vi
 		.fn<(_: OutboundRequest) => Promise<OutboundResponse>>()
 		.mockResolvedValue(response());
@@ -50,7 +53,10 @@ afterEach(() => vi.useRealTimers());
 
 describe("AI configuration ownership", () => {
 	it("loads legacy settings and strips secret values and malformed duplicate entries", () => {
-		expect(normalizeAiSettings(undefined)).toEqual({ configs: [], defaultConfigId: null });
+		expect(normalizeAiSettings(undefined)).toEqual({
+			engines: [],
+			defaults: { llm: null, asr: null },
+		});
 		const normalized = normalizeAiSettings({
 			configs: [
 				{ ...config, apiKey: "DO-NOT-SAVE" },
@@ -60,30 +66,37 @@ describe("AI configuration ownership", () => {
 			],
 			defaultConfigId: "missing",
 		});
-		expect(normalized).toEqual({ configs: [config], defaultConfigId: null });
+		expect(normalized).toEqual({
+			engines: [config],
+			defaults: { llm: null, asr: null },
+		});
 		expect(JSON.stringify(normalized)).not.toContain("DO-NOT-SAVE");
 	});
 	it("publishes only after persistence and recovers after a failed write", async () => {
 		const { service, persist } = setup();
 		const gate = deferred<void>();
 		persist.mockReturnValueOnce(gate.promise);
-		const save = service.saveConfig({ ...config, name: "New name" });
-		expect(service.getSnapshot().settings.configs[0]?.name).toBe("Translation");
+		const save = service.saveEngine({ ...config, name: "New name" });
+		expect(service.getSnapshot().settings.engines[0]?.name).toBe("Translation");
 		gate.reject(new Error("disk unavailable"));
 		await expect(save).rejects.toMatchObject({ code: "save-failed" });
-		expect(service.getSnapshot().settings.configs[0]?.name).toBe("Translation");
-		await service.saveConfig({ ...config, name: "Recovered" });
-		expect(service.getSnapshot().settings.configs[0]?.name).toBe("Recovered");
+		expect(service.getSnapshot().settings.engines[0]?.name).toBe("Translation");
+		await service.saveEngine({ ...config, name: "Recovered" });
+		expect(service.getSnapshot().settings.engines[0]?.name).toBe("Recovered");
 	});
 	it("serializes independent changes and clears a removed default without deleting secrets", async () => {
 		const { service, persist } = setup();
-		const first = service.saveConfig({ ...config, id: undefined, name: "Second" });
-		const second = service.setDefault("new-id");
+		const first = service.saveEngine({
+			...config,
+			id: service.createEngineId(),
+			name: "Second",
+		});
+		const second = service.setDefault("llm", "new-id");
 		await Promise.all([first, second]);
-		expect(service.getSnapshot().settings.configs).toHaveLength(2);
-		expect(service.getSnapshot().settings.defaultConfigId).toBe("new-id");
-		await service.deleteConfig("new-id");
-		expect(service.getSnapshot().settings.defaultConfigId).toBeNull();
+		expect(service.getSnapshot().settings.engines).toHaveLength(2);
+		expect(service.getSnapshot().settings.defaults.llm).toBe("new-id");
+		await service.deleteEngine("new-id");
+		expect(service.getSnapshot().settings.defaults.llm).toBeNull();
 		expect(JSON.stringify(persist.mock.calls)).not.toContain("secret-value");
 	});
 	it("rejects missing fields and credential-bearing URLs without a network call", async () => {
@@ -95,7 +108,7 @@ describe("AI configuration ownership", () => {
 			{ baseUrl: "https://secret@example.com/v1" },
 			{ baseUrl: "https://example.com?api_key=secret" },
 		]) {
-			await expect(service.saveConfig({ ...config, ...patch })).rejects.toMatchObject({
+			await expect(service.saveEngine({ ...config, ...patch })).rejects.toMatchObject({
 				code: "invalid-config",
 			});
 		}
@@ -125,7 +138,7 @@ describe("AI text and image requests", () => {
 		await expect(service.generate({ configId: "missing", messages })).rejects.toMatchObject({
 			code: "config-not-found",
 		});
-		await service.setDefault(null);
+		await service.setDefault("llm", null);
 		await expect(service.generate({ messages })).rejects.toMatchObject({ code: "no-default" });
 		expect(request).toHaveBeenCalledTimes(1);
 	});
@@ -135,7 +148,7 @@ describe("AI text and image requests", () => {
 		expect(JSON.parse((request.mock.calls[0]![0] as { body: string }).body)).toMatchObject({
 			thinking: { type: "enabled" },
 		});
-		await service.saveConfig({ ...config, provider: "bailian" });
+		await service.saveEngine({ ...config, provider: "bailian" });
 		await service.generate({ messages, thinkingEnabled: false });
 		expect(JSON.parse((request.mock.calls[1]![0] as { body: string }).body)).toMatchObject({
 			enable_thinking: false,
@@ -166,12 +179,12 @@ describe("AI text and image requests", () => {
 		const input = [{ role: "user" as const, text: "original" }];
 		const pending = service.generate({ messages: input });
 		input[0]!.text = "changed";
-		await service.saveConfig({
+		await service.saveEngine({
 			...config,
 			model: "new-model",
 			baseUrl: "https://other.example/v1",
 		});
-		await service.deleteConfig(config.id);
+		await service.deleteEngine(config.id);
 		gate.resolve(response());
 		await expect(pending).resolves.toMatchObject({ model: config.model });
 		expect(request).toHaveBeenCalledWith(
@@ -188,7 +201,7 @@ describe("AI text and image requests", () => {
 			service.generate({ messages: [{ role: "user", text: "Read image", images }] }),
 		).rejects.toMatchObject({ code: "unsupported-image" });
 		expect(readSecret).not.toHaveBeenCalled();
-		await service.saveConfig({ ...config, model: "custom-vision-model" });
+		await service.saveEngine({ ...config, model: "custom-vision-model" });
 		await service.generate({ messages: [{ role: "user", text: "Read image", images }] });
 		expect(request).toHaveBeenCalledWith(
 			expect.objectContaining({
@@ -287,10 +300,11 @@ describe("AI request lifecycle", () => {
 
 describe("model discovery", () => {
 	it("retains draft-discovered capabilities after saving and selecting a default", async () => {
-		const { service, request } = setup({ configs: [], defaultConfigId: null });
+		const { service, request } = setup({ engines: [], defaults: { llm: null, asr: null } });
 		const draft: AiEngineConfig = {
 			...config,
 			id: "draft",
+			kind: "llm",
 			provider: "bailian",
 			baseUrl: "https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
 			model: "text-model",
@@ -308,8 +322,8 @@ describe("model discovery", () => {
 		});
 		const models = await service.listModels(draft);
 		models[0]!.imageInput = "supported"; // Caller-owned results cannot alter the service catalogue.
-		const id = await service.saveConfig({ ...draft, id: undefined });
-		await service.setDefault(id);
+		const id = await service.saveEngine({ ...draft, id: service.createEngineId() });
+		await service.setDefault("llm", id);
 		await expect(
 			service.generate({
 				messages: [
@@ -337,11 +351,15 @@ describe("model discovery", () => {
 	it("paginates native Bailian catalogues and uses image metadata", async () => {
 		const bailian: AiEngineConfig = {
 			...config,
+			kind: "llm",
 			provider: "bailian",
 			baseUrl: "https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
 			model: "vision",
 		};
-		const { service, request } = setup({ configs: [bailian], defaultConfigId: bailian.id });
+		const { service, request } = setup({
+			engines: [bailian],
+			defaults: { llm: bailian.id, asr: null },
+		});
 		request.mockResolvedValueOnce({
 			status: 200,
 			text: JSON.stringify({
@@ -392,7 +410,7 @@ describe("model discovery", () => {
 		const gate = deferred<OutboundResponse>();
 		request.mockReturnValue(gate.promise);
 		const pending = service.listModels(config);
-		await service.saveConfig({ ...config, baseUrl: "https://new.example/v1" });
+		await service.saveEngine({ ...config, baseUrl: "https://new.example/v1" });
 		gate.resolve({ status: 200, text: JSON.stringify({ data: [{ id: "old-model" }] }) });
 		await pending;
 		expect(service.getSnapshot().models).toEqual({});
@@ -413,6 +431,7 @@ describe("connection test", () => {
 		request.mockResolvedValueOnce(response("OK"));
 		const draft: AiEngineConfig = {
 			id: "draft-123",
+			kind: "llm",
 			name: "",
 			provider: "deepseek",
 			baseUrl: "https://api.deepseek.com",
@@ -427,6 +446,7 @@ describe("connection test", () => {
 		const { service, request } = setup();
 		const invalidDraft: AiEngineConfig = {
 			id: "draft-invalid",
+			kind: "llm",
 			name: "",
 			provider: "deepseek",
 			baseUrl: "",
@@ -437,5 +457,76 @@ describe("connection test", () => {
 			code: "invalid-config",
 		});
 		expect(request).not.toHaveBeenCalled();
+	});
+});
+
+describe("kind-scoped engine registry", () => {
+	const asr: AiEngineConfig = {
+		id: "asr-1",
+		kind: "asr",
+		name: "Speech",
+		provider: "bailian",
+		baseUrl: "",
+		workspaceId: "workspace",
+		workspaceSecretId: "",
+		secretId: "asr-key",
+		model: "fun-asr-flash-2026-06-15",
+	};
+	const translation: AiEngineConfig = {
+		id: "tr-1",
+		kind: "translation",
+		name: "Youdao",
+		provider: "youdao",
+		baseUrl: "https://openapi.youdao.com/api",
+		appKeySecretId: "app-key",
+		appSecretSecretId: "app-secret",
+	};
+
+	it("auto-defaults the first engine per kind but never for translation", async () => {
+		const { service } = setup({ engines: [], defaults: { llm: null, asr: null } });
+		await service.saveEngine(asr);
+		await service.saveEngine(translation);
+		expect(service.getSnapshot().settings.defaults).toEqual({ llm: null, asr: "asr-1" });
+		expect(service.getSnapshot().settings.engines).toHaveLength(2);
+	});
+
+	it("keeps LLM defaults and generation scoped to LLM engines", async () => {
+		const { service } = setup({
+			engines: [asr, config],
+			defaults: { llm: config.id, asr: null },
+		});
+		await expect(service.generate({ configId: asr.id, messages })).rejects.toMatchObject({
+			code: "config-not-found",
+		});
+		await expect(service.setDefault("asr", config.id)).rejects.toMatchObject({
+			code: "config-not-found",
+		});
+	});
+
+	it("tests a translation engine through the injected port without network access", async () => {
+		const translationTest = vi.fn(async () => undefined);
+		const request = vi.fn();
+		const service = new AiService(
+			{ engines: [translation], defaults: { llm: null, asr: null } },
+			{
+				net: { request, readSecret: vi.fn(() => "secret") },
+				persist: vi.fn(async () => undefined),
+				createId: () => "new-id",
+				testers: { translation: translationTest },
+			},
+		);
+		await expect(service.testEngine(translation)).resolves.toBeUndefined();
+		expect(translationTest).toHaveBeenCalledWith(
+			expect.objectContaining({ id: "tr-1", kind: "translation" }),
+		);
+		expect(request).not.toHaveBeenCalled();
+		await expect(service.testEngine(asr)).rejects.toMatchObject({ code: "invalid-input" });
+	});
+
+	it("rejects saving an engine whose id belongs to another kind", async () => {
+		const { service } = setup();
+		await expect(service.saveEngine({ ...asr, id: config.id })).rejects.toMatchObject({
+			code: "config-not-found",
+		});
 	});
 });

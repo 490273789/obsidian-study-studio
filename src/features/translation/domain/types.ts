@@ -5,8 +5,8 @@ export interface TranslationProfile {
 	id: string;
 	name: string;
 	enabled: boolean;
-	kind: "engine" | "youdao";
-	configId: string;
+	/** Shared AI engine registry identity; an empty id means "not configured yet". */
+	engineId: string;
 }
 export interface TranslationSettings {
 	enabled: boolean;
@@ -14,7 +14,6 @@ export interface TranslationSettings {
 	profiles: TranslationProfile[];
 	promptTemplate: string;
 	thinkingEnabled: boolean;
-	youdao: { baseUrl: string; appKeySecretId: string; appSecretSecretId: string };
 }
 export interface TranslationOutput {
 	text: string;
@@ -25,7 +24,7 @@ export interface TranslationResultState extends TranslationOutput {
 	name: string;
 	model: string;
 	provider: string;
-	setupIssue?: "engineSetup" | "youdaoSetup";
+	setupIssue?: "engineSetup";
 	status: "idle" | "loading" | "success" | "error";
 	error?: AiFailureCode;
 }
@@ -43,5 +42,4 @@ export interface TranslationSnapshot {
 	status: "idle" | "loading" | "success" | "error";
 	error?: AiFailureCode;
 	saving: boolean;
-	testing: boolean;
 }

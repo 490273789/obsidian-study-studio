@@ -126,7 +126,7 @@ describe("VideoShadowingDesktopAdapter", () => {
 		};
 
 		const settings = normalizeVideoPlayerSettings({
-			shadowTranscriptionProvider: "bailian",
+			shadowTranscriptionEngineId: "engine-a",
 			shadowTranslationProfileId: "prof-a",
 		});
 
@@ -147,7 +147,7 @@ describe("VideoShadowingDesktopAdapter", () => {
 		const config = await adapter.taskConfig(source);
 		expect(config.serviceSignature).toBe("pipeline-sig-123");
 		expect(services.getSignature).toHaveBeenCalledWith({
-			transcriptionProvider: "bailian",
+			transcriptionEngineId: "engine-a",
 			translationProfileId: "prof-a",
 		});
 
