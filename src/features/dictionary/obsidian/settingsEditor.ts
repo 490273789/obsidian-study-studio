@@ -50,6 +50,8 @@ export class DictionarySettingsEditor {
 	private importing = false;
 	private saving = false;
 	private testing = false;
+	private favoriteCategoriesCollapsed: boolean | null = null;
+	private localDictionariesCollapsed: boolean | null = null;
 	private unsubscribeRuntime: (() => void) | null = null;
 	private unsubscribeAi: (() => void) | null = null;
 	private unsubscribePackages: (() => void) | null = null;
@@ -81,15 +83,23 @@ export class DictionarySettingsEditor {
 	}
 
 	presentation(): SettingsPresentation {
+		const settings = this.runtime.settings.getDictionarySettings();
+		const localDictionaries = this.runtime.administration.list();
+		const isFavoriteCollapsed =
+			this.favoriteCategoriesCollapsed ?? settings.favoriteCategories.length > 3;
+		const isLocalCollapsed = this.localDictionariesCollapsed ?? localDictionaries.length > 3;
+
 		return buildDictionarySettingsViewModel(
 			{
-				settings: this.runtime.settings.getDictionarySettings(),
+				settings,
 				aiSnapshot: this.ai.getSnapshot(),
-				localDictionaries: this.runtime.administration.list(),
+				localDictionaries,
 				desktop: Platform.isDesktopApp,
 				importing: this.importing,
 				saving: this.saving || this.deleting,
 				testing: this.testing,
+				favoriteCategoriesCollapsed: isFavoriteCollapsed,
+				localDictionariesCollapsed: isLocalCollapsed,
 			},
 			this.actions(),
 			this.language(),
@@ -102,14 +112,29 @@ export class DictionarySettingsEditor {
 				this.patch((draft) => {
 					draft.enabled = enabled;
 				}),
-			createFavoriteCategory: () =>
+			createFavoriteCategory: () => {
+				this.favoriteCategoriesCollapsed = false;
 				new FavoriteCategoryModal(
 					this.runtime.app,
 					this.runtime.categories,
 					dictionaryStrings(this.language()),
 					{ kind: "create", select: false },
 					this.refresh,
-				).open(),
+				).open();
+			},
+			toggleFavoriteCategoriesCollapsed: () => {
+				const settings = this.runtime.settings.getDictionarySettings();
+				const current =
+					this.favoriteCategoriesCollapsed ?? settings.favoriteCategories.length > 3;
+				this.favoriteCategoriesCollapsed = !current;
+				this.refresh();
+			},
+			toggleLocalDictionariesCollapsed: () => {
+				const localDictionaries = this.runtime.administration.list();
+				const current = this.localDictionariesCollapsed ?? localDictionaries.length > 3;
+				this.localDictionariesCollapsed = !current;
+				this.refresh();
+			},
 			editFavoriteCategory: (id) => {
 				const category = this.runtime.categories.categories.find((item) => item.id === id);
 				if (category)

@@ -24,6 +24,8 @@ export interface DictionarySettingsEditorState {
 	importing: boolean;
 	saving: boolean;
 	testing: boolean;
+	favoriteCategoriesCollapsed?: boolean;
+	localDictionariesCollapsed?: boolean;
 }
 
 export interface DictionarySettingsEditorActions {
@@ -31,6 +33,8 @@ export interface DictionarySettingsEditorActions {
 	createFavoriteCategory: () => SettingsActionResult;
 	editFavoriteCategory: (id: string) => SettingsActionResult;
 	deleteFavoriteCategory: (id: string) => SettingsActionResult;
+	toggleFavoriteCategoriesCollapsed?: () => SettingsActionResult;
+	toggleLocalDictionariesCollapsed?: () => SettingsActionResult;
 	setFavoriteOpenMode: (mode: DictionaryFavoriteOpenMode) => SettingsActionResult;
 	setFavoriteAiConfigId: (configId: string | null) => SettingsActionResult;
 	setYoudaoAccessMode: (mode: YoudaoAccessMode) => SettingsActionResult;
@@ -90,7 +94,7 @@ export function buildDictionarySettingsViewModel(
 			: t.officialCredentialsDescription;
 	const aiConfigs = state.aiSnapshot.settings.engines.filter((engine) => engine.kind === "llm");
 	return defineSettings("dictionary", (page) => {
-		page.group("dictionary", t.settingsHeading, (group) => {
+		page.group("general", t.settingsHeading, (group) => {
 			group.toggle(
 				"enabled",
 				{ name: t.settingName, description: t.description },
@@ -100,37 +104,6 @@ export function buildDictionarySettingsViewModel(
 					onChange: actions.setEnabled,
 				},
 			);
-			group.button(
-				"favorite-category-create",
-				{ name: t.favoriteCategory, description: t.favoriteCategoryDescription },
-				{
-					label: t.favoriteCategoryCreate,
-					disabled: busy,
-					onPress: actions.createFavoriteCategory,
-				},
-			);
-			for (const category of settings.favoriteCategories) {
-				group.row(
-					`favorite-category-${settingsKey(category.id)}`,
-					{
-						name: category.name,
-						description: category.path,
-					},
-					(row) => {
-						row.button("edit", {
-							label: t.favoriteCategoryEdit,
-							disabled: busy,
-							onPress: () => actions.editFavoriteCategory(category.id),
-						});
-						row.button("delete", {
-							label: t.favoriteCategoryDelete,
-							disabled: busy || settings.favoriteCategories.length === 1,
-							tone: "warning",
-							onPress: () => actions.deleteFavoriteCategory(category.id),
-						});
-					},
-				);
-			}
 			group.select(
 				"favorite-open-mode",
 				{ name: t.favoriteOpenMode, description: t.favoriteOpenModeDescription },
@@ -144,6 +117,9 @@ export function buildDictionarySettingsViewModel(
 					onChange: actions.setFavoriteOpenMode,
 				},
 			);
+		});
+
+		page.group("favorites", t.favoritesHeading, (group) => {
 			const favoriteAiConfigId = settings.favoriteAiConfigId ?? "";
 			group.select(
 				"favorite-ai-engine",
@@ -167,6 +143,105 @@ export function buildDictionarySettingsViewModel(
 					onChange: (value) => actions.setFavoriteAiConfigId(value || null),
 				},
 			);
+
+			const isCategoriesCollapsed =
+				state.favoriteCategoriesCollapsed ?? settings.favoriteCategories.length > 3;
+			const categoryDescription = isCategoriesCollapsed
+				? t.favoriteCategoriesCollapsedDesc(
+						settings.favoriteCategories.length,
+						settings.favoriteCategories[0]?.name ?? "",
+					)
+				: t.favoriteCategoryDescription;
+
+			const toggleCategoriesCollapsed = actions.toggleFavoriteCategoriesCollapsed;
+			group.row(
+				"favorite-category-create",
+				{ name: t.favoriteCategory, description: categoryDescription },
+				(row) => {
+					row.button("create", {
+						label: t.favoriteCategoryCreate,
+						disabled: busy,
+						onPress: actions.createFavoriteCategory,
+					});
+					if (toggleCategoriesCollapsed && settings.favoriteCategories.length > 1) {
+						row.button("toggle-collapse", {
+							label: isCategoriesCollapsed
+								? t.expandCategories(settings.favoriteCategories.length)
+								: t.collapseCategories,
+							disabled: busy,
+							onPress: toggleCategoriesCollapsed,
+						});
+					}
+				},
+			);
+
+			if (!isCategoriesCollapsed) {
+				for (const category of settings.favoriteCategories) {
+					group.row(
+						`favorite-category-${settingsKey(category.id)}`,
+						{
+							name: category.name,
+							description: category.path,
+						},
+						(row) => {
+							row.button("edit", {
+								label: t.favoriteCategoryEdit,
+								disabled: busy,
+								onPress: () => actions.editFavoriteCategory(category.id),
+							});
+							row.button("delete", {
+								label: t.favoriteCategoryDelete,
+								disabled: busy || settings.favoriteCategories.length === 1,
+								tone: "neutral",
+								onPress: () => actions.deleteFavoriteCategory(category.id),
+							});
+						},
+					);
+				}
+			}
+		});
+
+		page.group("sources", t.sourcesHeading, (group) => {
+			group.reorderable(
+				"source-order",
+				{ name: t.orderHeading },
+				{
+					allowDrag: true,
+					items: settings.sources.map((source) => ({
+						id: source.id,
+						label: source.label,
+						enabled: source.enabled,
+						kindLabel: sourceKindLabel(source.kind, t),
+						onToggle: (enabled) => actions.toggleSource(source.id, enabled),
+					})),
+					onMove: actions.moveSource,
+					tooltips: {
+						drag: t.orderDescription,
+						moveUp: t.sourceMoveUp,
+						moveDown: t.sourceMoveDown,
+						remove: t.localDelete,
+					},
+				},
+			);
+
+			const aiConfigId = settings.ai.configId ?? "";
+			group.select(
+				"ai-engine",
+				{ name: t.aiEngine, description: t.aiEngineDescription },
+				{
+					value: aiConfigId,
+					disabled: state.saving || aiConfigs.length === 0,
+					options: [
+						{ value: "", label: t.sourceDisabled },
+						...(aiConfigId && !aiConfigs.some((config) => config.id === aiConfigId)
+							? [{ value: aiConfigId, label: aiConfigId }]
+							: []),
+						...aiConfigs.map((config) => ({ value: config.id, label: config.name })),
+					],
+					onChange: (value) => actions.setAiConfigId(value || null),
+				},
+			);
+
 			group.select(
 				"youdao-mode",
 				{ name: t.youdaoAccessMode, description: accessModeDescription },
@@ -217,54 +292,16 @@ export function buildDictionarySettingsViewModel(
 
 			group.button(
 				"test-connection",
-				{ name: t.testConnection, description: accessModeDescription },
+				{ name: t.testConnection, description: t.testConnectionDescription },
 				{
 					label: state.testing ? t.testing : t.testConnection,
 					disabled: busy,
 					onPress: actions.testYoudao,
 				},
 			);
+		});
 
-			group.reorderable(
-				"source-order",
-				{ name: t.orderHeading },
-				{
-					allowDrag: true,
-					items: settings.sources.map((source) => ({
-						id: source.id,
-						label: source.label,
-						enabled: source.enabled,
-						kindLabel: sourceKindLabel(source.kind, t),
-						onToggle: (enabled) => actions.toggleSource(source.id, enabled),
-					})),
-					onMove: actions.moveSource,
-					tooltips: {
-						drag: t.orderDescription,
-						moveUp: t.sourceMoveUp,
-						moveDown: t.sourceMoveDown,
-						remove: t.localDelete,
-					},
-				},
-			);
-
-			const aiConfigId = settings.ai.configId ?? "";
-			group.select(
-				"ai-engine",
-				{ name: t.aiEngine, description: t.aiEngineDescription },
-				{
-					value: aiConfigId,
-					disabled: state.saving || aiConfigs.length === 0,
-					options: [
-						{ value: "", label: t.sourceDisabled },
-						...(aiConfigId && !aiConfigs.some((config) => config.id === aiConfigId)
-							? [{ value: aiConfigId, label: aiConfigId }]
-							: []),
-						...aiConfigs.map((config) => ({ value: config.id, label: config.name })),
-					],
-					onChange: (value) => actions.setAiConfigId(value || null),
-				},
-			);
-
+		page.group("local", t.localHeading, (group) => {
 			if (state.desktop) {
 				group.button(
 					"import-files",
@@ -296,31 +333,62 @@ export function buildDictionarySettingsViewModel(
 				group.status("local-empty", { name: t.local }, t.localEmpty);
 				return;
 			}
-			for (const local of state.localDictionaries) {
-				const description = [
-					...local.files.map((file) => file.name),
-					localDictionaryStatusText(local, t),
-				].join(" · ");
-				if (state.desktop) {
-					group.row(
-						`local-${settingsKey(local.id)}`,
-						{ name: local.name, description },
-						(row) => {
-							row.button("rename", {
-								label: t.localRename,
-								disabled: busy,
-								onPress: () => actions.renameLocalDictionary(local.id),
-							});
-							row.button("delete", {
-								label: t.localDelete,
-								disabled: busy,
-								tone: "warning",
-								onPress: () => actions.deleteLocalDictionary(local.id),
-							});
-						},
-					);
-				} else {
-					group.row(`local-${settingsKey(local.id)}`, { name: local.name, description });
+
+			const isLocalCollapsed =
+				state.localDictionariesCollapsed ?? state.localDictionaries.length > 3;
+
+			const toggleLocalCollapsed = actions.toggleLocalDictionariesCollapsed;
+			if (toggleLocalCollapsed && state.localDictionaries.length > 2) {
+				group.row(
+					"local-dictionaries-header",
+					{
+						name: t.local,
+						description: isLocalCollapsed
+							? t.localDictionariesCollapsedDesc(state.localDictionaries.length)
+							: t.localDictionariesExpandedDesc,
+					},
+					(row) => {
+						row.button("toggle-collapse", {
+							label: isLocalCollapsed
+								? t.expandLocalDictionaries(state.localDictionaries.length)
+								: t.collapseLocalDictionaries,
+							disabled: busy,
+							onPress: toggleLocalCollapsed,
+						});
+					},
+				);
+			}
+
+			if (!isLocalCollapsed) {
+				for (const local of state.localDictionaries) {
+					const description = [
+						...local.files.map((file) => file.name),
+						localDictionaryStatusText(local, t),
+					].join(" · ");
+					if (state.desktop) {
+						group.row(
+							`local-${settingsKey(local.id)}`,
+							{ name: local.name, description },
+							(row) => {
+								row.button("rename", {
+									label: t.localRename,
+									disabled: busy,
+									onPress: () => actions.renameLocalDictionary(local.id),
+								});
+								row.button("delete", {
+									label: t.localDelete,
+									disabled: busy,
+									tone: "neutral",
+									onPress: () => actions.deleteLocalDictionary(local.id),
+								});
+							},
+						);
+					} else {
+						group.row(`local-${settingsKey(local.id)}`, {
+							name: local.name,
+							description,
+						});
+					}
 				}
 			}
 		});

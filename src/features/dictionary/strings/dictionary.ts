@@ -96,8 +96,20 @@ const zh = {
 	favoriteOpenModeSidebar: "右侧边栏",
 	favoriteOpenSourceFile: "打开源文件",
 	favoriteAction: "收藏单词",
+	favoritesHeading: "生词收藏",
+	sourcesHeading: "词典与顺序",
+	localHeading: "本地词典 (MDX / EUDIC)",
 	favoriteCategory: "保存分类",
 	favoriteCategoryDescription: "每个分类对应仓库中的一个 Markdown 文件。",
+	favoriteCategoriesCollapsedDesc: (count: number, first: string) =>
+		`已配置 ${count} 个分类（默认：${first}）。点击“展开分类”可查看、编辑或删除。`,
+	expandCategories: (count: number) => `展开分类 (${count})`,
+	collapseCategories: "收起分类",
+	expandLocalDictionaries: (count: number) => `展开本地词典 (${count})`,
+	collapseLocalDictionaries: "收起本地词典",
+	localDictionariesCollapsedDesc: (count: number) =>
+		`已导入 ${count} 部本地词典。点击“展开本地词典”可查看、重命名或删除。`,
+	localDictionariesExpandedDesc: "管理已导入的 MDX / EUDIC 本地词典文件与索引状态。",
 	favoriteCategoryCreate: "新建分类",
 	favoriteCategoryEdit: "编辑分类",
 	favoriteCategoryDelete: "删除分类",
@@ -228,6 +240,7 @@ const zh = {
 	sourceReady: "查询完成",
 	suggestions: "你是不是想找",
 	testConnection: "测试有道连接",
+	testConnectionDescription: "向有道接口发起单次测试请求，验证当前网络连通性与服务可用性。",
 	testFailed: "有道连接测试失败。",
 	testSuccess: "有道连接测试成功。",
 	testing: "测试中…",
@@ -435,6 +448,21 @@ const en: typeof zh = {
 	orderDescription:
 		"Drag dictionaries to reorder them, or use the move up and move down buttons.",
 	orderHeading: "Dictionaries and order",
+	favoritesHeading: "Word favorites",
+	sourcesHeading: "Dictionaries and order",
+	localHeading: "Local dictionaries (MDX / EUDIC)",
+	expandCategories: (count: number) => `Expand categories (${count})`,
+	collapseCategories: "Collapse categories",
+	favoriteCategoriesCollapsedDesc: (count: number, first: string) =>
+		`${count} categories configured (default: ${first}). Expand to view, edit, or delete.`,
+	testConnectionDescription:
+		"Send a single test request to verify network connectivity and service availability.",
+	expandLocalDictionaries: (count: number) => `Expand local dictionaries (${count})`,
+	collapseLocalDictionaries: "Collapse local dictionaries",
+	localDictionariesCollapsedDesc: (count: number) =>
+		`${count} local dictionaries imported. Expand to view, rename, or delete.`,
+	localDictionariesExpandedDesc:
+		"Manage imported MDX and EUDIC local dictionary files and status.",
 	playLocalAudio: "Play pronunciation",
 	playAudio: (accent: string) => `Play ${accent} pronunciation`,
 	query: "Look up",

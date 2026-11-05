@@ -245,3 +245,116 @@ describe("favorite words AI settings", () => {
 		expect(favoriteSelect(state, actions).select.disabled).toBe(true);
 	});
 });
+
+describe("dictionary settings layout and progressive disclosure", () => {
+	it("partitions settings into four structured groups", () => {
+		const { state, actions } = setup();
+		const presentation = buildDictionarySettingsViewModel(state, actions, "zh");
+		const groupKeys = presentation.snapshot.groups.map((group) => group.key);
+		expect(groupKeys).toEqual(["general", "favorites", "sources", "local"]);
+	});
+
+	it("uses deduplicated description for test connection", () => {
+		const { state, actions } = setup();
+		const presentation = buildDictionarySettingsViewModel(state, actions, "zh");
+		const testRow = presentation.snapshot.groups
+			.flatMap((group) => group.rows)
+			.find((row) => row.name === dictionaryStrings("zh").testConnection);
+		expect(testRow?.description).toBe(dictionaryStrings("zh").testConnectionDescription);
+		expect(testRow?.description).not.toBe(dictionaryStrings("zh").freeModeDescription);
+	});
+
+	it("renders quiet neutral delete buttons for categories", () => {
+		const { state, actions } = setup();
+		state.settings.favoriteCategories = [
+			{ id: "c1", name: "Cat 1", path: "cat1.md" },
+			{ id: "c2", name: "Cat 2", path: "cat2.md" },
+		];
+		state.favoriteCategoriesCollapsed = false;
+		const presentation = buildDictionarySettingsViewModel(state, actions, "zh");
+		const rows = presentation.snapshot.groups.flatMap((group) => group.rows);
+		const catRow = rows.find((row) => row.name === "Cat 1");
+		const deleteButton = catRow?.controls[1];
+		if (deleteButton?.kind !== "button") throw new Error("Expected button");
+		expect(deleteButton.tone).toBe("neutral");
+	});
+
+	it("collapses categories when collapsed state is active and toggles on action", async () => {
+		const { state, actions } = setup();
+		actions.toggleFavoriteCategoriesCollapsed = vi.fn();
+		state.settings.favoriteCategories = [
+			{ id: "c1", name: "Cat 1", path: "cat1.md" },
+			{ id: "c2", name: "Cat 2", path: "cat2.md" },
+			{ id: "c3", name: "Cat 3", path: "cat3.md" },
+			{ id: "c4", name: "Cat 4", path: "cat4.md" },
+		];
+
+		// Default for > 3 categories is collapsed
+		const collapsedPres = buildDictionarySettingsViewModel(state, actions, "zh");
+		const collapsedRows = collapsedPres.snapshot.groups.flatMap((group) => group.rows);
+		expect(collapsedRows.some((row) => row.name === "Cat 1")).toBe(false);
+
+		const headerRow = collapsedRows.find(
+			(row) => row.name === dictionaryStrings("zh").favoriteCategory,
+		);
+		expect(headerRow?.controls).toHaveLength(2);
+		const toggleBtn = headerRow?.controls[1];
+		if (toggleBtn?.kind !== "button") throw new Error("Expected toggle button");
+		expect(toggleBtn.label).toBe(dictionaryStrings("zh").expandCategories(4));
+
+		await collapsedPres.invoke({ action: toggleBtn.action, value: undefined });
+		expect(actions.toggleFavoriteCategoriesCollapsed).toHaveBeenCalledOnce();
+
+		// When expanded
+		state.favoriteCategoriesCollapsed = false;
+		const expandedPres = buildDictionarySettingsViewModel(state, actions, "zh");
+		const expandedRows = expandedPres.snapshot.groups.flatMap((group) => group.rows);
+		expect(expandedRows.some((row) => row.name === "Cat 1")).toBe(true);
+		expect(expandedRows.some((row) => row.name === "Cat 4")).toBe(true);
+	});
+
+	it("collapses local dictionaries when more than two are imported", async () => {
+		const { state, actions } = setup();
+		actions.toggleLocalDictionariesCollapsed = vi.fn();
+		state.localDictionaries = [
+			{
+				files: [{ name: "d1.eudic", size: 100 }],
+				id: "d1",
+				name: "Dict 1",
+				requiresReimport: false,
+			},
+			{
+				files: [{ name: "d2.eudic", size: 200 }],
+				id: "d2",
+				name: "Dict 2",
+				requiresReimport: false,
+			},
+			{
+				files: [{ name: "d3.eudic", size: 300 }],
+				id: "d3",
+				name: "Dict 3",
+				requiresReimport: false,
+			},
+		];
+		state.localDictionariesCollapsed = true;
+
+		const pres = buildDictionarySettingsViewModel(state, actions, "zh");
+		const rows = pres.snapshot.groups.flatMap((group) => group.rows);
+		expect(rows.some((row) => row.name === "Dict 1")).toBe(false);
+
+		const headerRow = rows.find((row) => row.name === dictionaryStrings("zh").local);
+		const toggleBtn = headerRow?.controls[0];
+		if (toggleBtn?.kind !== "button") throw new Error("Expected toggle button");
+		expect(toggleBtn.label).toBe(dictionaryStrings("zh").expandLocalDictionaries(3));
+
+		await pres.invoke({ action: toggleBtn.action, value: undefined });
+		expect(actions.toggleLocalDictionariesCollapsed).toHaveBeenCalledOnce();
+
+		// When expanded
+		state.localDictionariesCollapsed = false;
+		const expandedPres = buildDictionarySettingsViewModel(state, actions, "zh");
+		const expandedRows = expandedPres.snapshot.groups.flatMap((group) => group.rows);
+		expect(expandedRows.some((row) => row.name === "Dict 1")).toBe(true);
+		expect(expandedRows.some((row) => row.name === "Dict 3")).toBe(true);
+	});
+});
