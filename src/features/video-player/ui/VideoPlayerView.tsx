@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState, useSyncExternalStore } from "react";
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { setTooltip } from "obsidian";
 import {
@@ -645,106 +645,160 @@ function PlayerSurface({
 	const playbackLabel = controlLabel(playing ? t.pause : t.play, shortcuts.togglePlayback);
 	const backwardLabel = controlLabel(t.backward(settings.skipInterval), shortcuts.seekBackward);
 	const forwardLabel = controlLabel(t.forward(settings.skipInterval), shortcuts.seekForward);
+
+	const [active, setActive] = useState(true);
+	const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	const resetIdleTimer = useCallback(() => {
+		setActive(true);
+		if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+		if (playing) {
+			idleTimerRef.current = setTimeout(() => {
+				setActive(false);
+			}, 2500);
+		}
+	}, [playing]);
+
+	useEffect(() => {
+		if (!playing) {
+			setActive(true);
+			if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+		} else {
+			resetIdleTimer();
+		}
+		return () => {
+			if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+		};
+	}, [playing, resetIdleTimer]);
+
 	return (
-		<div ref={focusSurfaceRef} className={styles.surface} aria-label={t.playerRegion}>
+		<div
+			ref={focusSurfaceRef}
+			className={cls(styles.surface, floating && styles.surfaceFloating)}
+			aria-label={t.playerRegion}
+			onPointerMove={resetIdleTimer}
+			onPointerEnter={resetIdleTimer}
+			onPointerLeave={() => {
+				if (playing) setActive(false);
+			}}
+		>
 			<div ref={mediaHostRef} className={styles.mediaHost} />
 			{error && <p className={styles.error}>{error}</p>}
-			<ProgressSlider
-				currentTime={currentTime}
-				duration={duration}
-				skipInterval={settings.skipInterval}
-				label={t.progress}
-				onSeek={onSeek}
-			/>
-			<div className={styles.controls}>
-				{shortcutHints.length > 0 && (
-					<div className={styles.shortcutsHint}>
-						<span>{t.shortcutFocus}</span>
-						<div className={styles.shortcutKeys}>
-							{shortcutHints.map(([action, key]) => (
-								<span key={action} className={styles.shortcutEntry}>
-									<kbd className={styles.shortcutKey}>{key}</kbd>
-									{t.shortcutNames[action]}
+			<div
+				className={cls(
+					styles.controlDeck,
+					floating ? styles.controlDeckFloating : !active && styles.controlDeckIdle,
+				)}
+			>
+				<ProgressSlider
+					currentTime={currentTime}
+					duration={duration}
+					skipInterval={settings.skipInterval}
+					label={t.progress}
+					onSeek={onSeek}
+				/>
+				<div className={styles.controls}>
+					<div className={styles.navGroup}>
+						<IconButton
+							icon={SkipBack}
+							label={t.previous}
+							disabled={!canPrevious}
+							onClick={onPrevious}
+						/>
+					</div>
+					<div className={styles.transport}>
+						<div className={styles.skipBtnWrapper}>
+							<FlashcardButton
+								preset="icon"
+								variant="ghost"
+								icon={Rewind}
+								iconSize={16}
+								aria-label={backwardLabel}
+								title={
+									shortcuts.seekBackward
+										? `${backwardLabel}\n${t.shortcutFocus}`
+										: backwardLabel
+								}
+								className={styles.skipBtn}
+								onClick={onBackward}
+							>
+								<span className={styles.skipStepBadge}>
+									{settings.skipInterval}
 								</span>
-							))}
+							</FlashcardButton>
+						</div>
+						<FlashcardButton
+							preset="icon"
+							variant="primary"
+							icon={playing ? Pause : Play}
+							iconSize={18}
+							className={styles.playBtn}
+							aria-label={playbackLabel}
+							title={
+								shortcuts.togglePlayback
+									? `${playbackLabel}\n${t.shortcutFocus}`
+									: playbackLabel
+							}
+							onClick={onToggle}
+						/>
+						<div className={styles.skipBtnWrapper}>
+							<FlashcardButton
+								preset="icon"
+								variant="ghost"
+								icon={FastForward}
+								iconSize={16}
+								aria-label={forwardLabel}
+								title={
+									shortcuts.seekForward
+										? `${forwardLabel}\n${t.shortcutFocus}`
+										: forwardLabel
+								}
+								className={styles.skipBtn}
+								onClick={onForward}
+							>
+								<span className={styles.skipStepBadge}>
+									{settings.skipInterval}
+								</span>
+							</FlashcardButton>
 						</div>
 					</div>
-				)}
-				<div className={styles.transport}>
-					<IconButton
-						icon={SkipBack}
-						label={t.previous}
-						disabled={!canPrevious}
-						onClick={onPrevious}
-					/>
-					<div className={styles.skipBtnWrapper}>
-						<FlashcardButton
-							preset="icon"
-							variant="ghost"
-							icon={Rewind}
-							iconSize={16}
-							aria-label={backwardLabel}
-							title={
-								shortcuts.seekBackward
-									? `${backwardLabel}\n${t.shortcutFocus}`
-									: backwardLabel
+					<div className={styles.utilities}>
+						<IconButton
+							icon={SkipForward}
+							label={t.next}
+							disabled={!canNext}
+							onClick={onNext}
+						/>
+						<PlaybackRateControl
+							className={styles.rateControl}
+							label={t.rate}
+							value={rate}
+							rates={VIDEO_PLAYBACK_RATES}
+							tone="default"
+							onChange={(value) =>
+								onRate(value as (typeof VIDEO_PLAYBACK_RATES)[number])
 							}
-							className={styles.skipBtn}
-							onClick={onBackward}
-						>
-							<span className={styles.skipStepBadge}>{settings.skipInterval}</span>
-						</FlashcardButton>
+						/>
+						{!floating && (
+							<IconButton
+								icon={PictureInPicture2}
+								label={t.floating}
+								onClick={onFloat}
+							/>
+						)}
 					</div>
-					<FlashcardButton
-						preset="icon"
-						variant="primary"
-						icon={playing ? Pause : Play}
-						iconSize={18}
-						className={styles.playBtn}
-						aria-label={playbackLabel}
-						title={
-							shortcuts.togglePlayback
-								? `${playbackLabel}\n${t.shortcutFocus}`
-								: playbackLabel
-						}
-						onClick={onToggle}
-					/>
-					<div className={styles.skipBtnWrapper}>
-						<FlashcardButton
-							preset="icon"
-							variant="ghost"
-							icon={FastForward}
-							iconSize={16}
-							aria-label={forwardLabel}
-							title={
-								shortcuts.seekForward
-									? `${forwardLabel}\n${t.shortcutFocus}`
-									: forwardLabel
-							}
-							className={styles.skipBtn}
-							onClick={onForward}
-						>
-							<span className={styles.skipStepBadge}>{settings.skipInterval}</span>
-						</FlashcardButton>
-					</div>
-					<IconButton
-						icon={SkipForward}
-						label={t.next}
-						disabled={!canNext}
-						onClick={onNext}
-					/>
-				</div>
-				<div className={styles.utilities}>
-					<PlaybackRateControl
-						className={styles.rateControl}
-						label={t.rate}
-						value={rate}
-						rates={VIDEO_PLAYBACK_RATES}
-						tone="default"
-						onChange={(value) => onRate(value as (typeof VIDEO_PLAYBACK_RATES)[number])}
-					/>
-					{!floating && (
-						<IconButton icon={PictureInPicture2} label={t.floating} onClick={onFloat} />
+					{shortcutHints.length > 0 && (
+						<div className={styles.shortcutsHint}>
+							<span>{t.shortcutFocus}</span>
+							<div className={styles.shortcutKeys}>
+								{shortcutHints.map(([action, key]) => (
+									<span key={action} className={styles.shortcutEntry}>
+										<kbd className={styles.shortcutKey}>{key}</kbd>
+										{t.shortcutNames[action]}
+									</span>
+								))}
+							</div>
+						</div>
 					)}
 				</div>
 			</div>
