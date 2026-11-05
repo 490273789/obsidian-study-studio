@@ -25,12 +25,14 @@ export interface TranslationResultState extends TranslationOutput {
 	name: string;
 	model: string;
 	provider: string;
+	setupIssue?: "engineSetup" | "youdaoSetup";
 	status: "idle" | "loading" | "success" | "error";
 	error?: AiFailureCode;
 }
 export interface TranslationSnapshot {
 	settings: TranslationSettings;
 	input: string;
+	clearUndoId: number | null;
 	results: readonly TranslationResultState[];
 	status: "idle" | "loading" | "success" | "error";
 	error?: AiFailureCode;

@@ -36,6 +36,7 @@ function setup(): {
 			draft: settings,
 			snapshot: {
 				input: "",
+				clearUndoId: null,
 				results: [],
 				status: "idle",
 				saving: false,

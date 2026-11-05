@@ -16,7 +16,6 @@ import {
 	Settings,
 	SkipBack,
 	SkipForward,
-	Subtitles,
 	Trash2,
 	X,
 } from "lucide-react";
@@ -154,7 +153,6 @@ export function VideoPlayerView({
 			<FlashcardHeader
 				icon={CirclePlay}
 				title={t.title}
-				badge={snapshot.sources.length > 0 ? snapshot.sources.length : undefined}
 				right={
 					<div className="flashcard-header-actions">
 						<FlashcardButton
@@ -194,6 +192,283 @@ export function VideoPlayerView({
 							shadowEnabled && !floating && styles.layoutWithShadow,
 						)}
 					>
+						<div className={styles.videoToolbar}>
+							<div className={styles.videoDetails}>
+								{currentIndex >= 0 && (
+									<h2
+										className={styles.videoTitle}
+										title={snapshot.sources[currentIndex]?.name}
+									>
+										{snapshot.sources[currentIndex]?.name}
+									</h2>
+								)}
+								{shadowing && (
+									<label className={styles.shadowToggle}>
+										<input
+											type="checkbox"
+											role="switch"
+											aria-checked={shadowEnabled}
+											className={styles.shadowToggleInput}
+											checked={shadowEnabled}
+											onChange={(event) =>
+												void shadowing.setEnabled(
+													event.currentTarget.checked,
+												)
+											}
+										/>
+										<span
+											className={styles.shadowToggleTrack}
+											aria-hidden="true"
+										/>
+										<span className={styles.shadowToggleText}>
+											{t.shadowToggle}
+											<small>{t.shadowToggleHint}</small>
+										</span>
+										{shadowEnabled && !!shadowSnapshot?.cues.length && (
+											<span
+												className={styles.shadowCueBadge}
+												aria-label={t.shadowCueCount(
+													shadowSnapshot.cues.length,
+												)}
+											>
+												{shadowSnapshot.cues.length}
+											</span>
+										)}
+									</label>
+								)}
+							</div>
+							<aside className={styles.queue} aria-label={t.queue}>
+								<div className={styles.queueHeader}>
+									<FlashcardButton
+										variant="ghost"
+										className={styles.queueHeading}
+										aria-expanded={viewSnapshot.queueExpanded}
+										title={
+											viewSnapshot.queueExpanded
+												? t.queueCollapse
+												: t.queueExpand
+										}
+										onClick={() =>
+											view.act({
+												type: "set-queue-expanded",
+												expanded: !viewSnapshot.queueExpanded,
+											})
+										}
+									>
+										<span className={styles.queueChevron} aria-hidden="true">
+											{viewSnapshot.queueExpanded ? (
+												<ChevronUp size={16} />
+											) : (
+												<ChevronDown size={16} />
+											)}
+										</span>
+										<span className={styles.queueSummaryText}>
+											{t.queueSummary(
+												snapshot.sources.length,
+												currentIndex + 1,
+											)}
+										</span>
+									</FlashcardButton>
+									<FlashcardButton
+										preset="icon"
+										icon={FolderPlus}
+										iconSize={14}
+										className={styles.queueAddBtn}
+										title={t.addVideos}
+										aria-label={t.addVideos}
+										onClick={() => void addVideos()}
+									/>
+								</div>
+								{viewSnapshot.queueExpanded && (
+									<div className={styles.queueList}>
+										<ReorderableList interaction={sorting} language={language}>
+											{snapshot.sources.map((source, index) => {
+												const isActive =
+													source.id === snapshot.currentSourceId;
+												const progressLabel = sourceProgressLabel(
+													source.id,
+													snapshot,
+													t,
+												);
+												return (
+													<SortableRow
+														key={source.id}
+														id={source.id}
+														className={`${styles.queueItem} ${isActive ? styles.active : ""}`}
+														handleLabel={t.dragToReorder}
+														handleClassName={styles.dragHandle}
+													>
+														{(handle) => (
+															<>
+																{handle}
+																<div
+																	className={styles.sourceIndex}
+																	aria-hidden="true"
+																>
+																	{isActive ? (
+																		<Play
+																			size={11}
+																			className={
+																				styles.activePlayIcon
+																			}
+																		/>
+																	) : (
+																		<span>{index + 1}</span>
+																	)}
+																</div>
+																<FlashcardButton
+																	variant="ghost"
+																	className={styles.sourceContent}
+																	ref={(element) => {
+																		if (element) {
+																			setTooltip(
+																				element,
+																				source.name,
+																				{
+																					placement:
+																						"top",
+																					classes: [
+																						styles.sourceNameTooltip,
+																					],
+																				},
+																			);
+																		}
+																	}}
+																	aria-current={
+																		isActive
+																			? "true"
+																			: undefined
+																	}
+																	onClick={() => {
+																		runtime.selectSource(
+																			source.id,
+																		);
+																		view.act({
+																			type: "set-queue-expanded",
+																			expanded: false,
+																		});
+																	}}
+																>
+																	<span
+																		className={
+																			styles.sourceName
+																		}
+																	>
+																		{source.name}
+																	</span>
+																	{progressLabel && (
+																		<span
+																			className={
+																				styles.sourceMeta
+																			}
+																		>
+																			<span
+																				className={
+																					isActive
+																						? styles.playingTag
+																						: styles.progressTag
+																				}
+																			>
+																				{progressLabel}
+																			</span>
+																		</span>
+																	)}
+																</FlashcardButton>
+																<div className={styles.itemActions}>
+																	{snapshot.sources.length >
+																		1 && (
+																		<>
+																			<IconButton
+																				icon={ChevronUp}
+																				size={14}
+																				className={
+																					styles.actionBtn
+																				}
+																				label={t.moveUp}
+																				disabled={
+																					sortingSnapshot.disabled ||
+																					index === 0
+																				}
+																				onClick={() =>
+																					sorting.move(
+																						source.id,
+																						snapshot
+																							.sources[
+																							index -
+																								1
+																						]?.id ??
+																							source.id,
+																					)
+																				}
+																			/>
+																			<IconButton
+																				icon={ChevronDown}
+																				size={14}
+																				className={
+																					styles.actionBtn
+																				}
+																				label={t.moveDown}
+																				disabled={
+																					sortingSnapshot.disabled ||
+																					index ===
+																						snapshot
+																							.sources
+																							.length -
+																							1
+																				}
+																				onClick={() =>
+																					sorting.move(
+																						source.id,
+																						snapshot
+																							.sources[
+																							index +
+																								1
+																						]?.id ??
+																							source.id,
+																					)
+																				}
+																			/>
+																		</>
+																	)}
+																	<IconButton
+																		icon={FolderPlus}
+																		size={14}
+																		className={styles.actionBtn}
+																		label={t.replace}
+																		onClick={async () => {
+																			await runtime.pickAndReplaceSource(
+																				source.id,
+																				{
+																					replace:
+																						t.replace,
+																					selectFailed:
+																						t.selectFailed,
+																				},
+																			);
+																		}}
+																	/>
+																	<IconButton
+																		icon={Trash2}
+																		size={14}
+																		className={`${styles.actionBtn} ${styles.deleteBtn}`}
+																		label={t.remove}
+																		onClick={() =>
+																			runtime.removeSource(
+																				source.id,
+																			)
+																		}
+																	/>
+																</div>
+															</>
+														)}
+													</SortableRow>
+												);
+											})}
+										</ReorderableList>
+									</div>
+								)}
+							</aside>
+						</div>
 						<div className={styles.studyColumn}>
 							<section className={styles.playerPanel}>
 								{floating ? (
@@ -222,267 +497,6 @@ export function VideoPlayerView({
 								/>
 							</aside>
 						)}
-						<aside className={styles.queue} aria-label={t.queue}>
-							<div className={styles.queueHeader}>
-								<FlashcardButton
-									variant="ghost"
-									className={styles.queueHeading}
-									aria-expanded={viewSnapshot.queueExpanded}
-									title={
-										viewSnapshot.queueExpanded ? t.queueCollapse : t.queueExpand
-									}
-									aria-label={
-										viewSnapshot.queueExpanded ? t.queueCollapse : t.queueExpand
-									}
-									onClick={() =>
-										view.act({
-											type: "set-queue-expanded",
-											expanded: !viewSnapshot.queueExpanded,
-										})
-									}
-								>
-									<span className={styles.queueChevron} aria-hidden="true">
-										{viewSnapshot.queueExpanded ? (
-											<ChevronUp size={16} />
-										) : (
-											<ChevronDown size={16} />
-										)}
-									</span>
-									<span className={styles.queueSummaryText}>
-										{t.queueSummary(snapshot.sources.length, currentIndex + 1)}
-									</span>
-								</FlashcardButton>
-								<span
-									className={styles.queueCurrentName}
-									title={snapshot.sources[currentIndex]?.name}
-								>
-									{snapshot.sources[currentIndex]?.name}
-								</span>
-								<div className={styles.queueHeaderActions}>
-									{shadowing && (
-										<label
-											className={cls(
-												styles.shadowToggle,
-												shadowEnabled && styles.shadowToggleActive,
-											)}
-											title={t.shadowToggleHint}
-										>
-											<input
-												type="checkbox"
-												className={styles.shadowToggleInput}
-												checked={shadowEnabled}
-												onChange={(event) =>
-													void shadowing.setEnabled(
-														event.currentTarget.checked,
-													)
-												}
-											/>
-											<Subtitles
-												size={14}
-												className={styles.shadowToggleIcon}
-												aria-hidden="true"
-											/>
-											<span className={styles.shadowToggleText}>
-												{t.shadowToggle}
-											</span>
-											{Boolean(
-												shadowSnapshot?.cues &&
-												shadowSnapshot.cues.length > 0,
-											) && (
-												<span
-													className={styles.shadowCueBadge}
-													aria-label={`${shadowSnapshot!.cues.length} cues`}
-												>
-													{shadowSnapshot!.cues.length}
-												</span>
-											)}
-										</label>
-									)}
-									<FlashcardButton
-										preset="icon"
-										icon={FolderPlus}
-										iconSize={14}
-										className={styles.queueAddBtn}
-										title={t.addVideos}
-										aria-label={t.addVideos}
-										onClick={() => void addVideos()}
-									/>
-								</div>
-							</div>
-							{viewSnapshot.queueExpanded && (
-								<div className={styles.queueList}>
-									<ReorderableList interaction={sorting} language={language}>
-										{snapshot.sources.map((source, index) => {
-											const isActive = source.id === snapshot.currentSourceId;
-											const progressLabel = sourceProgressLabel(
-												source.id,
-												snapshot,
-												t,
-											);
-											return (
-												<SortableRow
-													key={source.id}
-													id={source.id}
-													className={`${styles.queueItem} ${isActive ? styles.active : ""}`}
-													handleLabel={t.dragToReorder}
-													handleClassName={styles.dragHandle}
-												>
-													{(handle) => (
-														<>
-															{handle}
-															<div
-																className={styles.sourceIndex}
-																aria-hidden="true"
-															>
-																{isActive ? (
-																	<Play
-																		size={11}
-																		className={
-																			styles.activePlayIcon
-																		}
-																	/>
-																) : (
-																	<span>{index + 1}</span>
-																)}
-															</div>
-															<FlashcardButton
-																variant="ghost"
-																className={styles.sourceContent}
-																ref={(element) => {
-																	if (element) {
-																		setTooltip(
-																			element,
-																			source.name,
-																			{
-																				placement: "top",
-																				classes: [
-																					styles.sourceNameTooltip,
-																				],
-																			},
-																		);
-																	}
-																}}
-																aria-current={
-																	isActive ? "true" : undefined
-																}
-																onClick={() => {
-																	runtime.selectSource(source.id);
-																	view.act({
-																		type: "set-queue-expanded",
-																		expanded: false,
-																	});
-																}}
-															>
-																<span className={styles.sourceName}>
-																	{source.name}
-																</span>
-																{progressLabel && (
-																	<span
-																		className={
-																			styles.sourceMeta
-																		}
-																	>
-																		<span
-																			className={
-																				isActive
-																					? styles.playingTag
-																					: styles.progressTag
-																			}
-																		>
-																			{progressLabel}
-																		</span>
-																	</span>
-																)}
-															</FlashcardButton>
-															<div className={styles.itemActions}>
-																{snapshot.sources.length > 1 && (
-																	<>
-																		<IconButton
-																			icon={ChevronUp}
-																			size={14}
-																			className={
-																				styles.actionBtn
-																			}
-																			label={t.moveUp}
-																			disabled={
-																				sortingSnapshot.disabled ||
-																				index === 0
-																			}
-																			onClick={() =>
-																				sorting.move(
-																					source.id,
-																					snapshot
-																						.sources[
-																						index - 1
-																					]?.id ??
-																						source.id,
-																				)
-																			}
-																		/>
-																		<IconButton
-																			icon={ChevronDown}
-																			size={14}
-																			className={
-																				styles.actionBtn
-																			}
-																			label={t.moveDown}
-																			disabled={
-																				sortingSnapshot.disabled ||
-																				index ===
-																					snapshot.sources
-																						.length -
-																						1
-																			}
-																			onClick={() =>
-																				sorting.move(
-																					source.id,
-																					snapshot
-																						.sources[
-																						index + 1
-																					]?.id ??
-																						source.id,
-																				)
-																			}
-																		/>
-																	</>
-																)}
-																<IconButton
-																	icon={FolderPlus}
-																	size={14}
-																	className={styles.actionBtn}
-																	label={t.replace}
-																	onClick={async () => {
-																		await runtime.pickAndReplaceSource(
-																			source.id,
-																			{
-																				replace: t.replace,
-																				selectFailed:
-																					t.selectFailed,
-																			},
-																		);
-																	}}
-																/>
-																<IconButton
-																	icon={Trash2}
-																	size={14}
-																	className={`${styles.actionBtn} ${styles.deleteBtn}`}
-																	label={t.remove}
-																	onClick={() =>
-																		runtime.removeSource(
-																			source.id,
-																		)
-																	}
-																/>
-															</div>
-														</>
-													)}
-												</SortableRow>
-											);
-										})}
-									</ReorderableList>
-								</div>
-							)}
-						</aside>
 					</div>
 				)}
 			</div>
@@ -616,6 +630,21 @@ function PlayerSurface({
 	onFloat: () => void;
 	t: PlayerCopy;
 }): React.ReactNode {
+	const shortcuts = {
+		togglePlayback: displayShortcut(settings.shortcuts.togglePlayback),
+		seekBackward: displayShortcut(settings.shortcuts.seekBackward),
+		seekForward: displayShortcut(settings.shortcuts.seekForward),
+	};
+	const shortcutHints = (
+		[
+			["togglePlayback", shortcuts.togglePlayback],
+			["seekBackward", shortcuts.seekBackward],
+			["seekForward", shortcuts.seekForward],
+		] as const
+	).filter(([, key]) => key);
+	const playbackLabel = controlLabel(playing ? t.pause : t.play, shortcuts.togglePlayback);
+	const backwardLabel = controlLabel(t.backward(settings.skipInterval), shortcuts.seekBackward);
+	const forwardLabel = controlLabel(t.forward(settings.skipInterval), shortcuts.seekForward);
 	return (
 		<div ref={focusSurfaceRef} className={styles.surface} aria-label={t.playerRegion}>
 			<div ref={mediaHostRef} className={styles.mediaHost} />
@@ -628,13 +657,19 @@ function PlayerSurface({
 				onSeek={onSeek}
 			/>
 			<div className={styles.controls}>
-				<div className={styles.shortcutsHint} aria-hidden="true">
-					<span className={styles.shortcutKey}>Space</span>
-					<span className={styles.shortcutLabel}>{t.play}</span>
-					<span className={styles.shortcutDivider}>·</span>
-					<span className={styles.shortcutKey}>← / →</span>
-					<span className={styles.shortcutLabel}>±{settings.skipInterval}s</span>
-				</div>
+				{shortcutHints.length > 0 && (
+					<div className={styles.shortcutsHint}>
+						<span>{t.shortcutFocus}</span>
+						<div className={styles.shortcutKeys}>
+							{shortcutHints.map(([action, key]) => (
+								<span key={action} className={styles.shortcutEntry}>
+									<kbd className={styles.shortcutKey}>{key}</kbd>
+									{t.shortcutNames[action]}
+								</span>
+							))}
+						</div>
+					</div>
+				)}
 				<div className={styles.transport}>
 					<IconButton
 						icon={SkipBack}
@@ -648,10 +683,14 @@ function PlayerSurface({
 							variant="ghost"
 							icon={Rewind}
 							iconSize={16}
-							aria-label={`${t.backward(settings.skipInterval)} (←)`}
-							title={`${t.backward(settings.skipInterval)} (←)`}
+							aria-label={backwardLabel}
+							title={
+								shortcuts.seekBackward
+									? `${backwardLabel}\n${t.shortcutFocus}`
+									: backwardLabel
+							}
 							className={styles.skipBtn}
-							onClick={() => void onBackward()}
+							onClick={onBackward}
 						>
 							<span className={styles.skipStepBadge}>{settings.skipInterval}</span>
 						</FlashcardButton>
@@ -662,8 +701,12 @@ function PlayerSurface({
 						icon={playing ? Pause : Play}
 						iconSize={18}
 						className={styles.playBtn}
-						aria-label={playing ? `${t.pause} (Space)` : `${t.play} (Space)`}
-						title={playing ? `${t.pause} (Space)` : `${t.play} (Space)`}
+						aria-label={playbackLabel}
+						title={
+							shortcuts.togglePlayback
+								? `${playbackLabel}\n${t.shortcutFocus}`
+								: playbackLabel
+						}
 						onClick={onToggle}
 					/>
 					<div className={styles.skipBtnWrapper}>
@@ -672,10 +715,14 @@ function PlayerSurface({
 							variant="ghost"
 							icon={FastForward}
 							iconSize={16}
-							aria-label={`${t.forward(settings.skipInterval)} (→)`}
-							title={`${t.forward(settings.skipInterval)} (→)`}
+							aria-label={forwardLabel}
+							title={
+								shortcuts.seekForward
+									? `${forwardLabel}\n${t.shortcutFocus}`
+									: forwardLabel
+							}
 							className={styles.skipBtn}
-							onClick={() => void onForward()}
+							onClick={onForward}
 						>
 							<span className={styles.skipStepBadge}>{settings.skipInterval}</span>
 						</FlashcardButton>
@@ -703,6 +750,24 @@ function PlayerSurface({
 			</div>
 		</div>
 	);
+}
+
+const arrowKeyLabels = {
+	ArrowLeft: "←",
+	ArrowRight: "→",
+	ArrowUp: "↑",
+	ArrowDown: "↓",
+};
+
+function displayShortcut(shortcut: string): string {
+	return shortcut.replace(
+		/(^|\+)(ArrowLeft|ArrowRight|ArrowUp|ArrowDown)$/,
+		(_match, prefix: string, key: keyof typeof arrowKeyLabels) => prefix + arrowKeyLabels[key],
+	);
+}
+
+function controlLabel(action: string, shortcut: string): string {
+	return shortcut ? `${action} (${shortcut})` : action;
 }
 
 function ProgressSlider({

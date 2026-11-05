@@ -1,6 +1,8 @@
 import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { I18nProvider } from "../../../../core/ui/context/I18nContext";
 import { FlashcardButton } from "../../../../core/ui/primitives/Button";
 import { FlashcardHeader } from "../../../../core/ui/primitives/Header";
 import { ReorderableList, SortableRow } from "../../../../core/ui/primitives/Sortable/Sortable";
@@ -91,7 +93,7 @@ function harness() {
 	const pickAndReplaceSource = vi.fn();
 	let queueExpanded = true;
 	const act = vi.fn(() => ({ kind: "applied" as const }));
-	const snapshot: VideoPlayerSnapshot = {
+	let snapshot: VideoPlayerSnapshot = {
 		sources: ["first", "second", "third"].map((id) => ({
 			id,
 			name: id === "third" ? "A long video filename that exceeds the queue width.mp4" : id,
@@ -134,13 +136,16 @@ function harness() {
 		act,
 		dispose: vi.fn(),
 	};
-	const render = (shadowing?: ShadowingViewBridge) =>
+	const render = (
+		shadowing?: ShadowingViewBridge,
+		settings = normalizeVideoPlayerSettings(undefined),
+	) =>
 		VideoPlayerView({
 			runtime,
 			view,
 			language: "en",
 			rootEl: { ownerDocument: {} } as HTMLElement,
-			settings: normalizeVideoPlayerSettings(undefined),
+			settings,
 			onFocusExisting: vi.fn(),
 			onOpenSettings: vi.fn(),
 			shadowing,
@@ -175,6 +180,9 @@ function harness() {
 		},
 		render,
 		snapshot,
+		setPlaying: (playing: boolean) => {
+			snapshot = { ...snapshot, playing };
+		},
 		get list() {
 			return list;
 		},
@@ -221,7 +229,7 @@ describe("video queue view", () => {
 		expect(layout(collapsed).props.className).not.toContain(styles.layoutWithShadow);
 		expect(queue(collapsed).props.className).toContain(styles.queue);
 		expect(toggle(collapsed).props["aria-expanded"]).toBe(false);
-		expect(toggle(collapsed).props["aria-label"]).toBe(videoPlayerStrings("en").queueExpand);
+		expect(toggle(collapsed).props.title).toBe(videoPlayerStrings("en").queueExpand);
 		expect(
 			findElement(
 				toggle(collapsed).props.children,
@@ -243,6 +251,43 @@ describe("video queue view", () => {
 		expect(h.act).toHaveBeenLastCalledWith({ type: "set-queue-expanded", expanded: true });
 	});
 
+	it("keeps the selected queue position separate from playback state", () => {
+		const h = harness();
+		h.setPlaying(false);
+		h.setQueueExpanded(false);
+		const markup = renderToStaticMarkup(
+			<I18nProvider language="en">{h.render()}</I18nProvider>,
+		);
+
+		expect(markup).toContain("Playback queue · 2/3");
+		expect(markup).not.toContain("Playing 2/3");
+		expect(markup).toContain('aria-label="Play (Space)"');
+	});
+
+	it("shows configured shortcut keys and omits cleared bindings from controls and hints", () => {
+		const h = harness();
+		h.setQueueExpanded(false);
+		const settings = normalizeVideoPlayerSettings({
+			shortcuts: {
+				togglePlayback: "Shift+P",
+				seekBackward: "",
+				seekForward: "Alt+ArrowRight",
+			},
+		});
+		const markup = renderToStaticMarkup(
+			<I18nProvider language="en">{h.render(undefined, settings)}</I18nProvider>,
+		);
+
+		expect(markup).toContain('aria-label="Pause (Shift+P)"');
+		expect(markup).toContain('aria-label="Back 10 seconds"');
+		expect(markup).toContain('aria-label="Forward 10 seconds (Alt+→)"');
+		expect(markup).toContain(">Shift+P</kbd>");
+		expect(markup).toContain(">Alt+→</kbd>");
+		expect(markup).toContain("When the player has focus");
+		expect(markup).not.toContain(">Space</kbd>");
+		expect(markup).not.toContain(">←</kbd>");
+	});
+
 	it("shows the right subtitle panel only when the current video switch is on", () => {
 		const h = harness();
 		let enabled = false;
@@ -250,7 +295,7 @@ describe("video queue view", () => {
 			enabled = value;
 		});
 		const bridge = {
-			getSnapshot: () => ({ enabled }),
+			getSnapshot: () => ({ enabled, cues: [] }),
 			subscribe: () => () => undefined,
 			setEnabled,
 			act: vi.fn(async () => undefined),
@@ -277,6 +322,7 @@ describe("video queue view", () => {
 		toggle.props.onChange!({
 			currentTarget: { checked: true },
 		} as React.ChangeEvent<HTMLInputElement>);
+		expect(toggle.props.role).toBe("switch");
 		expect(setEnabled).toHaveBeenCalledWith(true);
 		const on = h.render(bridge);
 		expect(

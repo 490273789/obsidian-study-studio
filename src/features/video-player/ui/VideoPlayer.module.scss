@@ -44,26 +44,26 @@
 	height: 100%;
 	margin-inline: auto;
 	flex: 1 1 auto;
-	grid-template-areas: "queue" "video";
+	grid-template-areas: "toolbar" "video";
 	grid-template-columns: minmax(0, 1fr);
 	grid-template-rows: auto minmax(0, 1fr);
 	gap: 12px;
 }
 
-.layout:not(.layoutWithShadow) .studyColumn {
+.layout:not(.layoutWithShadow) :is(.studyColumn, .videoToolbar) {
 	width: 100%;
 	max-width: 1385px;
 	justify-self: center;
 }
 
 .layoutWithShadow {
-	grid-template-areas: "queue" "video" "shadow";
+	grid-template-areas: "toolbar" "video" "shadow";
 	grid-template-rows: auto minmax(0, 3fr) minmax(0, 2fr);
 }
 
 @container flashcard-pane (min-width: 1050px) {
 	.layoutWithShadow {
-		grid-template-areas: "queue queue" "video shadow";
+		grid-template-areas: "toolbar toolbar" "video shadow";
 		grid-template-columns: minmax(0, 1.6fr) minmax(320px, 0.9fr);
 		grid-template-rows: auto minmax(0, 1fr);
 	}
@@ -88,15 +88,11 @@
 	@include fc-scrollbar;
 }
 
-.playerPanel,
-.queue {
+.playerPanel {
 	min-width: 0;
 	border: 1px solid var(--fc-line-soft);
 	border-radius: 14px;
 	background: var(--fc-surface-section);
-}
-
-.playerPanel {
 	overflow: hidden;
 	min-height: 0;
 	height: 100%;
@@ -282,18 +278,24 @@
 
 .shortcutsHint {
 	grid-column: 1;
-	display: flex;
-	align-items: center;
-	gap: 6px;
+	display: grid;
+	gap: var(--fc-space-1);
+	min-width: 0;
 	color: var(--fc-muted);
 	font-size: var(--fc-font-xs);
-	user-select: none;
-	opacity: 0.75;
-	transition: opacity var(--fc-motion-quick) ease;
+}
 
-	&:hover {
-		opacity: 1;
-	}
+.shortcutKeys {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--fc-space-1) var(--fc-space-2);
+}
+
+.shortcutEntry {
+	display: inline-flex;
+	min-width: 0;
+	align-items: center;
+	gap: var(--fc-space-1);
 }
 
 .shortcutKey {
@@ -303,17 +305,13 @@
 	border-radius: var(--fc-radius-xs);
 	background: var(--fc-surface-card);
 	font-family: var(--font-monospace);
-	font-size: 10px;
+	font-size: var(--fc-font-2xs);
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 	line-height: 1.2;
 	color: var(--fc-text);
-}
-
-.shortcutLabel {
-	font-size: var(--fc-font-xs);
-}
-
-.shortcutDivider {
-	color: var(--fc-line);
 }
 
 .skipBtnWrapper {
@@ -402,21 +400,48 @@
 	color: var(--text-muted);
 }
 
-.queue {
-	grid-area: queue;
+.videoToolbar {
+	grid-area: toolbar;
 	position: relative;
 	z-index: 4;
 	display: flex;
-	flex-direction: column;
-	overflow: visible;
+	min-width: 0;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--fc-space-3);
+}
+
+.videoDetails {
+	display: flex;
+	flex: 1 1 auto;
+	min-width: 0;
+	align-items: center;
+	gap: var(--fc-space-4);
+}
+
+.videoTitle {
+	flex: 0 1 auto;
+	min-width: 0;
+	margin: 0;
+	overflow: hidden;
+	color: var(--fc-text);
+	font-size: var(--fc-font-md);
+	font-weight: var(--fc-weight-semibold);
+	line-height: 1.35;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.queue {
+	flex: 0 0 auto;
+	margin-inline-start: auto;
+	max-width: 100%;
 }
 
 .queueHeader {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
-	gap: var(--fc-space-3);
-	padding: var(--fc-space-2) var(--fc-space-3);
+	gap: var(--fc-space-1);
 }
 
 .queueHeading {
@@ -454,92 +479,77 @@
 	white-space: nowrap;
 }
 
-.queueHeaderActions {
-	display: flex;
-	flex-shrink: 0;
-	align-items: center;
-	gap: var(--fc-space-2);
-}
-
-.queueCurrentName {
-	min-width: 0;
-	flex: 1 1 auto;
-	overflow: hidden;
-	color: var(--fc-text);
-	font-weight: var(--fc-weight-medium);
-	font-size: var(--fc-font-sm);
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	padding: 3px 10px;
-	margin-inline: 4px;
-	border-radius: var(--fc-radius-md);
-	background: var(--fc-surface-card);
-	border: 1px solid var(--fc-line-soft);
-}
-
 .shadowToggle {
 	position: relative;
 	display: inline-flex;
+	flex: 0 1 auto;
+	min-width: 0;
 	min-height: 32px;
 	align-items: center;
-	gap: 6px;
-	padding: 4px 12px;
-	border: 1px solid var(--fc-line);
-	border-radius: var(--fc-radius-pill);
-	background: var(--fc-surface-card);
-	color: var(--fc-muted);
-	font-size: var(--fc-font-sm);
+	gap: var(--fc-space-2);
+	padding: var(--fc-space-1) var(--fc-space-2);
+	border-radius: var(--fc-radius-md);
+	color: var(--fc-text);
 	font-weight: var(--fc-weight-medium);
-	white-space: nowrap;
 	cursor: pointer;
-	user-select: none;
-	transition:
-		border-color var(--fc-motion-quick) ease,
-		background-color var(--fc-motion-quick) ease,
-		color var(--fc-motion-quick) ease,
-		box-shadow var(--fc-motion-quick) ease;
 
 	&:hover {
-		border-color: var(--fc-primary);
-		color: var(--fc-text);
 		background: var(--fc-surface-hover);
 	}
 
-	&.shadowToggleActive,
-	&:has(input:checked) {
-		border-color: var(--interactive-accent);
-		background: color-mix(in srgb, var(--interactive-accent) 12%, var(--fc-surface-card));
-		color: var(--fc-text);
-		box-shadow: 0 0 0 1px color-mix(in srgb, var(--interactive-accent) 25%, transparent);
-
-		.shadowToggleIcon {
-			color: var(--interactive-accent);
-		}
-	}
-
-	&:focus-within {
+	&:has(:focus-visible) {
 		outline: 2px solid var(--interactive-accent);
-		outline-offset: 2px;
+		outline-offset: -2px;
 	}
 }
 
 .shadowToggleInput {
 	position: absolute;
+	width: 1px;
+	height: 1px;
 	opacity: 0;
-	width: 0;
-	height: 0;
-	margin: 0;
-	pointer-events: none;
 }
 
-.shadowToggleIcon {
-	color: var(--fc-muted);
-	flex-shrink: 0;
-	transition: color var(--fc-motion-quick) ease;
+.shadowToggleTrack {
+	display: flex;
+	width: 30px;
+	height: 18px;
+	flex: 0 0 auto;
+	align-items: center;
+	padding: 2px;
+	border: 1px solid var(--fc-muted);
+	border-radius: var(--fc-radius-pill);
+
+	&::before {
+		width: 12px;
+		height: 12px;
+		border-radius: 50%;
+		background: var(--fc-muted);
+		content: "";
+	}
+}
+
+.shadowToggleInput:checked + .shadowToggleTrack {
+	justify-content: flex-end;
+	border-color: var(--interactive-accent);
+	background: var(--interactive-accent);
+
+	&::before {
+		background: var(--text-on-accent);
+	}
 }
 
 .shadowToggleText {
+	display: grid;
+	gap: 2px;
 	font-size: var(--fc-font-sm);
+	line-height: 1.2;
+
+	small {
+		color: var(--fc-muted);
+		font-size: var(--fc-font-xs);
+		font-weight: var(--fc-weight-regular);
+	}
 }
 
 .shadowCueBadge {
@@ -567,7 +577,7 @@
 .queueList {
 	position: absolute;
 	top: calc(100% + 4px);
-	left: 0;
+	inset-inline-end: 0;
 	z-index: 1;
 	display: flex;
 	width: min(440px, 100%);
@@ -967,10 +977,6 @@
 }
 
 @media (max-width: 760px) {
-	.queue {
-		max-height: 320px;
-	}
-
 	.queueItem .dragHandle {
 		opacity: 0.7;
 	}
@@ -986,20 +992,22 @@
 	}
 }
 
-@container flashcard-pane (max-width: 600px) {
-	.queueHeader {
+@container flashcard-pane (max-width: 700px) {
+	.videoToolbar {
 		flex-wrap: wrap;
-		gap: 6px;
+		gap: var(--fc-space-1);
 	}
 
-	.queueCurrentName {
-		order: 3;
+	.videoDetails {
+		display: contents;
+	}
+
+	.videoTitle {
 		flex-basis: 100%;
-		padding-inline: 8px;
 	}
 
-	.queueHeaderActions {
-		margin-inline-start: auto;
+	.queueHeader {
+		gap: 0;
 	}
 }
 

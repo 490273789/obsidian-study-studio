@@ -1,4 +1,6 @@
 import { AiError, aiFailureCode, type AiService } from "../../../core/ai";
+import { cleanAiConfig } from "../../../core/ai/configuration";
+import { validateHttpEndpoint } from "../../../core/net/endpoint";
 import {
 	detectTranslationDirection,
 	normalizeTranslationSettings,
@@ -20,7 +22,7 @@ interface TranslationDependencies {
 /** Shared session authority for every translator view; owns no UI or Obsidian I/O. */
 export class TranslationRuntime {
 	private settings: TranslationSettings;
-	private state: Omit<TranslationSnapshot, "settings"> = {
+	private state: Omit<TranslationSnapshot, "settings" | "clearUndoId"> = {
 		input: "",
 		results: [],
 		status: "idle",
@@ -31,6 +33,7 @@ export class TranslationRuntime {
 	private listeners = new Set<() => void>();
 	private cache = new Map<string, TranslationOutput>();
 	private generation = 0;
+	private cleared: Pick<TranslationSnapshot, "input" | "results"> | null = null;
 	private controller: AbortController | null = null;
 	private testController: AbortController | null = null;
 	private views = 0;
@@ -99,28 +102,41 @@ export class TranslationRuntime {
 		}
 		this.prefill(text);
 	}
-	clear(): void {
+	clear({ undoable = false } = {}): boolean {
+		if (undoable && !this.state.input && !this.state.results.some((r) => r.text || r.error))
+			return false;
+		const cleared = undoable ? this.snapshot : null;
 		this.invalidate(true);
 		this.state.input = "";
+		if (cleared) this.cleared = { input: cleared.input, results: cleared.results };
 		this.publish();
+		return true;
 	}
-	restore(input: string, results: readonly TranslationResultState[]): void {
-		if (this.disposed) return;
+	undoClear(id: number): boolean {
+		const cleared = this.cleared;
+		if (this.disposed || this.state.saving || !cleared || id !== this.generation) return false;
 		this.invalidate(false);
-		this.state.input = input;
-		this.state.results = results.map((result) => ({ ...result }));
-		this.state.status = results.some((r) => r.status === "success")
+		this.state.input = cleared.input;
+		this.state.results = this.state.results.map((current) => {
+			const previous = cleared.results.find((result) => result.id === current.id);
+			return previous?.status === "success" || previous?.status === "error"
+				? previous
+				: current;
+		});
+		this.state.status = this.state.results.some((r) => r.status === "success")
 			? "success"
-			: results.some((r) => r.status === "error")
+			: this.state.results.some((r) => r.status === "error")
 				? "error"
 				: "idle";
 		this.publish();
+		return true;
 	}
 	async configure(input: TranslationSettings): Promise<void> {
 		if (this.disposed) throw new AiError("disposed");
 		if (this.state.saving) throw new AiError("busy");
 		validateTranslationSettings(input);
 		const next = normalizeTranslationSettings(input);
+		this.cleared = null;
 		this.state.saving = true;
 		this.publish();
 		try {
@@ -172,7 +188,8 @@ export class TranslationRuntime {
 		)
 			return;
 		this.invalidate(false);
-		if (!this.settings.enabled || !this.settings.profiles.some((profile) => profile.enabled)) {
+		const readyIds = new Set(this.state.results.filter((r) => !r.setupIssue).map((r) => r.id));
+		if (!this.settings.enabled || readyIds.size === 0) {
 			this.state.status = "error";
 			this.state.error = "invalid-config";
 			this.publish();
@@ -184,13 +201,15 @@ export class TranslationRuntime {
 		const controller = new AbortController();
 		this.controller = controller;
 		const translations = settings.profiles
-			.filter((profile) => profile.enabled)
+			.filter((profile) => profile.enabled && readyIds.has(profile.id))
 			.map((profile) => ({
 				profile,
 				request: this.execution.prepare(profile.id, settings.direction),
 			}));
 		this.state.status = "loading";
-		this.state.results = this.state.results.map((result) => ({ ...result, status: "loading" }));
+		this.state.results = this.state.results.map((result) =>
+			readyIds.has(result.id) ? { ...result, status: "loading" } : result,
+		);
 		this.publish();
 		await Promise.all(
 			translations.map(async ({ profile, request }) => {
@@ -234,6 +253,7 @@ export class TranslationRuntime {
 	}
 	private invalidate(clearCache: boolean): void {
 		this.generation++;
+		this.cleared = null;
 		this.controller?.abort();
 		this.controller = null;
 		if (clearCache) this.cache.clear();
@@ -242,12 +262,30 @@ export class TranslationRuntime {
 		this.replaceResults();
 	}
 	private replaceResults(): void {
+		const configs = this.ai.getSnapshot().settings.configs;
+		const youdao = this.settings.youdao;
 		this.state.results = this.settings.profiles
 			.filter((profile) => profile.enabled)
 			.map((profile) => {
-				const config = this.ai
-					.getSnapshot()
-					.settings.configs.find((config) => config.id === profile.configId);
+				const config = configs.find((config) => config.id === profile.configId);
+				let setupIssue: TranslationResultState["setupIssue"];
+				if (profile.kind === "youdao") {
+					try {
+						validateHttpEndpoint(youdao.baseUrl);
+						if (!youdao.appKeySecretId || !youdao.appSecretSecretId)
+							setupIssue = "youdaoSetup";
+					} catch {
+						setupIssue = "youdaoSetup";
+					}
+				} else if (config) {
+					try {
+						cleanAiConfig(config);
+					} catch {
+						setupIssue = "engineSetup";
+					}
+				} else {
+					setupIssue = "engineSetup";
+				}
 				return {
 					id: profile.id,
 					name: profile.name,
@@ -255,6 +293,7 @@ export class TranslationRuntime {
 					status: "idle",
 					model: profile.kind === "youdao" ? "" : (config?.model ?? ""),
 					provider: profile.kind === "youdao" ? "youdao" : (config?.provider ?? ""),
+					...(setupIssue ? { setupIssue } : {}),
 				};
 			});
 	}
@@ -273,6 +312,7 @@ export class TranslationRuntime {
 		this.snapshot = Object.freeze({
 			...this.state,
 			settings,
+			clearUndoId: this.cleared && !this.state.saving ? this.generation : null,
 			results: Object.freeze(
 				this.state.results.map((result) =>
 					Object.freeze({

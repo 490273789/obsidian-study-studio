@@ -8,7 +8,15 @@ import { TranslationSettingsEditor, type TranslationSettingsRuntime } from "../s
 vi.mock("obsidian", () => ({ Notice: vi.fn() }));
 
 function snapshot(settings: TranslationSettings): TranslationSnapshot {
-	return { settings, input: "", results: [], status: "idle", saving: false, testing: false };
+	return {
+		settings,
+		input: "",
+		clearUndoId: null,
+		results: [],
+		status: "idle",
+		saving: false,
+		testing: false,
+	};
 }
 
 function createRuntime(initial: TranslationSettings) {

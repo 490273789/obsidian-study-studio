@@ -2,11 +2,13 @@ import React, {
 	useCallback,
 	useEffect,
 	useId,
+	useLayoutEffect,
 	useRef,
 	useState,
 	useSyncExternalStore,
 } from "react";
 import {
+	ArrowLeftRight,
 	BookmarkPlus,
 	Check,
 	Copy,
@@ -41,7 +43,7 @@ export interface TranslatorViewProps {
 
 interface ActionFeedback {
 	id: string;
-	type: "copied" | "inserted" | "card";
+	type: "copied" | "inserted" | "card" | "error";
 	message: string;
 }
 
@@ -140,20 +142,21 @@ export const TranslatorView = React.memo(function TranslatorView({
 	const subscribe = useCallback((listener: () => void) => runtime.subscribe(listener), [runtime]);
 	const getSnapshot = useCallback(() => runtime.getSnapshot(), [runtime]);
 	const snapshot = useSyncExternalStore(subscribe, getSnapshot);
-	const [activeTab, setActiveTab] = useState<string>("all");
+	const [activeTab, setActiveTab] = useState<string | null>(null);
 	const [feedbackMap, setFeedbackMap] = useState<Record<string, ActionFeedback>>({});
 	const feedbackTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 	const [speakingId, setSpeakingId] = useState<string | null>(null);
 	const [showDiff, setShowDiff] = useState<boolean>(false);
-	const [showUndo, setShowUndo] = useState<boolean>(false);
-	const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const clearedStateRef = useRef<{
-		input: string;
-		results: readonly TranslationResultState[];
-	} | null>(null);
-
+	const focusAfterClear = useRef(false);
 	const inputRef = useRef<HTMLTextAreaElement>(null);
 	const viewId = useId();
+	const shortcutId = `${viewId}-translate-shortcut`;
+
+	useLayoutEffect(() => {
+		if (!focusAfterClear.current) return;
+		focusAfterClear.current = false;
+		inputRef.current?.focus();
+	}, [snapshot]);
 
 	useEffect(() => {
 		if (!focusController) return;
@@ -196,9 +199,6 @@ export const TranslatorView = React.memo(function TranslatorView({
 			for (const id in timers) {
 				clearTimeout(timers[id]);
 			}
-			if (undoTimeoutRef.current) {
-				clearTimeout(undoTimeoutRef.current);
-			}
 			if (typeof window !== "undefined" && "speechSynthesis" in window) {
 				window.speechSynthesis.cancel();
 			}
@@ -207,19 +207,25 @@ export const TranslatorView = React.memo(function TranslatorView({
 
 	const strings = translationStrings(language);
 	const isLoading = snapshot.status === "loading";
-	const configuredProfiles = snapshot.settings.profiles.filter((profile) => profile.enabled);
-
-	// Select the first profile by default if activeTab is unset or invalid
-	const effectiveTab =
-		activeTab === "all"
-			? "all"
-			: configuredProfiles.some((p) => p.id === activeTab)
-				? activeTab
-				: (configuredProfiles[0]?.id ?? "all");
+	const results = snapshot.results;
+	const readyCount = results.filter((result) => !result.setupIssue).length;
+	const visibleResults = results.filter(
+		(result) => result.setupIssue || result.status !== "idle",
+	);
+	const isWaitingForResults = visibleResults.length === 0;
+	const showTabs = results.length > 1 && !isWaitingForResults;
+	const activeIndex = showTabs ? results.findIndex((result) => result.id === activeTab) + 1 : 0;
+	const setupHint = !snapshot.settings.enabled
+		? strings.disabled
+		: results.length === 0
+			? strings.noProfiles
+			: readyCount === 0
+				? strings.noReadyProfiles
+				: null;
 
 	const canTranslate =
 		snapshot.settings.enabled &&
-		configuredProfiles.length > 0 &&
+		readyCount > 0 &&
 		Boolean(snapshot.input.trim()) &&
 		!isLoading &&
 		!snapshot.saving;
@@ -234,11 +240,11 @@ export const TranslatorView = React.memo(function TranslatorView({
 	const succeeded = snapshot.results.filter((result) => result.status === "success").length;
 	const failed = snapshot.results.filter((result) => result.status === "error").length;
 	const statusText = isLoading
-		? formatTranslationString(strings.loadingProfiles, { count: configuredProfiles.length })
+		? formatTranslationString(strings.loadingProfiles, { count: readyCount })
 		: snapshot.status === "success" && failed > 0
 			? formatTranslationString(strings.partialProfiles, {
 					success: succeeded,
-					total: snapshot.results.length,
+					total: succeeded + failed,
 					failed,
 				})
 			: snapshot.status === "success"
@@ -253,7 +259,7 @@ export const TranslatorView = React.memo(function TranslatorView({
 	const speak = useCallback(
 		(id: string, text: string, lang: "en" | "zh") => {
 			if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-				showFeedback({ id, type: "copied", message: speechUnavailable });
+				showFeedback({ id, type: "error", message: speechUnavailable });
 				return;
 			}
 			if (speakingId === id) {
@@ -272,34 +278,16 @@ export const TranslatorView = React.memo(function TranslatorView({
 		[showFeedback, speakingId, speechUnavailable],
 	);
 
-	const handleClear = useCallback(() => {
-		if (!snapshot.input && !snapshot.results.some((r) => r.text || r.error)) {
-			return;
-		}
-		clearedStateRef.current = {
-			input: snapshot.input,
-			results: snapshot.results,
-		};
-		runtime.clear();
-		setShowUndo(true);
-		if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
-		undoTimeoutRef.current = setTimeout(() => {
-			setShowUndo(false);
-			clearedStateRef.current = null;
-			undoTimeoutRef.current = null;
-		}, 6000);
-	}, [runtime, snapshot.input, snapshot.results]);
+	const handleClear = () => {
+		focusAfterClear.current = true;
+		if (!runtime.clear({ undoable: true })) focusAfterClear.current = false;
+	};
 
-	const handleUndo = useCallback(() => {
-		if (!clearedStateRef.current) return;
-		runtime.restore(clearedStateRef.current.input, clearedStateRef.current.results);
-		setShowUndo(false);
-		clearedStateRef.current = null;
-		if (undoTimeoutRef.current) {
-			clearTimeout(undoTimeoutRef.current);
-			undoTimeoutRef.current = null;
+	const handleUndo = () => {
+		if (snapshot.clearUndoId !== null && runtime.undoClear(snapshot.clearUndoId)) {
+			inputRef.current?.focus();
 		}
-	}, [runtime]);
+	};
 
 	const copyResult = async (result: TranslationResultState): Promise<void> => {
 		try {
@@ -307,7 +295,7 @@ export const TranslatorView = React.memo(function TranslatorView({
 			await navigator.clipboard.writeText(result.text);
 			showFeedback({ id: result.id, type: "copied", message: strings.copied });
 		} catch {
-			showFeedback({ id: result.id, type: "copied", message: strings.copyFailed });
+			showFeedback({ id: result.id, type: "error", message: strings.copyFailed });
 		}
 	};
 
@@ -325,7 +313,7 @@ export const TranslatorView = React.memo(function TranslatorView({
 			await navigator.clipboard.writeText(callout);
 			showFeedback({ id: result.id, type: "inserted", message: strings.noActiveNote });
 		} catch {
-			showFeedback({ id: result.id, type: "inserted", message: strings.copyFailed });
+			showFeedback({ id: result.id, type: "error", message: strings.copyFailed });
 		}
 	};
 
@@ -343,153 +331,203 @@ export const TranslatorView = React.memo(function TranslatorView({
 			await navigator.clipboard.writeText(cardFormat);
 			showFeedback({ id: result.id, type: "card", message: strings.cardCopied });
 		} catch {
-			showFeedback({ id: result.id, type: "card", message: strings.copyFailed });
+			showFeedback({ id: result.id, type: "error", message: strings.copyFailed });
 		}
 	};
 
-	const otherSuccessResults = snapshot.results.filter(
+	const otherSuccessResults = results.filter(
 		(r) => r.status === "success" && r.text.trim().length > 0,
 	);
-	const otherSuccessTexts = otherSuccessResults.map((r) => r.text);
-
+	const canHighlight = otherSuccessResults.length > 1;
 	const renderCard = (result: TranslationResultState, isParallel: boolean) => {
 		const usage = resultUsage(result, strings.usage);
 		const error = result.error ? aiErrorText(language, result.error) : null;
-		const cardFeedback = feedbackMap[result.id];
+		const hasText = result.status === "success" && Boolean(result.text.trim());
+		const cardFeedback = hasText ? feedbackMap[result.id] : undefined;
 		const isCopied = cardFeedback?.type === "copied";
 		const isInserted = cardFeedback?.type === "inserted";
 		const isCard = cardFeedback?.type === "card";
-		const subtitle = cleanProfileSubtitle(result.name, result.provider, result.model, strings);
+		const subtitle = result.setupIssue
+			? strings.unavailable
+			: cleanProfileSubtitle(result.name, result.provider, result.model, strings);
 		const targetLang = snapshot.settings.direction === "zh-en" ? "en" : "zh";
 
 		return (
 			<article
 				key={result.id}
-				id={`${viewId}-panel-${result.id}`}
-				role="tabpanel"
-				aria-labelledby={`${viewId}-tab-${result.id}`}
-				className={cls("fc-panel", styles.resultPanel, isParallel && styles.parallelCard)}
-				aria-busy={result.status === "loading"}
+				aria-label={formatTranslationString(strings.resultLabel, { name: result.name })}
+				className={styles.resultPanel}
 			>
 				<header>
 					<div className={styles.resultTitle}>
 						<strong>{result.name}</strong>
 						{subtitle && <span className={styles.subtitle}>{subtitle}</span>}
 					</div>
-					<div className={styles.cardActions}>
-						<FlashcardButton
-							size="sm"
-							variant="ghost"
-							preset="icon"
-							icon={speakingId === result.id ? VolumeX : Volume2}
-							title={strings.speak}
-							aria-label={strings.speak}
-							disabled={!result.text || result.status === "loading"}
-							onClick={() => speak(result.id, result.text, targetLang)}
-						/>
-						<FlashcardButton
-							size="sm"
-							variant="ghost"
-							preset="icon"
-							icon={isCard ? Check : BookmarkPlus}
-							title={isCard ? cardFeedback.message : strings.makeCard}
-							aria-label={isCard ? cardFeedback.message : strings.makeCard}
-							disabled={!result.text || result.status === "loading"}
-							onClick={() => void makeCard(result)}
-						/>
-						<FlashcardButton
-							size="sm"
-							variant="ghost"
-							preset="icon"
-							icon={isInserted ? Check : FileText}
-							title={isInserted ? cardFeedback.message : strings.insertNote}
-							aria-label={isInserted ? cardFeedback.message : strings.insertNote}
-							disabled={!result.text || result.status === "loading"}
-							onClick={() => void insertToNote(result)}
-						/>
-						<FlashcardButton
-							size="sm"
-							variant="ghost"
-							preset="icon"
-							icon={isCopied ? Check : Copy}
-							title={isCopied ? cardFeedback.message : strings.copied}
-							aria-label={isCopied ? cardFeedback.message : strings.copied}
-							disabled={!result.text || result.status === "loading"}
-							onClick={() => void copyResult(result)}
-						/>
-					</div>
+					{hasText && (
+						<div className={styles.cardActions}>
+							<FlashcardButton
+								size="sm"
+								variant="ghost"
+								preset="icon"
+								icon={speakingId === result.id ? VolumeX : Volume2}
+								title={strings.speak}
+								aria-label={strings.speak}
+								onClick={() => speak(result.id, result.text, targetLang)}
+							/>
+							<FlashcardButton
+								size="sm"
+								variant="ghost"
+								preset="icon"
+								icon={isCard ? Check : BookmarkPlus}
+								title={strings.makeCard}
+								aria-label={strings.makeCard}
+								onClick={() => void makeCard(result)}
+							/>
+							<FlashcardButton
+								size="sm"
+								variant="ghost"
+								preset="icon"
+								icon={isInserted ? Check : FileText}
+								title={strings.insertNote}
+								aria-label={strings.insertNote}
+								onClick={() => void insertToNote(result)}
+							/>
+							<FlashcardButton
+								size="sm"
+								variant="ghost"
+								icon={isCopied ? Check : Copy}
+								onClick={() => void copyResult(result)}
+							>
+								{strings.copy}
+							</FlashcardButton>
+						</div>
+					)}
 				</header>
-				<div className={styles.cardBody}>
-					{showDiff &&
-					isParallel &&
-					result.status === "success" &&
-					otherSuccessTexts.length > 1 ? (
-						<div className={styles.diffContent}>
-							{highlightDifferences(
-								result.text,
-								otherSuccessResults
-									.filter((r) => r.id !== result.id)
-									.map((r) => r.text),
-								snapshot.settings.direction === "zh-en",
+				{result.setupIssue ? (
+					<div className={styles.setupMessage}>
+						<p>{strings[result.setupIssue]}</p>
+						{!setupHint && (
+							<FlashcardButton size="sm" variant="ghost" onClick={onOpenSettings}>
+								{strings.configureProfiles}
+							</FlashcardButton>
+						)}
+					</div>
+				) : result.status === "loading" ? (
+					<p className={styles.resultMessage}>{strings.translating}</p>
+				) : (
+					hasText && (
+						<div className={styles.cardBody}>
+							{showDiff &&
+							isParallel &&
+							result.status === "success" &&
+							canHighlight ? (
+								<div className={styles.diffContent} lang={targetLang}>
+									{highlightDifferences(
+										result.text,
+										otherSuccessResults
+											.filter((r) => r.id !== result.id)
+											.map((r) => r.text),
+										snapshot.settings.direction === "zh-en",
+									)}
+								</div>
+							) : (
+								<FlashcardTextarea
+									variant="unstyled"
+									aria-label={formatTranslationString(strings.resultLabel, {
+										name: result.name,
+									})}
+									value={result.text}
+									lang={targetLang}
+									readOnly
+								/>
 							)}
 						</div>
-					) : (
-						<FlashcardTextarea
-							id={`${viewId}-translator-output-${result.id}`}
-							variant="unstyled"
-							aria-label={formatTranslationString(strings.resultLabel, {
-								name: result.name,
-							})}
-							value={result.text}
-							placeholder={
-								result.status === "loading"
-									? strings.translating
-									: strings.outputPlaceholder
-							}
-							readOnly
-						/>
-					)}
-				</div>
-				<footer>
-					{error ? (
-						<p className={cls(styles.statusMessage, styles.isError)} role="alert">
-							{error}
-						</p>
-					) : cardFeedback ? (
-						<span className={styles.feedbackTag}>
-							<Check size={12} aria-hidden="true" />
-							{cardFeedback.message}
-						</span>
-					) : (
-						<span className={styles.statusMessage}>
-							{result.status === "loading" ? strings.translating : ""}
-						</span>
-					)}
-					{usage && (
-						<span className={styles.usage} title={usage}>
-							{usage}
-						</span>
-					)}
-				</footer>
+					)
+				)}
+				{(error || cardFeedback || usage) && (
+					<footer>
+						{error ? (
+							<p className={cls(styles.statusMessage, styles.isError)} role="alert">
+								{error}
+							</p>
+						) : cardFeedback ? (
+							<span
+								className={cls(
+									styles.statusMessage,
+									cardFeedback.type === "error" && styles.isError,
+								)}
+								aria-hidden="true"
+							>
+								{cardFeedback.message}
+							</span>
+						) : null}
+						{usage && (
+							<span className={styles.usage} title={usage}>
+								{usage}
+							</span>
+						)}
+					</footer>
+				)}
+				{hasText && <output className={styles.srOnly}>{cardFeedback?.message}</output>}
 			</article>
 		);
 	};
 
-	const singleResult = snapshot.results.find((r) => r.id === effectiveTab);
+	const renderResults = (shown: readonly TranslationResultState[], isParallel: boolean) => (
+		<>
+			{(shown.length === 0 ||
+				(isParallel && snapshot.status === "idle" && readyCount > 0)) && (
+				<p className={styles.resultMessage}>{strings.outputPlaceholder}</p>
+			)}
+			{shown.map((result) => renderCard(result, isParallel))}
+		</>
+	);
+	const tabLabels = [strings.compareTable, ...results.map((result) => result.name)];
+	const selectTab = (index: number) => setActiveTab(results[index - 1]?.id ?? null);
+	const submitTranslation = () => {
+		if (isWaitingForResults) setActiveTab(null);
+		void runtime.translate();
+	};
+	const handleTabKey = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+		let next: number;
+		switch (event.key) {
+			case "ArrowRight":
+				next = (activeIndex + 1) % tabLabels.length;
+				break;
+			case "ArrowLeft":
+				next = (activeIndex - 1 + tabLabels.length) % tabLabels.length;
+				break;
+			case "Home":
+				next = 0;
+				break;
+			case "End":
+				next = tabLabels.length - 1;
+				break;
+			default:
+				return;
+		}
+		event.preventDefault();
+		selectTab(next);
+		event.currentTarget.parentElement
+			?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+			[next]?.focus();
+	};
 
 	return (
-		<main className={cls("fc-page", styles.page)} aria-busy={isLoading}>
+		<main className={cls("fc-page", styles.page)}>
 			<FlashcardHeader
 				icon={Languages}
 				title={strings.title}
-				badge={statusText ?? undefined}
 				right={
 					<>
-						<span className={styles.modelCount}>
-							{formatTranslationString(strings.modelCount, {
-								count: configuredProfiles.length,
-							})}
-						</span>
+						{snapshot.settings.enabled && readyCount < results.length && (
+							<span className={styles.modelCount}>
+								{formatTranslationString(strings.modelCount, {
+									ready: readyCount,
+									enabled: results.length,
+								})}
+							</span>
+						)}
 						<FlashcardButton
 							preset="icon"
 							icon={Settings2}
@@ -501,24 +539,8 @@ export const TranslatorView = React.memo(function TranslatorView({
 				}
 			/>
 
-			{!snapshot.settings.enabled ? (
-				<section className={cls("fc-page__content", styles.notice)}>
-					<span>{strings.disabled}</span>
-					<FlashcardButton variant="secondary" size="sm" onClick={onOpenSettings}>
-						{strings.openSettings}
-					</FlashcardButton>
-				</section>
-			) : configuredProfiles.length === 0 ? (
-				<section className={cls("fc-page__content", styles.notice)}>
-					<span>{strings.noProfiles}</span>
-					<FlashcardButton variant="secondary" size="sm" onClick={onOpenSettings}>
-						{strings.openSettings}
-					</FlashcardButton>
-				</section>
-			) : null}
-
 			<section className={cls("fc-page__content", styles.workspace)}>
-				<article className={cls("fc-panel", styles.inputPanel)}>
+				<article className={styles.inputPanel}>
 					<header>
 						<div className={styles.inputHeaderTitle}>
 							<label htmlFor={`${viewId}-translator-input`}>
@@ -529,7 +551,7 @@ export const TranslatorView = React.memo(function TranslatorView({
 								preset="icon"
 								variant="ghost"
 								size="sm"
-								icon={Languages}
+								icon={ArrowLeftRight}
 								title={strings.swapDirection}
 								aria-label={strings.swapDirection}
 								disabled={isLoading || snapshot.saving}
@@ -537,6 +559,11 @@ export const TranslatorView = React.memo(function TranslatorView({
 							/>
 						</div>
 						<div className={styles.inputHeaderActions}>
+							{!setupHint && (
+								<span id={shortcutId} className={styles.shortcutHint}>
+									{strings.shortcutHint}
+								</span>
+							)}
 							<FlashcardButton
 								preset="icon"
 								variant="ghost"
@@ -553,11 +580,6 @@ export const TranslatorView = React.memo(function TranslatorView({
 									)
 								}
 							/>
-							<span className={styles.charCount}>
-								{formatTranslationString(strings.characterCount, {
-									count: snapshot.input.length,
-								})}
-							</span>
 						</div>
 					</header>
 					<FlashcardTextarea
@@ -565,42 +587,30 @@ export const TranslatorView = React.memo(function TranslatorView({
 						id={`${viewId}-translator-input`}
 						variant="unstyled"
 						value={snapshot.input}
+						lang={snapshot.settings.direction === "zh-en" ? "zh" : "en"}
 						placeholder={strings.inputPlaceholder}
+						aria-describedby={setupHint ? undefined : shortcutId}
 						disabled={isLoading || !snapshot.settings.enabled}
 						spellCheck
+						rows={5}
 						onChange={(event) => runtime.setInput(event.target.value)}
 						onKeyDown={(event) => {
 							if (
 								event.key === "Enter" &&
+								!event.nativeEvent.isComposing &&
 								(event.ctrlKey || event.metaKey) &&
 								canTranslate
 							) {
 								event.preventDefault();
-								void runtime.translate();
+								submitTranslation();
 							}
 						}}
 					/>
 					<footer>
-						<div className={styles.inputActions}>
-							<FlashcardButton
-								variant="primary"
-								disabled={!canTranslate}
-								onClick={() => void runtime.translate()}
-							>
-								{isLoading ? strings.translating : strings.translate}
-							</FlashcardButton>
-							<FlashcardButton
-								preset="icon"
-								variant="secondary"
-								icon={Trash2}
-								title={strings.clear}
-								aria-label={strings.clear}
-								disabled={!canClear}
-								onClick={handleClear}
-							/>
-							{showUndo && (
-								<output className={styles.undoBar}>
-									<span>{strings.clearedNotice}</span>
+						<div className={styles.inputMeta}>
+							{snapshot.clearUndoId !== null ? (
+								<div className={styles.undoBar}>
+									<span aria-hidden="true">{strings.clearedNotice}</span>
 									<button
 										type="button"
 										className={styles.undoBtn}
@@ -608,100 +618,129 @@ export const TranslatorView = React.memo(function TranslatorView({
 									>
 										{strings.undo}
 									</button>
-								</output>
+								</div>
+							) : (
+								<span>
+									{setupHint ??
+										formatTranslationString(strings.characterCount, {
+											count: snapshot.input.length,
+										})}
+								</span>
+							)}
+							<output className={styles.srOnly}>
+								{snapshot.clearUndoId !== null ? strings.clearedNotice : ""}
+							</output>
+						</div>
+						<div className={styles.inputActions}>
+							<FlashcardButton
+								preset="icon"
+								variant="ghost"
+								icon={Trash2}
+								title={strings.clear}
+								aria-label={strings.clear}
+								disabled={!canClear}
+								onClick={handleClear}
+							/>
+							{setupHint ? (
+								<FlashcardButton variant="primary" onClick={onOpenSettings}>
+									{strings.configureProfiles}
+								</FlashcardButton>
+							) : (
+								<FlashcardButton
+									variant={canTranslate || isLoading ? "primary" : "neutral"}
+									disabled={!canTranslate}
+									onClick={submitTranslation}
+									aria-keyshortcuts="Control+Enter Meta+Enter"
+								>
+									{isLoading
+										? strings.translating
+										: formatTranslationString(strings.translate, {
+												count: readyCount,
+											})}
+								</FlashcardButton>
 							)}
 						</div>
-						<span className={styles.shortcutHint}>{strings.shortcutHint}</span>
 					</footer>
 				</article>
 
 				<section className={styles.outputSection} aria-label={strings.outputLabel}>
-					<div className={styles.outputHeader}>
+					<header>
 						<div className={styles.outputHeading}>
 							<span className={styles.outputLabelText}>{strings.outputLabel}</span>
 							<span className={styles.langPill}>{targetLanguage}</span>
 						</div>
-						<div className={styles.outputControls}>
-							{configuredProfiles.length > 0 && (
-								<div
-									className={styles.segmented}
-									role="tablist"
-									aria-label={strings.outputLabel}
-								>
-									{configuredProfiles.map((profile) => (
-										<button
-											key={profile.id}
-											id={`${viewId}-tab-${profile.id}`}
-											role="tab"
-											type="button"
-											aria-selected={effectiveTab === profile.id}
-											aria-controls={`${viewId}-panel-${profile.id}`}
-											className={cls(
-												styles.segmentButton,
-												effectiveTab === profile.id && styles.active,
-											)}
-											onClick={() => setActiveTab(profile.id)}
-										>
-											{profile.name}
-										</button>
-									))}
-									{configuredProfiles.length > 1 && (
-										<button
-											id={`${viewId}-tab-all`}
-											role="tab"
-											type="button"
-											aria-selected={effectiveTab === "all"}
-											aria-controls={`${viewId}-panel-all`}
-											className={cls(
-												styles.segmentButton,
-												effectiveTab === "all" && styles.active,
-											)}
-											onClick={() => setActiveTab("all")}
-										>
-											{strings.compareTable}
-										</button>
-									)}
-								</div>
-							)}
-							{effectiveTab === "all" && configuredProfiles.length > 1 && (
-								<FlashcardButton
-									size="sm"
-									variant={showDiff ? "secondary" : "ghost"}
-									preset="icon"
-									icon={FileDiff}
-									title={strings.diffToggle}
-									aria-label={strings.diffToggle}
-									className={cls(
-										styles.diffButton,
-										showDiff && styles.diffActive,
-									)}
-									onClick={() => setShowDiff((prev) => !prev)}
-								/>
-							)}
-						</div>
-					</div>
-
-					{effectiveTab === "all" ? (
-						<div
-							id={`${viewId}-panel-all`}
-							role="tabpanel"
-							aria-labelledby={`${viewId}-tab-all`}
-							className={styles.compareStack}
-						>
-							{snapshot.results.map((result) => renderCard(result, true))}
-						</div>
-					) : (
-						singleResult && (
-							<div
-								id={`${viewId}-panel-${singleResult.id}`}
-								role="tabpanel"
-								aria-labelledby={`${viewId}-tab-${singleResult.id}`}
-								className={styles.singleContainer}
+						{showTabs && activeIndex === 0 && canHighlight && (
+							<FlashcardButton
+								size="sm"
+								variant={showDiff ? "secondary" : "ghost"}
+								icon={FileDiff}
+								aria-pressed={showDiff}
+								onClick={() => setShowDiff((prev) => !prev)}
 							>
-								{renderCard(singleResult, false)}
+								{strings.diffToggle}
+							</FlashcardButton>
+						)}
+					</header>
+					{isWaitingForResults ? (
+						<p className={styles.outputEmpty}>{strings.outputPlaceholder}</p>
+					) : showTabs ? (
+						<>
+							<div
+								className={styles.segmented}
+								role="tablist"
+								aria-label={strings.outputLabel}
+							>
+								{tabLabels.map((label, index) => (
+									<button
+										key={
+											index === 0
+												? "all"
+												: `profile:${results[index - 1]?.id}`
+										}
+										id={`${viewId}-tab-${index}`}
+										role="tab"
+										type="button"
+										aria-selected={index === activeIndex}
+										aria-controls={`${viewId}-panel-${index}`}
+										tabIndex={index === activeIndex ? 0 : -1}
+										className={styles.segmentButton}
+										onKeyDown={handleTabKey}
+										onClick={() => selectTab(index)}
+									>
+										{label}
+									</button>
+								))}
 							</div>
-						)
+							{tabLabels.map((_, index) => (
+								<div
+									key={index === 0 ? "all" : `profile:${results[index - 1]?.id}`}
+									id={`${viewId}-panel-${index}`}
+									role="tabpanel"
+									aria-labelledby={`${viewId}-tab-${index}`}
+									tabIndex={0}
+									hidden={index !== activeIndex}
+									className={styles.resultStack}
+								>
+									{index === activeIndex &&
+										renderResults(
+											index === 0
+												? visibleResults
+												: visibleResults.filter(
+														(r) => r === results[index - 1],
+													),
+											index === 0,
+										)}
+								</div>
+							))}
+						</>
+					) : (
+						<div className={styles.resultStack}>
+							{renderResults(visibleResults, false)}
+						</div>
 					)}
+					<footer>
+						<output>{statusText}</output>
+					</footer>
 				</section>
 			</section>
 		</main>

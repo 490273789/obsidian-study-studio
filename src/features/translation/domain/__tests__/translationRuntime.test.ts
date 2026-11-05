@@ -43,6 +43,11 @@ function setup() {
 	const settings: TranslationSettings = {
 		...normalizeTranslationSettings(undefined),
 		enabled: true,
+		youdao: {
+			baseUrl: "https://openapi.youdao.com/api",
+			appKeySecretId: "youdao-app-key",
+			appSecretSecretId: "youdao-app-secret",
+		},
 		profiles: [
 			{ id: "a", name: "A", kind: "engine", configId: "a", enabled: true },
 			{ id: "b", name: "B", kind: "youdao", configId: "", enabled: true },
@@ -113,14 +118,35 @@ describe("translation session", () => {
 		expect(youdao).toHaveBeenCalledTimes(2);
 		runtime.dispose();
 	});
-	it("does not fall back to default when a selected engine disappears", async () => {
+	it("skips a missing engine while still translating with a configured profile", async () => {
 		const { runtime, ai, request } = setup();
 		await ai.deleteConfig("a");
 		runtime.setInput("你好");
 		await runtime.translate();
-		expect(runtime.getSnapshot().results[0]?.error).toBe("config-not-found");
+		expect(runtime.getSnapshot().results[0]).toMatchObject({
+			setupIssue: "engineSetup",
+			status: "idle",
+		});
 		expect(request).not.toHaveBeenCalled();
 		expect(runtime.getSnapshot().results[1]?.status).toBe("success");
+		runtime.dispose();
+	});
+	it("preserves the source and sends nothing if no profile is configured", async () => {
+		const { runtime, settings, ai, request, youdao } = setup();
+		await ai.deleteConfig("a");
+		await runtime.configure({
+			...settings,
+			youdao: { ...settings.youdao, appSecretSecretId: "" },
+		});
+		runtime.setInput("保留原文");
+		await runtime.translate();
+		expect(runtime.getSnapshot().input).toBe("保留原文");
+		expect(runtime.getSnapshot().results.map((result) => result.setupIssue)).toEqual([
+			"engineSetup",
+			"youdaoSetup",
+		]);
+		expect(request).not.toHaveBeenCalled();
+		expect(youdao).not.toHaveBeenCalled();
 		runtime.dispose();
 	});
 	it("discards old results and old cache entries after prefill", async () => {
@@ -270,29 +296,69 @@ describe("translation session", () => {
 		runtime.dispose();
 	});
 
-	it("restores previously cleared input and results", () => {
-		const { runtime } = setup();
+	it("undoes a clear once and restores the source and completed translations without a request", async () => {
+		const { runtime, request, youdao } = setup();
 		runtime.setInput("original input");
-		const mockResults = [
-			{
-				id: "deepseek",
-				name: "DeepSeek",
-				model: "deepseek-v3",
-				provider: "deepseek",
-				status: "success" as const,
-				text: "translated text",
-			},
-		];
-		runtime.clear();
+		await runtime.translate();
+		runtime.clear({ undoable: true });
+		const id = runtime.getSnapshot().clearUndoId;
+		expect(id).not.toBeNull();
 		expect(runtime.getSnapshot().input).toBe("");
 
-		runtime.restore("original input", mockResults);
+		expect(runtime.undoClear(id!)).toBe(true);
 		const snapshot = runtime.getSnapshot();
 		expect(snapshot.input).toBe("original input");
-		expect(snapshot.results).toHaveLength(1);
-		expect(snapshot.results[0]!.text).toBe("translated text");
+		expect(snapshot.results[0]).toMatchObject({ status: "success", text: "Hello" });
+		expect(snapshot.results[1]).toMatchObject({ status: "success", text: "Hi" });
 		expect(snapshot.status).toBe("success");
-
+		expect(snapshot.clearUndoId).toBeNull();
+		expect(runtime.undoClear(id!)).toBe(false);
+		expect(request).toHaveBeenCalledTimes(1);
+		expect(youdao).toHaveBeenCalledTimes(1);
 		runtime.dispose();
 	});
+
+	it("rejects stale undo actions without replacing a newer draft or aborting its request", async () => {
+		const { runtime, request } = setup();
+		runtime.setInput("old input");
+		runtime.clear({ undoable: true });
+		const id = runtime.getSnapshot().clearUndoId!;
+		runtime.setInput("new input");
+		expect(runtime.getSnapshot().clearUndoId).toBeNull();
+		const gate = deferred<OutboundResponse>();
+		request.mockReturnValueOnce(gate.promise);
+		const pending = runtime.translate();
+		expect(runtime.undoClear(id)).toBe(false);
+		expect(runtime.getSnapshot()).toMatchObject({ input: "new input", status: "loading" });
+		gate.resolve(response("New translation"));
+		await pending;
+		expect(runtime.getSnapshot().results[0]?.text).toBe("New translation");
+
+		runtime.clear({ undoable: true });
+		const newId = runtime.getSnapshot().clearUndoId!;
+		expect(runtime.undoClear(id)).toBe(false);
+		expect(runtime.undoClear(newId)).toBe(true);
+		expect(runtime.getSnapshot().input).toBe("new input");
+		runtime.dispose();
+	});
+
+	it.each(["prefill", "direction", "engine"] as const)(
+		"invalidates undo after a %s change",
+		async (change) => {
+			const { runtime, ai } = setup();
+			runtime.setInput("original input");
+			await runtime.translate();
+			runtime.clear({ undoable: true });
+			const id = runtime.getSnapshot().clearUndoId!;
+			if (change === "prefill") await runtime.openPrefilled("新选区");
+			if (change === "direction") await runtime.swapDirection();
+			if (change === "engine") await ai.deleteConfig("a");
+
+			expect(runtime.getSnapshot().clearUndoId).toBeNull();
+			expect(runtime.undoClear(id)).toBe(false);
+			expect(runtime.getSnapshot().input).toBe(change === "prefill" ? "新选区" : "");
+			expect(runtime.getSnapshot().results.every((result) => !result.text)).toBe(true);
+			runtime.dispose();
+		},
+	);
 });
