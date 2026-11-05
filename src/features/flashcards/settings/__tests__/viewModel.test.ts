@@ -215,4 +215,55 @@ describe("flashcard settings presentation", () => {
 			text: "Failed to read cache usage",
 		});
 	});
+
+	it("collapses configured tags when more than three exist and toggles on action", async () => {
+		const actions = makeActions();
+		actions.toggleTagsCollapsed = vi.fn();
+		const tags = ["#t1", "#t2", "#t3", "#t4", "#t5"];
+
+		// Default for > 3 tags: collapsed
+		const collapsedPres = buildSettingsViewModel(
+			{
+				settings: makeSettings({ flashcardTags: tags }),
+				availableTags: [],
+				isLoadingTags: false,
+				hasLoadedTags: true,
+				language: "zh",
+				pronunciation: DEFAULT_PRONUNCIATION_STATE.pronunciation,
+			},
+			actions,
+		);
+
+		const collapsedRow = row(collapsedPres, "flashcards", "configured-tags");
+		expect(collapsedRow.controls.some((c) => c.key === "tags")).toBe(false);
+		expect(collapsedRow.description).toContain("5");
+		const toggleBtn = control(collapsedRow, "toggle-collapse");
+		expect(toggleBtn.kind).toBe("button");
+		if (toggleBtn.kind === "button") {
+			expect(toggleBtn.label).toContain("5");
+			await collapsedPres.invoke({ action: toggleBtn.action, value: undefined });
+		}
+		expect(actions.toggleTagsCollapsed).toHaveBeenCalledOnce();
+
+		// When expanded
+		const expandedPres = buildSettingsViewModel(
+			{
+				settings: makeSettings({ flashcardTags: tags }),
+				availableTags: [],
+				isLoadingTags: false,
+				hasLoadedTags: true,
+				language: "zh",
+				pronunciation: DEFAULT_PRONUNCIATION_STATE.pronunciation,
+				tagsCollapsed: false,
+			},
+			actions,
+		);
+
+		const expandedRow = row(expandedPres, "flashcards", "configured-tags");
+		expect(expandedRow.controls.some((c) => c.key === "tags")).toBe(true);
+		const expandedToggle = control(expandedRow, "toggle-collapse");
+		if (expandedToggle.kind === "button") {
+			expect(expandedToggle.label).toBe("收起标签");
+		}
+	});
 });

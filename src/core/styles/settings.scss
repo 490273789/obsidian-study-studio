@@ -221,6 +221,18 @@
 	display: flex;
 	align-items: center;
 	gap: var(--fc-space-2);
+
+	.fc-btn-remove {
+		--fc-button-bg: transparent;
+		--fc-button-border: var(--fc-line);
+		--fc-button-text: var(--fc-muted);
+
+		&:hover:not(:disabled) {
+			--fc-button-bg: color-mix(in srgb, var(--fc-danger) 12%, var(--fc-surface-card));
+			--fc-button-border: var(--fc-danger);
+			--fc-button-text: var(--fc-danger);
+		}
+	}
 }
 
 .fc-settings-input {

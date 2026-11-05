@@ -89,6 +89,10 @@ export const flashcardTranslations = {
 		"settings.languageEn": "English",
 		"settings.flashcardTagsName": "闪卡标签",
 		"settings.flashcardTagsDesc": "每个标签代表一个题库，插件会扫描所有带有这些标签的文件",
+		"settings.flashcardTagsCollapsedDesc":
+			"已配置 {count} 个题库标签（{preview} 等）。点击“展开标签”可编辑或添加。",
+		"settings.expandTags": "展开标签 ({count})",
+		"settings.collapseTags": "收起标签",
 		"settings.flashcardTagPlaceholder": "#标签名",
 		"settings.addTag": "+ 添加标签",
 		"settings.refreshTags": "刷新",
@@ -596,6 +600,10 @@ export const flashcardTranslations = {
 		"settings.flashcardTagsName": "Flashcard tags",
 		"settings.flashcardTagsDesc":
 			"Each tag represents a deck. The plugin scans files with these tags.",
+		"settings.flashcardTagsCollapsedDesc":
+			"{count} question bank tags configured ({preview}...). Expand to edit or add.",
+		"settings.expandTags": "Expand tags ({count})",
+		"settings.collapseTags": "Collapse tags",
 		"settings.flashcardTagPlaceholder": "#tagName",
 		"settings.addTag": "+ Add tag",
 		"settings.refreshTags": "Refresh",

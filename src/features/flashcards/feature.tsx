@@ -451,6 +451,8 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 		}
 	};
 
+	let tagsCollapsed: boolean | null = null;
+
 	const createSettingsActions = (host: FlashcardWorkbenchHost): SettingsViewModelActions => {
 		const patchTags = (mutate: (tags: string[]) => void) => {
 			const flashcardTags = [...host.settings.read().flashcardTags];
@@ -465,12 +467,23 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 				patchTags((tags) => {
 					tags[index] = value;
 				}),
-			addFlashcardTag: () => patchTags((tags) => tags.push("")),
+			addFlashcardTag: () => {
+				tagsCollapsed = false;
+				return patchTags((tags) => tags.push(""));
+			},
 			removeFlashcardTag: (index) =>
 				patchTags((tags) => {
 					tags.splice(index, 1);
 				}),
-			addDiscoveredTag: (tag) => patchTags((tags) => tags.push(tag)),
+			addDiscoveredTag: (tag) => {
+				tagsCollapsed = false;
+				return patchTags((tags) => tags.push(tag));
+			},
+			toggleTagsCollapsed: () => {
+				const current = tagsCollapsed ?? host.settings.read().flashcardTags.length > 3;
+				tagsCollapsed = !current;
+				host.settingsTab.refresh(FLASHCARD_SECTION_ID);
+			},
 			setLanguage: async (language) => {
 				await host.settings.setLanguage(language);
 				host.settingsTab.refresh();
@@ -521,6 +534,8 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 		label: (language: Language) => createTranslator(language)("settings.tabFlashcards"),
 		presentation: (language) => {
 			ensureAvailableTagsLoaded();
+			const flashcardTags = host.settings.read().flashcardTags;
+			const isTagsCollapsed = tagsCollapsed ?? flashcardTags.length > 3;
 			return buildSettingsViewModel(
 				{
 					settings: host.settings.read(),
@@ -529,6 +544,7 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 					hasLoadedTags,
 					language,
 					pronunciation: activeServices().pronunciationRuntime.getSnapshot(),
+					tagsCollapsed: isTagsCollapsed,
 				},
 				createSettingsActions(host),
 			);

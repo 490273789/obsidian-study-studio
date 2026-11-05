@@ -15,13 +15,14 @@ import type { PronunciationCacheUsage, PronunciationSnapshot } from "../domain/p
 import { createTranslator } from "../strings/index";
 import { STUDY_ORDER_OPTIONS, STUDY_SETTINGS_LIMITS, parseStudyOrder } from "./studyMeta";
 
-interface SettingsViewModelState {
+export interface SettingsViewModelState {
 	settings: ScopedWorkbenchSettings<"flashcards">;
 	availableTags: string[];
 	isLoadingTags: boolean;
 	hasLoadedTags: boolean;
 	language: Language;
 	pronunciation: PronunciationSnapshot;
+	tagsCollapsed?: boolean;
 }
 
 export interface SettingsViewModelActions {
@@ -30,6 +31,7 @@ export interface SettingsViewModelActions {
 	addFlashcardTag: () => SettingsActionResult;
 	removeFlashcardTag: (index: number) => SettingsActionResult;
 	addDiscoveredTag: (tag: string) => SettingsActionResult;
+	toggleTagsCollapsed?: () => SettingsActionResult;
 	setLanguage: (language: Language) => SettingsActionResult;
 	setDailyNewCards: (value: number) => SettingsActionResult;
 	setDailyReviewCards: (value: number) => SettingsActionResult;
@@ -62,11 +64,21 @@ export function buildSettingsViewModel(
 
 	return defineSettings("flashcards", (page) => {
 		page.group("flashcards", t("settings.flashcardGroup"), (group) => {
+			const tagCount = state.settings.flashcardTags.length;
+			const isTagsCollapsed = state.tagsCollapsed ?? tagCount > 3;
+			const toggleTagsCollapsed = actions.toggleTagsCollapsed;
+			const tagsSummary = isTagsCollapsed
+				? t("settings.flashcardTagsCollapsedDesc", {
+						count: tagCount,
+						preview: state.settings.flashcardTags.slice(0, 3).join(", "),
+					})
+				: t("settings.flashcardTagsDesc");
+
 			group.row(
 				"configured-tags",
 				{
 					name: t("settings.flashcardTagsName"),
-					description: t("settings.flashcardTagsDesc"),
+					description: tagsSummary,
 				},
 				(row) => {
 					row.button("refresh", {
@@ -76,15 +88,25 @@ export function buildSettingsViewModel(
 						disabled: state.isLoadingTags,
 						onPress: () => actions.refreshTags({ cleanConfiguredTags: true }),
 					});
-					row.editableList("tags", {
-						values: state.settings.flashcardTags,
-						placeholder: t("settings.flashcardTagPlaceholder"),
-						addLabel: t("settings.addTag"),
-						removeAriaLabel: t("settings.delete"),
-						onChange: actions.updateFlashcardTag,
-						onAdd: actions.addFlashcardTag,
-						onRemove: actions.removeFlashcardTag,
-					});
+					if (toggleTagsCollapsed && tagCount > 1) {
+						row.button("toggle-collapse", {
+							label: isTagsCollapsed
+								? t("settings.expandTags", { count: tagCount })
+								: t("settings.collapseTags"),
+							onPress: toggleTagsCollapsed,
+						});
+					}
+					if (!isTagsCollapsed) {
+						row.editableList("tags", {
+							values: state.settings.flashcardTags,
+							placeholder: t("settings.flashcardTagPlaceholder"),
+							addLabel: t("settings.addTag"),
+							removeAriaLabel: t("settings.delete"),
+							onChange: actions.updateFlashcardTag,
+							onAdd: actions.addFlashcardTag,
+							onRemove: actions.removeFlashcardTag,
+						});
+					}
 				},
 			);
 			group.row(
