@@ -10,6 +10,7 @@ import type {
 } from "../../domain/types";
 import type { SubtitleDraftSnapshot } from "../../domain/subtitleDraftEngine";
 import { AudioPracticeView } from "../AudioPracticeView";
+import { PracticeSummary } from "../PracticeSummary";
 
 const hooks = vi.hoisted(() => ({
 	index: 0,
@@ -59,6 +60,9 @@ interface ElementProps {
 	onClick?: () => void;
 	onCancel?: () => void;
 	onSubmit?: () => void;
+	onConfirm?: () => void;
+	title?: string;
+	message?: string;
 	onField?: (field: string, value: string) => void;
 	onText?: (value: string) => void;
 	onReadTextFile?: (path: string) => void;
@@ -76,6 +80,12 @@ function elements(node: React.ReactNode): React.ReactElement<ElementProps>[] {
 function dialog(node: React.ReactNode): React.ReactElement<ElementProps> {
 	const found = elements(node).find((element) => element.props.onSubmit && element.props.onField);
 	if (!found) throw new Error("Expected material dialog");
+	return found;
+}
+
+function confirmDialog(node: React.ReactNode): React.ReactElement<ElementProps> {
+	const found = elements(node).find((element) => element.props.onConfirm);
+	if (!found) throw new Error("Expected confirm dialog");
 	return found;
 }
 
@@ -353,6 +363,69 @@ describe("listening material operations view", () => {
 		).toBe(false);
 	});
 
+	it("shows a loading state instead of the empty state while materials load", () => {
+		const h = harness();
+		const bodyText = () =>
+			elements(h.view())
+				.map((element) => element.props.children)
+				.filter((child): child is string => typeof child === "string");
+		h.update({ currentMaterial: null, currentMaterialId: null });
+		expect(bodyText()).toContain("Add audio to practice listening and speaking");
+		h.update({ loading: true });
+		expect(bodyText()).toContain("Loading materials…");
+		expect(bodyText()).not.toContain("Add audio to practice listening and speaking");
+	});
+
+	it("shows the marked-sentence count on the material row", () => {
+		const h = harness();
+		const selectLabel = () =>
+			elements(h.view()).find((element) => element.props["aria-current"] === "true")?.props[
+				"aria-label"
+			];
+		expect(selectLabel()).toBeUndefined();
+		h.update({
+			progress: {
+				material: { time: 0, cueId: null, difficultCueIds: ["cue-1", "cue-2"], offset: 0 },
+			},
+		});
+		expect(selectLabel()).toBe("Original · 2 marked difficult");
+	});
+
+	it("surfaces the session summary only once the last sentence is reached", () => {
+		const h = harness();
+		const cues = [
+			{ id: "cue-1", text: "First", start: 0, end: 2 },
+			{ id: "cue-2", text: "Second", start: 2, end: 4 },
+		];
+		h.update({ cues, currentCueId: "cue-1", currentTime: 1, duration: 4 });
+		expect(elements(h.view()).some((element) => element.type === PracticeSummary)).toBe(false);
+
+		h.update({ currentCueId: "cue-2", currentTime: 4 });
+		expect(elements(h.view()).some((element) => element.type === PracticeSummary)).toBe(true);
+	});
+
+	it("asks before removing a material record", () => {
+		const h = harness();
+		const removeButton = () =>
+			elements(h.view()).find(
+				(element) => element.props["aria-label"] === "Remove record: Original",
+			)!;
+		removeButton().props.onClick!();
+		expect(h.runtime.removeMaterial).not.toHaveBeenCalled();
+		const confirmation = confirmDialog(h.view());
+		expect(confirmation.props.title).toBe("Remove material");
+		expect(confirmation.props.message).toContain("Original");
+
+		confirmation.props.onCancel!();
+		expect(h.runtime.removeMaterial).not.toHaveBeenCalled();
+		expect(elements(h.view()).some((element) => element.props.onConfirm)).toBe(false);
+
+		removeButton().props.onClick!();
+		confirmDialog(h.view()).props.onConfirm!();
+		expect(h.runtime.removeMaterial).toHaveBeenCalledExactlyOnceWith("material");
+		expect(elements(h.view()).some((element) => element.props.onConfirm)).toBe(false);
+	});
+
 	it.each(["select", "remove"] as const)(
 		"shows %s failure with a shared dismissal that preserves other failures",
 		async (kind) => {
@@ -364,6 +437,7 @@ describe("listening material operations view", () => {
 					: element.props["aria-label"]?.startsWith("Remove"),
 			);
 			node!.props.onClick!();
+			if (kind === "remove") confirmDialog(h.view()).props.onConfirm!();
 			h.fail();
 			await flush();
 			h.update({ failure: { kind: "missing-file" } });

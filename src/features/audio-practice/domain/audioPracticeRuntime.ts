@@ -782,8 +782,10 @@ export class AudioPracticeRuntime {
 	}
 	setOffset(offset: number): void {
 		if (!Number.isFinite(offset)) return;
-		this.pause();
 		this.patchProgress({ offset });
+		// Keep listening while the learner nudges subtitles into sync; only the
+		// sentence boundary needs re-aiming (a no-op when paused).
+		this.scheduleBoundary();
 		void this.persist();
 		this.publish();
 	}

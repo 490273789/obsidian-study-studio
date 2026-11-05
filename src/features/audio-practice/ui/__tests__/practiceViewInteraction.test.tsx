@@ -237,6 +237,48 @@ describe("PracticeViewInteraction", () => {
 		expect(togglePlayback).not.toHaveBeenCalled();
 	});
 
+	it("leaves activation keys to focused controls but keeps them on cue rows", () => {
+		const togglePlayback = vi.fn();
+		const interaction = new PracticeViewInteraction({
+			runtime: {
+				togglePlayback,
+				previous: vi.fn(),
+				next: vi.fn(),
+				pause: vi.fn(),
+				bindMedia: vi.fn(() => () => {}),
+			},
+		});
+
+		const target = (attributes: Record<string, string>) => {
+			const element = {
+				closest(selector: string) {
+					if (selector.includes("[contenteditable")) return null;
+					return selector.includes("button") ? element : null;
+				},
+				hasAttribute(name: string) {
+					return name in attributes;
+				},
+			};
+			return element as unknown as Element;
+		};
+		const keyEvent = (key: string, eventTarget: Element) =>
+			({
+				key,
+				defaultPrevented: false,
+				preventDefault: vi.fn(),
+				altKey: false,
+				ctrlKey: false,
+				metaKey: false,
+				target: eventTarget,
+			}) as unknown as KeyboardEvent;
+
+		interaction.handleKeyDown(keyEvent(" ", target({})));
+		expect(togglePlayback).not.toHaveBeenCalled();
+
+		interaction.handleKeyDown(keyEvent(" ", target({ "data-cue-row": "true" })));
+		expect(togglePlayback).toHaveBeenCalledTimes(1);
+	});
+
 	it("binds media and pauses on ownerDocument visibilitychange", () => {
 		const pause = vi.fn();
 		const releaseMedia = vi.fn();

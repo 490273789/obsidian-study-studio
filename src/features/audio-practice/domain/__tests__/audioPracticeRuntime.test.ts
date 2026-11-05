@@ -241,6 +241,18 @@ describe("audio practice runtime", () => {
 		expect(media.currentTime).toBe(2);
 		runtime.dispose();
 	});
+	it("keeps playing while the subtitle offset is nudged", async () => {
+		const { runtime, media } = await setup();
+		runtime.togglePlayback();
+		expect(media.paused).toBe(false);
+		runtime.setOffset(0.4);
+		expect(media.paused).toBe(false);
+		expect(
+			runtime.getSnapshot().progress[runtime.getSnapshot().currentMaterialId!]?.offset,
+		).toBe(0.4);
+		runtime.dispose();
+	});
+
 	it("reschedules boundaries for playback rate and seeking and cancels on close", async () => {
 		vi.useFakeTimers();
 		const { runtime, media, release } = await setup();

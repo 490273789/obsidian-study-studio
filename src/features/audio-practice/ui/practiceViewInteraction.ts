@@ -1,6 +1,23 @@
 import type { AudioPracticeRuntime } from "../domain/audioPracticeRuntime";
 import { AUDIO_PLAYBACK_RATES } from "../domain/types";
 
+const EDITABLE_SELECTOR = "input,textarea,select,[contenteditable=true]";
+const CONTROL_SELECTOR = "button,[role=button],a[href]";
+
+/**
+ * Cue rows are buttons so they can receive roving focus, but they keep acting
+ * like the practice surface: Space, arrows, and the letter shortcuts stay with
+ * the panel there. Every other control keeps its own native key handling.
+ */
+export const CUE_ROW_ATTRIBUTE = "data-cue-row";
+
+export function blocksPracticeShortcut(target: Element | null): boolean {
+	if (!target?.closest) return false;
+	if (target.closest(EDITABLE_SELECTOR)) return true;
+	const control = target.closest(CONTROL_SELECTOR);
+	return Boolean(control && !control.hasAttribute(CUE_ROW_ATTRIBUTE));
+}
+
 export interface PracticeViewInteractionOptions {
 	readonly runtime: Pick<
 		AudioPracticeRuntime,
@@ -41,7 +58,7 @@ export class PracticeViewInteraction {
 			event.metaKey ||
 			(event as KeyboardEvent).isComposing ||
 			("nativeEvent" in event && event.nativeEvent.isComposing) ||
-			target?.closest?.("input,textarea,select,[contenteditable=true]")
+			blocksPracticeShortcut(target)
 		) {
 			return;
 		}

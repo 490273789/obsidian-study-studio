@@ -182,6 +182,24 @@
 	transition: opacity var(--fc-motion-quick) ease;
 }
 
+.materialMark {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	gap: 2px;
+	min-width: 20px;
+	height: 18px;
+	padding: 0 5px;
+	margin-inline-end: var(--fc-space-1);
+	border: 1px solid var(--fc-line-soft);
+	border-radius: var(--fc-radius-pill);
+	background: var(--fc-surface-control);
+	color: var(--fc-muted);
+	font-size: var(--fc-font-2xs);
+	font-variant-numeric: tabular-nums;
+}
+
 .materialRow:hover .materialRemove,
 .materialRow:focus-within .materialRemove {
 	opacity: 1;
@@ -529,7 +547,7 @@
 .cueText {
 	min-width: 0;
 	color: color-mix(in srgb, var(--fc-text) 80%, var(--fc-muted));
-	font-size: var(--fc-font-md);
+	font-size: var(--fc-font-lg);
 	font-weight: var(--fc-weight-regular);
 	line-height: var(--fc-line-reading);
 	overflow-wrap: anywhere;
@@ -546,6 +564,12 @@
 
 :global(.theme-light) .cueWordSpoken {
 	color: var(--fc-primary-text-light);
+}
+
+/* The active-row tint lowers cyan contrast below body-text AA; the row already
+ * carries a rail and a tint, so the timestamp falls back to the text ink here. */
+:global(.theme-light) .cueActive .cueTime {
+	color: var(--fc-text);
 }
 
 .draftWordFallback {
@@ -571,7 +595,7 @@
 	height: var(--fc-control-sm);
 	margin: var(--fc-space-1) var(--fc-space-2) 0 0;
 	border-radius: var(--fc-radius-sm);
-	opacity: 0.55;
+	opacity: 0.75;
 	transition:
 		opacity var(--fc-motion-quick) ease,
 		background var(--fc-motion-quick) ease,
@@ -869,6 +893,63 @@
 		outline: 1px solid var(--fc-primary);
 		border-radius: var(--fc-radius-sm);
 	}
+}
+
+/* End-of-session summary rail, between the sentence list and the player dock. */
+.summary {
+	display: flex;
+	flex: none;
+	align-items: center;
+	gap: var(--fc-space-3);
+	padding: var(--fc-space-2) var(--fc-space-4);
+	border-top: 1px solid var(--fc-line);
+	background: color-mix(in srgb, var(--fc-primary) 6%, var(--fc-surface-section));
+}
+
+.summaryIcon {
+	display: inline-flex;
+	flex: none;
+	color: var(--fc-primary);
+}
+
+:global(.theme-light) .summaryIcon {
+	color: var(--fc-primary-text-light);
+}
+
+.summaryText {
+	display: flex;
+	min-width: 0;
+	flex: 1 1 auto;
+	flex-direction: column;
+	gap: 1px;
+}
+
+.summaryTitle {
+	margin: 0;
+	color: var(--fc-text);
+	font-size: var(--fc-font-sm);
+	font-weight: var(--fc-weight-semibold);
+	line-height: var(--fc-line-tight);
+}
+
+.summaryMeta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--fc-space-1);
+	margin: 0;
+	color: var(--fc-muted);
+	font-size: var(--fc-font-xs);
+	font-variant-numeric: tabular-nums;
+	line-height: var(--fc-line-body);
+}
+
+.summaryActions {
+	display: flex;
+	flex: none;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--fc-space-2);
 }
 
 /* Dialogs */
@@ -1211,6 +1292,15 @@
 
 	.fieldGrid {
 		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.summary {
+		flex-wrap: wrap;
+	}
+
+	.summaryActions {
+		width: 100%;
+		justify-content: flex-end;
 	}
 
 	.reviewSummary {

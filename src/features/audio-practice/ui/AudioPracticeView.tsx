@@ -38,6 +38,7 @@ import { PlaybackRateControl } from "../../../core/ui/primitives/PlaybackRate";
 import { FlashcardSelect } from "../../../core/ui/primitives/Select";
 import { FlashcardSlider } from "../../../core/ui/primitives/Slider";
 import type {
+	AudioMaterial,
 	AudioPracticeCatalog,
 	AudioPracticeDraftSnapshot,
 	AudioPracticeFiles,
@@ -51,11 +52,21 @@ import { audioFailureCopy } from "../strings/failures";
 import { audioPracticeStrings } from "../strings/audioPractice";
 import type { AudioPracticeStrings } from "../strings/audioPractice";
 import { MaterialEditSession, type MaterialEditSessionSnapshot } from "./materialEditSession";
-import { PracticeViewInteraction } from "./practiceViewInteraction";
+import {
+	blocksPracticeShortcut,
+	CUE_ROW_ATTRIBUTE,
+	PracticeViewInteraction,
+} from "./practiceViewInteraction";
 import { ReviewDialog } from "./ReviewDialog";
+import { PracticeSummary } from "./PracticeSummary";
+import { PracticeSessionClock, practiceCompletion } from "./practiceSession";
 import styles from "./AudioPractice.module.scss";
 
 export { ReviewDialog as DraftReviewDialog, DraftReviewBody } from "./ReviewDialog";
+
+const CUE_ROW_PROPS = {
+	[CUE_ROW_ATTRIBUTE]: "true",
+} as React.ButtonHTMLAttributes<HTMLButtonElement>;
 
 const EMPTY_DRAFT: SubtitleDraftSnapshot = {
 	status: "idle",
@@ -135,6 +146,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 	const [libraryCollapsed, setLibraryCollapsed] = useState(false);
 	const [playerOptionsOpen, setPlayerOptionsOpen] = useState(false);
 	const [regenerateConfirmOpen, setRegenerateConfirmOpen] = useState(false);
+	const [removalTarget, setRemovalTarget] = useState<AudioMaterial | null>(null);
 	const libraryId = useId();
 	const materialActionsId = useId();
 	const playerOptionsId = useId();
@@ -146,6 +158,28 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 		? audioFailureCopy(language, operation.failure).message
 		: null;
 	const material = snapshot.currentMaterial;
+	const materialId = material?.id ?? null;
+	const sessionClock = useMemo(() => new PracticeSessionClock(), []);
+	const marks = materialId ? (snapshot.progress[materialId]?.difficultCueIds ?? []) : [];
+	const offset = materialId ? (snapshot.progress[materialId]?.offset ?? 0) : 0;
+	const visibleCues = snapshot.difficultOnly
+		? snapshot.cues.filter((cue) => marks.includes(cue.id))
+		: snapshot.cues;
+	const completion = practiceCompletion({
+		cues: visibleCues,
+		currentCueId: snapshot.currentCueId,
+		currentTime: snapshot.currentTime,
+		duration: snapshot.duration,
+		offset,
+		marked: marks.length,
+	});
+	const completed = completion !== null;
+	const sessionElapsedMs = useMemo(
+		() => (completed ? sessionClock.elapsedMs() : 0),
+		[completed, sessionClock],
+	);
+	const firstVisibleCue = visibleCues[0];
+	const firstMarkedCue = snapshot.cues.find((cue) => marks.includes(cue.id));
 	const generating = ["preparing", "transcribing", "aligning"].includes(draft.status);
 	const reviewReady = draft.status === "review";
 	const pendingCues = reviewReady ? draft.cues.filter((cue) => cue.needsReview).length : 0;
@@ -161,13 +195,18 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 	}, [interaction]);
 	useEffect(() => {
 		interaction.syncCueScroll(snapshot.currentCueId, practiceRef.current);
-	}, [snapshot.currentCueId, snapshot.playing, interaction]);
+	}, [snapshot.currentCueId, snapshot.playing, completed, interaction]);
+	useEffect(() => {
+		sessionClock.setPlaying(snapshot.playing);
+	}, [sessionClock, snapshot.playing]);
+	useEffect(() => {
+		sessionClock.reset();
+	}, [sessionClock, materialId]);
 	return (
 		<div className={cls("fc-page fc-page--fill", styles.page)}>
 			<FlashcardHeader
 				icon={Headphones}
 				title={t.title}
-				badge={snapshot.materials.length || undefined}
 				right={
 					<Button
 						preset="icon"
@@ -187,22 +226,30 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 				data-library-collapsed={libraryCollapsed}
 			>
 				<main className={styles.stage}>
-					{!material && (
-						<div className={cls("fc-panel", styles.empty)}>
-							<span className={styles.emptyIcon} aria-hidden="true">
-								<Headphones size={26} strokeWidth={1.6} />
-							</span>
-							<p className={styles.emptyText}>{t.empty}</p>
-							<Button
-								variant="primary"
-								icon={Plus}
-								disabled={materialBusy}
-								onClick={() => openMaterialDialog("add")}
-							>
-								{t.add}
-							</Button>
-						</div>
-					)}
+					{!material &&
+						(snapshot.loading ? (
+							<div className={cls("fc-panel", styles.empty)}>
+								<span className={styles.emptyIcon} aria-hidden="true">
+									<LoaderCircle size={26} className={styles.spinning} />
+								</span>
+								<p className={styles.emptyText}>{t.loadingMaterials}</p>
+							</div>
+						) : (
+							<div className={cls("fc-panel", styles.empty)}>
+								<span className={styles.emptyIcon} aria-hidden="true">
+									<Headphones size={26} strokeWidth={1.6} />
+								</span>
+								<p className={styles.emptyText}>{t.empty}</p>
+								<Button
+									variant="primary"
+									icon={Plus}
+									disabled={materialBusy}
+									onClick={() => openMaterialDialog("add")}
+								>
+									{t.add}
+								</Button>
+							</div>
+						))}
 					{material && (
 						<>
 							<section className={styles.materialBar} aria-label={material.title}>
@@ -210,7 +257,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 									<h2 className={styles.materialTitle}>{material.title}</h2>
 									<div className={cls("fc-meta", styles.materialMeta)}>
 										<span className="fc-meta__text" title={material.audioPath}>
-											{material.audioPath}
+											{fileName(material.audioPath)}
 										</span>
 										<span className="fc-meta__dot" aria-hidden="true" />
 										<span className="fc-meta__text">
@@ -365,7 +412,27 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 								playerOptionsOpen={playerOptionsOpen}
 								playerOptionsId={playerOptionsId}
 								onTogglePlayerOptions={() => setPlayerOptionsOpen((open) => !open)}
-							/>
+							>
+								{completion && (
+									<PracticeSummary
+										completion={completion}
+										elapsedMs={sessionElapsedMs}
+										t={t}
+										canPracticeDifficult={
+											!snapshot.difficultOnly && firstMarkedCue !== undefined
+										}
+										onReplay={() => {
+											if (firstVisibleCue)
+												runtime.selectCue(firstVisibleCue.id, true);
+										}}
+										onPracticeDifficult={() => {
+											runtime.setDifficultOnly(true);
+											if (firstMarkedCue)
+												runtime.selectCue(firstMarkedCue.id, true);
+										}}
+									/>
+								)}
+							</PracticeSurface>
 						</>
 					)}
 					{operationError && edit.failure === null && (
@@ -428,6 +495,8 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 						)}
 						{snapshot.materials.map((item) => {
 							const active = item.id === material?.id;
+							const markedCount =
+								snapshot.progress[item.id]?.difficultCueIds.length ?? 0;
 							return (
 								<div
 									key={item.id}
@@ -441,6 +510,11 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 										className={styles.materialSelect}
 										disabled={materialBusy}
 										aria-current={active ? "true" : undefined}
+										aria-label={
+											markedCount > 0
+												? `${item.title} · ${t.summaryMarks(markedCount)}`
+												: undefined
+										}
 										onClick={() =>
 											void runtime.selectMaterial(item.id).then(
 												() => {
@@ -459,6 +533,16 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 											{fileName(item.audioPath)}
 										</span>
 									</Button>
+									{markedCount > 0 && (
+										<span
+											className={styles.materialMark}
+											aria-hidden="true"
+											title={t.summaryMarks(markedCount)}
+										>
+											<Star size={11} aria-hidden="true" />
+											{markedCount}
+										</span>
+									)}
 									<Button
 										preset="icon"
 										size="sm"
@@ -467,9 +551,9 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 										aria-label={`${t.remove}: ${item.title}`}
 										title={t.remove}
 										disabled={materialBusy}
-										onClick={() =>
-											void runtime.removeMaterial(item.id).catch(() => {})
-										}
+										onClick={() => {
+											setRemovalTarget(item);
+										}}
 									/>
 								</div>
 							);
@@ -527,6 +611,22 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 					onConfirm={() => {
 						setRegenerateConfirmOpen(false);
 						void activeDraftEngine.generateForMaterial(material, { force: true });
+					}}
+				/>
+			)}
+			{removalTarget && (
+				<ConfirmDialog
+					kicker={t.removeConfirmKicker}
+					title={t.removeConfirmTitle}
+					message={t.removeConfirmDesc(removalTarget.title)}
+					tone="danger"
+					cancelText={t.cancel}
+					confirmText={t.removeConfirmAction}
+					onCancel={() => setRemovalTarget(null)}
+					onConfirm={() => {
+						const target = removalTarget;
+						setRemovalTarget(null);
+						void runtime.removeMaterial(target.id).catch(() => {});
 					}}
 				/>
 			)}
@@ -735,6 +835,7 @@ export function PracticeSurface({
 	playerOptionsOpen = false,
 	playerOptionsId = "audio-practice-player-options",
 	onTogglePlayerOptions,
+	children,
 }: {
 	runtime: AudioPracticeRuntime;
 	snapshot: AudioPracticeSnapshot;
@@ -744,6 +845,7 @@ export function PracticeSurface({
 	playerOptionsOpen?: boolean;
 	playerOptionsId?: string;
 	onTogglePlayerOptions?: () => void;
+	children?: React.ReactNode;
 }): React.ReactNode {
 	const marks = snapshot.currentMaterial
 		? (snapshot.progress[snapshot.currentMaterial.id]?.difficultCueIds ?? [])
@@ -766,7 +868,7 @@ export function PracticeSurface({
 			event.ctrlKey ||
 			event.metaKey ||
 			event.nativeEvent?.isComposing ||
-			target?.closest?.("input,textarea,select,[contenteditable=true]")
+			blocksPracticeShortcut(target)
 		) {
 			return;
 		}
@@ -881,7 +983,9 @@ export function PracticeSurface({
 				)}
 				<span className={styles.toolbarSpacer} />
 				<span className={styles.shortcutHint}>{t.shortcuts}</span>
-				<span className={styles.cueCount}>{t.segments(cues.length)}</span>
+				{snapshot.difficultOnly && (
+					<span className={styles.cueCount}>{t.segments(cues.length)}</span>
+				)}
 			</header>
 			<div className={styles.cueScroll}>
 				{cues.length === 0 ? (
@@ -903,6 +1007,7 @@ export function PracticeSurface({
 									className={cls(styles.cue, active && styles.cueActive)}
 								>
 									<Button
+										{...CUE_ROW_PROPS}
 										variant="ghost"
 										tabIndex={isFocusTarget ? 0 : -1}
 										className={styles.cueSelect}
@@ -953,6 +1058,7 @@ export function PracticeSurface({
 					</ol>
 				)}
 			</div>
+			{children}
 			{renderPlayerDock(
 				runtime,
 				snapshot,
@@ -1009,7 +1115,7 @@ function renderPlayerDock(
 						</span>
 					</span>
 				</div>
-				<fieldset className={styles.transport} aria-label={t.captions}>
+				<fieldset className={styles.transport} aria-label={t.playbackControls}>
 					<Button
 						preset="icon"
 						variant="ghost"
@@ -1075,7 +1181,9 @@ function renderPlayerDock(
 							}
 						/>
 						<div className={styles.offsetControl}>
-							<span className={styles.offsetLabel}>{t.offset}</span>
+							<span className={styles.offsetLabel} title={t.offsetHint}>
+								{t.offset}
+							</span>
 							<div className={styles.offsetStepper}>
 								<Button
 									preset="icon"
@@ -1095,7 +1203,8 @@ function renderPlayerDock(
 									inputSize="sm"
 									fullWidth={false}
 									className={styles.offsetInput}
-									aria-label={t.offset}
+									aria-label={t.offsetHint}
+									title={t.offsetHint}
 									value={offset}
 									onChange={(event) => {
 										if (Number.isFinite(event.target.valueAsNumber))
