@@ -25,7 +25,7 @@
 - 文件选取与稳定身份分配收敛为运行时的单一原子意图（`pickAndAddSources` / `pickAndReplaceSource`），经由平台 `VideoFilePickerPort` 完成，视图只渲染快照；
 - 装配并管理 `VideoSubtitleJobs` 与 `ShadowingWorkspaceSession`，向 `feature.tsx` 暴露紧凑高杠杆接口。
 
-`ShadowingSession` 拥有范围播放、停顿、录音、回听和失败保存队列；`VideoPlayerRuntime.playRange` 只实现有界播放。`ShadowingBridge` 发布视图所需的快照和意图，主视图与浮动视图共用同一实例。Presenter 交接时停止活动会话，关闭 view 不销毁插件生命周期的字幕任务。配置的跨功能借用只在 `src/features/index.ts`；`video-player` 不导入听说练习或翻译功能的内部模块。
+`ShadowingSession` 拥有范围播放、停顿、录音、回听和失败保存队列；`VideoPlayerRuntime.playRange` 只实现有界播放。`ShadowingWorkspaceSession` 发布视图所需的快照和意图，主视图与浮动视图共用同一实例。Presenter 交接时停止活动会话，关闭 view 不销毁插件生命周期的字幕任务。配置的跨功能借用只在 `src/features/index.ts`；`video-player` 不导入听说练习或翻译功能的内部模块。
 
 字幕和跟读按当前视频单独启用，默认关闭；启用列表只保存在设备本地。关闭时隐藏主视图的字幕侧栏及浮动字幕控件，并取消当前跟读会话。队列是顶部紧凑栏，展开列表浮在内容上方，不改变视频宽度。
 
@@ -41,6 +41,18 @@ video-player 只传递已接受的签名。每条排队字幕在发请求前重�
 也不在指纹检查之后重新拼装当前设置。设置页只提供引擎下拉与“打开 AI 引擎设置”入口。
 
 ## Presentation 状态
+
+### 视频字幕修正
+
+`ui/subtitleEditingSession.ts` 的 `SubtitleEditingSession` 拥有一个 view 的选区、练习范围、修正草稿、提交与恢复状态。`feature.tsx` 在 view acquire 时创建它，关闭 view 时 dispose；React 与浮动呈现只读取快照并发送语义动作。
+
+- 草稿按视频与字幕保存在该 view 内存中；切换字幕、视频、主视图或浮动呈现后仍可恢复。不同 view 的草稿独立，关闭 view 清除草稿。
+- 编辑时从 `VideoSubtitleJobs.getCueEditTarget` 捕获目标；提交通过 `saveCueEdit` 绑定原视频和字幕。仅成功保存才退出编辑，失败保留输入，忙碌时阻止重复提交和修改字段。
+- `VideoSubtitleJobs` 拥有文档事务和持久化顺序：当前字幕变化或文档换代使旧编辑目标过期，其他字幕变化不使它过期。保存失败的修正不得进入共享文档或后续后台保存。
+- 切换或关闭 view 不取消已接受的保存，晚到结果只影响原草稿；关闭后的失败由 Obsidian Notice 提示。冲突恢复须明确确认丢弃该条草稿，再经 jobs 重新载入；不提供强制覆盖。
+- 交互测试通过真实 `SubtitleEditingSession` 的 interface 验证生命周期；文档测试通过真实 jobs 和延迟/失败的存储 adapter 验证提交语义。React 测试只验证快照和动作接线。
+
+### 播放呈现
 
 - 持久化值（`queueExpanded`、`floatingRect`）属于 runtime/store；interaction 的 snapshot 直接读 runtime 的当前值。
 - interaction 只持有临时呈现：`presentation.kind`、`maximized` 与当前手势期间的 rect。拖拽/缩放期间不写 runtime，手势结束才 `setFloatingRect`；这样每帧不触发落盘。

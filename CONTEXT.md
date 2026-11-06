@@ -198,6 +198,8 @@ source identity. A generated or imported candidate can be reviewed before replac
 the active cues.
 _Avoid_: Subtitle task, listening material
 
+视频字幕修正的领域定义见 [GLOSSARY.md](GLOSSARY.md#local-video-study)。
+
 **Video subtitle task (视频字幕任务)**:
 The device-local checkpoint for progressively extracting, transcribing, and
 translating a video source. It may continue while no player view is open.

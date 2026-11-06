@@ -33,6 +33,7 @@ import type { Language } from "../../../core/shared/types";
 import type { ShadowingWorkspaceViewAction, VideoPlayerSnapshot } from "../domain/types";
 import { VIDEO_PLAYBACK_RATES } from "../domain/types";
 import type { VideoPlayerRuntime } from "../domain/videoPlayerRuntime";
+import type { SubtitleEditingSession } from "./subtitleEditingSession";
 import type { VideoPlayerSettings } from "../settings/slice";
 import { videoPlayerStrings } from "../strings/videoPlayer";
 import styles from "./VideoPlayer.module.scss";
@@ -63,6 +64,7 @@ interface VideoPlayerViewProps {
 	onFocusExisting: () => void;
 	onOpenSettings: () => void;
 	shadowing?: ShadowingViewBridge;
+	editing?: SubtitleEditingSession;
 }
 
 export function VideoPlayerView({
@@ -74,6 +76,7 @@ export function VideoPlayerView({
 	onFocusExisting,
 	onOpenSettings,
 	shadowing,
+	editing,
 }: VideoPlayerViewProps): React.ReactNode {
 	const snapshot = useSyncExternalStore(
 		(listener) => runtime.subscribe(listener),
@@ -489,8 +492,8 @@ export function VideoPlayerView({
 						{shadowing && shadowEnabled && !floating && (
 							<aside className={styles.shadowSide} aria-label={t.shadowSettings}>
 								<ShadowingPane
-									key={snapshot.currentSourceId}
 									bridge={shadowing}
+									editing={editing}
 									language={language}
 									currentTime={snapshot.currentTime}
 									duration={snapshot.duration}
@@ -536,11 +539,13 @@ export function VideoPlayerView({
 
 function ShadowingPane({
 	bridge,
+	editing,
 	language,
 	currentTime,
 	duration,
 }: {
 	bridge: ShadowingViewBridge;
+	editing?: SubtitleEditingSession;
 	language: Language;
 	currentTime: number;
 	duration: number | null;
@@ -549,12 +554,14 @@ function ShadowingPane({
 		(listener) => bridge.subscribe(listener),
 		() => bridge.getSnapshot(),
 	);
+	if (!editing) return null;
 	return (
 		<ShadowingWorkspace
 			language={language}
 			currentTime={currentTime}
 			duration={duration}
 			state={state}
+			editing={editing}
 			onAction={(action) => bridge.act(action)}
 		/>
 	);

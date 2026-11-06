@@ -173,12 +173,6 @@ export type ShadowingWorkspaceViewAction =
 	| { readonly type: "adopt-candidate" }
 	| { readonly type: "restore-previous" }
 	| {
-			readonly type: "edit-cue";
-			readonly cueId: string;
-			readonly text?: string;
-			readonly translation?: string;
-	  }
-	| {
 			readonly type: "select-range";
 			readonly start: number;
 			readonly end: number;

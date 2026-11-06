@@ -161,14 +161,6 @@ export class ShadowingWorkspaceSession {
 				return this.run(async () => {
 					if (this.sourceId) await this.options.jobs.restorePrevious(this.sourceId);
 				});
-			case "edit-cue":
-				return this.run(async () => {
-					if (this.sourceId)
-						await this.options.jobs.editCue(this.sourceId, action.cueId, {
-							text: action.text,
-							translation: action.translation,
-						});
-				});
 			case "select-range":
 				if (this.sourceId)
 					this.session.selectRange(this.sourceId, action.start, action.end, action.text);

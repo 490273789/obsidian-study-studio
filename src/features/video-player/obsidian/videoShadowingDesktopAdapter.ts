@@ -39,6 +39,7 @@ export interface VideoShadowingDesktopAdapterOptions {
 	readonly runtime: VideoPlayerRuntime;
 	readonly services?: VideoShadowingServices;
 	readonly initialWindow?: Window | null;
+	readonly reportError?: (error: unknown) => void;
 }
 
 export class VideoShadowingDesktopAdapter {
@@ -102,6 +103,7 @@ export class VideoShadowingDesktopAdapter {
 
 			this.jobs = new VideoSubtitleJobs({
 				store,
+				reportError: options.reportError,
 				extract: (source, offset, signal) =>
 					createDesktopShadowAudioExtractor({
 						requireModule: this.requireModule.bind(this),

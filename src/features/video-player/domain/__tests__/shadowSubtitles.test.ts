@@ -62,7 +62,7 @@ describe("shadow subtitles", () => {
 		});
 		await jobs.start(source, config);
 		await until(() => jobs.getCues("video").length === 1);
-		await jobs.editCue("video", jobs.getCues("video")[0]!.id, {
+		await jobs.saveCueEdit(jobs.getCueEditTarget("video", jobs.getCues("video")[0]!.id)!, {
 			text: "Corrected",
 			translation: "人工译文",
 		});

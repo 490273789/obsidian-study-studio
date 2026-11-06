@@ -1,5 +1,8 @@
-import React, { useMemo, useState } from "react";
+import React, { useState, useSyncExternalStore } from "react";
 import type { Language } from "../../../core/shared/types";
+import { ConfirmDialog } from "../../../core/ui/primitives/ConfirmDialog";
+import { subtitleEditingStrings } from "../strings/subtitleEditing";
+import type { SubtitleEditingSession } from "./subtitleEditingSession";
 import styles from "./ShadowingWorkspace.module.scss";
 
 import type {
@@ -21,6 +24,7 @@ export interface ShadowingWorkspaceProps {
 	currentTime: number;
 	duration: number | null;
 	state: ShadowingWorkspaceState;
+	editing: SubtitleEditingSession;
 	onAction: (action: ShadowingWorkspaceViewAction) => Promise<void>;
 }
 
@@ -130,55 +134,19 @@ export function ShadowingWorkspace({
 	currentTime,
 	duration,
 	state,
+	editing,
 	onAction,
 }: ShadowingWorkspaceProps): React.ReactNode {
 	const t = copy[language];
+	const editCopy = subtitleEditingStrings(language);
+	const edit = useSyncExternalStore(editing.subscribe, editing.getSnapshot, editing.getSnapshot);
 	const [tab, setTab] = useState<"subtitles" | "records" | "tasks">("subtitles");
-	const [anchor, setAnchor] = useState<string | null>(null);
-	const [endId, setEndId] = useState<string | null>(null);
-	const [rangeStart, setRangeStart] = useState(0);
-	const [rangeEnd, setRangeEnd] = useState(0);
-	const [draftText, setDraftText] = useState("");
-	const [draftTranslation, setDraftTranslation] = useState("");
-	const [editing, setEditing] = useState(false);
 	const [importRole, setImportRole] = useState<"original" | "translation" | "bilingual">(
 		"original",
 	);
-	const selected = useMemo(() => {
-		const first = state.cues.findIndex((cue) => cue.id === anchor);
-		const last = state.cues.findIndex((cue) => cue.id === endId);
-		if (first < 0) return [];
-		return state.cues.slice(
-			Math.min(first, last < 0 ? first : last),
-			Math.max(first, last < 0 ? first : last) + 1,
-		);
-	}, [anchor, endId, state.cues]);
+	const selected = edit.selectedCueIds;
+	const editor = edit.editor;
 	const current = state.cues.find((cue) => currentTime >= cue.start && currentTime < cue.end);
-	const selectedText = selected.map((cue) => cue.text).join(" ");
-	const choose = (cue: ShadowingCueRow, extend: boolean): void => {
-		if (extend && anchor) {
-			setEndId(cue.id);
-			const anchorCue = state.cues.find((item) => item.id === anchor);
-			setRangeStart(Math.min(anchorCue?.start ?? cue.start, cue.start));
-			setRangeEnd(Math.max(anchorCue?.end ?? cue.end, cue.end));
-		} else {
-			setAnchor(cue.id);
-			setEndId(cue.id);
-			setRangeStart(cue.start);
-			setRangeEnd(cue.end);
-			setDraftText(cue.text);
-			setDraftTranslation(cue.translation ?? "");
-			void onAction({ type: "seek-to", seconds: cue.start });
-		}
-		setEditing(false);
-	};
-	const canStart =
-		selected.length > 0 &&
-		Number.isFinite(rangeStart) &&
-		Number.isFinite(rangeEnd) &&
-		rangeStart >= 0 &&
-		rangeEnd > rangeStart &&
-		(duration === null || rangeEnd <= duration);
 
 	return (
 		<section className={styles.workspace} aria-label={t.subtitles}>
@@ -251,9 +219,9 @@ export function ShadowingWorkspace({
 								<button
 									key={cue.id}
 									type="button"
-									className={`${styles.cue} ${selected.includes(cue) ? styles.selected : ""} ${current?.id === cue.id ? styles.current : ""}`}
-									onClick={(event) => choose(cue, event.shiftKey)}
-									aria-pressed={selected.includes(cue)}
+									className={`${styles.cue} ${selected.includes(cue.id) ? styles.selected : ""} ${current?.id === cue.id ? styles.current : ""}`}
+									onClick={(event) => editing.choose(cue.id, event.shiftKey)}
+									aria-pressed={selected.includes(cue.id)}
 								>
 									<span className={styles.time}>
 										{clock(cue.start)}–{clock(cue.end)}
@@ -281,9 +249,9 @@ export function ShadowingWorkspace({
 										min="0"
 										max={duration ?? undefined}
 										step="0.1"
-										value={rangeStart}
+										value={edit.rangeStart}
 										onChange={(event) =>
-											setRangeStart(Number(event.target.value))
+											editing.setRange("start", Number(event.target.value))
 										}
 									/>
 								</label>
@@ -294,9 +262,9 @@ export function ShadowingWorkspace({
 										min="0"
 										max={duration ?? undefined}
 										step="0.1"
-										value={rangeEnd}
+										value={edit.rangeEnd}
 										onChange={(event) =>
-											setRangeEnd(Number(event.target.value))
+											editing.setRange("end", Number(event.target.value))
 										}
 									/>
 								</label>
@@ -304,57 +272,71 @@ export function ShadowingWorkspace({
 							<button
 								type="button"
 								className={styles.primaryAction}
-								disabled={!canStart}
-								onClick={() =>
-									void onAction({
-										type: "select-range",
-										start: rangeStart,
-										end: rangeEnd,
-										text: selectedText,
-									})
-								}
+								disabled={!edit.canPractice}
+								onClick={() => editing.practice()}
 							>
 								{t.start}
 							</button>
 							{selected.length === 1 && (
-								<button type="button" onClick={() => setEditing(!editing)}>
+								<button type="button" onClick={() => editing.toggleEditor()}>
 									{t.edit}
 								</button>
 							)}
-							{editing && selected.length === 1 && (
-								<div className={styles.editor}>
-									<label>
-										{t.text}
-										<textarea
-											value={draftText}
-											onChange={(event) => setDraftText(event.target.value)}
-										/>
-									</label>
-									<label>
-										{t.translationText}
-										<textarea
-											value={draftTranslation}
-											onChange={(event) =>
-												setDraftTranslation(event.target.value)
-											}
-										/>
-									</label>
-									<button
-										type="button"
-										disabled={!draftText.trim()}
-										onClick={() => {
-											void onAction({
-												type: "edit-cue",
-												cueId: selected[0]!.id,
-												text: draftText,
-												translation: draftTranslation,
-											});
-											setEditing(false);
-										}}
-									>
-										{t.saveEdit}
-									</button>
-								</div>
+						</div>
+					)}
+					{editor && (
+						<div className={styles.editor} aria-busy={editor.busy}>
+							{editor.conflict && <p role="alert">{editCopy.conflict}</p>}
+							{editor.failure && (
+								<p role="alert">{editCopy.saveFailed(editor.failure)}</p>
+							)}
+							<label>
+								{t.text}
+								<textarea
+									value={editor.text}
+									disabled={editor.busy}
+									onChange={(event) =>
+										editing.setField("text", event.target.value, editor)
+									}
+								/>
+							</label>
+							<label>
+								{t.translationText}
+								<textarea
+									value={editor.translation}
+									disabled={editor.busy}
+									onChange={(event) =>
+										editing.setField("translation", event.target.value, editor)
+									}
+								/>
+							</label>
+							<button
+								type="button"
+								disabled={!editor.canSave}
+								onClick={() => void editing.submit(editor)}
+							>
+								{editor.busy ? editCopy.saving : t.saveEdit}
+							</button>
+							{(editor.conflict || editor.failure) && (
+								<button
+									type="button"
+									disabled={editor.busy}
+									onClick={() => editing.requestReload(editor)}
+								>
+									{editCopy.reload}
+								</button>
+							)}
+							{editor.confirmingReload && (
+								<ConfirmDialog
+									kicker={t.edit}
+									title={editCopy.reloadTitle}
+									message={editCopy.reloadMessage}
+									confirmText={editCopy.reloadConfirm}
+									cancelText={editCopy.cancel}
+									tone="danger"
+									onCancel={() => editing.cancelReload(editor)}
+									onConfirm={() => void editing.confirmReload(editor)}
+								/>
 							)}
 						</div>
 					)}
