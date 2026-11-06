@@ -23,6 +23,28 @@
 	padding-bottom: 8px;
 }
 
+.setupHint {
+	display: grid;
+	gap: var(--fc-space-2);
+
+	h3,
+	p {
+		margin: 0;
+	}
+
+	h3 {
+		color: var(--fc-text);
+		font-size: var(--fc-font-md);
+		font-weight: var(--fc-weight-semibold);
+	}
+
+	p {
+		color: var(--fc-muted);
+		font-size: var(--fc-font-sm);
+		line-height: var(--fc-line-reading);
+	}
+}
+
 .workspace button,
 .workspace select,
 .fileButton,
@@ -70,7 +92,7 @@
 	color: var(--fc-muted);
 
 	&[aria-current="page"] {
-		background: var(--fc-primary-bg);
+		background: color-mix(in srgb, var(--interactive-accent) 12%, var(--fc-surface-card));
 		color: var(--fc-text);
 		font-weight: var(--fc-weight-semibold);
 	}
@@ -118,7 +140,7 @@
 	}
 
 	&.selected {
-		background: var(--fc-primary-bg);
+		background: color-mix(in srgb, var(--interactive-accent) 12%, var(--fc-surface-card));
 	}
 
 	&.current {

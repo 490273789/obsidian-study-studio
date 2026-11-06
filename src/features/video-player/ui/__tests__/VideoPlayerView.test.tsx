@@ -92,6 +92,7 @@ function harness() {
 	const pickAndAddSources = vi.fn();
 	const pickAndReplaceSource = vi.fn();
 	let queueExpanded = true;
+	let controlsVisible = true;
 	const act = vi.fn(() => ({ kind: "applied" as const }));
 	let snapshot: VideoPlayerSnapshot = {
 		sources: ["first", "second", "third"].map((id) => ({
@@ -123,12 +124,14 @@ function harness() {
 		getSnapshot: () => ({
 			role: "presenter",
 			queueExpanded,
+			controlsVisible,
 			presentation: { kind: "docked" },
 		}),
 		subscribe: () => () => {},
 		refs: {
 			focusSurface: vi.fn(),
 			mediaHost: vi.fn(),
+			controlDeck: vi.fn(),
 			floatingHeader: vi.fn(),
 			resizeLeft: vi.fn(),
 			resizeRight: vi.fn(),
@@ -178,10 +181,16 @@ function harness() {
 		setQueueExpanded: (expanded: boolean) => {
 			queueExpanded = expanded;
 		},
+		setControlsVisible: (visible: boolean) => {
+			controlsVisible = visible;
+		},
 		render,
 		snapshot,
 		setPlaying: (playing: boolean) => {
 			snapshot = { ...snapshot, playing };
+		},
+		setSources: (sources: VideoPlayerSnapshot["sources"], currentSourceId: string) => {
+			snapshot = { ...snapshot, sources, currentSourceId };
 		},
 		get list() {
 			return list;
@@ -193,6 +202,66 @@ function harness() {
 }
 
 describe("video queue view", () => {
+	it("routes manual control visibility through the surface owner and makes hidden controls inert", () => {
+		const h = harness();
+		const surface = findElement<{
+			controlsVisible: boolean;
+			onToggleControls(): void;
+		}>(h.render(), (element) => typeof element.props.onToggleControls === "function");
+		expect(surface.props.controlsVisible).toBe(true);
+		surface.props.onToggleControls();
+		expect(h.act).toHaveBeenCalledWith({ type: "toggle-controls" });
+		h.setControlsVisible(false);
+		const markup = renderToStaticMarkup(
+			<I18nProvider language="en">{h.render()}</I18nProvider>,
+		);
+		expect(markup).toContain('inert=""');
+		expect(markup).toContain('aria-label="Show playback controls"');
+	});
+
+	it("omits queue navigation for a single video while keeping playback utilities", () => {
+		const h = harness();
+		h.setSources(h.snapshot.sources.slice(0, 1), "first");
+		const markup = renderToStaticMarkup(
+			<I18nProvider language="en">{h.render()}</I18nProvider>,
+		);
+
+		expect(markup).not.toContain('aria-label="Previous"');
+		expect(markup).not.toContain('aria-label="Next"');
+		expect(markup).toContain('aria-label="Pause (Space)"');
+		expect(markup).toContain('aria-label="Playback speed 1×"');
+		expect(markup).toContain('aria-label="Float player"');
+	});
+
+	it.each([
+		["first", true, false],
+		["second", false, false],
+		["third", false, true],
+	] as const)(
+		"groups video navigation and preserves queue boundaries at %s",
+		(current, previousDisabled, nextDisabled) => {
+			const h = harness();
+			h.setSources(h.snapshot.sources, current);
+			const markup = renderToStaticMarkup(
+				<I18nProvider language="en">{h.render()}</I18nProvider>,
+			);
+			const group = markup.match(
+				/<fieldset[^>]+aria-label="Playback controls"[^>]*>([\s\S]*?)<\/fieldset>/,
+			)?.[1];
+			expect(group).toBeDefined();
+			for (const [label, disabled] of [
+				["Previous", previousDisabled],
+				["Next", nextDisabled],
+			] as const) {
+				const button = group!.match(
+					new RegExp(`<button[^>]+aria-label="${label}"[^>]*>`),
+				)?.[0];
+				expect(button).toBeDefined();
+				expect(button!.includes('disabled=""')).toBe(disabled);
+			}
+		},
+	);
+
 	it("keeps a compact queue bar and opens the list on demand", () => {
 		const h = harness();
 		const expanded = h.render();

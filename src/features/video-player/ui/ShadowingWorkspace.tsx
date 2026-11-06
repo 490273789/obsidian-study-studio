@@ -65,7 +65,11 @@ const copy = {
 		saveEdit: "保存修正",
 		startTime: "起点（秒）",
 		endTime: "终点（秒）",
-		noCues: "尚无可用字幕。可以导入字幕，或启动 AI 生成。",
+		noCues: "先准备字幕，再开始跟读",
+		subtitleSetupHint:
+			"已有 SRT / VTT 字幕：选择字幕语言后导入；没有字幕：生成双语字幕。准备好后，选中一句字幕，再点“练习所选片段”。",
+		candidateReady: "候选字幕已就绪",
+		candidateHint: "采用候选字幕后，选中一句字幕，再点“练习所选片段”。",
 		noRecords: "还没有标记难段或保留录音。",
 		delete: "删除记录",
 		draft: "AI 草稿",
@@ -110,7 +114,12 @@ const copy = {
 		saveEdit: "Save correction",
 		startTime: "Start (seconds)",
 		endTime: "End (seconds)",
-		noCues: "No subtitles yet. Import a file or start AI generation.",
+		noCues: "Prepare subtitles to start practicing",
+		subtitleSetupHint:
+			"Have an SRT / VTT file? Choose its language and import it. Otherwise, generate bilingual subtitles. Then select a sentence and choose “Practice selection”.",
+		candidateReady: "Candidate subtitles are ready",
+		candidateHint:
+			"Use the candidate subtitles, select a sentence, then choose “Practice selection”.",
 		noRecords: "No difficult ranges or saved recordings yet.",
 		delete: "Delete record",
 		draft: "AI draft",
@@ -165,6 +174,12 @@ export function ShadowingWorkspace({
 			{state.taskError && <p role="alert">{state.taskError}</p>}
 			{tab === "subtitles" && (
 				<>
+					{state.cues.length === 0 && (
+						<div className={styles.setupHint}>
+							<h3>{state.hasCandidate ? t.candidateReady : t.noCues}</h3>
+							<p>{state.hasCandidate ? t.candidateHint : t.subtitleSetupHint}</p>
+						</div>
+					)}
 					<div className={styles.toolbar}>
 						<select
 							aria-label={t.import}
@@ -236,9 +251,7 @@ export function ShadowingWorkspace({
 								</button>
 							))}
 						</div>
-					) : (
-						<p className={styles.empty}>{t.noCues}</p>
-					)}
+					) : null}
 					{selected.length > 0 && (
 						<div className={styles.selection}>
 							<div className={styles.rangeInputs}>

@@ -23,15 +23,23 @@ interface TestElement {
 	paused: boolean;
 	currentTime: number;
 	duration: number;
+	videoWidth: number;
+	videoHeight: number;
 	playbackRate: number;
 	src: string;
 	playsInline: boolean;
 	preload: string;
 	tabIndex: number;
 	attributes: Map<string, string>;
+	style: {
+		setProperty(name: string, value: string): void;
+		getPropertyValue(name: string): string;
+		removeProperty(name: string): string;
+	};
 	setAttribute(name: string, value: string): void;
 	getAttribute(name: string): string | null;
 	closest(selector: string): Element | null;
+	contains(node: TestElement | null): boolean;
 	append(child: TestElement): void;
 	remove(): void;
 	focus: ReturnType<typeof vi.fn>;
@@ -45,6 +53,7 @@ interface TestElement {
 
 function createTestElement(tagName: string): TestElement {
 	const listeners = new Map<string, Set<(event: any) => void>>();
+	const styleProperties = new Map<string, string>();
 	const element: TestElement = {
 		tagName: tagName.toUpperCase(),
 		className: "",
@@ -53,12 +62,25 @@ function createTestElement(tagName: string): TestElement {
 		paused: true,
 		currentTime: 0,
 		duration: 100,
+		videoWidth: 0,
+		videoHeight: 0,
 		playbackRate: 1,
 		src: "",
 		playsInline: false,
 		preload: "metadata",
 		tabIndex: -1,
 		attributes: new Map(),
+		style: {
+			setProperty(name, value) {
+				styleProperties.set(name, value);
+			},
+			getPropertyValue: (name) => styleProperties.get(name) ?? "",
+			removeProperty(name) {
+				const value = styleProperties.get(name) ?? "";
+				styleProperties.delete(name);
+				return value;
+			},
+		},
 		setAttribute(name: string, value: string) {
 			element.attributes.set(name, value);
 		},
@@ -82,6 +104,12 @@ function createTestElement(tagName: string): TestElement {
 				current = current.parentElement;
 			}
 			return null;
+		},
+		contains(node) {
+			return Boolean(
+				node &&
+				(node === element || element.children.some((child) => child.contains(node))),
+			);
 		},
 		append(child: TestElement) {
 			child.parentElement = element;
@@ -123,6 +151,7 @@ function createTestElement(tagName: string): TestElement {
 }
 
 interface TestDocument {
+	activeElement: TestElement | null;
 	readonly defaultView: {
 		innerWidth: number;
 		innerHeight: number;
@@ -173,6 +202,7 @@ function createTestDocument(viewport = { width: 1000, height: 800 }): TestDocume
 	};
 
 	return {
+		activeElement: null,
 		defaultView,
 		createdElements,
 		createElement(tagName: string) {
@@ -195,6 +225,187 @@ const defaultSettings: VideoPlayerSettings = {
 function createInteraction(runtime: VideoPlayerRuntime): PlayerViewInteraction {
 	return new PlayerViewInteraction({ runtime, readSettings: () => defaultSettings });
 }
+
+function createControlsFixture() {
+	const runtime = new VideoPlayerRuntime({
+		store: new MemoryStore(),
+		toMediaUrl: (path) => path,
+	});
+	runtime.addSources([
+		{ id: "one", path: "/one.mp4", name: "one.mp4" },
+		{ id: "two", path: "/two.mp4", name: "two.mp4" },
+	]);
+	const interaction = createInteraction(runtime);
+	const doc = createTestDocument();
+	const view = interaction.mount({ ownerDocument: doc as unknown as Document });
+	const surface = createTestElement("div");
+	const deck = createTestElement("div");
+	const seek = createTestElement("input");
+	const rate = createTestElement("button");
+	deck.append(seek);
+	deck.append(rate);
+	surface.append(deck);
+	surface.focus.mockImplementation(() => {
+		doc.activeElement = surface;
+	});
+	view.refs.focusSurface(surface as unknown as HTMLElement);
+	view.refs.controlDeck(deck as unknown as HTMLElement);
+	const video = doc.createdElements.find((element) => element.tagName === "VIDEO")!;
+	return { runtime, interaction, doc, view, surface, deck, seek, rate, video };
+}
+
+describe("PlayerViewInteraction controls visibility", () => {
+	it("starts visible and changes visibility only through manual toggles", () => {
+		const { runtime, doc, view, surface, deck, rate } = createControlsFixture();
+		expect(view.getSnapshot().controlsVisible).toBe(true);
+		expect(view.act({ type: "toggle-controls" })).toEqual({ kind: "applied" });
+		expect(view.getSnapshot().controlsVisible).toBe(false);
+
+		for (const action of [() => runtime.togglePlayback(), () => runtime.pause()]) {
+			action();
+			expect(view.getSnapshot().controlsVisible).toBe(false);
+		}
+		for (const type of ["pointermove", "pointerdown"]) {
+			surface.dispatchEvent({ type, target: surface });
+			expect(view.getSnapshot().controlsVisible).toBe(false);
+		}
+		for (const type of ["pointerenter", "pointerleave", "focusin", "focusout", "keydown"]) {
+			deck.dispatchEvent({ type, target: rate, relatedTarget: null });
+			expect(view.getSnapshot().controlsVisible).toBe(false);
+		}
+		rate.setAttribute("aria-expanded", "true");
+		rate.setAttribute("aria-expanded", "false");
+		for (const key of [" ", "ArrowRight", "ArrowLeft"]) {
+			surface.dispatchEvent({
+				type: "keydown",
+				target: surface,
+				key,
+				ctrlKey: false,
+				altKey: false,
+				shiftKey: false,
+				metaKey: false,
+				repeat: false,
+				preventDefault: vi.fn(),
+				stopPropagation: vi.fn(),
+			});
+			expect(view.getSnapshot().controlsVisible).toBe(false);
+		}
+		expect(runtime.getSnapshot().playing).toBe(true);
+		runtime.selectSource("two");
+		expect(view.getSnapshot().controlsVisible).toBe(false);
+		view.act({ type: "enter-floating" });
+		expect(view.getSnapshot().controlsVisible).toBe(false);
+		view.act({ type: "toggle-maximized" });
+		doc.defaultView.dispatchEvent({ type: "keydown", key: "Escape", preventDefault: vi.fn() });
+		expect(view.getSnapshot().controlsVisible).toBe(false);
+		view.act({ type: "dock-and-pause" });
+		expect(view.getSnapshot().controlsVisible).toBe(false);
+		view.act({ type: "toggle-controls" });
+		expect(view.getSnapshot().controlsVisible).toBe(true);
+		runtime.togglePlayback();
+		expect(view.getSnapshot().controlsVisible).toBe(true);
+	});
+
+	it("moves focus out of the current control deck before hiding it", () => {
+		const { doc, view, surface, deck, rate } = createControlsFixture();
+		doc.activeElement = rate;
+		view.act({ type: "toggle-controls" });
+		expect(surface.focus).toHaveBeenCalledWith({ preventScroll: true });
+		expect(doc.activeElement).toBe(surface);
+		expect(view.getSnapshot().controlsVisible).toBe(false);
+		view.act({ type: "toggle-controls" });
+		const replacement = createTestElement("div");
+		view.refs.controlDeck(replacement as unknown as HTMLElement);
+		doc.activeElement = rate;
+		surface.focus.mockClear();
+		view.act({ type: "toggle-controls" });
+		expect(deck.contains(rate)).toBe(true);
+		expect(surface.focus).not.toHaveBeenCalled();
+	});
+
+	it("preserves manual visibility through ref replacement and floating drag cancellation", () => {
+		const { view, doc } = createControlsFixture();
+		view.act({ type: "toggle-controls" });
+		view.refs.focusSurface(null);
+		view.refs.focusSurface(createTestElement("div") as unknown as HTMLElement);
+		view.refs.controlDeck(null);
+		view.refs.controlDeck(createTestElement("div") as unknown as HTMLElement);
+		expect(view.getSnapshot().controlsVisible).toBe(false);
+		const header = createTestElement("div");
+		view.refs.floatingHeader(header as unknown as HTMLElement);
+		view.act({ type: "enter-floating" });
+		header.dispatchEvent({
+			type: "pointerdown",
+			target: header,
+			pointerId: 2,
+			clientX: 500,
+			clientY: 400,
+			preventDefault: vi.fn(),
+		});
+		expect(view.getSnapshot().controlsVisible).toBe(false);
+		doc.defaultView.dispatchEvent({ type: "pointercancel", pointerId: 2 });
+		expect(view.getSnapshot().controlsVisible).toBe(false);
+	});
+
+	it("starts new registrations visible and rejects toggles from waiting or released views", () => {
+		const { interaction, doc, view } = createControlsFixture();
+		view.act({ type: "toggle-controls" });
+		const next = interaction.mount({ ownerDocument: doc as unknown as Document });
+		expect(next.getSnapshot().controlsVisible).toBe(true);
+		expect(next.act({ type: "toggle-controls" })).toEqual({
+			kind: "rejected",
+			reason: "not-presenter",
+		});
+		view.dispose();
+		expect(next.getSnapshot().controlsVisible).toBe(true);
+		expect(view.act({ type: "toggle-controls" })).toEqual({
+			kind: "rejected",
+			reason: "released",
+		});
+		next.act({ type: "toggle-controls" });
+		expect(next.getSnapshot().controlsVisible).toBe(false);
+		interaction.dispose();
+	});
+
+	it("writes the owned media aspect ratio and clears stale metadata across source and surface changes", () => {
+		const { runtime, interaction, view, surface, video } = createControlsFixture();
+		const ratio = () => surface.style.getPropertyValue("--video-aspect-ratio");
+		expect(Number(ratio())).toBeCloseTo(16 / 9);
+		video.videoWidth = 1080;
+		video.videoHeight = 1920;
+		video.dispatchEvent({ type: "loadedmetadata" });
+		expect(Number(ratio())).toBeCloseTo(9 / 16);
+		video.videoWidth = 1440;
+		video.videoHeight = 1080;
+		video.dispatchEvent({ type: "resize" });
+		expect(Number(ratio())).toBeCloseTo(4 / 3);
+		runtime.selectSource("two");
+		expect(Number(ratio())).toBeCloseTo(16 / 9);
+		video.videoWidth = 0;
+		video.videoHeight = 0;
+		video.dispatchEvent({ type: "emptied" });
+		expect(Number(ratio())).toBeCloseTo(16 / 9);
+		video.videoWidth = Number.POSITIVE_INFINITY;
+		video.videoHeight = 1080;
+		video.dispatchEvent({ type: "loadedmetadata" });
+		expect(Number(ratio())).toBeCloseTo(16 / 9);
+		video.videoWidth = 1920;
+		video.videoHeight = 1080;
+		video.dispatchEvent({ type: "resize" });
+		const replacement = createTestElement("div");
+		view.refs.focusSurface(replacement as unknown as HTMLElement);
+		expect(ratio()).toBe("");
+		expect(Number(replacement.style.getPropertyValue("--video-aspect-ratio"))).toBeCloseTo(
+			16 / 9,
+		);
+		interaction.dispose();
+		expect(replacement.style.getPropertyValue("--video-aspect-ratio")).toBe("");
+		video.videoWidth = 100;
+		video.videoHeight = 100;
+		video.dispatchEvent({ type: "resize" });
+		expect(replacement.style.getPropertyValue("--video-aspect-ratio")).toBe("");
+	});
+});
 
 describe("PlayerViewInteraction", () => {
 	it("gives the earliest live Player view presentation and hands it off in registration order", async () => {

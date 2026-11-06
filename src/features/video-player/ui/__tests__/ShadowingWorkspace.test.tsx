@@ -84,6 +84,44 @@ function findButton(
 }
 
 describe("ShadowingWorkspace", () => {
+	it.each(["zh", "en"] as const)(
+		"offers subtitle setup actions without starting a task automatically (%s)",
+		(language) => {
+			hooks.values = [];
+			hooks.index = 0;
+			const onAction = vi.fn(async () => undefined);
+			const state = {
+				cues: [],
+				records: [],
+				failedSaves: [],
+				taskError: null,
+				practiceStart: null,
+				practiceEnd: null,
+				hasCandidate: false,
+			} as unknown as ShadowingWorkspaceState;
+			const tree = ShadowingWorkspace({
+				language,
+				currentTime: 0,
+				duration: 30,
+				state,
+				editing: editorAdapter().editing,
+				onAction,
+			});
+			const markup = renderToStaticMarkup(tree);
+			expect(markup).toContain("SRT / VTT");
+			expect(markup).toContain('type="file"');
+			expect(onAction).not.toHaveBeenCalled();
+			const generate = findButton(
+				tree,
+				(button) =>
+					button.props.children ===
+					(language === "zh" ? "生成双语字幕" : "Generate bilingual subtitles"),
+			);
+			generate.props.onClick?.({} as React.MouseEvent<HTMLButtonElement>);
+			expect(onAction).toHaveBeenCalledExactlyOnceWith({ type: "generate" });
+		},
+	);
+
 	it("sends the selected subtitle range through the shared intent seam", async () => {
 		hooks.values = [];
 		const onAction = vi.fn(async () => undefined);

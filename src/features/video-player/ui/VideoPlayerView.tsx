@@ -1,10 +1,13 @@
-import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import React, { useCallback, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { setTooltip } from "obsidian";
 import {
+	Captions,
 	ChevronDown,
 	ChevronUp,
 	CirclePlay,
+	Eye,
+	EyeOff,
 	FastForward,
 	FolderPlus,
 	Maximize2,
@@ -132,8 +135,10 @@ export function VideoPlayerView({
 						: null
 			}
 			floating={floating}
+			controlsVisible={viewSnapshot.controlsVisible}
 			focusSurfaceRef={view.refs.focusSurface}
 			mediaHostRef={view.refs.mediaHost}
+			controlDeckRef={view.refs.controlDeck}
 			playing={snapshot.playing}
 			rate={snapshot.playbackRate}
 			settings={settings}
@@ -147,6 +152,7 @@ export function VideoPlayerView({
 			onSeek={(time) => runtime.seekTo(time)}
 			onRate={(rate) => runtime.setPlaybackRate(rate)}
 			onFloat={() => view.act({ type: "enter-floating" })}
+			onToggleControls={() => view.act({ type: "toggle-controls" })}
 			t={t}
 		/>
 	);
@@ -206,11 +212,15 @@ export function VideoPlayerView({
 									</h2>
 								)}
 								{shadowing && (
-									<label className={styles.shadowToggle}>
+									<label
+										className={styles.shadowToggle}
+										title={t.shadowToggleHint}
+									>
 										<input
 											type="checkbox"
 											role="switch"
 											aria-checked={shadowEnabled}
+											aria-label={t.shadowToggle}
 											className={styles.shadowToggleInput}
 											checked={shadowEnabled}
 											onChange={(event) =>
@@ -223,9 +233,9 @@ export function VideoPlayerView({
 											className={styles.shadowToggleTrack}
 											aria-hidden="true"
 										/>
+										<Captions size={16} aria-hidden="true" />
 										<span className={styles.shadowToggleText}>
 											{t.shadowToggle}
-											<small>{t.shadowToggleHint}</small>
 										</span>
 										{shadowEnabled && !!shadowSnapshot?.cues.length && (
 											<span
@@ -599,8 +609,10 @@ function PlayerSurface({
 	duration,
 	error,
 	floating,
+	controlsVisible,
 	focusSurfaceRef,
 	mediaHostRef,
+	controlDeckRef,
 	playing,
 	rate,
 	settings,
@@ -614,14 +626,17 @@ function PlayerSurface({
 	onSeek,
 	onRate,
 	onFloat,
+	onToggleControls,
 	t,
 }: {
 	currentTime: number;
 	duration: number | null;
 	error: string | null;
 	floating: boolean;
+	controlsVisible: boolean;
 	focusSurfaceRef: (node: HTMLDivElement | null) => void;
 	mediaHostRef: (node: HTMLDivElement | null) => void;
+	controlDeckRef: (node: HTMLDivElement | null) => void;
 	playing: boolean;
 	rate: number;
 	settings: VideoPlayerSettings;
@@ -635,6 +650,7 @@ function PlayerSurface({
 	onSeek: (time: number) => void;
 	onRate: (rate: (typeof VIDEO_PLAYBACK_RATES)[number]) => void;
 	onFloat: () => void;
+	onToggleControls: () => void;
 	t: PlayerCopy;
 }): React.ReactNode {
 	const shortcuts = {
@@ -653,161 +669,144 @@ function PlayerSurface({
 	const backwardLabel = controlLabel(t.backward(settings.skipInterval), shortcuts.seekBackward);
 	const forwardLabel = controlLabel(t.forward(settings.skipInterval), shortcuts.seekForward);
 
-	const [active, setActive] = useState(true);
-	const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-	const resetIdleTimer = useCallback(() => {
-		setActive(true);
-		if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-		if (playing) {
-			idleTimerRef.current = setTimeout(() => {
-				setActive(false);
-			}, 2500);
-		}
-	}, [playing]);
-
-	useEffect(() => {
-		if (!playing) {
-			setActive(true);
-			if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-		} else {
-			resetIdleTimer();
-		}
-		return () => {
-			if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-		};
-	}, [playing, resetIdleTimer]);
-
 	return (
-		<div
-			ref={focusSurfaceRef}
-			className={cls(styles.surface, floating && styles.surfaceFloating)}
-			aria-label={t.playerRegion}
-			onPointerMove={resetIdleTimer}
-			onPointerEnter={resetIdleTimer}
-			onPointerLeave={() => {
-				if (playing) setActive(false);
-			}}
-		>
+		<div ref={focusSurfaceRef} className={styles.surface} aria-label={t.playerRegion}>
 			<div ref={mediaHostRef} className={styles.mediaHost} />
 			{error && <p className={styles.error}>{error}</p>}
-			<div
-				className={cls(
-					styles.controlDeck,
-					floating ? styles.controlDeckFloating : !active && styles.controlDeckIdle,
-				)}
-			>
-				<ProgressSlider
-					currentTime={currentTime}
-					duration={duration}
-					skipInterval={settings.skipInterval}
-					label={t.progress}
-					onSeek={onSeek}
-				/>
-				<div className={styles.controls}>
-					<div className={styles.navGroup}>
-						<IconButton
-							icon={SkipBack}
-							label={t.previous}
-							disabled={!canPrevious}
-							onClick={onPrevious}
-						/>
-					</div>
-					<div className={styles.transport}>
-						<div className={styles.skipBtnWrapper}>
+			<div className={styles.controlsDock}>
+				<div
+					ref={controlDeckRef}
+					className={cls(
+						styles.controlDeck,
+						!controlsVisible && styles.controlDeckHidden,
+					)}
+					inert={!controlsVisible}
+					aria-hidden={!controlsVisible}
+				>
+					<ProgressSlider
+						currentTime={currentTime}
+						duration={duration}
+						skipInterval={settings.skipInterval}
+						label={t.progress}
+						onSeek={onSeek}
+					/>
+					<div className={styles.controls}>
+						<fieldset className={styles.transport} aria-label={t.playbackControls}>
+							{(canPrevious || canNext) && (
+								<IconButton
+									icon={SkipBack}
+									label={t.previous}
+									disabled={!canPrevious}
+									onClick={onPrevious}
+								/>
+							)}
+							<div className={styles.skipBtnWrapper}>
+								<FlashcardButton
+									preset="icon"
+									variant="ghost"
+									icon={Rewind}
+									iconSize={16}
+									aria-label={backwardLabel}
+									title={
+										shortcuts.seekBackward
+											? `${backwardLabel}\n${t.shortcutFocus}`
+											: backwardLabel
+									}
+									className={styles.skipBtn}
+									onClick={onBackward}
+								>
+									<span className={styles.skipStepBadge}>
+										{settings.skipInterval}
+									</span>
+								</FlashcardButton>
+							</div>
 							<FlashcardButton
 								preset="icon"
-								variant="ghost"
-								icon={Rewind}
-								iconSize={16}
-								aria-label={backwardLabel}
+								variant="primary"
+								icon={playing ? Pause : Play}
+								iconSize={18}
+								className={styles.playBtn}
+								aria-label={playbackLabel}
 								title={
-									shortcuts.seekBackward
-										? `${backwardLabel}\n${t.shortcutFocus}`
-										: backwardLabel
+									shortcuts.togglePlayback
+										? `${playbackLabel}\n${t.shortcutFocus}`
+										: playbackLabel
 								}
-								className={styles.skipBtn}
-								onClick={onBackward}
-							>
-								<span className={styles.skipStepBadge}>
-									{settings.skipInterval}
-								</span>
-							</FlashcardButton>
-						</div>
-						<FlashcardButton
-							preset="icon"
-							variant="primary"
-							icon={playing ? Pause : Play}
-							iconSize={18}
-							className={styles.playBtn}
-							aria-label={playbackLabel}
-							title={
-								shortcuts.togglePlayback
-									? `${playbackLabel}\n${t.shortcutFocus}`
-									: playbackLabel
-							}
-							onClick={onToggle}
-						/>
-						<div className={styles.skipBtnWrapper}>
-							<FlashcardButton
-								preset="icon"
-								variant="ghost"
-								icon={FastForward}
-								iconSize={16}
-								aria-label={forwardLabel}
-								title={
-									shortcuts.seekForward
-										? `${forwardLabel}\n${t.shortcutFocus}`
-										: forwardLabel
-								}
-								className={styles.skipBtn}
-								onClick={onForward}
-							>
-								<span className={styles.skipStepBadge}>
-									{settings.skipInterval}
-								</span>
-							</FlashcardButton>
-						</div>
-					</div>
-					<div className={styles.utilities}>
-						<IconButton
-							icon={SkipForward}
-							label={t.next}
-							disabled={!canNext}
-							onClick={onNext}
-						/>
-						<PlaybackRateControl
-							className={styles.rateControl}
-							label={t.rate}
-							value={rate}
-							rates={VIDEO_PLAYBACK_RATES}
-							tone="default"
-							onChange={(value) =>
-								onRate(value as (typeof VIDEO_PLAYBACK_RATES)[number])
-							}
-						/>
-						{!floating && (
-							<IconButton
-								icon={PictureInPicture2}
-								label={t.floating}
-								onClick={onFloat}
+								onClick={onToggle}
 							/>
+							<div className={styles.skipBtnWrapper}>
+								<FlashcardButton
+									preset="icon"
+									variant="ghost"
+									icon={FastForward}
+									iconSize={16}
+									aria-label={forwardLabel}
+									title={
+										shortcuts.seekForward
+											? `${forwardLabel}\n${t.shortcutFocus}`
+											: forwardLabel
+									}
+									className={styles.skipBtn}
+									onClick={onForward}
+								>
+									<span className={styles.skipStepBadge}>
+										{settings.skipInterval}
+									</span>
+								</FlashcardButton>
+							</div>
+							{(canPrevious || canNext) && (
+								<IconButton
+									icon={SkipForward}
+									label={t.next}
+									disabled={!canNext}
+									onClick={onNext}
+								/>
+							)}
+						</fieldset>
+						<div className={styles.utilities}>
+							<PlaybackRateControl
+								className={styles.rateControl}
+								label={t.rate}
+								value={rate}
+								rates={VIDEO_PLAYBACK_RATES}
+								tone="default"
+								onChange={(value) =>
+									onRate(value as (typeof VIDEO_PLAYBACK_RATES)[number])
+								}
+							/>
+							{!floating && (
+								<IconButton
+									icon={PictureInPicture2}
+									label={t.floating}
+									onClick={onFloat}
+								/>
+							)}
+						</div>
+						{shortcutHints.length > 0 && (
+							<div className={styles.shortcutsHint}>
+								<span>{t.shortcutFocus}</span>
+								<div className={styles.shortcutKeys}>
+									{shortcutHints.map(([action, key]) => (
+										<span key={action} className={styles.shortcutEntry}>
+											<kbd className={styles.shortcutKey}>{key}</kbd>
+											{t.shortcutNames[action]}
+										</span>
+									))}
+								</div>
+							</div>
 						)}
 					</div>
-					{shortcutHints.length > 0 && (
-						<div className={styles.shortcutsHint}>
-							<span>{t.shortcutFocus}</span>
-							<div className={styles.shortcutKeys}>
-								{shortcutHints.map(([action, key]) => (
-									<span key={action} className={styles.shortcutEntry}>
-										<kbd className={styles.shortcutKey}>{key}</kbd>
-										{t.shortcutNames[action]}
-									</span>
-								))}
-							</div>
-						</div>
-					)}
 				</div>
+				<FlashcardButton
+					preset="icon"
+					icon={controlsVisible ? EyeOff : Eye}
+					iconSize={16}
+					className={styles.controlsToggle}
+					title={controlsVisible ? t.hideControls : t.showControls}
+					aria-label={controlsVisible ? t.hideControls : t.showControls}
+					aria-pressed={controlsVisible}
+					onClick={onToggleControls}
+				/>
 			</div>
 		</div>
 	);

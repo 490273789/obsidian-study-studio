@@ -4,6 +4,8 @@ import { matchesKeyboardShortcut } from "../settings/keyboardShortcut";
 import type { VideoPlayerSettings } from "../settings/slice";
 import styles from "./VideoPlayer.module.scss";
 
+const DEFAULT_ASPECT_RATIO = String(16 / 9);
+
 export type PlayerViewPresentation =
 	| { readonly kind: "docked" }
 	| {
@@ -16,12 +18,14 @@ interface PlayerViewSnapshot {
 	readonly role: "presenter" | "waiting";
 	readonly presentation: PlayerViewPresentation;
 	readonly queueExpanded: boolean;
+	readonly controlsVisible: boolean;
 }
 
 type PlayerViewAction =
 	| { readonly type: "enter-floating" }
 	| { readonly type: "dock-and-pause" }
 	| { readonly type: "toggle-maximized" }
+	| { readonly type: "toggle-controls" }
 	| { readonly type: "set-queue-expanded"; readonly expanded: boolean };
 
 type PlayerViewActionResult =
@@ -33,6 +37,7 @@ type PlayerViewActionResult =
 
 export interface PlayerViewRefs {
 	readonly focusSurface: (node: HTMLElement | null) => void;
+	readonly controlDeck: (node: HTMLElement | null) => void;
 	readonly mediaHost: (node: HTMLElement | null) => void;
 	readonly floatingHeader: (node: HTMLElement | null) => void;
 	readonly resizeLeft: (node: HTMLElement | null) => void;
@@ -67,8 +72,12 @@ interface Registration {
 	readonly listeners: Set<() => void>;
 	readonly refCleanups: Map<keyof PlayerViewRefs, () => void>;
 	focusNode: HTMLElement | null;
+	controlDeckNode: HTMLElement | null;
 	mediaHostNode: HTMLElement | null;
 	pointerCleanup: (() => void) | null;
+	controlsVisible: boolean;
+	aspectRatio: string;
+	mediaMetadataCleanup: () => void;
 	snapshot: PlayerViewSnapshot;
 	mediaRelease: (() => void) | null;
 	active: boolean;
@@ -87,18 +96,34 @@ export class PlayerViewInteraction {
 	private readonly registrations: Registration[] = [];
 	private presentation: PlayerViewPresentation = { kind: "docked" };
 	private lastQueueExpanded: boolean;
+	private lastSourceId: string | null;
+	private lastSourcePath: string | undefined;
 	private pendingFocus = false;
 	private pointerGesture: PointerGesture | null = null;
 	private disposed = false;
 	private readonly unsubscribePresentation: () => void;
 
 	constructor(private readonly options: PlayerViewInteractionOptions) {
-		this.lastQueueExpanded = options.runtime.getSnapshot().queueExpanded;
+		const snapshot = options.runtime.getSnapshot();
+		this.lastQueueExpanded = snapshot.queueExpanded;
+		this.lastSourceId = snapshot.currentSourceId;
+		this.lastSourcePath = snapshot.sources.find(
+			(source) => source.id === snapshot.currentSourceId,
+		)?.path;
 		this.unsubscribePresentation = options.runtime.subscribe(() => {
-			const queueExpanded = options.runtime.getSnapshot().queueExpanded;
-			if (queueExpanded === this.lastQueueExpanded) return;
-			this.lastQueueExpanded = queueExpanded;
-			this.publish();
+			const next = options.runtime.getSnapshot();
+			const sourcePath = next.sources.find(
+				(source) => source.id === next.currentSourceId,
+			)?.path;
+			const sourceChanged =
+				next.currentSourceId !== this.lastSourceId || sourcePath !== this.lastSourcePath;
+			const queueChanged = next.queueExpanded !== this.lastQueueExpanded;
+			this.lastQueueExpanded = next.queueExpanded;
+			this.lastSourceId = next.currentSourceId;
+			this.lastSourcePath = sourcePath;
+			const presenter = this.presenter();
+			if (presenter && sourceChanged) this.setAspectRatio(presenter, DEFAULT_ASPECT_RATIO);
+			if (queueChanged) this.publish();
 		});
 	}
 
@@ -129,6 +154,7 @@ export class PlayerViewInteraction {
 			media,
 			refs: {
 				focusSurface: (node) => this.setFocusNode(registration, node),
+				controlDeck: (node) => this.setControlDeck(registration, node),
 				mediaHost: (node) => this.setMediaHost(registration, node),
 				floatingHeader: (node) =>
 					this.bindPointerRef(registration, "floatingHeader", node, "move", true),
@@ -140,12 +166,45 @@ export class PlayerViewInteraction {
 			listeners: new Set(),
 			refCleanups: new Map(),
 			focusNode: null,
+			controlDeckNode: null,
 			mediaHostNode: null,
 			pointerCleanup: null,
-			snapshot: this.snapshotFor("waiting"),
+			controlsVisible: true,
+			aspectRatio: DEFAULT_ASPECT_RATIO,
+			mediaMetadataCleanup: () => undefined,
+			snapshot: this.snapshotFor("waiting", true),
 			mediaRelease: null,
 			active: false,
 			released: false,
+		};
+		const onMetadata = () => {
+			if (!registration.active || registration.released) return;
+			const { videoWidth, videoHeight } = media;
+			const ratio = videoWidth / videoHeight;
+			this.setAspectRatio(
+				registration,
+				Number.isFinite(videoWidth) &&
+					Number.isFinite(videoHeight) &&
+					Number.isFinite(ratio) &&
+					ratio > 0 &&
+					videoWidth > 0 &&
+					videoHeight > 0
+					? String(ratio)
+					: DEFAULT_ASPECT_RATIO,
+			);
+		};
+		const onEmptied = () => {
+			if (registration.active && !registration.released) {
+				this.setAspectRatio(registration, DEFAULT_ASPECT_RATIO);
+			}
+		};
+		media.addEventListener("loadedmetadata", onMetadata);
+		media.addEventListener("resize", onMetadata);
+		media.addEventListener("emptied", onEmptied);
+		registration.mediaMetadataCleanup = () => {
+			media.removeEventListener("loadedmetadata", onMetadata);
+			media.removeEventListener("resize", onMetadata);
+			media.removeEventListener("emptied", onEmptied);
 		};
 
 		const handle: PlayerViewMount = {
@@ -199,6 +258,11 @@ export class PlayerViewInteraction {
 				};
 				this.publish();
 				return { kind: "applied" };
+			case "toggle-controls":
+				if (registration.controlsVisible) {
+					this.hideControls(registration);
+				} else this.setControlsVisible(registration, true);
+				return { kind: "applied" };
 			case "dock-and-pause":
 				this.options.runtime.pause();
 				this.presentation = { kind: "docked" };
@@ -219,10 +283,12 @@ export class PlayerViewInteraction {
 		const wasPresenter = registration === this.presenter();
 		registration.released = true;
 		this.setActive(registration, false);
+		registration.mediaMetadataCleanup();
 		for (const cleanup of registration.refCleanups.values()) cleanup();
 		registration.refCleanups.clear();
 		registration.listeners.clear();
 		registration.focusNode = null;
+		registration.controlDeckNode = null;
 		registration.mediaHostNode = null;
 		const index = this.registrations.indexOf(registration);
 		if (index >= 0) this.registrations.splice(index, 1);
@@ -272,16 +338,21 @@ export class PlayerViewInteraction {
 		for (const registration of this.registrations) {
 			registration.snapshot = this.snapshotFor(
 				registration === presenter ? "presenter" : "waiting",
+				registration.controlsVisible,
 			);
 			for (const listener of registration.listeners) listener();
 		}
 	}
 
-	private snapshotFor(role: PlayerViewSnapshot["role"]): PlayerViewSnapshot {
+	private snapshotFor(
+		role: PlayerViewSnapshot["role"],
+		controlsVisible: boolean,
+	): PlayerViewSnapshot {
 		return {
 			role,
 			presentation: this.presentation,
 			queueExpanded: this.options.runtime.getSnapshot().queueExpanded,
+			controlsVisible,
 		};
 	}
 
@@ -310,9 +381,10 @@ export class PlayerViewInteraction {
 	private setFocusNode(registration: Registration, node: HTMLElement | null): void {
 		this.clearRef(registration, "focusSurface");
 		registration.focusNode = node;
-		if (!node) return;
+		if (!node || registration.released) return;
 		node.setAttribute("role", "application");
 		node.tabIndex = 0;
+		node.style.setProperty("--video-aspect-ratio", registration.aspectRatio);
 		const onKeyDown = (event: KeyboardEvent) => this.handleSurfaceKeyDown(registration, event);
 		const onPointerDown = (event: PointerEvent) => {
 			if (!isInteractiveTarget(event.target)) this.focus(registration);
@@ -322,8 +394,31 @@ export class PlayerViewInteraction {
 		registration.refCleanups.set("focusSurface", () => {
 			node.removeEventListener("keydown", onKeyDown);
 			node.removeEventListener("pointerdown", onPointerDown);
+			node.style.removeProperty("--video-aspect-ratio");
 		});
 		this.consumePendingFocus();
+	}
+
+	private setControlDeck(registration: Registration, node: HTMLElement | null): void {
+		registration.controlDeckNode = node;
+	}
+
+	private setAspectRatio(registration: Registration, aspectRatio: string): void {
+		registration.aspectRatio = aspectRatio;
+		registration.focusNode?.style.setProperty("--video-aspect-ratio", aspectRatio);
+	}
+
+	private setControlsVisible(registration: Registration, visible: boolean): void {
+		if (registration.controlsVisible === visible) return;
+		registration.controlsVisible = visible;
+		this.publish();
+	}
+
+	private hideControls(registration: Registration): void {
+		if (registration.controlDeckNode?.contains(registration.ownerDocument.activeElement)) {
+			registration.focusNode?.focus({ preventScroll: true });
+		}
+		this.setControlsVisible(registration, false);
 	}
 
 	private handleSurfaceKeyDown(registration: Registration, event: KeyboardEvent): void {
@@ -509,6 +604,7 @@ export class PlayerViewInteraction {
 	private clearPointer(registration: Registration): void {
 		registration.pointerCleanup?.();
 		registration.pointerCleanup = null;
+		if (this.pointerGesture?.registration === registration) this.pointerGesture = null;
 	}
 
 	private clearRef(registration: Registration, key: keyof PlayerViewRefs): void {
