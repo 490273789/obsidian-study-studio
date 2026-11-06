@@ -39,6 +39,7 @@ const zh = {
 	generate: "AI 生成字幕",
 	regenerate: "重新生成字幕",
 	original: "编辑标题与原文",
+	editMaterial: "编辑材料",
 	save: "保存",
 	play: "播放",
 	pause: "暂停",
@@ -105,6 +106,20 @@ const zh = {
 	summaryElapsed: (minutes: number, seconds: number) =>
 		minutes > 0 ? `用时 ${minutes} 分 ${seconds} 秒` : `用时 ${seconds} 秒`,
 	chunks: (done: number, total: number) => `已处理 ${done} / ${total} 段`,
+	shortcutHelp: "快捷键",
+	shortcutHelpTitle: "听说练习快捷键",
+	shortcutHelpSubtitle: "在练习区域内按下键盘即可直接控制",
+	shortcutGroupPlayback: "播放与跳转",
+	shortcutGroupPractice: "跟读与难句",
+	shortcutGroupSpeed: "速度调节",
+	shortcutSpaceDesc: "播放 / 暂停",
+	shortcutPrevDesc: "上一句",
+	shortcutNextDesc: "下一句",
+	shortcutSeekDesc: "快退 / 快进 3 秒（支持 J / L）",
+	shortcutRepeatDesc: "重听当前句",
+	shortcutDifficultDesc: "标记 / 取消难句",
+	shortcutRevealDesc: "盲听时临时揭示当前句",
+	shortcutSpeedDesc: "减慢 / 加快播放倍速",
 };
 const en: typeof zh = {
 	title: "Listening & speaking",
@@ -146,6 +161,7 @@ const en: typeof zh = {
 	generate: "Generate subtitles with AI",
 	regenerate: "Generate new subtitles",
 	original: "Edit title and reference text",
+	editMaterial: "Edit material",
 	save: "Save",
 	play: "Play",
 	pause: "Pause",
@@ -215,6 +231,20 @@ const en: typeof zh = {
 	summaryElapsed: (minutes: number, seconds: number) =>
 		minutes > 0 ? `${minutes} min ${seconds} s` : `${seconds} s`,
 	chunks: (done: number, total: number) => `Processed ${done} / ${total} chunks`,
+	shortcutHelp: "Shortcuts",
+	shortcutHelpTitle: "Practice shortcuts",
+	shortcutHelpSubtitle: "Press keys while the practice surface is focused",
+	shortcutGroupPlayback: "Playback & Navigation",
+	shortcutGroupPractice: "Practice & Difficulty",
+	shortcutGroupSpeed: "Speed controls",
+	shortcutSpaceDesc: "Play / Pause",
+	shortcutPrevDesc: "Previous sentence",
+	shortcutNextDesc: "Next sentence",
+	shortcutSeekDesc: "Seek backward / forward 3 s (or J / L)",
+	shortcutRepeatDesc: "Repeat current sentence",
+	shortcutDifficultDesc: "Mark / unmark difficult",
+	shortcutRevealDesc: "Reveal current sentence in blind mode",
+	shortcutSpeedDesc: "Decrease / increase playback rate",
 };
 export function audioPracticeStrings(language: Language): typeof zh {
 	return language === "en" ? en : zh;

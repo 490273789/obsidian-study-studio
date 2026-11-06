@@ -5,6 +5,7 @@ import {
 	ChevronDown,
 	EyeOff,
 	Headphones,
+	Keyboard,
 	ListChecks,
 	ListMusic,
 	LoaderCircle,
@@ -147,6 +148,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 	const [playerOptionsOpen, setPlayerOptionsOpen] = useState(false);
 	const [regenerateConfirmOpen, setRegenerateConfirmOpen] = useState(false);
 	const [removalTarget, setRemovalTarget] = useState<AudioMaterial | null>(null);
+	const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
 	const libraryId = useId();
 	const materialActionsId = useId();
 	const playerOptionsId = useId();
@@ -202,6 +204,24 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 	useEffect(() => {
 		sessionClock.reset();
 	}, [sessionClock, materialId]);
+	useEffect(() => {
+		if (!playerOptionsOpen) return;
+		const handlePointerDown = (event: PointerEvent) => {
+			const target = event.target as Node | null;
+			const container = document.getElementById(playerOptionsId)?.parentElement;
+			if (container?.contains(target)) return;
+			setPlayerOptionsOpen(false);
+		};
+		const handleKeyDown = (event: KeyboardEvent) => {
+			if (event.key === "Escape") setPlayerOptionsOpen(false);
+		};
+		document.addEventListener("pointerdown", handlePointerDown, true);
+		document.addEventListener("keydown", handleKeyDown);
+		return () => {
+			document.removeEventListener("pointerdown", handlePointerDown, true);
+			document.removeEventListener("keydown", handleKeyDown);
+		};
+	}, [playerOptionsOpen, playerOptionsId]);
 	return (
 		<div className={cls("fc-page fc-page--fill", styles.page)}>
 			<FlashcardHeader
@@ -292,6 +312,20 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 									)}
 								</Button>
 								<div id={materialActionsId} className={styles.materialActions}>
+									<Button
+										variant="neutral"
+										icon={Pencil}
+										className={styles.editMaterialButton}
+										aria-label={t.original}
+										title={t.original}
+										disabled={busy || generating}
+										onClick={() => openMaterialDialog("edit")}
+									>
+										<span className={styles.editMaterialLabel}>
+											{t.editMaterial}
+										</span>
+									</Button>
+									<span className={styles.actionsDivider} aria-hidden="true" />
 									{reviewReady && (
 										<Button
 											variant="secondary"
@@ -310,16 +344,14 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 										</Button>
 									)}
 									<Button
-										preset="icon"
-										icon={Pencil}
-										aria-label={t.original}
-										title={t.original}
-										disabled={busy || generating}
-										onClick={() => openMaterialDialog("edit")}
-									/>
-									<Button
+										variant={snapshot.cues.length ? "ghost" : "primary"}
 										icon={Sparkles}
+										className={cls(
+											styles.regenerateButton,
+											snapshot.cues.length > 0 && styles.regenerateAiButton,
+										)}
 										disabled={busy || generating}
+										title={snapshot.cues.length ? t.regenerate : t.generate}
 										onClick={() => {
 											if (!material) return;
 											if (snapshot.cues.length > 0) {
@@ -412,6 +444,19 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 								playerOptionsOpen={playerOptionsOpen}
 								playerOptionsId={playerOptionsId}
 								onTogglePlayerOptions={() => setPlayerOptionsOpen((open) => !open)}
+								onOpenShortcutHelp={() => setShortcutHelpOpen(true)}
+								onGenerateSubtitles={
+									snapshot.cues.length === 0 && material
+										? () => {
+												void activeDraftEngine.generateForMaterial(
+													material,
+													{
+														force: true,
+													},
+												);
+											}
+										: undefined
+								}
 							>
 								{completion && (
 									<PracticeSummary
@@ -630,6 +675,9 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 					}}
 				/>
 			)}
+			{shortcutHelpOpen && (
+				<ShortcutDialog t={t} onClose={() => setShortcutHelpOpen(false)} />
+			)}
 		</div>
 	);
 }
@@ -790,6 +838,91 @@ function MaterialForm(props: MaterialDialogProps): React.ReactNode {
 	);
 }
 
+interface ShortcutDialogProps {
+	readonly t: AudioPracticeStrings;
+	readonly onClose: () => void;
+}
+
+function ShortcutDialog(props: ShortcutDialogProps): React.ReactNode {
+	const { t } = props;
+	const titleId = useId();
+	const groups = [
+		{
+			title: t.shortcutGroupPlayback,
+			items: [
+				{ keys: ["Space"], desc: t.shortcutSpaceDesc },
+				{ keys: ["←", "↑"], desc: t.shortcutPrevDesc },
+				{ keys: ["→", "↓"], desc: t.shortcutNextDesc },
+				{ keys: ["Shift + ←", "Shift + →"], desc: t.shortcutSeekDesc },
+				{ keys: ["R"], desc: t.shortcutRepeatDesc },
+			],
+		},
+		{
+			title: t.shortcutGroupPractice,
+			items: [
+				{ keys: ["S", "D"], desc: t.shortcutDifficultDesc },
+				{ keys: ["H"], desc: t.shortcutRevealDesc },
+			],
+		},
+		{
+			title: t.shortcutGroupSpeed,
+			items: [{ keys: ["[", "]"], desc: t.shortcutSpeedDesc }],
+		},
+	];
+
+	return (
+		<ModalSurface
+			className={styles.shortcutDialog}
+			labelledBy={titleId}
+			onRequestClose={props.onClose}
+		>
+			{({ requestClose }) => (
+				<>
+					<div className="flashcard-modal-header">
+						<div className="flashcard-modal-heading">
+							<span id={titleId} className="flashcard-modal-title">
+								<Keyboard size={17} />
+								{t.shortcutHelpTitle}
+							</span>
+							<span className="flashcard-modal-subtitle">
+								{t.shortcutHelpSubtitle}
+							</span>
+						</div>
+						<Button
+							preset="icon"
+							icon={X}
+							aria-label={t.close}
+							title={t.close}
+							onClick={requestClose}
+						/>
+					</div>
+					<div className={cls("flashcard-modal-body", styles.shortcutBody)}>
+						{groups.map((group) => (
+							<section key={group.title} className={styles.shortcutSection}>
+								<h3 className={styles.shortcutSectionTitle}>{group.title}</h3>
+								<dl className={styles.shortcutList}>
+									{group.items.map((item) => (
+										<div key={item.desc} className={styles.shortcutRow}>
+											<dt className={styles.shortcutKeys}>
+												{item.keys.map((k) => (
+													<kbd key={k} className={styles.kbd}>
+														{k}
+													</kbd>
+												))}
+											</dt>
+											<dd className={styles.shortcutDesc}>{item.desc}</dd>
+										</div>
+									))}
+								</dl>
+							</section>
+						))}
+					</div>
+				</>
+			)}
+		</ModalSurface>
+	);
+}
+
 function renderTimedCueText(
 	text: string,
 	words: readonly TimedTextWord[] | undefined,
@@ -835,6 +968,8 @@ export function PracticeSurface({
 	playerOptionsOpen = false,
 	playerOptionsId = "audio-practice-player-options",
 	onTogglePlayerOptions,
+	onOpenShortcutHelp,
+	onGenerateSubtitles,
 	children,
 }: {
 	runtime: AudioPracticeRuntime;
@@ -845,6 +980,8 @@ export function PracticeSurface({
 	playerOptionsOpen?: boolean;
 	playerOptionsId?: string;
 	onTogglePlayerOptions?: () => void;
+	onOpenShortcutHelp?: () => void;
+	onGenerateSubtitles?: () => void;
 	children?: React.ReactNode;
 }): React.ReactNode {
 	const marks = snapshot.currentMaterial
@@ -982,16 +1119,31 @@ export function PracticeSurface({
 					</Button>
 				)}
 				<span className={styles.toolbarSpacer} />
-				<span className={styles.shortcutHint}>{t.shortcuts}</span>
 				{snapshot.difficultOnly && (
 					<span className={styles.cueCount}>{t.segments(cues.length)}</span>
 				)}
+				<Button
+					size="sm"
+					variant="ghost"
+					icon={Keyboard}
+					className={styles.shortcutButton}
+					aria-label={t.shortcutHelpTitle}
+					title={t.shortcutHelpTitle}
+					onClick={onOpenShortcutHelp}
+				>
+					{t.shortcutHelp}
+				</Button>
 			</header>
 			<div className={styles.cueScroll}>
 				{cues.length === 0 ? (
 					<div className={styles.cueEmpty}>
-						<ListMusic size={22} strokeWidth={1.6} aria-hidden="true" />
+						<ListMusic size={24} strokeWidth={1.6} aria-hidden="true" />
 						<p>{snapshot.cues.length ? t.noDifficult : t.noCues}</p>
+						{snapshot.cues.length === 0 && onGenerateSubtitles && (
+							<Button variant="primary" icon={Sparkles} onClick={onGenerateSubtitles}>
+								{t.generate}
+							</Button>
+						)}
 					</div>
 				) : (
 					<ol className={styles.cueList}>
@@ -1007,12 +1159,36 @@ export function PracticeSurface({
 									className={cls(styles.cue, active && styles.cueActive)}
 								>
 									<Button
+										preset="icon"
+										variant="ghost"
+										size="sm"
+										tabIndex={active ? 0 : -1}
+										icon={Star}
+										iconSize={14}
+										className={cls(
+											styles.cueStar,
+											marked && styles.cueStarActive,
+										)}
+										active={marked}
+										aria-pressed={marked}
+										aria-label={`${t.difficult}: ${timeLabel(cue.start)}`}
+										title={`${t.difficult} (S)`}
+										onClick={() => runtime.toggleDifficult(cue.id)}
+									/>
+									<Button
 										{...CUE_ROW_PROPS}
 										variant="ghost"
 										tabIndex={isFocusTarget ? 0 : -1}
 										className={styles.cueSelect}
 										aria-current={active ? "true" : undefined}
-										onClick={() => runtime.selectCue(cue.id, true)}
+										onClick={() => {
+											const sel =
+												typeof window !== "undefined"
+													? window.getSelection()?.toString().trim()
+													: "";
+											if (sel) return;
+											runtime.selectCue(cue.id, true);
+										}}
 									>
 										<span className={styles.cueTime}>
 											{timeLabel(cue.start)}
@@ -1036,22 +1212,6 @@ export function PracticeSurface({
 											)}
 										</span>
 									</Button>
-									<Button
-										preset="icon"
-										variant="ghost"
-										tabIndex={active ? 0 : -1}
-										icon={Star}
-										iconSize={15}
-										className={cls(
-											styles.cueStar,
-											marked && styles.cueStarActive,
-										)}
-										active={marked}
-										aria-pressed={marked}
-										aria-label={`${t.difficult}: ${timeLabel(cue.start)}`}
-										title={`${t.difficult} (S)`}
-										onClick={() => runtime.toggleDifficult(cue.id)}
-									/>
 								</li>
 							);
 						})}
@@ -1155,6 +1315,17 @@ function renderPlayerDock(
 					/>
 				</fieldset>
 				<div className={styles.playerOptions} data-expanded={optionsOpen}>
+					{Math.abs(offset) > 0.001 && (
+						<button
+							type="button"
+							className={styles.activeOffsetBadge}
+							title={`${t.offsetHint} (${offset > 0 ? "+" : ""}${offset}s)`}
+							aria-label={`${t.offsetHint} (${offset > 0 ? "+" : ""}${offset}s)`}
+							onClick={onToggleOptions}
+						>
+							{offset > 0 ? `+${offset}` : offset}s
+						</button>
+					)}
 					<Button
 						size="sm"
 						variant="ghost"
@@ -1168,18 +1339,21 @@ function renderPlayerDock(
 						{t.playbackOptions}
 					</Button>
 					<div id={optionsId} className={styles.playerOptionFields}>
-						<PlaybackRateControl
-							className={styles.rateControl}
-							label={t.rate}
-							value={snapshot.playbackRate}
-							rates={AUDIO_PLAYBACK_RATES}
-							align="end"
-							onChange={(rate) =>
-								runtime.setPlaybackRate(
-									rate as (typeof AUDIO_PLAYBACK_RATES)[number],
-								)
-							}
-						/>
+						<div className={styles.playerOptionRow}>
+							<span className={styles.optionRowLabel}>{t.rate}</span>
+							<PlaybackRateControl
+								className={styles.rateControl}
+								label={t.rate}
+								value={snapshot.playbackRate}
+								rates={AUDIO_PLAYBACK_RATES}
+								align="end"
+								onChange={(rate) =>
+									runtime.setPlaybackRate(
+										rate as (typeof AUDIO_PLAYBACK_RATES)[number],
+									)
+								}
+							/>
+						</div>
 						<div className={styles.offsetControl}>
 							<span className={styles.offsetLabel} title={t.offsetHint}>
 								{t.offset}

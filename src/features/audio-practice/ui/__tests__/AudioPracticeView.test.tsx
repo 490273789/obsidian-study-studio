@@ -382,4 +382,79 @@ describe("subtitle draft review", () => {
 		close!.props.onClick!();
 		expect(closes).toBe(1);
 	});
+	it("renders shortcut help button and calls onOpenShortcutHelp when clicked", async () => {
+		const { runtime, t } = await setup();
+		let shortcutClicked = false;
+		const surface = PracticeSurface({
+			runtime,
+			snapshot: runtime.getSnapshot(),
+			t,
+			onOpenShortcutHelp: () => {
+				shortcutClicked = true;
+			},
+		});
+		const shortcutBtn = elements(surface).find(
+			(el) => el.props["aria-label"] === t.shortcutHelpTitle,
+		);
+		expect(shortcutBtn).toBeDefined();
+		shortcutBtn!.props.onClick!();
+		expect(shortcutClicked).toBe(true);
+		runtime.dispose();
+	});
+	it("renders active offset badge when offset is set and hides it when offset is 0", async () => {
+		const { runtime, t } = await setup();
+		const base = runtime.getSnapshot();
+		const materialId = base.currentMaterialId!;
+
+		// Offset = 0: no activeOffsetBadge
+		const zeroSurface = PracticeSurface({
+			runtime,
+			snapshot: base,
+			t,
+		});
+		expect(
+			elements(zeroSurface).find((el) => el.props.className?.includes("activeOffsetBadge")),
+		).toBeUndefined();
+
+		// Offset = 0.5: activeOffsetBadge rendered with text "+0.5s"
+		const offsetSnapshot = {
+			...base,
+			progress: {
+				...base.progress,
+				[materialId]: { ...base.progress[materialId]!, offset: 0.5 },
+			},
+		};
+		const offsetSurface = PracticeSurface({
+			runtime,
+			snapshot: offsetSnapshot,
+			t,
+		});
+		const badge = elements(offsetSurface).find((el) =>
+			el.props.className?.includes("activeOffsetBadge"),
+		);
+		expect(badge).toBeDefined();
+		expect(text(badge?.props.children)).toBe("+0.5s");
+		runtime.dispose();
+	});
+	it("renders subtitle generate button in empty cues state", async () => {
+		const { runtime, t } = await setup();
+		const emptySnapshot = {
+			...runtime.getSnapshot(),
+			cues: [],
+		};
+		let generateTriggered = false;
+		const surface = PracticeSurface({
+			runtime,
+			snapshot: emptySnapshot,
+			t,
+			onGenerateSubtitles: () => {
+				generateTriggered = true;
+			},
+		});
+		const generateBtn = elements(surface).find((el) => text(el.props.children) === t.generate);
+		expect(generateBtn).toBeDefined();
+		generateBtn!.props.onClick!();
+		expect(generateTriggered).toBe(true);
+		runtime.dispose();
+	});
 });
