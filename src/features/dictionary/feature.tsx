@@ -396,7 +396,6 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 				order: 20,
 				title: (language) => dictionaryStrings(language).displayName,
 				openCommandId: OPEN_COMMAND_ID,
-				shortcutKey: "dictionary",
 				settingsSectionId: DICTIONARY_SECTION_ID,
 				available: () => host.settings.read().dictionary.enabled,
 				open: () => openPage(host),

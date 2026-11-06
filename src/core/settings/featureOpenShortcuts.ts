@@ -4,7 +4,7 @@ import { settingsRecord, type SettingsSlice } from "./slice";
 export const FEATURE_OPEN_SHORTCUT_KEYS = [
 	"selectionHelper",
 	"videoPlayer",
-	"dictionary",
+	"translation",
 	"flashcards",
 	"audioPractice",
 ] as const;
@@ -15,7 +15,7 @@ export type FeatureOpenShortcuts = Record<FeatureOpenShortcutKey, string>;
 export const DEFAULT_FEATURE_OPEN_SHORTCUTS: FeatureOpenShortcuts = {
 	selectionHelper: "Alt+1",
 	videoPlayer: "Alt+2",
-	dictionary: "Alt+3",
+	translation: "Alt+3",
 	flashcards: "Alt+4",
 	audioPractice: "Alt+5",
 };

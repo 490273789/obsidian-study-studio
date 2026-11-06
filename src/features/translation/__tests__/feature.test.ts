@@ -105,7 +105,7 @@ describe("translation feature", () => {
 		expect(entry.icon).toBe(Languages);
 		expect(entry.title("zh")).toBe(translationStrings("zh").title);
 		expect(entry.openCommandId).toBe("open-ai-translator");
-		expect(entry.openHotkeys).toBeUndefined();
+		expect(entry.shortcutKey).toBe("translation");
 		expect(entry.settingsSectionId).toBe("translation");
 		expect(entry.available()).toBe(true);
 		// The open command belongs to the workbench; only the feature-specific

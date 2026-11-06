@@ -25,7 +25,7 @@ describe("feature open shortcuts", () => {
 			featureOpenShortcuts: {
 				selectionHelper: "Alt+K",
 				videoPlayer: "Alt+K",
-				dictionary: "Ctrl+K",
+				translation: "Ctrl+K",
 				flashcards: "",
 				audioPractice: "invalid",
 			},
@@ -33,7 +33,7 @@ describe("feature open shortcuts", () => {
 		expect(normalized).toEqual({
 			selectionHelper: "Alt+K",
 			videoPlayer: "",
-			dictionary: "Ctrl+K",
+			translation: "Ctrl+K",
 			flashcards: "",
 			audioPractice: "Alt+5",
 		});

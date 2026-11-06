@@ -346,7 +346,7 @@ describe("dictionary feature", () => {
 		expect(entry.icon).toBe(BookOpen);
 		expect(entry.title("zh")).toBe(dictionaryStrings("zh").displayName);
 		expect(entry.openCommandId).toBe("open-dictionary");
-		expect(entry.shortcutKey).toBe("dictionary");
+		expect(entry.shortcutKey).toBeUndefined();
 		expect(entry.settingsSectionId).toBe("dictionary");
 		expect(entry.available()).toBe(true);
 		expect(fake.commands.map((command) => command.id)).toEqual(["dictionary-lookup-selection"]);

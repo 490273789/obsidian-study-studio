@@ -23,14 +23,14 @@ const NAMES: Record<Language, Record<FeatureOpenShortcutKey, string>> = {
 	zh: {
 		selectionHelper: "查词助手",
 		videoPlayer: "本地视频",
-		dictionary: "英语词典",
+		translation: "AI 翻译",
 		flashcards: "闪卡学习",
 		audioPractice: "听说练习",
 	},
 	en: {
 		selectionHelper: "Lookup assistant",
 		videoPlayer: "Local video",
-		dictionary: "English dictionary",
+		translation: "AI translation",
 		flashcards: "Flashcards",
 		audioPractice: "Listening and speaking",
 	},

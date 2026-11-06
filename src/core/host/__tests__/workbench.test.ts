@@ -622,6 +622,18 @@ describe("workbench", () => {
 						open: vi.fn(),
 					}),
 				),
+				feature("translation", (host) =>
+					host.catalog({
+						id: "translation",
+						icon: Layers,
+						title: () => "AI Translation",
+						openCommandId: "open-ai-translator",
+						shortcutKey: "translation",
+						settingsSectionId: "translation",
+						available: () => true,
+						open: vi.fn(),
+					}),
+				),
 				feature("selectionHelper", (host) =>
 					host.chrome((chrome) =>
 						chrome.command({
@@ -640,6 +652,9 @@ describe("workbench", () => {
 		expect(host("selectionHelper").configuredOpenShortcut()).toBe("Alt+1");
 		expect(commands.get("open-flashcards")?.hotkeys).toEqual([
 			{ modifiers: ["Alt"], key: "4" },
+		]);
+		expect(commands.get("open-ai-translator")?.hotkeys).toEqual([
+			{ modifiers: ["Alt"], key: "3" },
 		]);
 		expect(commands.get("open-selection-dictionary-assistant")?.hotkeys).toEqual([
 			{ modifiers: ["Alt"], key: "1" },

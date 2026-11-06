@@ -247,6 +247,7 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 				order: 10,
 				title: (language) => translationStrings(language).title,
 				openCommandId: OPEN_COMMAND_ID,
+				shortcutKey: "translation",
 				settingsSectionId: TRANSLATION_SECTION_ID,
 				available: () => host.settings.read().translation.enabled,
 				open: () => {
