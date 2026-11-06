@@ -2,13 +2,11 @@ export { AiService } from "./aiService";
 export { AiError } from "./types";
 export { aiFailureCode, aiFailureHttpStatus } from "./failures";
 export {
-	AI_ENGINE_KINDS,
 	ASR_PRESETS,
 	ASR_PROVIDERS,
 	BAILIAN_ASR_MODELS,
 	LLM_PRESETS,
 	LLM_PROVIDERS,
-	TRANSLATION_PRESETS,
 	cleanEngine,
 	createEngineDraft,
 	defaultEngineFor,

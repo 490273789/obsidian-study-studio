@@ -34,10 +34,9 @@ import {
 
 export { isRecord };
 
-export const AI_ENGINE_KINDS: readonly AiEngineKind[] = ["llm", "asr", "translation"];
 export const LLM_PROVIDERS: readonly LlmProvider[] = ["deepseek", "bailian", "youdao"];
 export const ASR_PROVIDERS: readonly AsrProvider[] = ["bailian", "openai-compatible"];
-export const TRANSLATION_PROVIDERS: readonly TranslationProvider[] = ["youdao"];
+const TRANSLATION_PROVIDERS: readonly TranslationProvider[] = ["youdao"];
 
 /** Models the synchronous Bailian speech API is known to accept (ADR-0006). */
 export const BAILIAN_ASR_MODELS: readonly string[] = [
@@ -58,7 +57,7 @@ export const ASR_PRESETS: Record<AsrProvider, { baseUrl: string; model: string }
 	"openai-compatible": { baseUrl: DEFAULT_OPENAI_BASE_URL, model: DEFAULT_OPENAI_MODEL },
 };
 
-export const TRANSLATION_PRESETS: Record<TranslationProvider, { baseUrl: string }> = {
+const TRANSLATION_PRESETS: Record<TranslationProvider, { baseUrl: string }> = {
 	youdao: { baseUrl: DEFAULT_YOUDAO_TRANSLATION_BASE_URL },
 };
 
@@ -80,7 +79,7 @@ export function isLlmProvider(value: unknown): value is LlmProvider {
 export function isAsrProvider(value: unknown): value is AsrProvider {
 	return ASR_PROVIDERS.some((provider) => provider === value);
 }
-export function isTranslationProvider(value: unknown): value is TranslationProvider {
+function isTranslationProvider(value: unknown): value is TranslationProvider {
 	return TRANSLATION_PROVIDERS.some((provider) => provider === value);
 }
 
@@ -129,7 +128,7 @@ function normalizeTranslationEngine(
 }
 
 /** Whitelists fields so accidental API keys never survive normalization. */
-export function normalizeEngine(value: unknown): AiEngineConfig | null {
+function normalizeEngine(value: unknown): AiEngineConfig | null {
 	if (!isRecord(value)) return null;
 	const id = text(value.id);
 	if (!id) return null;
@@ -273,7 +272,7 @@ export function validateAiConnection(engine: LlmEngineConfig): void {
 	validateEndpoint(engine.baseUrl);
 }
 
-export function validateLlmConnection(engine: LlmEngineConfig): void {
+function validateLlmConnection(engine: LlmEngineConfig): void {
 	validateAiConnection(engine);
 	if (!engine.model.trim()) throw new AiError("invalid-config");
 }

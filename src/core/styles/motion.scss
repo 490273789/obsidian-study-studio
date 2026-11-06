@@ -1,19 +1,23 @@
 /* Form focus and scrollbars */
-.flashcard-root input:not(.flashcard-input--unstyled):hover:not(:disabled):not([readonly]),
-.flashcard-root input:not(.flashcard-input--unstyled):focus,
-.flashcard-root select:hover:not(:disabled):not([readonly]),
-.flashcard-root select:focus,
-.flashcard-root textarea:not(.flashcard-textarea--unstyled):hover:not(:disabled):not([readonly]),
-.flashcard-root textarea:not(.flashcard-textarea--unstyled):focus,
-.flashcard-settings-tab input:not(.flashcard-input--unstyled):hover:not(:disabled):not([readonly]),
-.flashcard-settings-tab input:not(.flashcard-input--unstyled):focus,
-.flashcard-settings-tab select:hover:not(:disabled):not([readonly]),
-.flashcard-settings-tab select:focus,
-.flashcard-root button:focus-visible,
-.flashcard-settings-tab button:focus-visible {
-	outline: none;
-	border-color: var(--fc-input-border-focus);
-	box-shadow: none;
+:is(.flashcard-root, .flashcard-settings-tab) {
+	:is(
+		input:not(.flashcard-input--unstyled),
+		textarea:not(.flashcard-textarea--unstyled),
+		select
+	) {
+		&:hover:not(:disabled):not([readonly]),
+		&:focus {
+			outline: none;
+			border-color: var(--fc-input-border-focus);
+			box-shadow: none;
+		}
+	}
+
+	button:focus-visible {
+		outline: none;
+		border-color: var(--fc-input-border-focus);
+		box-shadow: none;
+	}
 }
 
 .flashcard-root ::-webkit-scrollbar,
@@ -93,26 +97,17 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.flashcard-root *,
-	.flashcard-root *::before,
-	.flashcard-root *::after,
-	.flashcard-settings-tab *,
-	.flashcard-settings-tab *::before,
-	.flashcard-settings-tab *::after {
+	:is(.flashcard-root, .flashcard-settings-tab) :is(*, *::before, *::after) {
 		animation-iteration-count: 1 !important;
 		scroll-behavior: auto !important;
 	}
 
-	.flashcard-settings-tab *,
-	.flashcard-settings-tab *::before,
-	.flashcard-settings-tab *::after {
+	.flashcard-settings-tab :is(*, *::before, *::after) {
 		animation-duration: 0.01ms !important;
 		transition-duration: 0.01ms !important;
 	}
 
-	.flashcard-root *,
-	.flashcard-root *::before,
-	.flashcard-root *::after {
+	.flashcard-root :is(*, *::before, *::after) {
 		animation-duration: 1ms !important;
 		transition-duration: 1ms !important;
 	}

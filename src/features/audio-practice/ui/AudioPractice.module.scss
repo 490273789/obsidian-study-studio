@@ -465,13 +465,6 @@
 	flex: 1 1 auto;
 }
 
-.shortcutHint {
-	flex: none;
-	color: var(--fc-muted);
-	font-size: var(--fc-font-xs);
-	white-space: nowrap;
-}
-
 .cueCount {
 	display: inline-flex;
 	flex: none;
@@ -1240,8 +1233,7 @@
 		display: none;
 	}
 
-	.libraryHint,
-	.shortcutHint {
+	.libraryHint {
 		display: none;
 	}
 

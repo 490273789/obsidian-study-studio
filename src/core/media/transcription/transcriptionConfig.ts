@@ -53,14 +53,3 @@ export async function transcriptionConfigFingerprint(config: TranscriptionConfig
 		config.model.trim(),
 	].join("|");
 }
-
-/** Accepts an older plaintext draft fingerprint only for the same Bailian workspace and model. */
-export function matchesLegacyBailianFingerprint(
-	fingerprint: string,
-	config: TranscriptionConfig,
-): boolean {
-	return (
-		config.provider === "bailian" &&
-		fingerprint === ["bailian", config.workspaceId.trim(), config.model.trim()].join("|")
-	);
-}

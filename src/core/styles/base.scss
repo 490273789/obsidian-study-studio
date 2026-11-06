@@ -5,11 +5,13 @@
  * Scope all styles to the plugin root/settings tab to avoid leaking into Obsidian.
  */
 
-.flashcard-root,
-.flashcard-settings-tab,
-.flashcard-modal-backdrop,
-.fc-selection-popup-container,
-.fc-overlay {
+:is(
+	.flashcard-root,
+	.flashcard-settings-tab,
+	.flashcard-modal-backdrop,
+	.fc-selection-popup-container,
+	.fc-overlay
+) {
 	--fc-font-2xs: 10px;
 	--fc-font-xs: 11px;
 	--fc-font-sm: 13px;
@@ -246,34 +248,13 @@
 }
 
 /* Reset Obsidian default button shadow */
-.flashcard-root,
-.flashcard-settings-tab {
+:is(.flashcard-root, .flashcard-settings-tab) {
 	button:not(.clickable-icon):not(.flashcard-btn) {
 		box-shadow: none;
 	}
 }
 
 /* Shared utilities */
-.blue {
-	color: var(--fc-blue) !important;
-}
-
-.green {
-	color: var(--fc-lime) !important;
-}
-
-.purple {
-	color: var(--fc-violet) !important;
-}
-
-.orange {
-	color: var(--fc-orange) !important;
-}
-
-.red {
-	color: var(--fc-red) !important;
-}
-
 .fc-kicker {
 	display: inline-flex;
 	align-items: center;

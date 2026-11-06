@@ -8,7 +8,6 @@ export interface SelectionHelperStrings {
 	openInMainTabHint: (shortcut: string) => string;
 	openInMainTab: string;
 	lookupInputLabel: string;
-	lookupPrompt: string;
 	openAssistant: string;
 	favorite: string;
 	close: string;
@@ -30,8 +29,6 @@ export interface SelectionHelperStrings {
 	shortcutRecording: string;
 	shortcutInvalid: string;
 	shortcutReset: string;
-	dictionaryDisabled: string;
-	translationDisabled: string;
 	dictSelectionHeading: string;
 	dictSelectionDesc: string;
 	dictDrag: string;
@@ -57,7 +54,6 @@ const ZH_STRINGS: SelectionHelperStrings = {
 	openInMainTabHint: (shortcut) => `按 ${shortcut} 在主标签页打开`,
 	openInMainTab: "在词典主标签打开",
 	lookupInputLabel: "查询单词或短语",
-	lookupPrompt: "输入单词或短语，按 Enter 查询。",
 	openAssistant: "打开查词助手",
 	favorite: "收藏",
 	close: "关闭",
@@ -81,8 +77,6 @@ const ZH_STRINGS: SelectionHelperStrings = {
 	shortcutRecording: "请按快捷键…",
 	shortcutInvalid: "快捷键需包含 Ctrl、Alt 或 Command，且不能使用 Esc。",
 	shortcutReset: "恢复默认",
-	dictionaryDisabled: "词典功能未开启，请先在词典设置中启用",
-	translationDisabled: "AI 翻译未开启，请先在翻译设置中启用",
 	dictSelectionHeading: "划词展示字典",
 	dictSelectionDesc:
 		"选择在划词浮窗中展示哪些字典，拖拽或使用上下按钮调整展示顺序。若全部勾选或全部未选，则默认展示所有已启用的字典。",
@@ -110,7 +104,6 @@ const EN_OVERRIDES: Partial<SelectionHelperStrings> = {
 	openInMainTabHint: (shortcut) => `Press ${shortcut} to open in main tab`,
 	openInMainTab: "Open in dictionary tab",
 	lookupInputLabel: "Look up a word or phrase",
-	lookupPrompt: "Enter a word or phrase and press Enter to look it up.",
 	openAssistant: "Open lookup assistant",
 	favorite: "Favorite",
 	close: "Close",
@@ -135,8 +128,6 @@ const EN_OVERRIDES: Partial<SelectionHelperStrings> = {
 	shortcutRecording: "Press shortcut…",
 	shortcutInvalid: "Shortcut needs Ctrl, Alt, or Command and cannot use Esc.",
 	shortcutReset: "Reset to default",
-	dictionaryDisabled: "Dictionary is disabled in settings",
-	translationDisabled: "Translation is disabled in settings",
 	dictSelectionHeading: "Popup Dictionaries",
 	dictSelectionDesc:
 		"Select dictionaries for the popup. Drag or use the move buttons to change their display order. If none are explicitly selected, all enabled dictionaries will be shown.",

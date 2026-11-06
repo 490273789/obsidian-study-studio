@@ -36,13 +36,8 @@
 
 	@include patterns.fc-hero-stacked;
 
-	.flashcard-root input,
-	.flashcard-root textarea,
-	.flashcard-root select,
-	.flashcard-control,
-	.flashcard-settings-tab input,
-	.flashcard-settings-tab textarea,
-	.flashcard-settings-tab select {
+	:is(.flashcard-root, .flashcard-settings-tab) :is(input, textarea, select),
+	.flashcard-control {
 		font-size: var(--fc-font-md);
 	}
 }
