@@ -168,7 +168,7 @@ describe("SettingsPageRenderer", () => {
 		expect(nextSelector.focus).toHaveBeenCalledWith({ preventScroll: true });
 	});
 
-	it("groups contributed sections without changing their identities or active selection", () => {
+	it("renders groups in the supplied host order without reapplying category priorities", () => {
 		const { container, sections, render } = setup();
 		sections[0]!.category = "learning";
 		sections[1]!.category = "general";
@@ -176,12 +176,12 @@ describe("SettingsPageRenderer", () => {
 		const nav = navigation(container);
 		expect(nav.getAttribute("aria-orientation")).toBe("vertical");
 		expect(nav.children.map((child) => child.text)).toEqual([
-			"通用",
-			"ai",
 			"学习",
 			"flashcards",
+			"通用",
+			"ai",
 		]);
-		expect(nav.children[3]!.getAttribute("aria-selected")).toBe("true");
+		expect(nav.children[1]!.getAttribute("aria-selected")).toBe("true");
 	});
 	it("restores focus on the same sorting handle across a rebuild", () => {
 		const { container, render, handles } = setup();

@@ -102,7 +102,7 @@ export interface WorkbenchSettingsSection {
 	id: string;
 	/** Feature-owned navigation grouping; ungrouped contributions remain available. */
 	category?: "general" | "learning" | "content" | "language";
-	/** Position in the settings tab; lower comes first. */
+	/** Position within the category; ties retain registration order. */
 	order: number;
 	label(language: Language): string;
 	/** A fresh presentation generation, rebuilt on every render. */
@@ -110,6 +110,11 @@ export interface WorkbenchSettingsSection {
 	activate?(): void;
 	hide?(): void;
 }
+
+const SETTINGS_SECTION_CATEGORY_ORDER: Record<
+	NonNullable<WorkbenchSettingsSection["category"]>,
+	number
+> = { general: 0, learning: 1, content: 2, language: 3 };
 
 /**
  * An Obsidian view owned by a feature. The host signals it after this owner or
@@ -182,7 +187,7 @@ export interface Workbench {
 	settingsChanged(previous: FlashcardSettings, next: FlashcardSettings): void;
 	/** Contributes a host-owned shared settings section, such as AI engines. */
 	addSettingsSection(section: WorkbenchSettingsSection): void;
-	/** Settings sections from the host and every feature, ordered. */
+	/** Category order, then group-local position; ties retain registration order. */
 	settingsSections(): WorkbenchSettingsSection[];
 	/** The settings tab registers itself here so features can reach it. */
 	setSettingsTab(tab: WorkbenchSettingsTab): void;
@@ -517,7 +522,13 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 			sectionsById.set(section.id, section);
 		},
 
-		settingsSections: () => [...sectionsById.values()].sort((a, b) => a.order - b.order),
+		settingsSections: () =>
+			[...sectionsById.values()].sort(
+				(a, b) =>
+					(a.category ? SETTINGS_SECTION_CATEGORY_ORDER[a.category] : 4) -
+						(b.category ? SETTINGS_SECTION_CATEGORY_ORDER[b.category] : 4) ||
+					a.order - b.order,
+			),
 
 		setSettingsTab: (tab) => {
 			settingsTab = tab;

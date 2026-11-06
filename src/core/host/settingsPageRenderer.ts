@@ -12,6 +12,7 @@ interface SettingsPageRendererOptions {
 }
 
 interface SettingsPageRenderInput {
+	/** Final navigation order supplied by the workbench; the renderer preserves it. */
 	readonly sections: readonly WorkbenchSettingsSection[];
 	readonly activeSection: WorkbenchSettingsSection | undefined;
 	readonly language: Language;
@@ -123,13 +124,9 @@ export class SettingsPageRenderer {
 		let activeTabEl: HTMLButtonElement | null = null;
 		const tabButtons: HTMLButtonElement[] = [];
 
-		const categories = ["general", "learning", "content", "language", undefined] as const;
-		const sections = categories.flatMap((category) =>
-			input.sections.filter((section) => section.category === category),
-		);
 		let previousCategory: WorkbenchSettingsSection["category"];
 		let optionParent: HTMLElement = sectionSelect;
-		for (const section of sections) {
+		for (const section of input.sections) {
 			if (section.category && section.category !== previousCategory) {
 				const categoryLabel = t(`settings.category.${section.category}`);
 				navEl

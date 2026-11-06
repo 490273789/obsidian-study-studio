@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { FlashcardSettingTab } from "../settingsTab";
 import { DEFAULT_SETTINGS } from "../settingsSlices";
 import { defineSettings } from "../../settings/presentation";
+import { createWorkbench, type WorkbenchSettingsSection } from "../workbench";
 import * as controlRenderer from "../settingsControlRenderer";
 
 class MockElement {
@@ -10,6 +11,8 @@ class MockElement {
 	listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
 	attributes: Record<string, string> = {};
 	text = "";
+	value = "";
+	focus = vi.fn();
 	inputEl = this;
 	scrollTop = 0;
 	scrollLeft = 0;
@@ -179,6 +182,96 @@ vi.mock("obsidian", () => ({
 };
 
 describe("FlashcardSettingTab", () => {
+	function orderedPlugin() {
+		const plugin = createMockPlugin();
+		const workbench = createWorkbench({
+			app: {} as never,
+			plugin: {} as never,
+			readSettings: () => plugin.settings,
+			commitSettings: vi.fn(),
+			createModules: () => [],
+		});
+		const section = (
+			id: string,
+			order: number,
+			category: WorkbenchSettingsSection["category"],
+		): WorkbenchSettingsSection => ({
+			id,
+			order,
+			category,
+			label: () => id,
+			presentation: () => defineSettings(id, () => {}),
+		});
+		workbench.addSettingsSection(section("language", -100, "language"));
+		workbench.addSettingsSection(section("content", -200, "content"));
+		workbench.addSettingsSection(section("general", 1000, "general"));
+		return { ...plugin, workbench, section };
+	}
+
+	function navigationButtons(container: MockElement): MockElement[] {
+		return container.children[0]!.children.find((child) =>
+			child.classList.has("fc-settings-tab-nav"),
+		)!.children.filter((child) => child.classList.has("fc-settings-tab-btn"));
+	}
+
+	it.each(["", "missing"])(
+		"uses the first visible section for selection %j and keeps that fallback after reordering",
+		(requestedId) => {
+			const plugin = orderedPlugin();
+			const tab = new FlashcardSettingTab({} as never, plugin as never);
+			tab.select(requestedId);
+			tab.display();
+			const container = tab.containerEl as unknown as MockElement;
+			expect(navigationButtons(container).map((button) => button.text)).toEqual([
+				"general",
+				"content",
+				"language",
+			]);
+			expect(navigationButtons(container)[0]!.getAttribute("aria-selected")).toBe("true");
+			const selector = container.children[0]!.children[0]!.children[1]!;
+			expect(selector.value).toBe("general");
+			expect(
+				selector.children.flatMap((group) => group.children.map((option) => option.text)),
+			).toEqual(["general", "content", "language"]);
+			// A resolved fallback is a real selection, including when the originally missing ID appears.
+			const newFirst = requestedId || "new-first";
+			plugin.workbench.addSettingsSection(plugin.section(newFirst, -5000, "general"));
+			tab.refresh();
+			const buttons = navigationButtons(container);
+			expect(buttons[0]!.text).toBe(newFirst);
+			expect(
+				buttons.find((button) => button.getAttribute("aria-selected") === "true")?.text,
+			).toBe("general");
+			tab.hide();
+			plugin.workbench.dispose();
+		},
+	);
+
+	it("uses the same host sequence for desktop navigation, compact options, and Home/End", () => {
+		const plugin = orderedPlugin();
+		const tab = new FlashcardSettingTab({} as never, plugin as never);
+		tab.display();
+		const container = tab.containerEl as unknown as MockElement;
+		navigationButtons(container)[0]!.listeners.keydown![0]!({
+			key: "End",
+			preventDefault: vi.fn(),
+		});
+		expect(
+			navigationButtons(container).find(
+				(button) => button.getAttribute("aria-selected") === "true",
+			)?.text,
+		).toBe("language");
+		expect(container.children[0]!.children[0]!.children[1]!.value).toBe("language");
+		navigationButtons(container)[2]!.listeners.keydown![0]!({
+			key: "Home",
+			preventDefault: vi.fn(),
+		});
+		expect(navigationButtons(container)[0]!.getAttribute("aria-selected")).toBe("true");
+		expect(container.children[0]!.children[0]!.children[1]!.value).toBe("general");
+		tab.hide();
+		plugin.workbench.dispose();
+	});
+
 	it("restores the same dictionary handle across busy and saved generations for repeated keyboard sorting", () => {
 		const tab = new FlashcardSettingTab({} as never, createMockPlugin() as never);
 		const container = tab.containerEl as unknown as MockElement;

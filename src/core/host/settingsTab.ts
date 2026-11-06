@@ -50,7 +50,7 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 		if (sectionId && this.renderedSectionId) {
 			const sections = this.sections();
 			const language = this.getSelectedLanguage();
-			const activeSection = this.activeSection();
+			const activeSection = this.activeSection(sections);
 			if (
 				sectionId !== activeSection?.id &&
 				this.renderedSectionId === activeSection?.id &&
@@ -76,7 +76,7 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 
 	/** The settings tab is a host-owned shell: it renders whatever sections are registered. */
 	private sections(): WorkbenchSettingsSection[] {
-		return (this.plugin.workbench?.settingsSections() ?? []).sort((a, b) => a.order - b.order);
+		return this.plugin.workbench?.settingsSections() ?? [];
 	}
 
 	private navigationKey(sections: WorkbenchSettingsSection[], language: Language): string {
@@ -90,8 +90,9 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 		);
 	}
 
-	private activeSection(): WorkbenchSettingsSection | undefined {
-		const sections = this.sections();
+	private activeSection(
+		sections: readonly WorkbenchSettingsSection[],
+	): WorkbenchSettingsSection | undefined {
 		return sections.find((section) => section.id === this.activeSectionId) ?? sections[0];
 	}
 
@@ -105,7 +106,7 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 
 	private renderSettings(options: { preserveScroll?: boolean } = { preserveScroll: true }): void {
 		const sections = this.sections();
-		const activeSection = this.activeSection();
+		const activeSection = this.activeSection(sections);
 		const language = this.getSelectedLanguage();
 		const rendered = this.renderer.render({
 			sections,
@@ -114,7 +115,8 @@ export class FlashcardSettingTab extends PluginSettingTab implements WorkbenchSe
 			preserveScroll: options.preserveScroll !== false,
 		});
 		if (!rendered) return;
-		this.renderedSectionId = activeSection?.id ?? "";
+		this.activeSectionId = activeSection?.id ?? "";
+		this.renderedSectionId = this.activeSectionId;
 		this.renderedLanguage = language;
 		this.renderedNavigationKey = this.navigationKey(sections, language);
 	}

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { BookOpen, Languages, Layers } from "lucide-react";
 import { DEFAULT_SETTINGS, type FeatureSettingsOwner } from "../settingsSlices";
 import type { FlashcardSettings } from "../../shared/types";
+import { defineSettings } from "../../settings/presentation";
 import {
 	createWorkbench,
 	SettingsScopeViolation,
@@ -9,6 +10,7 @@ import {
 	type AnyWorkbenchModule,
 	type WorkbenchModule,
 	type WorkbenchHost,
+	type WorkbenchSettingsSection,
 } from "../workbench";
 
 interface FakeRibbon {
@@ -109,6 +111,20 @@ function feature<TOwner extends FeatureSettingsOwner>(
 	render: WorkbenchModule<TOwner>["render"],
 ): WorkbenchModule<TOwner> {
 	return { id, render, stop: vi.fn() };
+}
+
+function navigationSection(
+	id: string,
+	order: number,
+	category?: WorkbenchSettingsSection["category"],
+): WorkbenchSettingsSection {
+	return {
+		id,
+		order,
+		category,
+		label: () => id,
+		presentation: () => defineSettings(id, () => {}),
+	};
 }
 
 describe("workbench", () => {
@@ -221,6 +237,78 @@ describe("workbench", () => {
 		// Re-registering the same id must replace, not duplicate.
 		workbench.refresh();
 		expect(workbench.settingsSections()).toHaveLength(3);
+	});
+
+	it("orders sections by category before group-local position and leaves uncategorized entries last", () => {
+		const { workbench } = setup([]);
+		for (const section of [
+			navigationSection("ungrouped-first", -1000),
+			navigationSection("language", -100, "language"),
+			navigationSection("learning-later", 100, "learning"),
+			navigationSection("general-later", 1000, "general"),
+			navigationSection("content", -200, "content"),
+			navigationSection("learning-first", -1, "learning"),
+			navigationSection("general-first", 5, "general"),
+			navigationSection("ungrouped-later", 1),
+		])
+			workbench.addSettingsSection(section);
+		expect(workbench.settingsSections().map((section) => section.id)).toEqual([
+			"general-first",
+			"general-later",
+			"learning-first",
+			"learning-later",
+			"content",
+			"language",
+			"ungrouped-first",
+			"ungrouped-later",
+		]);
+	});
+
+	it("retains registration order for ties and same-id replacements across feature refreshes", () => {
+		const { workbench } = setup([
+			feature("translation", (host) =>
+				host.settingsSection(navigationSection("feature", 1, "language")),
+			),
+		]);
+		workbench.addSettingsSection(navigationSection("host", 1, "language"));
+		workbench.refresh();
+		workbench.addSettingsSection(navigationSection("later-host", 1, "language"));
+		const replacement = navigationSection("host", 1, "language");
+		workbench.addSettingsSection(replacement);
+		workbench.refresh();
+		const sections = workbench.settingsSections();
+		expect(sections.map((section) => section.id)).toEqual(["host", "feature", "later-host"]);
+		expect(sections[0]).toBe(replacement);
+	});
+
+	it("gives a removed section a new registration position when its owner returns", () => {
+		let fail = false;
+		const { workbench } = setup([
+			feature("translation", (host) => {
+				if (fail) throw new Error("owner unavailable");
+				host.settingsSection(navigationSection("feature", 1, "language"));
+			}),
+		]);
+		workbench.refresh();
+		workbench.addSettingsSection(navigationSection("host", 1, "language"));
+		expect(workbench.settingsSections().map((section) => section.id)).toEqual([
+			"feature",
+			"host",
+		]);
+		const error = vi.spyOn(console, "error").mockImplementation(() => {});
+		try {
+			fail = true;
+			workbench.refresh();
+			expect(workbench.settingsSections().map((section) => section.id)).toEqual(["host"]);
+			fail = false;
+			workbench.refresh();
+			expect(workbench.settingsSections().map((section) => section.id)).toEqual([
+				"host",
+				"feature",
+			]);
+		} finally {
+			error.mockRestore();
+		}
 	});
 
 	it("pushes committed settings into open views and stops every feature on dispose", () => {
