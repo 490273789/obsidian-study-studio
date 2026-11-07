@@ -312,6 +312,8 @@ function resolveResultPage(
 				result={result}
 				onHome={context.onResultHome}
 				onRestart={context.onRestart}
+				markdownRenderer={context.markdownRenderer}
+				onOpenSourceFile={context.onOpenSourceFile}
 			/>
 		));
 	}

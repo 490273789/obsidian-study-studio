@@ -12,6 +12,7 @@ import { StudySummary } from "../../../views/Study/StudySummary";
 import { PracticeSummary } from "../../../views/Practice/PracticeSummary";
 import { SpellingSummary } from "../../../views/Spelling/SpellingSummary";
 import { ChallengeSummary } from "../../../views/Challenge/ChallengeSummary";
+import { handleSessionSummaryKeyDown } from "../sessionSummaryKeyboard";
 
 const { buttons } = vi.hoisted(() => ({ buttons: [] as FlashcardButtonProps[] }));
 vi.mock("../../../../../../core/ui/primitives/Button", () => ({
@@ -170,4 +171,100 @@ describe("session result actions", () => {
 			expect(next ? onNextLevel : onEnd).toHaveBeenCalledOnce();
 		},
 	);
+
+	it("renders split layout with lapse cards and note open actions in StudySummary", () => {
+		const onHome = vi.fn();
+		const onOpenSourceFile = vi.fn();
+		const result = {
+			originDeck: { name: "English 101" },
+			cardCount: 2,
+			totalReviews: 3,
+			timeSpent: 12,
+			ratingCounts: { 1: 1, 2: 1, 3: 0, 4: 0, 5: 0 },
+			lapseCards: [
+				{
+					identity: "card-1",
+					currentDeckId: "deck-1",
+					front: "abandon",
+					back: "v. 放弃",
+					sourceFile: "notes/vocabulary.md",
+					indexInFile: 0,
+				},
+			],
+		} as unknown as StudyResultSnapshot;
+
+		const html = renderToStaticMarkup(
+			<StudySummary result={result} onHome={onHome} onOpenSourceFile={onOpenSourceFile} />,
+		);
+
+		expect(html).toContain("splitContent");
+		expect(html).toContain("primaryColumn");
+		expect(html).toContain("secondaryColumn");
+		expect(html).toContain("study.weakCardsTitle");
+		expect(html).toContain("vocabulary.md");
+	});
+
+	it("renders all-mastered celebration state when there are no lapse cards", () => {
+		const onHome = vi.fn();
+		const result = {
+			originDeck: { name: "English 101" },
+			cardCount: 5,
+			totalReviews: 5,
+			timeSpent: 20,
+			ratingCounts: { 1: 0, 2: 0, 3: 3, 4: 2, 5: 0 },
+			lapseCards: [],
+		} as unknown as StudyResultSnapshot;
+
+		const html = renderToStaticMarkup(<StudySummary result={result} onHome={onHome} />);
+
+		expect(html).toContain("splitContent");
+		expect(html).toContain("study.allMasteredTitle");
+	});
+
+	it("dispatches primary action on Enter / Space and onHome on Escape", () => {
+		const onHome = vi.fn();
+		const onRestart = vi.fn();
+		const preventDefault = vi.fn();
+		const options = {
+			actions: [
+				{ label: "Restart", onClick: onRestart },
+				{ label: "Home", onClick: onHome, primary: true },
+			],
+			onHome,
+		};
+
+		// Enter
+		expect(
+			handleSessionSummaryKeyDown({ key: "Enter", preventDefault, target: null }, options),
+		).toBe(true);
+		expect(onHome).toHaveBeenCalledTimes(1);
+		expect(preventDefault).toHaveBeenCalledTimes(1);
+
+		// Space
+		expect(
+			handleSessionSummaryKeyDown({ key: " ", preventDefault, target: null }, options),
+		).toBe(true);
+		expect(onHome).toHaveBeenCalledTimes(2);
+
+		// Escape
+		expect(
+			handleSessionSummaryKeyDown({ key: "Escape", preventDefault, target: null }, options),
+		).toBe(true);
+		expect(onHome).toHaveBeenCalledTimes(3);
+
+		// Unhandled key
+		expect(
+			handleSessionSummaryKeyDown({ key: "Tab", preventDefault, target: null }, options),
+		).toBe(false);
+
+		// Ignored inside inputs
+		const inputTarget = { tagName: "INPUT" } as unknown as HTMLElement;
+		expect(
+			handleSessionSummaryKeyDown(
+				{ key: "Enter", preventDefault, target: inputTarget },
+				options,
+			),
+		).toBe(false);
+		expect(onHome).toHaveBeenCalledTimes(3);
+	});
 });

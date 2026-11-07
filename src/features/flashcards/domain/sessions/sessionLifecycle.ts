@@ -276,6 +276,7 @@ export interface StudyResultSnapshot {
 	readonly timeSpent: number;
 	readonly ratingCounts: Record<StudyRating, number>;
 	readonly restartOrigin: Readonly<Extract<SessionRestartOrigin, { mode: "study" }>>;
+	readonly lapseCards?: readonly Readonly<SessionCardSnapshot>[];
 }
 
 export interface PracticeResultSnapshot {
@@ -542,6 +543,7 @@ type InternalResultState =
 			timeSpent: number;
 			ratingCounts: Record<StudyRating, number>;
 			restartOrigin: Extract<SessionRestartOrigin, { mode: "study" }>;
+			lapseCards?: SessionCardSnapshot[];
 	  }
 	| {
 			kind: "result";
@@ -1216,6 +1218,14 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			}
 			const uniqueCardCount = new Set(step.session.answerEvents.map((event) => event.cardId))
 				.size;
+			const lapseCardIds = Array.from(
+				new Set(
+					step.session.answerEvents
+						.filter((event) => event.rating === 1 || event.rating === 2)
+						.map((event) => event.cardId),
+				),
+			);
+			const lapseCards = this.snapshotCards(state.session.deckId, lapseCardIds);
 			this.publish({
 				kind: "result",
 				mode: "study",
@@ -1226,6 +1236,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 				totalReviews: step.session.answerEvents.length,
 				timeSpent: step.finishIntent.duration,
 				ratingCounts,
+				lapseCards,
 				restartOrigin: state.restartOrigin,
 			});
 		} else {
@@ -1637,6 +1648,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 				totalReviews: state.totalReviews,
 				timeSpent: state.timeSpent,
 				ratingCounts: state.ratingCounts,
+				lapseCards: state.lapseCards,
 				restartOrigin: state.restartOrigin,
 			};
 		}
