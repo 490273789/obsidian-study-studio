@@ -71,6 +71,7 @@ export default class StudyStudioPlugin extends Plugin {
 		);
 		this.workbench.addSettingsSection(
 			createAiEngineSection({
+				app: this.app,
 				ai: this.aiService,
 				refresh: () => this.workbench.settingsTab.refresh(AI_ENGINE_SECTION_ID),
 			}),

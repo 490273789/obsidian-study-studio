@@ -104,8 +104,9 @@ export function buildAiSettingsViewModel(
 			page.group("types", t.typeLabel, (group) => {
 				group.choiceButtons(
 					"kind",
-					{ name: t.typeLabel, description: kindDescription },
+					{ name: t.serviceCategory, description: kindDescription },
 					{
+						value: kind,
 						choices: KIND_ORDER.map((candidate) => ({
 							id: candidate,
 							label: t[candidate],
@@ -121,7 +122,7 @@ export function buildAiSettingsViewModel(
 					group.select(
 						"default",
 						{
-							name: t.defaultConfig,
+							name: t.selectDefault,
 							description: kind === "llm" ? t.defaultLlmHelp : t.defaultAsrHelp,
 						},
 						{
@@ -144,7 +145,7 @@ export function buildAiSettingsViewModel(
 				group.button(
 					"add",
 					{
-						name: t.engineList,
+						name: t.addEngineRow,
 						description: (() => {
 							switch (kind) {
 								case "llm":
@@ -186,7 +187,12 @@ export function buildAiSettingsViewModel(
 					const name = isDefault ? `${engine.name} ${t.defaultBadge}` : engine.name;
 					group.row(
 						`engine-${settingsKey(engine.id)}`,
-						{ name, description: engineSummary(engine, t) },
+						{
+							name,
+							description: isDefault
+								? `${engineSummary(engine, t)} · ${t.defaultEngineDesc}`
+								: engineSummary(engine, t),
+						},
 						(row) => {
 							button(row, "edit", t.edit, () => actions.toEdit(engine.id));
 							button(
@@ -195,7 +201,6 @@ export function buildAiSettingsViewModel(
 								t.delete,
 								() => actions.remove(engine.id),
 								saving,
-								"warning",
 							);
 						},
 					);
@@ -382,7 +387,7 @@ export function buildAiSettingsViewModel(
 						},
 					);
 				}
-				group.row("configuration", { name: t.save }, (row) => {
+				group.row("configuration", { name: t.configActions }, (row) => {
 					button(row, "save", t.save, actions.save);
 					button(row, "cancel", t.cancel, actions.back);
 					if (!draftIsNew)

@@ -217,11 +217,16 @@ class SettingsControlRenderer {
 				cls: "flashcard-tags-container",
 			});
 			for (const choice of control.choices) {
+				const isSelected = control.value !== undefined && control.value === choice.id;
+				const activeCls = isSelected ? " active is-active" : "";
 				const tagBtn = tagsContainer.createEl("button", {
 					type: "button",
 					text: choice.label,
-					cls: "flashcard-btn flashcard-btn-outline flashcard-btn-sm flashcard-tag-button",
+					cls: `flashcard-btn flashcard-btn-outline flashcard-btn-sm flashcard-tag-button${activeCls}`,
 				});
+				if (control.value !== undefined) {
+					tagBtn.setAttribute("aria-pressed", isSelected ? "true" : "false");
+				}
 				tagBtn.disabled = control.disabled;
 				tagBtn.addEventListener(
 					"click",

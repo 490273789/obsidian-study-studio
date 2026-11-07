@@ -73,6 +73,7 @@ describe("AI settings presentation", () => {
 		expect(presentation.snapshot.groups[0]?.heading).toBe("服务类型");
 		const kinds = rows(presentation).find((row) => row.key === "kind")?.controls[0];
 		if (kinds?.kind !== "choiceButtons") throw new Error("Missing kind tabs");
+		expect(kinds.value).toBe("llm");
 		expect(kinds.choices.map((choice) => choice.id)).toEqual(["llm", "asr", "translation"]);
 		await presentation.invoke({ action: kinds.action, value: "asr" });
 		expect(actions.kind).toHaveBeenCalledWith("asr");
@@ -82,16 +83,29 @@ describe("AI settings presentation", () => {
 		expect(texts.some((name) => name.includes("Speech"))).toBe(false);
 	});
 
+	it("uses distinct row names to prevent stutter against group headings", () => {
+		const { state, actions } = setup("llm");
+		const presentation = buildAiSettingsViewModel(state, actions, "zh");
+		for (const group of presentation.snapshot.groups) {
+			if (!group.heading) continue;
+			for (const row of group.rows) {
+				expect(row.name).not.toBe(group.heading);
+			}
+		}
+	});
+
 	it("presents the ASR engine list with its default and edits", async () => {
 		const { state, actions } = setup("asr");
 		const presentation = buildAiSettingsViewModel(state, actions, "zh");
 		const engine = rows(presentation).find((row) => row.key === "engine-asr");
 		expect(engine?.name).toContain("Speech");
 		expect(engine?.name).toContain("默认");
+		expect(engine?.description).toContain("当前默认引擎");
 		const remove = engine?.controls.find(
 			(control) => control.kind === "button" && control.label === "删除",
 		);
 		if (remove?.kind !== "button") throw new Error("Missing delete");
+		expect(remove.tone).toBe("neutral");
 		await presentation.invoke({ action: remove.action, value: undefined });
 		expect(actions.remove).toHaveBeenCalledWith("asr");
 		const defaultSelect = rows(presentation).find((row) => row.key === "default")?.controls[0];

@@ -748,7 +748,11 @@ describe("renderSettingsControls", () => {
 					"choices",
 					{ name: "Choices" },
 					{
-						choices: [{ id: "one", label: "Choose one" }],
+						value: "one",
+						choices: [
+							{ id: "one", label: "Choose one" },
+							{ id: "two", label: "Choose two" },
+						],
 						emptyText: "No choices",
 						onChoose: () => undefined,
 					},
@@ -766,13 +770,18 @@ describe("renderSettingsControls", () => {
 		expect(named(container, "Add").classList.contains("fc-btn-add")).toBe(true);
 		expect(named(container, "Add").classList.contains("flashcard-btn")).toBe(true);
 		expect(named(container, "Add").classList.contains("flashcard-btn-secondary")).toBe(true);
-		expect(named(container, "Choose one").classList.contains("flashcard-tag-button")).toBe(
-			true,
-		);
-		expect(named(container, "Choose one").classList.contains("flashcard-btn")).toBe(true);
-		expect(named(container, "Choose one").classList.contains("flashcard-btn-outline")).toBe(
-			true,
-		);
+		const chosen = named(container, "Choose one");
+		expect(chosen.classList.contains("flashcard-tag-button")).toBe(true);
+		expect(chosen.classList.contains("flashcard-btn")).toBe(true);
+		expect(chosen.classList.contains("flashcard-btn-outline")).toBe(true);
+		expect(chosen.classList.contains("active")).toBe(true);
+		expect(chosen.classList.contains("is-active")).toBe(true);
+		expect(chosen.attributes.get("aria-pressed")).toBe("true");
+
+		const unchosen = named(container, "Choose two");
+		expect(unchosen.classList.contains("active")).toBe(false);
+		expect(unchosen.classList.contains("is-active")).toBe(false);
+		expect(unchosen.attributes.get("aria-pressed")).toBe("false");
 		const removeBtn = one(container, "fc-btn-remove");
 		expect(removeBtn.classList.contains("flashcard-btn")).toBe(true);
 		expect(removeBtn.textContent).toBe("Remove value");

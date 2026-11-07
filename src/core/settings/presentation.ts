@@ -104,6 +104,7 @@ export interface SettingsEditableListSnapshot extends SettingsControlState {
 
 export interface SettingsChoiceButtonsSnapshot extends SettingsControlState {
 	kind: "choiceButtons";
+	value?: string;
 	choices: readonly { id: string; label: string }[];
 	emptyText: string;
 	action: SettingsActionRef<string>;
@@ -277,6 +278,7 @@ interface SettingsEditableListSpec {
 }
 
 interface SettingsChoiceButtonsSpec {
+	value?: string;
 	choices: readonly { id: string; label: string }[];
 	emptyText: string;
 	disabled?: boolean;
@@ -805,6 +807,7 @@ class RowComposer implements SettingsRowBuilder {
 			kind: "choiceButtons",
 			key,
 			disabled,
+			value: spec.value,
 			choices: [...spec.choices],
 			emptyText: spec.emptyText,
 			action: registerAction(

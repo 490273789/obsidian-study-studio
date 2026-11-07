@@ -143,6 +143,12 @@
 		background: color-mix(in srgb, var(--fc-button-accent) 18%, var(--fc-surface-card));
 		color: var(--fc-button-ink);
 		box-shadow: none;
+
+		&:hover:not(:disabled) {
+			border-color: color-mix(in srgb, var(--fc-button-accent) 80%, var(--fc-line));
+			background: color-mix(in srgb, var(--fc-button-accent) 24%, var(--fc-surface-card));
+			color: var(--fc-button-ink);
+		}
 	}
 
 	&:focus-visible {

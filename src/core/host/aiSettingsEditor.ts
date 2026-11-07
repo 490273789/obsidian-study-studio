@@ -39,6 +39,7 @@ export class AiSettingsEditor {
 		private readonly service: AiService,
 		private readonly language: () => Language,
 		private readonly refresh: () => void,
+		private readonly confirmDelete?: (name: string, isDefault: boolean) => Promise<boolean>,
 	) {
 		this.draft = this.newDraft(this.kind);
 	}
@@ -133,6 +134,19 @@ export class AiSettingsEditor {
 				remove: (id) =>
 					this.perform(async () => {
 						const targetId = id ?? this.draft.id;
+						const snapshot = this.service.getSnapshot();
+						const engine = snapshot.settings.engines.find((e) => e.id === targetId);
+						if (!engine) return;
+
+						const isDefault =
+							this.kind !== "translation" &&
+							snapshot.settings.defaults[this.kind] === targetId;
+
+						if (this.confirmDelete) {
+							const confirmed = await this.confirmDelete(engine.name, isDefault);
+							if (!confirmed) return;
+						}
+
 						await this.service.deleteEngine(targetId);
 						if (this.draft.id === targetId) {
 							this.draft = this.newDraft(this.kind);

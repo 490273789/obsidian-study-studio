@@ -16,9 +16,12 @@ const llm: AiEngineConfig = {
 	model: "deepseek-v4-flash",
 };
 
-function createMockService(initial: AiEngineConfig[] = []) {
+function createMockService(
+	initial: AiEngineConfig[] = [],
+	initialDefaults?: { llm: string | null; asr: string | null },
+) {
 	let engines = [...initial];
-	let defaults: { llm: string | null; asr: string | null } = {
+	let defaults: { llm: string | null; asr: string | null } = initialDefaults ?? {
 		llm: initial.find((engine) => engine.kind === "llm")?.id ?? null,
 		asr: null,
 	};
@@ -87,8 +90,12 @@ describe("AiSettingsEditor presentation operations", () => {
 		expect(list.snapshot.groups[0]?.heading).toBe("服务类型");
 		const kinds = rows(list).find((row) => row.key === "kind")?.controls[0];
 		if (kinds?.kind !== "choiceButtons") throw new Error("Missing kind tabs");
+		expect(kinds.value).toBe("llm");
 		await list.invoke({ action: kinds.action, value: "asr" });
-		expect(editor.presentation().snapshot.groups[1]?.heading).toBe("默认引擎");
+		const asrList = editor.presentation();
+		const asrKinds = rows(asrList).find((row) => row.key === "kind")?.controls[0];
+		expect(asrKinds?.kind === "choiceButtons" && asrKinds.value).toBe("asr");
+		expect(asrList.snapshot.groups[1]?.heading).toBe("默认引擎");
 		await press(editor.presentation(), "add", "新增引擎");
 		const form = editor.presentation();
 		expect(rows(form).map((row) => row.key)).toContain("workspace");
@@ -128,6 +135,28 @@ describe("AiSettingsEditor presentation operations", () => {
 			expect.objectContaining({ id: "eng-1", name: "Renamed Engine" }),
 		);
 		await press(editor.presentation(), "engine-eng-1", "删除");
+		expect(deleteEngine).toHaveBeenCalledWith("eng-1");
+	});
+
+	it("aborts deletion when user cancels the confirmation dialog", async () => {
+		const otherEngine: AiEngineConfig = { ...llm, id: "eng-2", name: "Other" };
+		const { service, deleteEngine } = createMockService([llm, otherEngine], {
+			llm: "eng-2",
+			asr: null,
+		});
+		const confirmDelete = vi.fn().mockResolvedValue(false);
+		const editor = new AiSettingsEditor(service, () => "zh", vi.fn(), confirmDelete);
+		await press(editor.presentation(), "engine-eng-1", "删除");
+		expect(confirmDelete).toHaveBeenCalledWith(llm.name, false);
+		expect(deleteEngine).not.toHaveBeenCalled();
+	});
+
+	it("passes isDefault=true to confirmDelete when deleting default engine", async () => {
+		const { service, deleteEngine } = createMockService([llm], { llm: "eng-1", asr: null });
+		const confirmDelete = vi.fn().mockResolvedValue(true);
+		const editor = new AiSettingsEditor(service, () => "zh", vi.fn(), confirmDelete);
+		await press(editor.presentation(), "engine-eng-1", "删除");
+		expect(confirmDelete).toHaveBeenCalledWith(llm.name, true);
 		expect(deleteEngine).toHaveBeenCalledWith("eng-1");
 	});
 
