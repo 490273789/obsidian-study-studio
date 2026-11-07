@@ -81,6 +81,7 @@ export const PronunciationButton: React.FC<PronunciationButtonRuntimeProps> = ({
 		<FlashcardButton
 			preset="icon"
 			icon={Volume2}
+			iconSize={15}
 			className={`flashcard-pronunciation-button ${isSpeaking ? "is-speaking" : ""}`}
 			aria-label={label}
 			title={label}

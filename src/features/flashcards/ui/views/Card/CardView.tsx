@@ -1,6 +1,7 @@
 import type { CardMotion } from "../../answerPresentationTransition";
 import React, { useMemo } from "react";
 import { PartyPopper, RotateCcw } from "lucide-react";
+import { Notice } from "obsidian";
 import { cls } from "../../../../../core/shared/classNames";
 import type { StudyRating } from "../../../../../core/shared/types";
 import { getLocalizedRatingButtons } from "../../../strings";
@@ -77,8 +78,14 @@ export const CardView = React.memo(function CardView({
 		});
 	};
 
-	const handlePrevious = () => {
-		void transition.act({ kind: "study-previous", reference: session.reference });
+	const handlePrevious = async () => {
+		const outcome = await transition.act({
+			kind: "study-previous",
+			reference: session.reference,
+		});
+		if (outcome.kind === "applied") {
+			new Notice(t("study.undone"));
+		}
 	};
 
 	const currentCard = session.currentCard;
@@ -100,7 +107,7 @@ export const CardView = React.memo(function CardView({
 					void handleRate(intent.rating);
 					break;
 				case "previous":
-					handlePrevious();
+					void handlePrevious();
 					break;
 			}
 		},
@@ -180,7 +187,12 @@ export const CardView = React.memo(function CardView({
 									className={cls(styles.ratingBtn, RATING_CLASSES[btn.rating])}
 									disabled={isTransitioning}
 									onClick={() => void handleRate(btn.rating)}
-									aria-label={`${btn.label}，${btn.intervalDesc}，${btn.shortcut}`}
+									title={
+										btn.rating === 3
+											? `${btn.label} (${t("common.space")} / 3)`
+											: `${btn.label} (${btn.shortcut})`
+									}
+									aria-label={`${btn.label}，${btn.intervalDesc}，${btn.rating === 3 ? `${t("common.space")} / 3` : btn.shortcut}`}
 								>
 									<span
 										className={cls("flashcard-rating-meta", styles.ratingMeta)}
@@ -209,6 +221,12 @@ export const CardView = React.memo(function CardView({
 										)}
 									>
 										{btn.intervalDesc}
+										{btn.rating === 3 && (
+											<span className={styles.spaceHint}>
+												{" · "}
+												{t("common.space")}
+											</span>
+										)}
 									</span>
 								</FlashcardButton>
 							))}

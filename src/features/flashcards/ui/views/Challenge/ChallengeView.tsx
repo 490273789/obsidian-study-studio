@@ -139,6 +139,7 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 							: 0
 					}
 					startTime={session.startTime}
+					showTimer={true}
 					busy={isTransitioning}
 					onClose={onClose}
 					closeTitle={t("challenge.exitTitle")}

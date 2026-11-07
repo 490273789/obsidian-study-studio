@@ -17,11 +17,11 @@ export const PronounceableMarkdown: React.FC<PronounceableMarkdownProps> = ({
 	markdownRenderer,
 }) => (
 	<div className={`flashcard-pronunciation-row${word ? " has-pronunciation" : ""}`}>
-		{word && <PronunciationButton text={word} runtime={runtime} />}
 		<MarkdownContent
 			content={content}
 			className="flashcard-markdown"
 			markdownRenderer={markdownRenderer}
 		/>
+		{word && <PronunciationButton text={word} runtime={runtime} />}
 	</div>
 );

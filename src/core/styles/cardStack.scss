@@ -38,7 +38,7 @@
 	border: 1px solid var(--fc-line-soft);
 	border-radius: var(--fc-radius-lg);
 	padding: var(--fc-space-6);
-	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+	box-shadow: var(--fc-shadow-card);
 	animation: fc-session-content-enter var(--fc-motion-base) var(--fc-ease-out);
 	user-select: text;
 	-webkit-user-select: text;
@@ -66,31 +66,52 @@
 	min-width: 0;
 	margin-top: var(--fc-space-2);
 	padding: var(--fc-space-4) var(--fc-space-5);
-	background: color-mix(in srgb, var(--fc-surface-canvas) 50%, var(--fc-surface-card));
+	background: color-mix(in srgb, var(--fc-surface-canvas) 45%, var(--fc-surface-card));
 	border: 1px solid var(--fc-line-soft);
 	border-radius: var(--fc-radius-md);
 	box-shadow: none;
+
+	.flashcard-markdown {
+		font-size: var(--fc-font-md);
+		color: var(--fc-text);
+		line-height: var(--fc-line-reading);
+		text-wrap: pretty;
+
+		p {
+			margin: 0 0 var(--fc-space-2);
+
+			&:last-child {
+				margin-bottom: 0;
+			}
+		}
+
+		code {
+			font-family: var(--fc-font-data);
+			font-size: var(--fc-font-sm);
+			color: var(--fc-primary);
+			background: var(--fc-surface-sunken);
+			padding: 1px 4px;
+			border-radius: var(--fc-radius-xs);
+		}
+	}
 }
 .flashcard-question {
 	.flashcard-markdown {
-		font-size: var(--fc-font-xl);
+		font-size: var(--fc-font-display, 28px);
 		font-weight: var(--fc-weight-semibold);
 		color: var(--fc-text);
 		line-height: var(--fc-line-tight);
+		letter-spacing: -0.01em;
+		text-wrap: balance;
 	}
 }
 .flashcard-answer {
 	.flashcard-markdown {
-		font-size: var(--fc-font-xl);
+		font-size: var(--fc-font-2xl);
+		font-weight: var(--fc-weight-medium);
 		color: var(--fc-text);
 		line-height: var(--fc-line-body);
-	}
-}
-.flashcard-explanation {
-	.flashcard-markdown {
-		font-size: var(--fc-font-xl);
-		color: var(--fc-muted);
-		line-height: var(--fc-line-body);
+		text-wrap: pretty;
 	}
 }
 .flashcard-label {
@@ -146,6 +167,9 @@
 		padding: var(--fc-space-3);
 	}
 	.flashcard-question .flashcard-markdown {
+		font-size: var(--fc-font-2xl);
+	}
+	.flashcard-answer .flashcard-markdown {
 		font-size: var(--fc-font-xl);
 	}
 	.flashcard-answer-section {
@@ -158,4 +182,15 @@
 	align-items: center;
 	flex-wrap: wrap;
 	gap: var(--fc-space-3);
+
+	.flashcard-markdown {
+		flex: 0 1 auto;
+		min-width: 0;
+
+		> p:only-child,
+		> p:first-child:last-child {
+			margin: 0;
+			display: inline-block;
+		}
+	}
 }

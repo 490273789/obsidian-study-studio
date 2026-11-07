@@ -10,7 +10,8 @@ interface SessionToolbarProps {
 	deckName: string;
 	progress: string;
 	progressPercent: number;
-	startTime: number;
+	startTime?: number;
+	showTimer?: boolean;
 	busy?: boolean;
 	metrics?: React.ReactNode;
 	onEdit?: () => void;
@@ -33,6 +34,7 @@ export function SessionToolbar({
 	progress,
 	progressPercent,
 	startTime,
+	showTimer = false,
 	busy = false,
 	onEdit,
 	onDelete,
@@ -96,7 +98,9 @@ export function SessionToolbar({
 							value={normalizedProgress}
 						/>
 					</div>
-					<SessionTimer startTime={startTime} className="flashcard-session-timer" />
+					{showTimer && startTime != null && (
+						<SessionTimer startTime={startTime} className="flashcard-session-timer" />
+					)}
 					{(autoPronunciation || items.length > 0) && (
 						<div className="flashcard-session-actions">
 							{autoPronunciation && (

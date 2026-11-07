@@ -6,13 +6,13 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: var(--fc-control-md);
-	height: var(--fc-control-md);
-	min-width: var(--fc-control-md);
-	min-height: var(--fc-control-md);
+	width: 28px;
+	height: 28px;
+	min-width: 28px;
+	min-height: 28px;
 	padding: 0;
 	border: 1px solid rgba(var(--fc-cyan-rgb), 0.3);
-	border-radius: var(--fc-radius-sm);
+	border-radius: var(--fc-radius-pill, 999px);
 	background:
 		linear-gradient(135deg, rgba(var(--fc-cyan-rgb), 0.12), transparent 72%),
 		rgba(var(--fc-bg-elevated-rgb), 0.52);

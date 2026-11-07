@@ -3,14 +3,8 @@
 	flex-shrink: 0;
 	position: relative;
 	z-index: 24;
-	border-bottom: 1px solid color-mix(in srgb, var(--fc-primary) 18%, var(--fc-line-soft));
-	background:
-		linear-gradient(
-			110deg,
-			color-mix(in srgb, var(--fc-primary) 6%, transparent),
-			transparent 60%
-		),
-		var(--fc-surface-section);
+	border-bottom: 1px solid var(--fc-line-soft);
+	background: var(--fc-surface-section);
 }
 .flashcard-session-header {
 	display: flex;
@@ -61,24 +55,35 @@
 	border-inline-start: 1px solid var(--fc-line-soft);
 }
 .flashcard-session-progress {
-	display: flex;
+	display: inline-flex;
 	align-items: center;
-	gap: var(--fc-space-3);
-	font: var(--fc-weight-medium) var(--fc-font-sm) var(--fc-font-data);
+	gap: var(--fc-space-2);
+	padding: 2px var(--fc-space-2);
+	border-radius: var(--fc-radius-pill);
+	background: var(--fc-surface-sunken);
+	border: 1px solid var(--fc-line-soft);
+	font-family: var(--fc-font-data);
+	font-size: var(--fc-font-xs);
+	font-weight: var(--fc-weight-medium);
 	white-space: nowrap;
 }
+.flashcard-session-progress-text {
+	color: var(--fc-text);
+	font-variant-numeric: tabular-nums;
+	line-height: 1.2;
+}
 .flashcard-session-progress-track {
-	width: 80px;
+	width: 52px;
 	height: 4px;
 	overflow: hidden;
 	border-radius: var(--fc-radius-pill);
-	background: var(--fc-line);
+	background: var(--fc-line-soft);
 	appearance: none;
 	border: 0;
 	vertical-align: middle;
 	&::-webkit-progress-bar {
 		border-radius: inherit;
-		background: var(--fc-line);
+		background: var(--fc-line-soft);
 	}
 	&::-webkit-progress-value {
 		border-radius: inherit;
@@ -91,6 +96,24 @@
 	font-family: var(--fc-font-data);
 	font-size: var(--fc-font-xs);
 	font-variant-numeric: tabular-nums;
+	padding: 2px 6px;
+	border-radius: var(--fc-radius-xs);
+	background: var(--fc-surface-sunken);
+	border: 1px solid var(--fc-line-soft);
+}
+.flashcard-session-auto-pronunciation {
+	color: var(--fc-muted);
+	border-radius: var(--fc-radius-sm);
+	transition:
+		color var(--fc-motion-quick) ease,
+		border-color var(--fc-motion-quick) ease,
+		background-color var(--fc-motion-quick) ease;
+
+	&:is(.active, [aria-pressed="true"]) {
+		color: var(--fc-primary);
+		background: color-mix(in srgb, var(--fc-primary) 10%, var(--fc-surface-card));
+		border-color: color-mix(in srgb, var(--fc-primary) 30%, var(--fc-line-soft));
+	}
 }
 
 @container session (max-width: #{breakpoints.$phone}) {
