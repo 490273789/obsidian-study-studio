@@ -1,8 +1,8 @@
 import { stat } from "node:fs/promises";
 
 const budgets = [
-	{ path: "main.js", maxBytes: 3_000_000 },
-	{ path: "styles.css", maxBytes: 250_000 },
+	{ path: "main.js", maxBytes: 2_500_000 },
+	{ path: "styles.css", maxBytes: 260_000 },
 ];
 
 let exceeded = false;

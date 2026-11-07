@@ -1,7 +1,9 @@
 import { builtinModules } from "node:module";
+import { readFileSync } from "node:fs";
 import { copyFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { gzipSync } from "node:zlib";
 import { defineConfig } from "vite-plus";
 
 const projectRoot = fileURLToPath(new URL(".", import.meta.url));
@@ -60,6 +62,44 @@ function bundleDeferredNodeImports() {
 					`Promise.resolve().then(() => require(${quote}${moduleId}${quote}))`,
 			);
 			return bundled === code ? null : { code: bundled, map: null };
+		},
+	};
+}
+
+/**
+ * Inlines the dictionary engine WASM using gzip compression.
+ * Raw WASM (654 KiB) expands to ~872 KiB in base64. Compressing with gzip
+ * reduces the inlined data URI to ~473 KiB, saving ~400 KiB in main.js.
+ * The runtime transparently decompresses it using native `DecompressionStream('gzip')`.
+ */
+function bundleCompressedWasm() {
+	let cachedDataUri: string | null = null;
+	const getDataUri = () => {
+		if (cachedDataUri) return cachedDataUri;
+		const wasmPath = resolve(
+			projectRoot,
+			"src/features/dictionary/domain/engine/dictionary_engine_bg.wasm",
+		);
+		const wasmBytes = readFileSync(wasmPath);
+		const compressed = gzipSync(wasmBytes, { level: 9 });
+		cachedDataUri = `data:application/gzip;base64,${compressed.toString("base64")}`;
+		return cachedDataUri;
+	};
+
+	return {
+		name: "bundle-compressed-wasm",
+		enforce: "pre" as const,
+		transform(code: string, id: string) {
+			if (!id.endsWith("dictionary_engine.js")) return null;
+			const target =
+				"module_or_path = new URL('dictionary_engine_bg.wasm', import.meta.url);";
+			if (!code.includes(target)) return null;
+			const dataUri = getDataUri();
+			const replacement = `module_or_path = fetch("${dataUri}").then(r => new Response(r.body.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());`;
+			return {
+				code: code.replace(target, replacement),
+				map: null,
+			};
 		},
 	};
 }
@@ -134,9 +174,12 @@ export default defineConfig(({ mode }) => {
 				// ~40 kB of generated class-name text from the shipped styles.
 				// Development keeps the readable name for debugging.
 				generateScopedName: isProduction
-					? "fc_[hash:base64:5]"
+					? "f_[hash:base64:4]"
 					: "fc-[name]__[local]_[hash:base64:5]",
 			},
+		},
+		worker: {
+			plugins: () => [bundleCompressedWasm()],
 		},
 		build: {
 			// Obsidian bundles Chromium (desktop) and modern WebKit (iOS); the
@@ -187,6 +230,6 @@ export default defineConfig(({ mode }) => {
 		oxc: {
 			jsx: { runtime: "automatic" },
 		},
-		plugins: [bundleDeferredNodeImports(), copyBundleToPluginRoot()],
+		plugins: [bundleDeferredNodeImports(), bundleCompressedWasm(), copyBundleToPluginRoot()],
 	};
 });
