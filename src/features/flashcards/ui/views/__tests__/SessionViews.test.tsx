@@ -19,7 +19,11 @@ import { PracticeView } from "../Practice/PracticeView";
 import { SpellingView } from "../Spelling/SpellingView";
 import { ChallengeView } from "../Challenge/ChallengeView";
 import { CardSurface } from "../../presentation/CardSurface";
-import { CardAnswerSection, CardQuestionPanel } from "../../presentation/CardPanels";
+import {
+	CardAnswerSection,
+	CardExplanationPanel,
+	CardQuestionPanel,
+} from "../../presentation/CardPanels";
 
 // Exercise view adapters and slot content in node; effects and DOM renderers are external seams.
 const hooks = vi.hoisted(() => ({
@@ -88,7 +92,7 @@ vi.mock("../../../strings/context", () => ({
 vi.mock("../../hooks/useCardContextMenu", () => ({ useCardContextMenu: () => vi.fn() }));
 const presentation = vi.hoisted(() => ({
 	markdownRenderer: vi.fn(),
-	pronunciationRuntime: { stop: vi.fn() },
+	pronunciationRuntime: { stop: vi.fn(), speak: vi.fn() },
 }));
 vi.mock("../../presentation/context", () => ({
 	useCardPresentationDependencies: () => presentation,
@@ -108,6 +112,7 @@ beforeEach(() => {
 	inputVisibility.focus.mockClear();
 	inputVisibility.captureReturn.mockClear();
 	presentation.pronunciationRuntime.stop.mockClear();
+	presentation.pronunciationRuntime.speak.mockClear();
 	inputVisibility.bind.mockClear();
 });
 
@@ -118,6 +123,8 @@ type NodeProps = {
 	content?: string;
 	id?: string;
 	role?: string;
+	className?: string;
+	onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
 };
 function elements(node: React.ReactNode): React.ReactElement<NodeProps>[] {
 	const result: React.ReactElement<NodeProps>[] = [];
@@ -674,6 +681,63 @@ describe("spelling retrieval and correction", () => {
 			reference: spelling.reference,
 			input: "front",
 		});
+	});
+	it("plays pronunciation on Ctrl+P and equips explanation panel with pronunciationWord", () => {
+		const { common } = fixture();
+		const feedback: SpellingLifecycleFeedback = {
+			kind: "retrieval-incorrect",
+			submittedInput: "fron",
+			expectedAnswer: "front",
+			diff: [{ kind: "missing", value: "t", expected: "t" }],
+		};
+		const props = {
+			...common,
+			session: { ...spelling, phase: "correction" as const },
+			feedback,
+		};
+		const tree = renderSpelling(props);
+		const input = find<React.ComponentProps<typeof FlashcardInput>>(tree, FlashcardInput);
+		const preventDefault = vi.fn();
+		input.onKeyDown?.({
+			key: "p",
+			ctrlKey: true,
+			nativeEvent: { isComposing: false },
+			repeat: false,
+			preventDefault,
+		} as unknown as React.KeyboardEvent<HTMLInputElement>);
+		expect(preventDefault).toHaveBeenCalledOnce();
+		expect(presentation.pronunciationRuntime.speak).toHaveBeenCalledWith("front", "manual");
+
+		const explanationPanel = elements(tree).find((el) => el.type === CardExplanationPanel);
+		expect(explanationPanel).toBeDefined();
+		const block = (explanationPanel!.props as { block: { pronunciationWord: string | null } })
+			.block;
+		expect(block.pronunciationWord).toBe("front");
+	});
+	it("populates the input with the expected answer when fill button is clicked", () => {
+		const { common } = fixture();
+		const feedback: SpellingLifecycleFeedback = {
+			kind: "retrieval-incorrect",
+			submittedInput: "fron",
+			expectedAnswer: "front",
+			diff: [{ kind: "missing", value: "t", expected: "t" }],
+		};
+		const props = {
+			...common,
+			session: { ...spelling, phase: "correction" as const },
+			feedback,
+		};
+		const tree = renderSpelling(props);
+		const fillButton = elements(tree).find(
+			(element) =>
+				element.type === "button" && element.props.className?.includes("fillButton"),
+		);
+		expect(fillButton).toBeDefined();
+		fillButton?.props.onClick?.({} as React.MouseEvent<HTMLButtonElement>);
+		const updatedTree = renderSpelling(props);
+		expect(
+			find<React.ComponentProps<typeof FlashcardInput>>(updatedTree, FlashcardInput).value,
+		).toBe("front");
 	});
 	it("disables submission and input while a transition is pending", () => {
 		const { common } = fixture();

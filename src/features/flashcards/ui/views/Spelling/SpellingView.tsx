@@ -9,6 +9,7 @@ import type {
 	ActiveSpellingSnapshot,
 	SpellingLifecycleFeedback,
 } from "../../../domain/sessions/sessionLifecycle";
+import type { SpellingDiffSegment } from "../../../domain/cards/spellingWord";
 import { useFlashcardI18n } from "../../../strings/context";
 import type {
 	AnswerPresentationTransition,
@@ -17,12 +18,13 @@ import type {
 import { useSessionInputVisibility } from "../../hooks/useSessionInputVisibility";
 import { SessionLayout } from "../../primitives/SessionLayout/SessionLayout";
 import { SessionToolbar } from "../../primitives/SessionToolbar";
+import { PronunciationButton } from "../../primitives/PronunciationButton";
 import { CardExplanationPanel } from "../../presentation/CardPanels";
 import { CardSurface } from "../../presentation/CardSurface";
 import { useCardPresentationDependencies } from "../../presentation/context";
 import styles from "./Spelling.module.scss";
 
-const DIFF_CLASSES = {
+const DIFF_CLASSES: Record<SpellingDiffSegment["kind"], string> = {
 	correct: styles.diffCorrect,
 	incorrect: styles.diffIncorrect,
 	extra: styles.diffExtra,
@@ -39,6 +41,45 @@ interface SpellingViewProps {
 	onDeleteCard: (deckId: string, cardId: string) => void;
 	onClose: () => void;
 	presentedCard: PresentedCard;
+}
+
+function renderDiff(diff: readonly SpellingDiffSegment[], submittedInput: string) {
+	if (diff.length === 0 || submittedInput.trim().length === 0) {
+		return <span className={styles.emptyAnswer}>{submittedInput || "未作答"}</span>;
+	}
+
+	const hasAnyCorrect = diff.some((s) => s.kind === "correct");
+	if (!hasAnyCorrect) {
+		return (
+			<span className={styles.diffIncorrect} title="拼写错误">
+				{submittedInput}
+			</span>
+		);
+	}
+
+	return diff.map((segment, index) => {
+		if (segment.kind === "missing") {
+			return (
+				<span
+					key={`missing-${index}`}
+					className={styles.diffMissing}
+					title={`缺失字母: ${segment.value}`}
+					aria-label={`缺失 ${segment.value}`}
+				>
+					‸
+				</span>
+			);
+		}
+		return (
+			<span
+				key={`${segment.kind}-${index}`}
+				className={DIFF_CLASSES[segment.kind]}
+				title={segment.expected ? `应为: ${segment.expected}` : undefined}
+			>
+				{segment.value || " "}
+			</span>
+		);
+	});
 }
 
 export const SpellingView = React.memo(function SpellingView(props: SpellingViewProps) {
@@ -164,47 +205,55 @@ const SpellingQuestion = React.memo(function SpellingQuestion({
 				{feedback &&
 					(feedback.kind === "retrieval-incorrect" ||
 						feedback.kind === "correction-incorrect") && (
-						<>
-							<div
-								id={feedbackId}
-								role="status"
-								className={cls(styles.feedback, styles.isWrong)}
-							>
-								<div className={styles.feedbackTitle}>
-									<X size={18} />
+						<div
+							id={feedbackId}
+							role="status"
+							className={cls(styles.feedback, styles.isWrong)}
+						>
+							<div className={styles.feedbackHeader}>
+								<span className={styles.feedbackBadge}>
+									<X size={14} />
 									{feedback.kind === "retrieval-incorrect"
 										? t("spelling.incorrect")
 										: t("spelling.correctionIncorrect")}
-								</div>
-								<div className={styles.submittedAnswer}>
-									<span>{t("spelling.yourInput")}</span>
-									<strong>
-										{feedback.submittedInput || t("spelling.noAnswer")}
+								</span>
+							</div>
+
+							<div className={styles.targetSection}>
+								<div className={styles.targetRow}>
+									<span className={styles.targetLabel}>
+										{t("spelling.correctAnswer")}
+									</span>
+									<strong className={styles.targetWord}>
+										{feedback.expectedAnswer}
 									</strong>
-								</div>
-								<div className={styles.diff} aria-label={t("spelling.yourInput")}>
-									{feedback.diff.length > 0 ? (
-										feedback.diff.map((segment, index) => (
-											<span
-												key={`${segment.kind}-${index}`}
-												className={DIFF_CLASSES[segment.kind]}
-												title={segment.expected}
-											>
-												{segment.value || " "}
-											</span>
-										))
-									) : (
-										<span className={styles.emptyAnswer}>
-											{t("spelling.noAnswer")}
-										</span>
-									)}
-								</div>
-								<div className={styles.correctAnswer}>
-									<span>{t("spelling.correctAnswer")}</span>
-									<strong>{feedback.expectedAnswer}</strong>
+									<PronunciationButton
+										text={feedback.expectedAnswer}
+										runtime={pronunciationRuntime}
+									/>
+									<button
+										type="button"
+										className={styles.fillButton}
+										onClick={() => {
+											setInput(feedback.expectedAnswer);
+											inputRef.current?.focus();
+										}}
+										title="填入标准答案"
+									>
+										填入
+									</button>
 								</div>
 							</div>
-						</>
+
+							<div className={styles.inputComparison}>
+								<span className={styles.inputComparisonLabel}>
+									{t("spelling.yourInput")}
+								</span>
+								<div className={styles.diff} aria-label={t("spelling.yourInput")}>
+									{renderDiff(feedback.diff, feedback.submittedInput)}
+								</div>
+							</div>
+						</div>
 					)}
 
 				{isCorrectFeedback && (
@@ -224,7 +273,7 @@ const SpellingQuestion = React.memo(function SpellingQuestion({
 						block={{
 							label: "common.explanation",
 							content: currentCard.explanation,
-							pronunciationWord: null,
+							pronunciationWord: feedback?.expectedAnswer || currentCard.front,
 						}}
 					/>
 				)}
@@ -244,6 +293,18 @@ const SpellingQuestion = React.memo(function SpellingQuestion({
 						onFocus={keepInputVisible}
 						onBlur={handleInputBlur}
 						onKeyDown={(event) => {
+							if (
+								(event.ctrlKey || event.metaKey) &&
+								event.key.toLowerCase() === "p" &&
+								!event.repeat
+							) {
+								event.preventDefault();
+								const wordToSpeak = feedback?.expectedAnswer || currentCard.front;
+								if (wordToSpeak) {
+									void pronunciationRuntime.speak(wordToSpeak, "manual");
+								}
+								return;
+							}
 							if (
 								event.key === "Enter" &&
 								!event.nativeEvent.isComposing &&

@@ -1,4 +1,5 @@
 @use "../../../../../core/styles/breakpoints.scss";
+
 .spellingView {
 	&:global(.flashcard-study):focus-within {
 		padding-bottom: max(var(--fc-space-2), var(--fc-keyboard-inset, 0px));
@@ -7,28 +8,29 @@
 		scroll-padding-bottom: var(--fc-space-6);
 	}
 }
+
 .inputGroup {
 	display: flex;
 	flex-direction: column;
 	gap: var(--fc-space-3);
 	padding: var(--fc-space-4) var(--fc-space-5);
 	border: 1px solid var(--fc-line-soft);
-	border-inline-start-width: 3px;
 	border-radius: var(--fc-radius-md);
 	background: var(--fc-surface-card);
 	color: var(--fc-muted);
 	font-size: var(--fc-font-sm);
 }
+
 .feedback {
 	display: flex;
 	flex-direction: column;
-	gap: var(--fc-space-4);
+	gap: var(--fc-space-3);
 	padding: var(--fc-space-4) var(--fc-space-5);
 	border: 1px solid var(--fc-line-soft);
-	border-inline-start-width: 3px;
 	border-radius: var(--fc-radius-md);
 	background: var(--fc-surface-card);
 }
+
 .isCorrect {
 	flex-direction: row;
 	flex-wrap: wrap;
@@ -40,58 +42,78 @@
 		overflow-wrap: anywhere;
 	}
 }
+
 .isWrong {
-	background: color-mix(in srgb, var(--fc-red) 3%, var(--fc-surface-card));
+	border-color: color-mix(in srgb, var(--fc-red) 30%, var(--fc-line-soft));
+	background: var(--fc-surface-card);
 }
-.feedbackTitle {
+
+.feedbackHeader {
 	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+}
+
+.feedbackBadge {
+	display: inline-flex;
 	align-items: center;
 	gap: var(--fc-space-2);
 	color: var(--fc-red);
-	font-size: var(--fc-font-sm);
+	font-size: var(--fc-font-xs);
 	font-weight: var(--fc-weight-medium);
 }
-.diff {
+
+.targetSection {
 	display: flex;
-	flex-wrap: wrap;
-	gap: var(--fc-space-1);
+	align-items: center;
 	justify-content: center;
-	padding: var(--fc-space-3);
+	padding: var(--fc-space-2) 0;
+}
+
+.targetRow {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--fc-space-3);
+	flex-wrap: wrap;
+	justify-content: center;
+}
+
+.targetLabel {
+	color: var(--fc-muted);
+	font-size: var(--fc-font-xs);
+}
+
+.targetWord {
+	color: var(--fc-text);
+	font: var(--fc-weight-bold) var(--fc-font-2xl) / var(--fc-line-tight) var(--fc-font-data);
+	letter-spacing: 0.03em;
+}
+
+.fillButton {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	height: var(--fc-control-xs, 24px);
+	padding: 0 var(--fc-space-2);
 	border: 1px solid var(--fc-line-soft);
 	border-radius: var(--fc-radius-sm);
-	background: var(--fc-input-bg);
-	font: var(--fc-weight-bold) var(--fc-font-xl) / var(--fc-line-body) var(--fc-font-data);
-	> span:not(.emptyAnswer) {
-		min-width: 1.1em;
-		padding: var(--fc-space-1);
-		border-bottom: 2px solid currentColor;
-		text-align: center;
-		white-space: pre;
+	background: transparent;
+	color: var(--fc-muted);
+	font: var(--fc-weight-medium) var(--fc-font-xs) / 1 var(--fc-font-ui);
+	cursor: pointer;
+	transition:
+		color var(--fc-motion-quick) ease,
+		border-color var(--fc-motion-quick) ease,
+		background var(--fc-motion-quick) ease;
+
+	&:hover {
+		background: var(--fc-surface-hover);
+		color: var(--fc-text);
+		border-color: var(--fc-line);
 	}
 }
-.diffCorrect {
-	color: var(--fc-lime);
-}
-.diffIncorrect {
-	color: var(--fc-red);
-	text-decoration: underline wavy;
-	text-underline-offset: 5px;
-}
-.diffExtra {
-	color: var(--fc-red);
-	text-decoration: line-through;
-}
-.diffMissing {
-	color: var(--fc-amber);
-	outline: 1px dashed currentColor;
-	outline-offset: -1px;
-}
-.emptyAnswer {
-	color: var(--fc-muted);
-	font-size: var(--fc-font-sm);
-}
-.submittedAnswer,
-.correctAnswer {
+
+.inputComparison {
 	display: flex;
 	align-items: baseline;
 	justify-content: center;
@@ -99,15 +121,49 @@
 	gap: var(--fc-space-2);
 	color: var(--fc-muted);
 	font-size: var(--fc-font-xs);
-	strong {
-		color: var(--fc-text);
-		font: var(--fc-font-lg) var(--fc-font-data);
-		overflow-wrap: anywhere;
-	}
 }
-.submittedAnswer strong {
+
+.inputComparisonLabel {
+	color: var(--fc-muted);
+	font-size: var(--fc-font-xs);
+}
+
+.diff {
+	display: inline-flex;
+	align-items: center;
+	gap: 1px;
+	font: var(--fc-weight-medium) var(--fc-font-md) / var(--fc-line-body) var(--fc-font-data);
+	letter-spacing: 0.03em;
+}
+
+.diffCorrect {
+	color: var(--fc-text);
+}
+
+.diffIncorrect {
 	color: var(--fc-red);
+	text-decoration: underline wavy;
+	text-underline-offset: 4px;
+	font-weight: var(--fc-weight-semibold);
 }
+
+.diffExtra {
+	color: var(--fc-red);
+	text-decoration: line-through;
+	opacity: 0.75;
+}
+
+.diffMissing {
+	color: color-mix(in srgb, var(--fc-amber) 65%, var(--fc-text));
+	font-weight: var(--fc-weight-bold);
+	padding: 0 1px;
+}
+
+.emptyAnswer {
+	color: var(--fc-muted);
+	font-size: var(--fc-font-sm);
+}
+
 @container session (max-width: #{breakpoints.$phone}) {
 	.inputGroup,
 	.feedback {
