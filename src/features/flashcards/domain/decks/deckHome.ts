@@ -44,7 +44,7 @@ interface DeckHomeTotals {
 	readonly studyCount: number;
 }
 
-interface DeckSpellingSnapshot {
+export interface DeckSpellingSnapshot {
 	readonly enabled: boolean;
 	readonly ready: boolean;
 	readonly valid: boolean;

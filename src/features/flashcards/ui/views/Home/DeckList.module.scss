@@ -370,7 +370,7 @@
 .deckActions {
 	--fc-deck-tool-size: var(--fc-control-md);
 	display: grid;
-	grid-template-columns: repeat(2, minmax(0, 8.25rem)) repeat(2, var(--fc-deck-tool-size));
+	grid-template-columns: repeat(2, minmax(0, 8.25rem)) var(--fc-deck-tool-size);
 	align-items: center;
 	gap: var(--fc-space-2);
 	width: auto;
@@ -382,13 +382,6 @@
 	}
 }
 
-/* Every wide row reserves the same two mode and two tool slots. */
-:global(.flashcard-deck-action-spelling-placeholder) {
-	width: var(--fc-deck-tool-size);
-	height: var(--fc-deck-tool-size);
-}
-
-.actionSpelling,
 .actionMore {
 	width: var(--fc-deck-tool-size);
 	min-width: var(--fc-deck-tool-size);
@@ -752,17 +745,6 @@
 		gap: var(--fc-space-2);
 		width: 100%;
 	}
-
-	.deckItem .deckActions.hasSpelling {
-		grid-template-columns: repeat(2, minmax(0, 1fr)) repeat(
-				2,
-				var(--fc-deck-tool-size, var(--fc-control-md))
-			);
-	}
-
-	.deckItem :global(.flashcard-deck-action-spelling-placeholder) {
-		display: none;
-	}
 }
 
 @mixin compact-home-actions {
@@ -838,22 +820,11 @@
 		grid-template-columns: repeat(2, minmax(0, 1fr)) var(--fc-deck-tool-size);
 		justify-content: end;
 
-		&.hasSpelling {
-			grid-template-columns:
-				repeat(2, minmax(0, 1fr)) var(--fc-deck-tool-size)
-				var(--fc-deck-tool-size);
-		}
-
-		:global(.flashcard-deck-action-spelling-placeholder) {
-			display: none;
-		}
-
 		:global(.flashcard-btn) {
 			width: 100%;
 		}
 
 		/* Icon slots keep their square so the grid columns stay aligned. */
-		.actionSpelling,
 		.actionMore {
 			width: var(--fc-deck-tool-size);
 			min-width: var(--fc-deck-tool-size);

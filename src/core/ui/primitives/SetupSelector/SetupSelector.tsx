@@ -38,6 +38,8 @@ export interface SetupSelectorOption<T extends string> {
 	value: T;
 	label: React.ReactNode;
 	icon: LucideIcon;
+	disabled?: boolean;
+	title?: string;
 }
 
 interface SetupSelectorProps<T extends string> {
@@ -64,6 +66,8 @@ export function SetupSelector<T extends string>({
 					className="flashcard-setup-segment-btn"
 					active={value === option.value}
 					aria-pressed={value === option.value}
+					disabled={option.disabled}
+					title={option.title}
 					onClick={() => onChange(option.value)}
 				>
 					<span className="flashcard-setup-segment-label">{option.label}</span>

@@ -180,6 +180,35 @@ describe("DeckCard actions", () => {
 		expect(calls.onOpenSettings).toHaveBeenCalledWith("deck");
 	});
 
+	it("renders clean action set with study and practice, navigating to practice on click", () => {
+		const calls = handlers();
+		const deck = makeDeck();
+		const tree = renderCard(deck, {}, false, calls);
+
+		const isStudy = (element: Element) =>
+			element.props.className === "flashcard-deck-action-study";
+		const isPractice = (element: Element) =>
+			element.props.className === "flashcard-deck-action-practice";
+		const isSpelling = (element: Element) =>
+			element.props.className?.includes("flashcard-deck-action-spelling") === true;
+		const isPlaceholder = (element: Element) =>
+			element.props.className?.includes("flashcard-deck-action-spelling-placeholder") ===
+			true;
+
+		expect(findAll(tree, isStudy)).toHaveLength(1);
+		const practiceButtons = findAll(tree, isPractice);
+		expect(practiceButtons).toHaveLength(1);
+		expect(findAll(tree, isSpelling)).toHaveLength(0);
+		expect(findAll(tree, isPlaceholder)).toHaveLength(0);
+
+		practiceButtons[0]?.props.onClick?.({
+			target: null,
+			currentTarget: null,
+			stopPropagation: () => {},
+		});
+		expect(calls.onNavigate).toHaveBeenCalledWith("practice", "deck");
+	});
+
 	it("replaces the mobile action row in place and keeps the deck context visible", () => {
 		platform.isMobile = true;
 		const deck = makeDeck();

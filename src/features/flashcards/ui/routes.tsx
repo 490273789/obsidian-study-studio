@@ -32,7 +32,7 @@ import { ChallengeSetupModal, ChallengeSummary, ChallengeView } from "./views/Ch
 import { CardView } from "./views/Card";
 import { DeckHomeSnapshotRoute, HomeRoute } from "./views/Home/HomeRoute";
 import { PracticeSetup, PracticeSummary, PracticeView } from "./views/Practice";
-import { SpellingSetup, SpellingSummary, SpellingView } from "./views/Spelling";
+import { SpellingSummary, SpellingView } from "./views/Spelling";
 import { StatsView } from "./views/Stats";
 import { StudySetup, StudySummary } from "./views/Study";
 import { WordListView } from "./views/WordList";
@@ -52,6 +52,7 @@ export type ViewState =
 			deckId: string;
 			initialSelection?: PracticeSelection;
 			initialDirection?: CardDirection;
+			initialKind?: "flip" | "spelling";
 	  }
 	| {
 			type: "spelling-setup";
@@ -93,6 +94,7 @@ export function practiceSetup(
 	options: {
 		readonly initialSelection?: PracticeSelection;
 		readonly initialDirection?: CardDirection;
+		readonly initialKind?: "flip" | "spelling";
 	} = {},
 ): ViewState {
 	return Object.freeze({
@@ -102,6 +104,7 @@ export function practiceSetup(
 			? { initialSelection: Object.freeze({ ...options.initialSelection }) }
 			: {}),
 		...(options.initialDirection ? { initialDirection: options.initialDirection } : {}),
+		...(options.initialKind ? { initialKind: options.initialKind } : {}),
 	});
 }
 
@@ -440,15 +443,33 @@ function resolveViewState(viewState: Readonly<ViewState>, deckHome: DeckHome): R
 			const plan = deckHome.getPracticeSetupPlan(deck.id, viewState.initialSelection);
 			if (!plan) return HOME_PAGE;
 			return page(`practice-setup:${viewState.deckId}`, 1, (context) => (
-				<PracticeSetup
-					key={deck.id}
-					deck={deck}
-					plan={plan}
-					defaultDirection={viewState.initialDirection ?? "normal"}
-					initialDirection={viewState.initialDirection}
-					onStartSession={context.onStartSession}
-					onBack={context.onBackHome}
-				/>
+				<DeckHomeSnapshotRoute home={context.deckHome}>
+					{() => {
+						const currentPracticePlan = context.deckHome.getPracticeSetupPlan(
+							deck.id,
+							viewState.initialSelection,
+						);
+						const spellingPlan = context.deckHome.getSpellingSetupPlan(deck.id);
+						const deckSnapshot = context.deckHome
+							.getSnapshot()
+							.decks.find((d) => d.id === deck.id);
+						if (!currentPracticePlan) return renderHome(context);
+						return (
+							<PracticeSetup
+								key={deck.id}
+								deck={deck}
+								plan={currentPracticePlan}
+								spellingPlan={spellingPlan}
+								spellingSnapshot={deckSnapshot?.spelling}
+								defaultDirection={viewState.initialDirection ?? "normal"}
+								initialDirection={viewState.initialDirection}
+								initialKind={viewState.initialKind}
+								onStartSession={context.onStartSession}
+								onBack={context.onBackHome}
+							/>
+						);
+					}}
+				</DeckHomeSnapshotRoute>
 			));
 		}
 		case "spelling-setup": {
@@ -459,16 +480,23 @@ function resolveViewState(viewState: Readonly<ViewState>, deckHome: DeckHome): R
 			return page(`spelling-setup:${viewState.deckId}`, 1, (context) => (
 				<DeckHomeSnapshotRoute home={context.deckHome}>
 					{() => {
+						const currentPracticePlan = context.deckHome.getPracticeSetupPlan(deck.id);
 						const currentPlan = context.deckHome.getSpellingSetupPlan(
 							deck.id,
 							viewState.initialSelection,
 						);
-						if (!currentPlan) return renderHome(context);
+						const deckSnapshot = context.deckHome
+							.getSnapshot()
+							.decks.find((d) => d.id === deck.id);
+						if (!currentPracticePlan || !currentPlan) return renderHome(context);
 						return (
-							<SpellingSetup
+							<PracticeSetup
 								key={deck.id}
 								deck={deck}
-								plan={currentPlan}
+								plan={currentPracticePlan}
+								spellingPlan={currentPlan}
+								spellingSnapshot={deckSnapshot?.spelling}
+								initialKind="spelling"
 								onStartSession={context.onStartSession}
 								onBack={context.onBackHome}
 							/>

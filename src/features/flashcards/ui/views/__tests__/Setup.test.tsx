@@ -12,7 +12,6 @@ import type {
 import { SetupPage } from "../../primitives/SetupPage/SetupPage";
 import { StudySetup, StudyPlan, StudyDayRow } from "../Study/StudySetup";
 import { PracticeSetup } from "../Practice/PracticeSetup";
-import { SpellingSetup } from "../Spelling/SpellingSetup";
 
 // Exercise React adapter events in node, without a browser renderer or effects.
 const hooks = vi.hoisted(() => ({ cursor: 0, state: [] as unknown[] }));
@@ -308,10 +307,17 @@ describe("setup selections and start requests", () => {
 		});
 	});
 	it("updates spelling smart quantity and clamps range endpoints", () => {
-		const props = { deck, plan: spellingPlan, onStartSession: vi.fn(), onBack: vi.fn() };
-		let tree = renderMemo(SpellingSetup, props);
+		const props = {
+			deck,
+			plan: practicePlan,
+			spellingPlan,
+			initialKind: "spelling" as const,
+			onStartSession: vi.fn(),
+			onBack: vi.fn(),
+		};
+		let tree = renderMemo(PracticeSetup, props);
 		const render = () => {
-			tree = renderMemo(SpellingSetup, props);
+			tree = renderMemo(PracticeSetup, props);
 		};
 		find<{ onClick: () => void }>(tree, FlashcardButton, 2).onClick();
 		render();
@@ -322,7 +328,7 @@ describe("setup selections and start requests", () => {
 			deckId: "deck",
 			selection: { kind: "smart", questionCount: 50 },
 		});
-		find<SelectorProps>(tree, SetupSelector).onChange("range");
+		find<SelectorProps>(tree, SetupSelector, 1).onChange("range");
 		render();
 		change(find<InputProps>(tree, FlashcardInput, 0), "10");
 		render();
@@ -337,10 +343,17 @@ describe("setup selections and start requests", () => {
 		});
 	});
 	it("supports custom quantity in spelling smart mode", () => {
-		const props = { deck, plan: spellingPlan, onStartSession: vi.fn(), onBack: vi.fn() };
-		let tree = renderMemo(SpellingSetup, props);
+		const props = {
+			deck,
+			plan: practicePlan,
+			spellingPlan,
+			initialKind: "spelling" as const,
+			onStartSession: vi.fn(),
+			onBack: vi.fn(),
+		};
+		let tree = renderMemo(PracticeSetup, props);
 		const render = () => {
-			tree = renderMemo(SpellingSetup, props);
+			tree = renderMemo(PracticeSetup, props);
 		};
 		change(find<InputProps>(tree, FlashcardInput), "35");
 		render();
@@ -361,13 +374,88 @@ describe("setup selections and start requests", () => {
 						...common,
 						plan: { ...practicePlan, maxQuestions: 0, initialQuestionCount: 0 },
 					})
-				: renderMemo(SpellingSetup, {
+				: renderMemo(PracticeSetup, {
 						...common,
-						plan: { ...spellingPlan, maxQuestions: 0, initialQuestionCount: 0 },
+						plan: practicePlan,
+						spellingPlan: { ...spellingPlan, maxQuestions: 0, initialQuestionCount: 0 },
+						initialKind: "spelling",
 					});
 		const page = find<PageProps>(tree, SetupPage);
 		expect(page.disabled).toBe(true);
 		page.onStart();
 		expect(onStartSession).not.toHaveBeenCalled();
+	});
+	it("supports integrated spelling mode within PracticeSetup", () => {
+		const props = {
+			deck,
+			plan: practicePlan,
+			spellingPlan,
+			onStartSession: vi.fn(),
+			onBack: vi.fn(),
+		};
+		let tree = renderMemo(PracticeSetup, props);
+		const render = () => {
+			tree = renderMemo(PracticeSetup, props);
+		};
+		expect(find<PageProps>(tree, SetupPage).countLabel).toBe("setup.questions");
+
+		// Switch mode selector to spelling
+		find<SelectorProps>(tree, SetupSelector, 0).onChange("spelling");
+		render();
+		expect(find<PageProps>(tree, SetupPage).countLabel).toBe("setup.words");
+		expect(find<PageProps>(tree, SetupPage).count).toBe(20);
+
+		// Select quick count in spelling mode (index 2 is 50)
+		find<{ onClick: () => void }>(tree, FlashcardButton, 2).onClick();
+		render();
+		expect(find<PageProps>(tree, SetupPage).count).toBe(50);
+
+		// Start session in spelling mode
+		find<PageProps>(tree, SetupPage).onStart();
+		expect(props.onStartSession).toHaveBeenLastCalledWith({
+			mode: "spelling",
+			deckId: "deck",
+			selection: { kind: "smart", questionCount: 50 },
+		});
+
+		// Switch spelling to range
+		find<SelectorProps>(tree, SetupSelector, 1).onChange("range");
+		render();
+		change(find<InputProps>(tree, FlashcardInput, 0), "5");
+		change(find<InputProps>(tree, FlashcardInput, 1), "25");
+		render();
+		find<InputProps>(tree, FlashcardInput, 0).onBlur();
+		render();
+		expect(find<PageProps>(tree, SetupPage).count).toBe(21);
+		find<PageProps>(tree, SetupPage).onStart();
+		expect(props.onStartSession).toHaveBeenLastCalledWith({
+			mode: "spelling",
+			deckId: "deck",
+			selection: { kind: "range", startIndex: 5, endIndex: 25 },
+		});
+	});
+	it("disables spelling option when deck spelling is unavailable", () => {
+		const props = {
+			deck,
+			plan: practicePlan,
+			spellingPlan: { ...spellingPlan, maxQuestions: 0 },
+			spellingSnapshot: {
+				enabled: false,
+				ready: false,
+				valid: false,
+				canStart: false,
+				hasStableIdentities: false,
+				issueCount: 1,
+				ignoredCardCount: 0,
+			},
+			onStartSession: vi.fn(),
+			onBack: vi.fn(),
+		};
+		const tree = renderMemo(PracticeSetup, props);
+		const typeSelector = find<{
+			options: Array<{ value: string; disabled?: boolean }>;
+		}>(tree, SetupSelector, 0);
+		const spellingOption = typeSelector.options.find((opt) => opt.value === "spelling");
+		expect(spellingOption?.disabled).toBe(true);
 	});
 });

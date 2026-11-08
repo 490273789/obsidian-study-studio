@@ -8,7 +8,6 @@ import {
 	FileDown,
 	FileText,
 	GripVertical,
-	Keyboard,
 	List,
 	LoaderCircle,
 	RefreshCcw,
@@ -255,14 +254,7 @@ export const DeckCard = memo(function DeckCard({
 					showInlineActions && styles.inlineActions,
 				)}
 			>
-				<div
-					className={cls(
-						"flashcard-deck-actions2",
-						styles.deckActions,
-						deck.spelling.enabled && "has-spelling",
-						deck.spelling.enabled && styles.hasSpelling,
-					)}
-				>
+				<div className={cls("flashcard-deck-actions2", styles.deckActions)}>
 					{!showInlineActions && (
 						<>
 							<FlashcardButton
@@ -285,37 +277,6 @@ export const DeckCard = memo(function DeckCard({
 							>
 								<span>{t("home.practice")}</span>
 							</FlashcardButton>
-							{deck.spelling.enabled && (
-								<FlashcardButton
-									preset="icon"
-									variant="neutral"
-									className={cls(
-										"flashcard-deck-action-spelling",
-										styles.actionSpelling,
-									)}
-									icon={Keyboard}
-									onClick={() => onNavigate("spelling", deck.id)}
-									disabled={!spellingReady}
-									title={
-										spellingReady
-											? deck.spelling.ignoredCardCount > 0
-												? t("home.spellingModeIgnoredTitle", {
-														count: deck.spelling.ignoredCardCount,
-													})
-												: t("home.spellingModeTitle")
-											: t("home.spellingUnavailableTitle", {
-													count: deck.spelling.issueCount,
-												})
-									}
-									aria-label={t("home.spelling")}
-								/>
-							)}
-							{!deck.spelling.enabled && (
-								<span
-									className="flashcard-deck-action-spelling-placeholder"
-									aria-hidden="true"
-								/>
-							)}
 						</>
 					)}
 					<FlashcardMenu
