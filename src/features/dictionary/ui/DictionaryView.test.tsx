@@ -240,9 +240,10 @@ describe("dictionary result presentation", () => {
 						return;
 					if (
 						child.props.role === "tab" &&
-						child.props.id?.startsWith("dictionary-section-tab-first-")
+						child.props.id?.startsWith("dictionary-section-tab-first-") &&
+						typeof child.props.children === "string"
 					) {
-						tabs.push(String(child.props.children));
+						tabs.push(child.props.children);
 					}
 					if (
 						child.props.title === child.props.children &&
@@ -317,7 +318,9 @@ describe("dictionary result presentation", () => {
 					title?: string;
 					onClick?: () => void;
 				}>;
-				if (element.type === "h2") headwords.push(String(element.props.children));
+				if (element.type === "h2" && typeof element.props.children === "string") {
+					headwords.push(element.props.children);
+				}
 				if (element.props["aria-label"] === "收藏单词") favorite = element.props.onClick;
 				if (element.props["aria-label"]) {
 					buttonLabels.push(element.props["aria-label"]);
