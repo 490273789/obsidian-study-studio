@@ -1,7 +1,7 @@
 /* oxlint-disable typescript/unbound-method */
 import React from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { DictionaryFavoriteView } from "../DictionaryFavoriteView";
+import { DictionaryFavoriteView, isFavoritePageFocused } from "../DictionaryFavoriteView";
 import type { DictionaryFavoriteSession } from "../../domain/favoriteSession";
 import type { DictionaryFavoriteViewState } from "../../domain/types";
 import { FlashcardButton } from "../../../../core/ui/primitives/Button";
@@ -11,6 +11,10 @@ import { FlashcardSelect } from "../../../../core/ui/primitives/Select";
 vi.mock("react", async (original) => ({
 	...(await original<typeof import("react")>()),
 	useCallback: (callback: unknown) => callback,
+	useEffect: (callback: () => void | (() => void)) => {
+		callback();
+	},
+	useRef: (initial: unknown) => ({ current: initial }),
 	useSyncExternalStore: (_subscribe: unknown, getSnapshot: () => unknown) => getSnapshot(),
 }));
 
@@ -67,6 +71,27 @@ function findForm(
 			if (!React.isValidElement(child)) return;
 			if (child.type === "form") {
 				found = child as React.ReactElement<React.FormHTMLAttributes<HTMLFormElement>>;
+				return;
+			}
+			const props = child.props as { children?: React.ReactNode };
+			if (props && props.children) {
+				visit(props.children);
+			}
+		});
+	}
+	visit(node);
+	return found;
+}
+
+function findMain(
+	node: React.ReactNode,
+): React.ReactElement<React.HTMLAttributes<HTMLElement>> | null {
+	let found: React.ReactElement<React.HTMLAttributes<HTMLElement>> | null = null;
+	function visit(current: React.ReactNode): void {
+		React.Children.forEach(current, (child) => {
+			if (!React.isValidElement(child)) return;
+			if (child.type === "main") {
+				found = child as React.ReactElement<React.HTMLAttributes<HTMLElement>>;
 				return;
 			}
 			const props = child.props as { children?: React.ReactNode };
@@ -353,5 +378,308 @@ describe("DictionaryFavoriteView", () => {
 		form?.props.onKeyDown?.(formCtrlEnterEvent);
 		expect(formCtrlEnterEvent.preventDefault).toHaveBeenCalled();
 		expect(controller.save).toHaveBeenCalledTimes(2);
+	});
+
+	it("triggers save on Ctrl+Enter, Cmd+Enter, or Ctrl+S when main element is focused", () => {
+		const snapshot: DictionaryFavoriteViewState = {
+			categories: [{ id: "default", name: "默认收藏", path: "word.md" }],
+			selectedCategoryId: "default",
+			meaning: "苹果",
+			message: "",
+			note: "",
+			path: "word.md",
+			status: "idle",
+			word: "apple",
+		};
+
+		const controller = {
+			subscribe: vi.fn(() => () => {}),
+			getSnapshot: vi.fn(() => snapshot),
+			save: vi.fn(),
+		} as unknown as DictionaryFavoriteSession;
+
+		const tree = DictionaryFavoriteView({ controller, language: "zh" });
+		const main = findMain(tree);
+		expect(main).toBeDefined();
+		expect(main?.props.tabIndex).toBe(-1);
+
+		// Ctrl+Enter on main
+		const ctrlEnter = {
+			key: "Enter",
+			ctrlKey: true,
+			metaKey: false,
+			nativeEvent: { isComposing: false },
+			preventDefault: vi.fn(),
+		} as unknown as React.KeyboardEvent<HTMLElement>;
+		main?.props.onKeyDown?.(ctrlEnter);
+		expect(ctrlEnter.preventDefault).toHaveBeenCalled();
+		expect(controller.save).toHaveBeenCalledTimes(1);
+
+		// Cmd+Enter on main
+		const cmdEnter = {
+			key: "Enter",
+			ctrlKey: false,
+			metaKey: true,
+			nativeEvent: { isComposing: false },
+			preventDefault: vi.fn(),
+		} as unknown as React.KeyboardEvent<HTMLElement>;
+		main?.props.onKeyDown?.(cmdEnter);
+		expect(cmdEnter.preventDefault).toHaveBeenCalled();
+		expect(controller.save).toHaveBeenCalledTimes(2);
+
+		// Ctrl+S on main
+		const ctrlS = {
+			key: "s",
+			ctrlKey: true,
+			metaKey: false,
+			nativeEvent: { isComposing: false },
+			preventDefault: vi.fn(),
+		} as unknown as React.KeyboardEvent<HTMLElement>;
+		main?.props.onKeyDown?.(ctrlS);
+		expect(ctrlS.preventDefault).toHaveBeenCalled();
+		expect(controller.save).toHaveBeenCalledTimes(3);
+	});
+
+	it("focuses main element on pointer down when clicking outside interactive controls", () => {
+		const snapshot: DictionaryFavoriteViewState = {
+			categories: [{ id: "default", name: "默认收藏", path: "word.md" }],
+			selectedCategoryId: "default",
+			meaning: "",
+			message: "",
+			note: "",
+			path: "word.md",
+			status: "idle",
+			word: "",
+		};
+
+		const controller = {
+			subscribe: vi.fn(() => () => {}),
+			getSnapshot: vi.fn(() => snapshot),
+		} as unknown as DictionaryFavoriteSession;
+
+		const tree = DictionaryFavoriteView({ controller, language: "zh" });
+		const main = findMain(tree);
+		expect(main?.props.onPointerDown).toBeDefined();
+
+		const focus = vi.fn();
+		const currentTarget = { focus } as unknown as HTMLElement;
+
+		// Clicking on non-interactive element (e.g. empty space in main)
+		const emptySpaceTarget = { closest: () => null } as unknown as HTMLElement;
+		main?.props.onPointerDown?.({
+			button: 0,
+			target: emptySpaceTarget,
+			currentTarget,
+		} as unknown as React.PointerEvent<HTMLElement>);
+		expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+
+		// Clicking with right mouse button should not focus
+		focus.mockClear();
+		main?.props.onPointerDown?.({
+			button: 2,
+			target: emptySpaceTarget,
+			currentTarget,
+		} as unknown as React.PointerEvent<HTMLElement>);
+		expect(focus).not.toHaveBeenCalled();
+
+		// Clicking on an input should not trigger manual main focus
+		focus.mockClear();
+		const inputTarget = {
+			closest: (selector: string) => (selector.includes("input") ? {} : null),
+		} as unknown as HTMLElement;
+		main?.props.onPointerDown?.({
+			button: 0,
+			target: inputTarget,
+			currentTarget,
+		} as unknown as React.PointerEvent<HTMLElement>);
+		expect(focus).not.toHaveBeenCalled();
+
+		// Clicking on a label should not trigger manual main focus
+		focus.mockClear();
+		const labelTarget = {
+			closest: (selector: string) => (selector.includes("label") ? {} : null),
+		} as unknown as HTMLElement;
+		main?.props.onPointerDown?.({
+			button: 0,
+			target: labelTarget,
+			currentTarget,
+		} as unknown as React.PointerEvent<HTMLElement>);
+		expect(focus).not.toHaveBeenCalled();
+	});
+
+	describe("isFavoritePageFocused", () => {
+		class MockElement {
+			readonly nodeType = 1;
+			parentElement: MockElement | null = null;
+			isConnected = true;
+			classList = {
+				classes: new Set<string>(),
+				add: (c: string) => {
+					this.classList.classes.add(c);
+				},
+				contains: (c: string) => this.classList.classes.has(c),
+			};
+			className = "";
+			attributes = new Map<string, string>();
+
+			constructor(
+				readonly ownerDocument: MockDocument,
+				public tagName = "div",
+			) {}
+
+			contains(node: unknown): boolean {
+				for (
+					let current = node as MockElement | null;
+					current;
+					current = current.parentElement
+				) {
+					if (current === this) return true;
+				}
+				return false;
+			}
+
+			closest(selector: string, from: MockElement = this): MockElement | null {
+				const selectors = selector.split(",").map((s) => s.trim());
+				for (
+					let current: MockElement | null = from;
+					current;
+					current = current.parentElement
+				) {
+					for (const s of selectors) {
+						if (
+							s === ".workspace-leaf" &&
+							(current.classList.contains("workspace-leaf") ||
+								current.className.includes("workspace-leaf"))
+						) {
+							return current;
+						}
+						if (
+							s === ".modal" &&
+							(current.classList.contains("modal") ||
+								current.className.includes("modal"))
+						) {
+							return current;
+						}
+						if (s.startsWith("[") && s.endsWith("]")) {
+							const attr = s.slice(1, -1).split("=")[0]!;
+							if (current.attributes.has(attr)) return current;
+						}
+					}
+				}
+				return null;
+			}
+
+			setAttribute(key: string, value: string): void {
+				this.attributes.set(key, value);
+			}
+		}
+
+		class MockDocument {
+			activeElement: MockElement | null = null;
+			activeTabHeader: MockElement | null = null;
+			modalContainer: MockElement | null = null;
+
+			querySelector(selector: string): MockElement | null {
+				if (selector === ".modal-container") return this.modalContainer;
+				if (selector === ".workspace-tab-header.is-active") return this.activeTabHeader;
+				return null;
+			}
+		}
+
+		it("detects focus when active element is inside main", () => {
+			const doc = new MockDocument();
+			const main = new MockElement(doc, "main");
+			const input = new MockElement(doc, "input");
+			input.parentElement = main;
+
+			doc.activeElement = input;
+			expect(isFavoritePageFocused(main as unknown as HTMLElement)).toBe(true);
+
+			doc.activeElement = main;
+			expect(isFavoritePageFocused(main as unknown as HTMLElement)).toBe(true);
+		});
+
+		it("detects focus when active element is inside the hosting leaf", () => {
+			const doc = new MockDocument();
+			const leaf = new MockElement(doc, "div");
+			leaf.className = "workspace-leaf is-active";
+			leaf.classList.add("workspace-leaf");
+			leaf.classList.add("is-active");
+
+			const viewHeader = new MockElement(doc, "div");
+			viewHeader.parentElement = leaf;
+
+			const main = new MockElement(doc, "main");
+			main.parentElement = leaf;
+
+			doc.activeElement = viewHeader;
+			expect(isFavoritePageFocused(main as unknown as HTMLElement)).toBe(true);
+		});
+
+		it("detects focus when active tab header is focused for active leaf", () => {
+			const doc = new MockDocument();
+			const tabHeader = new MockElement(doc, "div");
+			doc.activeTabHeader = tabHeader;
+			doc.activeElement = tabHeader;
+
+			const leaf = new MockElement(doc, "div");
+			leaf.className = "workspace-leaf is-active";
+			leaf.classList.add("workspace-leaf");
+			leaf.classList.add("is-active");
+
+			const main = new MockElement(doc, "main");
+			main.parentElement = leaf;
+
+			expect(isFavoritePageFocused(main as unknown as HTMLElement)).toBe(true);
+		});
+
+		it("detects focus when active element is inside a modal", () => {
+			const doc = new MockDocument();
+			const modal = new MockElement(doc, "div");
+			modal.className = "modal";
+			modal.classList.add("modal");
+
+			const main = new MockElement(doc, "main");
+			main.parentElement = modal;
+
+			const textarea = new MockElement(doc, "textarea");
+			textarea.parentElement = main;
+
+			doc.activeElement = textarea;
+			expect(isFavoritePageFocused(main as unknown as HTMLElement)).toBe(true);
+		});
+
+		it("returns false when disconnected, hidden, or focused elsewhere", () => {
+			const doc = new MockDocument();
+			const main = new MockElement(doc, "main");
+			main.isConnected = false;
+			expect(isFavoritePageFocused(main as unknown as HTMLElement)).toBe(false);
+
+			main.isConnected = true;
+			const outsideInput = new MockElement(doc, "input");
+			doc.activeElement = outsideInput;
+			expect(isFavoritePageFocused(main as unknown as HTMLElement)).toBe(false);
+
+			main.setAttribute("hidden", "true");
+			doc.activeElement = main;
+			expect(isFavoritePageFocused(main as unknown as HTMLElement)).toBe(false);
+		});
+
+		it("returns false when a modal dialog is open in the workspace and main is in sidebar", () => {
+			const doc = new MockDocument();
+			const leaf = new MockElement(doc, "div");
+			leaf.className = "workspace-leaf is-active";
+			leaf.classList.add("workspace-leaf");
+			leaf.classList.add("is-active");
+
+			const main = new MockElement(doc, "main");
+			main.parentElement = leaf;
+			doc.activeElement = main;
+
+			// Open modal in workspace
+			doc.modalContainer = new MockElement(doc, "div");
+
+			expect(isFavoritePageFocused(main as unknown as HTMLElement)).toBe(false);
+		});
 	});
 });

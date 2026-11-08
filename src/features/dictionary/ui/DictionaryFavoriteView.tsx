@@ -1,4 +1,4 @@
-import React, { useCallback, useSyncExternalStore } from "react";
+import React, { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { Eraser, ExternalLink, Save, Sparkles } from "lucide-react";
 import type { DictionaryFavoriteSession } from "../domain/favoriteSession";
 import { dictionaryStrings } from "../strings/dictionary";
@@ -16,9 +16,56 @@ export interface DictionaryFavoriteViewProps {
 	onCreateCategory?: () => void;
 }
 
+function isSaveShortcut(event: { ctrlKey: boolean; metaKey: boolean; key: string }): boolean {
+	return (
+		(event.ctrlKey || event.metaKey) &&
+		(event.key === "Enter" || event.key === "s" || event.key === "S")
+	);
+}
+
+/**
+ * Determines whether keyboard focus is currently within the favorite view or its hosting context.
+ */
+export function isFavoritePageFocused(mainEl: HTMLElement): boolean {
+	if (!mainEl.isConnected) return false;
+	const doc = mainEl.ownerDocument;
+	const active = doc.activeElement;
+	if (!active) return false;
+
+	if (mainEl.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
+
+	const modalEl = mainEl.closest(".modal");
+	if (modalEl) {
+		return modalEl.contains(active);
+	}
+
+	// When a modal dialog is open in the workspace, background views should not respond.
+	if (doc.querySelector(".modal-container")) return false;
+
+	// 1. Direct focus within the favorite page component (input, textarea, select, button, main itself)
+	if (mainEl.contains(active)) return true;
+
+	// 2. Focus is within the Obsidian workspace leaf containing this view
+	const leafEl = mainEl.closest(".workspace-leaf");
+	if (leafEl) {
+		if (leafEl.contains(active)) return true;
+		const activeTabHeader = doc.querySelector(".workspace-tab-header.is-active");
+		if (
+			activeTabHeader &&
+			activeTabHeader.contains(active) &&
+			leafEl.classList.contains("is-active")
+		) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 export function DictionaryFavoriteView(props: DictionaryFavoriteViewProps): React.ReactElement {
 	const session = props.session ?? props.controller!;
 	const { language, onCreateCategory } = props;
+	const mainRef = useRef<HTMLElement | null>(null);
 	const subscribe = useCallback((listener: () => void) => session.subscribe(listener), [session]);
 	const getSnapshot = useCallback(() => session.getSnapshot(), [session]);
 	const state = useSyncExternalStore(subscribe, getSnapshot);
@@ -29,9 +76,9 @@ export function DictionaryFavoriteView(props: DictionaryFavoriteViewProps): Reac
 	const canSave = Boolean(state.word.trim() && state.selectedCategoryId) && !busy;
 	const canGenerate = Boolean(state.word.trim()) && !busy;
 
-	const handleFormKeyDown = (event: React.KeyboardEvent<HTMLFormElement>) => {
-		if (event.nativeEvent.isComposing) return;
-		if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+	const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+		if (event.defaultPrevented || event.nativeEvent.isComposing) return;
+		if (isSaveShortcut(event)) {
 			event.preventDefault();
 			if (canSave) void session.save();
 		}
@@ -39,37 +86,73 @@ export function DictionaryFavoriteView(props: DictionaryFavoriteViewProps): Reac
 
 	const handleWordKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
 		if (event.nativeEvent.isComposing) return;
-		if (event.key === "Enter") {
-			if (event.ctrlKey || event.metaKey) {
-				event.preventDefault();
-				if (canSave) void session.save();
-			} else if (!event.shiftKey && !event.altKey) {
-				event.preventDefault();
-				if (canGenerate) void session.generateAi();
-			}
+		if (isSaveShortcut(event)) {
+			event.preventDefault();
+			if (canSave) void session.save();
+		} else if (event.key === "Enter" && !event.shiftKey && !event.altKey) {
+			event.preventDefault();
+			if (canGenerate) void session.generateAi();
 		}
 	};
 
+	const handlePointerDown = (event: React.PointerEvent<HTMLElement>) => {
+		if (event.button !== 0) return;
+		const target = event.target as HTMLElement | null;
+		if (
+			target &&
+			!target.closest("input, textarea, select, button, a, label, [contenteditable='true']")
+		) {
+			event.currentTarget.focus({ preventScroll: true });
+		}
+	};
+
+	useEffect(() => {
+		const mainEl = mainRef.current;
+		if (!mainEl) return;
+		const doc = mainEl.ownerDocument;
+
+		const handleGlobalKeyDown = (event: KeyboardEvent) => {
+			if (event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
+			if (!isSaveShortcut(event)) return;
+			if (!isFavoritePageFocused(mainEl)) return;
+
+			event.preventDefault();
+			if (canSave) {
+				void session.save();
+			}
+		};
+
+		doc.addEventListener("keydown", handleGlobalKeyDown);
+		return () => {
+			doc.removeEventListener("keydown", handleGlobalKeyDown);
+		};
+	}, [canSave, session]);
+
 	return (
+		/* oxlint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */
 		<main
+			ref={mainRef}
+			tabIndex={-1}
 			className={cls(
 				"flashcard-dictionary-favorite flashcard-dictionary-page fc-page",
 				styles.page,
 				styles.favorite,
 			)}
 			aria-busy={busy}
+			onPointerDown={handlePointerDown}
+			onKeyDown={handleKeyDown}
 		>
 			<header className={cls("flashcard-dictionary-favorite-header", styles.favoriteHeader)}>
 				<h2>{strings.favoriteSidebarTitle}</h2>
 			</header>
 
-			{/* oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Form keyboard shortcut for Ctrl+Enter submission */}
+			{/* oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Form keyboard shortcut for submission */}
 			<form
 				className={cls(
 					"flashcard-dictionary-favorite-form fc-page__content",
 					styles.favoriteForm,
 				)}
-				onKeyDown={handleFormKeyDown}
+				onKeyDown={handleKeyDown}
 				onSubmit={(event) => {
 					event.preventDefault();
 					if (canSave) void session.save();
