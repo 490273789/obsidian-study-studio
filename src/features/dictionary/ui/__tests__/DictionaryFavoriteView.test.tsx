@@ -1,6 +1,6 @@
 /* oxlint-disable typescript/unbound-method */
 import React from "react";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { DictionaryFavoriteView, isFavoritePageFocused } from "../DictionaryFavoriteView";
 import type { DictionaryFavoriteSession } from "../../domain/favoriteSession";
 import type { DictionaryFavoriteViewState } from "../../domain/types";
@@ -8,13 +8,19 @@ import { FlashcardButton } from "../../../../core/ui/primitives/Button";
 import { FlashcardInput } from "../../../../core/ui/primitives/Input";
 import { FlashcardSelect } from "../../../../core/ui/primitives/Select";
 
+const hookSlots: { current: unknown }[] = [];
+let hookCursor = 0;
+
 vi.mock("react", async (original) => ({
 	...(await original<typeof import("react")>()),
 	useCallback: (callback: unknown) => callback,
 	useEffect: (callback: () => void | (() => void)) => {
 		callback();
 	},
-	useRef: (initial: unknown) => ({ current: initial }),
+	useRef: (initial: unknown) => {
+		const slot = (hookSlots[hookCursor++] ??= { current: initial });
+		return slot;
+	},
 	useSyncExternalStore: (_subscribe: unknown, getSnapshot: () => unknown) => getSnapshot(),
 }));
 
@@ -28,6 +34,28 @@ function findButtons(
 			if (child.type === FlashcardButton) {
 				found.push(
 					child as React.ReactElement<React.ComponentProps<typeof FlashcardButton>>,
+				);
+			}
+			const props = child.props as { children?: React.ReactNode };
+			if (props && props.children) {
+				visit(props.children);
+			}
+		});
+	}
+	visit(node);
+	return found;
+}
+
+function findNativeButtons(
+	node: React.ReactNode,
+): React.ReactElement<React.ButtonHTMLAttributes<HTMLButtonElement>>[] {
+	const found: React.ReactElement<React.ButtonHTMLAttributes<HTMLButtonElement>>[] = [];
+	function visit(current: React.ReactNode): void {
+		React.Children.forEach(current, (child) => {
+			if (!React.isValidElement(child)) return;
+			if (child.type === "button") {
+				found.push(
+					child as React.ReactElement<React.ButtonHTMLAttributes<HTMLButtonElement>>,
 				);
 			}
 			const props = child.props as { children?: React.ReactNode };
@@ -105,6 +133,11 @@ function findMain(
 }
 
 describe("DictionaryFavoriteView", () => {
+	beforeEach(() => {
+		hookCursor = 0;
+		hookSlots.length = 0;
+	});
+
 	it("shows new category last and routes selection and creation separately", () => {
 		const snapshot: DictionaryFavoriteViewState = {
 			categories: [
@@ -157,7 +190,7 @@ describe("DictionaryFavoriteView", () => {
 		} as React.ChangeEvent<HTMLSelectElement>);
 		expect(selectCategory).toHaveBeenCalledWith("second");
 	});
-	it("renders open-source-file button and triggers controller.openSavedFile on click", () => {
+	it("renders clickable file path and triggers controller.openSavedFile on click", () => {
 		const snapshot: DictionaryFavoriteViewState = {
 			categories: [{ id: "default", name: "默认收藏", path: "1-English/Word.md" }],
 			selectedCategoryId: "default",
@@ -183,24 +216,29 @@ describe("DictionaryFavoriteView", () => {
 		} as unknown as DictionaryFavoriteSession;
 
 		const tree = DictionaryFavoriteView({ controller, language: "zh" });
-		const buttons = findButtons(tree);
-		const openButton = buttons.find((b) => b.props["aria-label"] === "打开源文件");
+		const nativeButtons = findNativeButtons(tree);
+		const pathButton = nativeButtons.find((b) => b.props["aria-label"]?.includes("打开源文件"));
 
-		expect(openButton).toBeDefined();
-		expect(openButton?.props.disabled).toBe(false);
+		expect(pathButton).toBeDefined();
+		expect(pathButton?.props.disabled).toBe(false);
+
+		// Verify standalone external link FlashcardButton beside select is removed
+		const flashcardButtons = findButtons(tree);
+		const oldOpenButton = flashcardButtons.find((b) => b.props["aria-label"] === "打开源文件");
+		expect(oldOpenButton).toBeUndefined();
 
 		const fakeEvent = {
 			preventDefault: vi.fn(),
 			stopPropagation: vi.fn(),
 		} as unknown as React.MouseEvent<HTMLButtonElement>;
 
-		openButton?.props.onClick?.(fakeEvent);
+		pathButton?.props.onClick?.(fakeEvent);
 		expect(fakeEvent.preventDefault).toHaveBeenCalled();
 		expect(fakeEvent.stopPropagation).toHaveBeenCalled();
 		expect(controller.openSavedFile).toHaveBeenCalledWith("1-English/Word.md");
 	});
 
-	it("disables the open-source-file button when path is empty", () => {
+	it("does not render file path button when path is empty", () => {
 		const snapshot: DictionaryFavoriteViewState = {
 			categories: [{ id: "default", name: "默认收藏", path: "word.md" }],
 			selectedCategoryId: "default",
@@ -226,11 +264,89 @@ describe("DictionaryFavoriteView", () => {
 		} as unknown as DictionaryFavoriteSession;
 
 		const tree = DictionaryFavoriteView({ controller, language: "zh" });
-		const buttons = findButtons(tree);
-		const openButton = buttons.find((b) => b.props["aria-label"] === "打开源文件");
+		const nativeButtons = findNativeButtons(tree);
+		const pathButton = nativeButtons.find((b) => b.props["aria-label"]?.includes("打开源文件"));
 
-		expect(openButton).toBeDefined();
-		expect(openButton?.props.disabled).toBe(true);
+		expect(pathButton).toBeUndefined();
+	});
+
+	it("renders header clear button when form has content and calls session.clear", () => {
+		const snapshot: DictionaryFavoriteViewState = {
+			categories: [{ id: "default", name: "默认收藏", path: "word.md" }],
+			selectedCategoryId: "default",
+			meaning: "一些释义",
+			message: "",
+			note: "",
+			path: "word.md",
+			status: "idle",
+			word: "test",
+		};
+
+		const controller = {
+			subscribe: vi.fn(() => () => {}),
+			getSnapshot: vi.fn(() => snapshot),
+			clear: vi.fn(),
+		} as unknown as DictionaryFavoriteSession;
+
+		const tree = DictionaryFavoriteView({ controller, language: "zh" });
+		const buttons = findButtons(tree);
+		const clearButton = buttons.find((b) => b.props["aria-label"] === "清空表单");
+
+		expect(clearButton).toBeDefined();
+		clearButton?.props.onClick?.({} as React.MouseEvent<HTMLButtonElement>);
+		expect(controller.clear).toHaveBeenCalledOnce();
+	});
+
+	it("does not render header clear button when form is empty", () => {
+		const snapshot: DictionaryFavoriteViewState = {
+			categories: [{ id: "default", name: "默认收藏", path: "word.md" }],
+			selectedCategoryId: "default",
+			meaning: "",
+			message: "",
+			note: "",
+			path: "word.md",
+			status: "idle",
+			word: "",
+		};
+
+		const controller = {
+			subscribe: vi.fn(() => () => {}),
+			getSnapshot: vi.fn(() => snapshot),
+			clear: vi.fn(),
+		} as unknown as DictionaryFavoriteSession;
+
+		const tree = DictionaryFavoriteView({ controller, language: "zh" });
+		const buttons = findButtons(tree);
+		const clearButton = buttons.find((b) => b.props["aria-label"] === "清空表单");
+
+		expect(clearButton).toBeUndefined();
+	});
+
+	it("triggers AI generation on click of the inline AI button", () => {
+		const snapshot: DictionaryFavoriteViewState = {
+			categories: [{ id: "default", name: "默认收藏", path: "word.md" }],
+			selectedCategoryId: "default",
+			meaning: "",
+			message: "",
+			note: "",
+			path: "word.md",
+			status: "idle",
+			word: "apple",
+		};
+
+		const controller = {
+			subscribe: vi.fn(() => () => {}),
+			getSnapshot: vi.fn(() => snapshot),
+			generateAi: vi.fn(),
+		} as unknown as DictionaryFavoriteSession;
+
+		const tree = DictionaryFavoriteView({ controller, language: "zh" });
+		const buttons = findButtons(tree);
+		const aiButton = buttons.find((b) => b.props["aria-label"]?.includes("AI 生成"));
+
+		expect(aiButton).toBeDefined();
+		aiButton?.props.onClick?.({} as React.MouseEvent<HTMLButtonElement>);
+		expect(controller.generateAi).toHaveBeenCalledOnce();
 	});
 
 	it("triggers AI generation on Enter in word input", () => {
@@ -321,6 +437,113 @@ describe("DictionaryFavoriteView", () => {
 		wordInput?.props.onKeyDown?.(composingEvent);
 		expect(composingEvent.preventDefault).not.toHaveBeenCalled();
 		expect(controller.generateAi).not.toHaveBeenCalled();
+	});
+
+	it("passes ref to the word input and automatically focuses it when AI generation completes", () => {
+		let currentStatus: DictionaryFavoriteViewState["status"] = "generating";
+		const snapshot: DictionaryFavoriteViewState = {
+			categories: [{ id: "default", name: "默认收藏", path: "word.md" }],
+			selectedCategoryId: "default",
+			meaning: "苹果；珍宝",
+			message: "",
+			note: "",
+			path: "word.md",
+			get status() {
+				return currentStatus;
+			},
+			word: "apple",
+		};
+
+		const controller = {
+			subscribe: vi.fn(() => () => {}),
+			getSnapshot: vi.fn(() => snapshot),
+		} as unknown as DictionaryFavoriteSession;
+
+		const mockFocus = vi.fn();
+		const mockSetSelectionRange = vi.fn();
+		const mockInput = {
+			value: "apple",
+			focus: mockFocus,
+			setSelectionRange: mockSetSelectionRange,
+		};
+		const wordRef = { current: mockInput as unknown as HTMLInputElement };
+
+		// First render: state.status is "generating"
+		hookCursor = 0;
+		const tree1 = DictionaryFavoriteView({
+			controller,
+			language: "zh",
+			wordInputRef: wordRef,
+		});
+
+		const inputs1 = findInputs(tree1);
+		const wordEl1 = inputs1.find((i) => i.props.id === "dictionary-favorite-word");
+		expect(wordEl1).toBeDefined();
+		expect((wordEl1!.props as { ref?: unknown }).ref).toBe(wordRef);
+		expect(mockFocus).not.toHaveBeenCalled();
+
+		// Second render: state.status transitioned to "success"
+		currentStatus = "success";
+		hookCursor = 0;
+		DictionaryFavoriteView({
+			controller,
+			language: "zh",
+			wordInputRef: wordRef,
+		});
+
+		expect(mockFocus).toHaveBeenCalledOnce();
+		expect(mockSetSelectionRange).toHaveBeenCalledWith(5, 5);
+	});
+
+	it("automatically focuses and selects the word input when save completes", () => {
+		let currentStatus: DictionaryFavoriteViewState["status"] = "saving";
+		const snapshot: DictionaryFavoriteViewState = {
+			categories: [{ id: "default", name: "默认收藏", path: "word.md" }],
+			selectedCategoryId: "default",
+			meaning: "苹果；珍宝",
+			message: "",
+			note: "",
+			path: "word.md",
+			get status() {
+				return currentStatus;
+			},
+			word: "apple",
+		};
+
+		const controller = {
+			subscribe: vi.fn(() => () => {}),
+			getSnapshot: vi.fn(() => snapshot),
+		} as unknown as DictionaryFavoriteSession;
+
+		const mockFocus = vi.fn();
+		const mockSelect = vi.fn();
+		const mockInput = {
+			value: "apple",
+			focus: mockFocus,
+			select: mockSelect,
+		};
+		const wordRef = { current: mockInput as unknown as HTMLInputElement };
+
+		// First render: state.status is "saving"
+		hookCursor = 0;
+		DictionaryFavoriteView({
+			controller,
+			language: "zh",
+			wordInputRef: wordRef,
+		});
+		expect(mockFocus).not.toHaveBeenCalled();
+
+		// Second render: state.status transitioned to "success"
+		currentStatus = "success";
+		hookCursor = 0;
+		DictionaryFavoriteView({
+			controller,
+			language: "zh",
+			wordInputRef: wordRef,
+		});
+
+		expect(mockFocus).toHaveBeenCalledOnce();
+		expect(mockSelect).toHaveBeenCalledOnce();
 	});
 
 	it("triggers save on Ctrl+Enter in word input and form", () => {

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
-import { Eraser, ExternalLink, Save, Sparkles } from "lucide-react";
+import { AlertCircle, Check, Eraser, FileText, Save, Sparkles } from "lucide-react";
 import type { DictionaryFavoriteSession } from "../domain/favoriteSession";
 import { dictionaryStrings } from "../strings/dictionary";
 import type { Language } from "../../../core/shared/types";
@@ -14,6 +14,8 @@ export interface DictionaryFavoriteViewProps {
 	controller?: DictionaryFavoriteSession;
 	language: Language;
 	onCreateCategory?: () => void;
+	wordInputRef?: React.RefObject<HTMLInputElement | null>;
+	meaningInputRef?: React.RefObject<HTMLTextAreaElement | null>;
 }
 
 function isSaveShortcut(event: { ctrlKey: boolean; metaKey: boolean; key: string }): boolean {
@@ -66,9 +68,14 @@ export function DictionaryFavoriteView(props: DictionaryFavoriteViewProps): Reac
 	const session = props.session ?? props.controller!;
 	const { language, onCreateCategory } = props;
 	const mainRef = useRef<HTMLElement | null>(null);
+	const internalWordRef = useRef<HTMLInputElement | null>(null);
+	const wordInputRef = props.wordInputRef ?? internalWordRef;
+	const internalMeaningRef = useRef<HTMLTextAreaElement | null>(null);
+	const meaningInputRef = props.meaningInputRef ?? internalMeaningRef;
 	const subscribe = useCallback((listener: () => void) => session.subscribe(listener), [session]);
 	const getSnapshot = useCallback(() => session.getSnapshot(), [session]);
 	const state = useSyncExternalStore(subscribe, getSnapshot);
+	const prevStatusRef = useRef(state.status);
 	const strings = dictionaryStrings(language);
 	const saving = state.status === "saving";
 	const generating = state.status === "generating";
@@ -128,6 +135,26 @@ export function DictionaryFavoriteView(props: DictionaryFavoriteViewProps): Reac
 		};
 	}, [canSave, session]);
 
+	useEffect(() => {
+		const wasBusy =
+			prevStatusRef.current === "generating" || prevStatusRef.current === "saving";
+		if (wasBusy && state.status === "success") {
+			const wordInput = wordInputRef.current;
+			if (wordInput) {
+				wordInput.focus();
+				if (prevStatusRef.current === "saving") {
+					wordInput.select?.();
+				} else {
+					const len = wordInput.value.length;
+					wordInput.setSelectionRange?.(len, len);
+				}
+			}
+		}
+		prevStatusRef.current = state.status;
+	}, [state.status, wordInputRef]);
+
+	const hasContent = Boolean(state.word.trim() || state.meaning.trim() || state.note.trim());
+
 	return (
 		/* oxlint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */
 		<main
@@ -144,6 +171,21 @@ export function DictionaryFavoriteView(props: DictionaryFavoriteViewProps): Reac
 		>
 			<header className={cls("flashcard-dictionary-favorite-header", styles.favoriteHeader)}>
 				<h2>{strings.favoriteSidebarTitle}</h2>
+				<div className={styles.favoriteHeaderActions}>
+					{hasContent && (
+						<FlashcardButton
+							type="button"
+							preset="icon"
+							size="sm"
+							variant="ghost"
+							icon={Eraser}
+							title={strings.favoriteClear}
+							aria-label={strings.favoriteClear}
+							disabled={busy}
+							onClick={() => session.clear()}
+						/>
+					)}
+				</div>
 			</header>
 
 			{/* oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Form keyboard shortcut for submission */}
@@ -158,127 +200,166 @@ export function DictionaryFavoriteView(props: DictionaryFavoriteViewProps): Reac
 					if (canSave) void session.save();
 				}}
 			>
-				<label htmlFor="dictionary-favorite-word">
-					<span>{strings.favoriteWord}</span>
-					<FlashcardInput
-						id="dictionary-favorite-word"
-						value={state.word}
-						placeholder={strings.favoriteWordPlaceholder}
-						maxLength={128}
-						autoComplete="off"
-						spellCheck={false}
-						disabled={busy}
-						onChange={(event) => session.setWord(event.target.value)}
-						onKeyDown={handleWordKeyDown}
-					/>
-				</label>
-
-				<label htmlFor="dictionary-favorite-category">
-					<span>{strings.favoriteCategory}</span>
-					<div className={styles.favoritePathRow}>
-						<FlashcardSelect
-							id="dictionary-favorite-category"
-							value={state.selectedCategoryId}
-							disabled={busy}
-							onChange={(event) => {
-								if (event.target.value === "__new__") {
-									event.currentTarget.value = state.selectedCategoryId;
-									onCreateCategory?.();
-								} else void session.selectCategory(event.target.value);
-							}}
-						>
-							{state.categories.map((category) => (
-								<option key={category.id} value={category.id}>
-									{category.name}
-								</option>
-							))}
-							<option value="__new__">{strings.favoriteCategoryCreate}</option>
-						</FlashcardSelect>
-						<FlashcardButton
-							type="button"
-							preset="icon"
-							icon={ExternalLink}
-							title={strings.favoriteOpenSourceFile}
-							aria-label={strings.favoriteOpenSourceFile}
-							disabled={busy || !state.path.trim()}
-							onClick={(event) => {
-								event.preventDefault();
-								event.stopPropagation();
-								void session.openSavedFile(state.path);
-							}}
-						/>
+				{/* Card Front: Headword Hero */}
+				<div className={styles.cardSection}>
+					<div className={styles.cardSectionHeader}>
+						<span className={styles.cardSideBadge}>
+							{language === "zh" ? "卡片正面 · 词头" : "Card Front · Headword"}
+						</span>
 					</div>
-				</label>
+					<label htmlFor="dictionary-favorite-word" className={styles.favoriteLabel}>
+						<span>{strings.favoriteWord}</span>
+						<div className={styles.wordHeroRow}>
+							<FlashcardInput
+								ref={wordInputRef}
+								id="dictionary-favorite-word"
+								value={state.word}
+								placeholder={strings.favoriteWordPlaceholder}
+								maxLength={128}
+								autoComplete="off"
+								spellCheck={false}
+								disabled={busy}
+								onChange={(event) => session.setWord(event.target.value)}
+								onKeyDown={handleWordKeyDown}
+							/>
+							<FlashcardButton
+								type="button"
+								variant="ghost"
+								className={cls(
+									styles.aiInlineBtn,
+									generating && styles.isGenerating,
+								)}
+								disabled={!canGenerate}
+								title={`${generating ? strings.favoriteAiGenerating : strings.favoriteAiGenerate} (Enter)`}
+								aria-label={`${generating ? strings.favoriteAiGenerating : strings.favoriteAiGenerate} (Enter)`}
+								onClick={() => void session.generateAi()}
+							>
+								<Sparkles size={14} />
+								<span>
+									{generating
+										? strings.favoriteAiGenerating
+										: strings.favoriteAiGenerate}
+								</span>
+								<span className={styles.shortcutKbd}>↵</span>
+							</FlashcardButton>
+						</div>
+					</label>
+				</div>
 
-				<label htmlFor="dictionary-favorite-meaning">
-					<span>{strings.favoriteMeaning}</span>
-					<FlashcardTextarea
-						id="dictionary-favorite-meaning"
-						className={styles.favoriteMeaningInput}
-						value={state.meaning}
-						placeholder={strings.favoriteMeaningPlaceholder}
-						maxLength={8000}
-						rows={5}
+				{/* Card Back: Meaning & Notes */}
+				<div className={styles.cardSection}>
+					<div className={styles.cardSectionHeader}>
+						<span className={styles.cardSideBadge}>
+							{language === "zh"
+								? "卡片背面 · 释义与笔记"
+								: "Card Back · Meaning & Notes"}
+						</span>
+					</div>
+					<label htmlFor="dictionary-favorite-meaning" className={styles.favoriteLabel}>
+						<span>{strings.favoriteMeaning}</span>
+						<FlashcardTextarea
+							ref={meaningInputRef}
+							id="dictionary-favorite-meaning"
+							className={styles.favoriteMeaningInput}
+							value={state.meaning}
+							placeholder={strings.favoriteMeaningPlaceholder}
+							maxLength={8000}
+							rows={3}
+							disabled={busy}
+							onChange={(event) => session.setMeaning(event.target.value)}
+						/>
+					</label>
+
+					<label htmlFor="dictionary-favorite-note" className={styles.favoriteLabel}>
+						<span>{strings.favoriteNote}</span>
+						<FlashcardTextarea
+							id="dictionary-favorite-note"
+							className={styles.favoriteNoteInput}
+							value={state.note}
+							placeholder={strings.favoriteNotePlaceholder}
+							maxLength={16000}
+							rows={4}
+							disabled={busy}
+							onChange={(event) => session.setNote(event.target.value)}
+						/>
+					</label>
+				</div>
+
+				{/* Destination & Category Row */}
+				<div className={styles.metaSection}>
+					<div className={styles.fieldLabelRow}>
+						<label htmlFor="dictionary-favorite-category">
+							{strings.favoriteCategory}
+						</label>
+						{state.path.trim() && (
+							<button
+								type="button"
+								className={styles.metaPathBtn}
+								title={strings.favoriteOpenSourceFile}
+								aria-label={`${strings.favoriteOpenSourceFile}: ${state.path}`}
+								disabled={busy}
+								onClick={(event) => {
+									event.preventDefault();
+									event.stopPropagation();
+									void session.openSavedFile(state.path);
+								}}
+							>
+								<FileText size={12} aria-hidden="true" />
+								<span className={styles.metaPathText}>{state.path}</span>
+							</button>
+						)}
+					</div>
+					<FlashcardSelect
+						id="dictionary-favorite-category"
+						value={state.selectedCategoryId}
 						disabled={busy}
-						onChange={(event) => session.setMeaning(event.target.value)}
-					/>
-				</label>
+						onChange={(event) => {
+							if (event.target.value === "__new__") {
+								event.currentTarget.value = state.selectedCategoryId;
+								onCreateCategory?.();
+							} else void session.selectCategory(event.target.value);
+						}}
+					>
+						{state.categories.map((category) => (
+							<option key={category.id} value={category.id}>
+								{category.name}
+							</option>
+						))}
+						<option value="__new__">{strings.favoriteCategoryCreate}</option>
+					</FlashcardSelect>
+				</div>
 
-				<label htmlFor="dictionary-favorite-note">
-					<span>{strings.favoriteNote}</span>
-					<FlashcardTextarea
-						id="dictionary-favorite-note"
-						className={styles.favoriteNoteInput}
-						value={state.note}
-						placeholder={strings.favoriteNotePlaceholder}
-						maxLength={16000}
-						rows={10}
-						disabled={busy}
-						onChange={(event) => session.setNote(event.target.value)}
-					/>
-				</label>
-
+				{/* Bottom Actions and Status */}
 				<div
 					className={cls("flashcard-dictionary-favorite-actions", styles.favoriteActions)}
 				>
-					<FlashcardButton
-						type="button"
-						icon={Sparkles}
-						disabled={!canGenerate}
-						title={`${generating ? strings.favoriteAiGenerating : strings.favoriteAiGenerate} (Enter)`}
-						onClick={() => void session.generateAi()}
+					<output
+						className={cls(
+							"flashcard-dictionary-favorite-message",
+							styles.favoriteMessage,
+							state.status === "error" && ["is-error", styles.isError],
+							state.status === "success" && ["is-success", styles.isSuccess],
+						)}
+						aria-live="polite"
 					>
-						{generating ? strings.favoriteAiGenerating : strings.favoriteAiGenerate}
-					</FlashcardButton>
-					<FlashcardButton
-						type="submit"
-						variant="primary"
-						icon={Save}
-						disabled={!canSave}
-						title={`${saving ? strings.favoriteSaving : strings.favoriteSave} (Ctrl+Enter)`}
-					>
-						{saving ? strings.favoriteSaving : strings.favoriteSave}
-					</FlashcardButton>
-					<FlashcardButton
-						type="button"
-						icon={Eraser}
-						disabled={busy}
-						onClick={() => session.clear()}
-					>
-						{strings.favoriteClear}
-					</FlashcardButton>
-				</div>
+						{state.status === "error" && <AlertCircle size={14} />}
+						{state.status === "success" && <Check size={14} />}
+						<span>{state.message}</span>
+					</output>
 
-				<output
-					className={cls(
-						"flashcard-dictionary-favorite-message",
-						styles.favoriteMessage,
-						state.status === "error" && ["is-error", styles.isError],
-					)}
-					aria-live="polite"
-				>
-					{state.message}
-				</output>
+					<div className={styles.primaryActions}>
+						<FlashcardButton
+							type="submit"
+							variant="primary"
+							icon={Save}
+							disabled={!canSave}
+							title={`${saving ? strings.favoriteSaving : strings.favoriteSave} (Ctrl+Enter)`}
+						>
+							<span>{saving ? strings.favoriteSaving : strings.favoriteSave}</span>
+							<span className={styles.shortcutKbd}>Ctrl+↵</span>
+						</FlashcardButton>
+					</div>
+				</div>
 			</form>
 		</main>
 	);
