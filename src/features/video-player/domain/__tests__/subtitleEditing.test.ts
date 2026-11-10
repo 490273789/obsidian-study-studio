@@ -254,7 +254,10 @@ describe("subtitle editing commits", () => {
 			await until(() => translate.mock.calls.length === 1);
 			const gate = holdNextSave();
 			const saving = jobs.saveCueEdit(target, { text: "Corrected" });
-			const result = succeeds ? saving : expect(saving).rejects.toThrow("disk unavailable");
+			const result = (async () => {
+				if (succeeds) await saving;
+				else await expect(saving).rejects.toThrow("disk unavailable");
+			})();
 			await until(() => writes.length === 1);
 			translation.resolve("第二句后台译文");
 			await until(() => returned);
@@ -330,7 +333,10 @@ describe("subtitle editing commits", () => {
 			const count = writes.length;
 			const gate = holdNextSave();
 			const saving = jobs.saveCueEdit(target, { text: "Corrected" });
-			const result = succeeds ? saving : expect(saving).rejects.toThrow("disk unavailable");
+			const result = (async () => {
+				if (succeeds) await saving;
+				else await expect(saving).rejects.toThrow("disk unavailable");
+			})();
 			await until(() => writes.length === count + 1);
 			secondChunk.resolve({
 				audio: new ArrayBuffer(0),

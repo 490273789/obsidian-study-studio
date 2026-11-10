@@ -45,7 +45,7 @@ vi.mock("../obsidian/videoShadowingDesktopAdapter", () => ({
 }));
 
 interface Resource {
-	readonly view: PlayerViewMount;
+	readonly view: PlayerViewMount & { dispose: ReturnType<typeof vi.fn> };
 }
 interface Acquired {
 	readonly resource: Resource;

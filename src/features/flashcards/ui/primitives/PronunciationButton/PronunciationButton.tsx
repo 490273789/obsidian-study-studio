@@ -47,11 +47,11 @@ export const PronunciationButton: React.FC<PronunciationButtonRuntimeProps> = ({
 	const availabilityKey = getAvailabilityKey(normalizedText, snapshot);
 
 	useEffect(() => {
-		let active = true;
+		const controller = new AbortController();
 		void runtime
 			.canSpeak(normalizedText)
 			.then((canSpeak) => {
-				if (active) {
+				if (!controller.signal.aborted) {
 					setAvailability({
 						text: normalizedText,
 						available: canSpeak,
@@ -59,7 +59,7 @@ export const PronunciationButton: React.FC<PronunciationButtonRuntimeProps> = ({
 				}
 			})
 			.catch(() => {
-				if (active) {
+				if (!controller.signal.aborted) {
 					setAvailability({
 						text: normalizedText,
 						available: false,
@@ -67,7 +67,7 @@ export const PronunciationButton: React.FC<PronunciationButtonRuntimeProps> = ({
 				}
 			});
 		return () => {
-			active = false;
+			controller.abort();
 		};
 	}, [normalizedText, availabilityKey, runtime]);
 

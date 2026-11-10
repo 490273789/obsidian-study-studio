@@ -31,7 +31,7 @@ describe("MediaSubtitlePipeline", () => {
 			}),
 		};
 
-		const translation: SubtitleTranslationPort = {
+		const translation = {
 			getProfileId: vi.fn((sel: string) => sel || "default-profile"),
 			getSignature: vi.fn(() => translationSig),
 			listProfiles: vi.fn(() => [{ id: "default-profile", name: "Default" }]),
@@ -39,7 +39,7 @@ describe("MediaSubtitlePipeline", () => {
 				if (overrides.translationError) throw overrides.translationError;
 				return "你好世界";
 			}),
-		};
+		} satisfies SubtitleTranslationPort;
 
 		const pipeline = new MediaSubtitlePipeline({ transcription, translation });
 		return { pipeline, transcription, translation };

@@ -28,7 +28,7 @@ const asr: AiEngineConfig = {
 	model: "fun-asr-flash-2026-06-15",
 };
 
-function setup(kind: AiEngineKind = "llm", view: AiViewMode = "list"): AiSettingsHost {
+function setup(kind: AiEngineKind = "llm", view: AiViewMode = "list") {
 	const draft = kind === "llm" ? llm : asr;
 	return {
 		service: {
@@ -59,7 +59,7 @@ function setup(kind: AiEngineKind = "llm", view: AiViewMode = "list"): AiSetting
 		deleteEngine: vi.fn(),
 		loadModels: vi.fn(),
 		testDraft: vi.fn(),
-	};
+	} satisfies AiSettingsHost;
 }
 
 const rows = (presentation: SettingsPresentation) =>
@@ -136,7 +136,7 @@ describe("AI settings presentation", () => {
 			appKeySecretId: "app-key",
 			appSecretSecretId: "app-secret",
 		};
-		const host: AiSettingsHost = {
+		const host = {
 			...setup(),
 			currentKind: "translation",
 			currentDraft: translation,
@@ -150,7 +150,7 @@ describe("AI settings presentation", () => {
 					testing: [],
 				}),
 			} as unknown as AiService,
-		};
+		} satisfies AiSettingsHost;
 		const presentation = buildAiSettingsViewModel(host, "zh");
 		const keys = rows(presentation).map((row) => row.key);
 		expect(keys).toEqual(expect.arrayContaining(["app-key", "app-secret", "test"]));
