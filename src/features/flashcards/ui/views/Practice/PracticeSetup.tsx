@@ -1,7 +1,10 @@
 import React, { useState } from "react";
 import {
+	ArrowRight,
+	ArrowRightLeft,
 	BrainCircuit,
 	Keyboard,
+	Layers,
 	ListOrdered,
 	Repeat2,
 	Shuffle,
@@ -18,9 +21,11 @@ import { FlashcardInput } from "../../../../../core/ui/primitives/Input";
 import { useFlashcardI18n } from "../../../strings/context";
 import { SetupControlGroup, SetupSelector } from "../../../../../core/ui/primitives/SetupSelector";
 import { SetupPage, setupStyles as styles } from "../../primitives/SetupPage/SetupPage";
+import practiceStyles from "./PracticeSetup.module.scss";
 
-const QUICK_QUESTION_COUNTS = [20, 50, 100, 150, 200];
+const QUICK_QUESTION_COUNTS = [20, 50, 100];
 const QUICK_SPELLING_COUNTS = [10, 20, 50];
+const STORAGE_KEY_PREFIX = "study-studio:practice-kind:";
 
 export type PracticeKind = "flip" | "spelling";
 type PracticeSelectionMode = "random" | "range";
@@ -39,6 +44,37 @@ export interface PracticeSetupProps {
 }
 
 const lastPracticeKindByDeck = new Map<string, PracticeKind>();
+
+function getPersistedPracticeKind(deckId: string): PracticeKind | null {
+	const inMem = lastPracticeKindByDeck.get(deckId);
+	if (inMem) return inMem;
+	try {
+		const saved = window.localStorage?.getItem(`${STORAGE_KEY_PREFIX}${deckId}`);
+		if (saved === "spelling" || saved === "flip") return saved;
+	} catch {
+		// safe fallback
+	}
+	return null;
+}
+
+function persistPracticeKind(deckId: string, kind: PracticeKind): void {
+	lastPracticeKindByDeck.set(deckId, kind);
+	try {
+		window.localStorage?.setItem(`${STORAGE_KEY_PREFIX}${deckId}`, kind);
+	} catch {
+		// safe fallback
+	}
+}
+
+/**
+ * In flashcard retrieval, each card takes ~7.5 seconds on average (flip + recall).
+ * For spelling, each word takes ~12 seconds (typing + recall).
+ */
+function estimateMinutes(count: number, isSpelling = false): number {
+	if (count <= 0) return 0;
+	const secondsPerCard = isSpelling ? 12 : 7.5;
+	return Math.max(1, Math.round((count * secondsPerCard) / 60));
+}
 
 export const PracticeSetup = React.memo(function PracticeSetup({
 	deck,
@@ -124,7 +160,7 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 	const resolveInitialKind = (): PracticeKind => {
 		if (initialKind === "spelling") return "spelling";
 		if (initialKind === "flip") return "flip";
-		const saved = lastPracticeKindByDeck.get(deck.id);
+		const saved = getPersistedPracticeKind(deck.id);
 		if (saved === "spelling" && spellingEligible) return "spelling";
 		return "flip";
 	};
@@ -132,7 +168,7 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 
 	const handlePracticeKindChange = (kind: PracticeKind) => {
 		setPracticeKind(kind);
-		lastPracticeKindByDeck.set(deck.id, kind);
+		persistPracticeKind(deck.id, kind);
 	};
 
 	// Flip handlers
@@ -334,27 +370,39 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 		}
 	};
 
+	const isSpelling = practiceKind === "spelling";
+	const activeCount = isSpelling ? currentSpellingCount : currentQuestionCount;
+	const activeMinutes = estimateMinutes(activeCount, isSpelling);
+
 	return (
 		<SetupPage
-			icon={practiceKind === "spelling" ? Keyboard : Target}
-			title={practiceKind === "spelling" ? t("spelling.title") : t("practice.title")}
+			icon={isSpelling ? Keyboard : Target}
+			title={isSpelling ? t("spelling.title") : t("practice.title")}
 			deck={deck}
-			count={practiceKind === "spelling" ? currentSpellingCount : currentQuestionCount}
-			countLabel={practiceKind === "spelling" ? t("setup.words") : t("setup.questions")}
+			count={activeCount}
+			countLabel={isSpelling ? t("setup.words") : t("setup.questions")}
 			meta={
-				practiceKind === "spelling" ? (
+				isSpelling ? (
 					<>
 						<span>{t("setup.totalWords", { count: spellingStats.total })}</span>
 						<span>
 							{t("setup.unpracticedWords", { count: spellingStats.unpracticed })}
 						</span>
+						{activeMinutes > 0 && (
+							<span>{t("practice.estimatedTime", { minutes: activeMinutes })}</span>
+						)}
 					</>
 				) : (
-					<span>{t("setup.availableCards", { count: maxQuestions })}</span>
+					<>
+						<span>{t("setup.availableCards", { count: maxQuestions })}</span>
+						{activeMinutes > 0 && (
+							<span>{t("practice.estimatedTime", { minutes: activeMinutes })}</span>
+						)}
+					</>
 				)
 			}
 			summary={
-				practiceKind === "spelling" ? (
+				isSpelling ? (
 					<>
 						{t(
 							spellingMode === "smart"
@@ -367,6 +415,9 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 								· {spellingRangeStart}–{spellingRangeEnd}
 							</>
 						)}
+						{activeMinutes > 0 && (
+							<> · {t("practice.estimatedTime", { minutes: activeMinutes })}</>
+						)}
 					</>
 				) : (
 					<>
@@ -375,18 +426,24 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 								? "practice.modeRange"
 								: "practice.modeRandomCount",
 						)}{" "}
-						· {t(direction === "normal" ? "mode.normal" : "mode.reversed")}
+						·{" "}
+						{direction === "normal"
+							? t("practice.directionNormal")
+							: t("practice.directionReversed")}
 						{selectionMode === "range" && (
 							<>
 								{" "}
 								· {rangeStart}–{rangeEnd}
 							</>
 						)}
+						{activeMinutes > 0 && (
+							<> · {t("practice.estimatedTime", { minutes: activeMinutes })}</>
+						)}
 					</>
 				)
 			}
 			startLabel={
-				practiceKind === "spelling"
+				isSpelling
 					? t("spelling.start", { count: currentSpellingCount })
 					: t("practice.startQuestions", { count: currentQuestionCount })
 			}
@@ -397,12 +454,10 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 			<div className={cls("fc-panel", styles.setupPanel)}>
 				{showModeSelector && (
 					<SetupControlGroup
-						icon={Target}
+						icon={Layers}
 						title={t("practice.type")}
 						note={
-							practiceKind === "spelling"
-								? t("practice.typeSpellingNote")
-								: t("practice.typeCardNote")
+							isSpelling ? t("practice.typeSpellingNote") : t("practice.typeCardNote")
 						}
 					>
 						<SetupSelector
@@ -412,7 +467,7 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 								{
 									value: "flip",
 									label: t("practice.typeCard"),
-									icon: Target,
+									icon: Layers,
 								},
 								{
 									value: "spelling",
@@ -430,7 +485,7 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 					</SetupControlGroup>
 				)}
 
-				{practiceKind === "spelling" ? (
+				{isSpelling ? (
 					<SetupControlGroup
 						icon={SlidersHorizontal}
 						title={t("spelling.chooseWords")}
@@ -462,44 +517,83 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 							{spellingMode === "smart" ? (
 								<>
 									<div className={styles.quickButtons}>
-										{quickSpellingCounts.map((count) => (
-											<FlashcardButton
-												key={count}
-												type="button"
-												className={styles.chip}
-												active={spellingQuestionCount === count}
-												aria-pressed={spellingQuestionCount === count}
-												onClick={() => handleSpellingQuickSelect(count)}
-											>
-												{count}
-											</FlashcardButton>
-										))}
+										{quickSpellingCounts.map((count) => {
+											const minutes = estimateMinutes(count, true);
+											return (
+												<FlashcardButton
+													key={count}
+													type="button"
+													className={cls(
+														styles.chip,
+														practiceStyles.chipWithTime,
+													)}
+													active={spellingQuestionCount === count}
+													aria-pressed={spellingQuestionCount === count}
+													aria-label={t("practice.chipAria", {
+														count,
+														minutes,
+													})}
+													onClick={() => handleSpellingQuickSelect(count)}
+												>
+													<span>{count}</span>
+													<span className={practiceStyles.chipSub}>
+														~{minutes}m
+													</span>
+												</FlashcardButton>
+											);
+										})}
 										<FlashcardButton
 											type="button"
-											className={styles.chip}
+											className={cls(
+												styles.chip,
+												practiceStyles.chipWithTime,
+											)}
 											active={spellingQuestionCount === spellingMax}
 											aria-pressed={spellingQuestionCount === spellingMax}
+											aria-label={t("practice.allCardsAria", {
+												count: spellingMax,
+												minutes: estimateMinutes(spellingMax, true),
+											})}
 											onClick={() => handleSpellingQuickSelect(spellingMax)}
 										>
-											{t("common.all")}
+											<span>{t("common.all")}</span>
+											<span className={practiceStyles.chipSub}>
+												({spellingMax})
+											</span>
 										</FlashcardButton>
 									</div>
 
-									<label className={styles.customField}>
-										<span className={styles.inputLabel}>
-											{t("spelling.customCount")}
-										</span>
-										<FlashcardInput
-											type="number"
-											className={styles.input}
-											value={spellingInputValue}
-											onChange={handleSpellingInputChange}
-											onBlur={handleSpellingInputBlur}
-											min={1}
-											max={spellingMax}
-										/>
-										<span className={styles.inputHint}>1–{spellingMax}</span>
-									</label>
+									<div className={practiceStyles.customInputRow}>
+										<label className={styles.customField}>
+											<span className={styles.inputLabel}>
+												{t("spelling.customCount")}
+											</span>
+											<FlashcardInput
+												type="number"
+												className={styles.input}
+												value={spellingInputValue}
+												onChange={handleSpellingInputChange}
+												onBlur={handleSpellingInputBlur}
+												min={1}
+												max={spellingMax}
+											/>
+											<span className={styles.inputHint}>
+												1–{spellingMax}
+											</span>
+										</label>
+										{spellingQuestionCount > 0 &&
+											!quickSpellingCounts.includes(spellingQuestionCount) &&
+											spellingQuestionCount !== spellingMax && (
+												<span className={practiceStyles.customEstimate}>
+													{t("practice.estimatedTime", {
+														minutes: estimateMinutes(
+															spellingQuestionCount,
+															true,
+														),
+													})}
+												</span>
+											)}
+									</div>
 								</>
 							) : (
 								<div className={styles.rangeGroup}>
@@ -529,6 +623,23 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 											/>
 										</label>
 									</div>
+									<div className={practiceStyles.rangeSelectedNotice}>
+										<span className={practiceStyles.rangeCountHighlight}>
+											{t("practice.rangeSelectedSummary", {
+												count: currentSpellingRangeCount,
+											})}
+										</span>
+										<span className={practiceStyles.rangeEstimatedTime}>
+											（
+											{t("practice.estimatedTime", {
+												minutes: estimateMinutes(
+													currentSpellingRangeCount,
+													true,
+												),
+											})}
+											）
+										</span>
+									</div>
 								</div>
 							)}
 						</div>
@@ -538,7 +649,13 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 						<SetupControlGroup
 							icon={SlidersHorizontal}
 							title={t("practice.chooseCount")}
-							note={t("practice.chooseCountNote")}
+							note={
+								selectionMode === "range"
+									? t("practice.rangeSelectedSummary", {
+											count: rangeQuestionCount,
+										})
+									: t("practice.chooseCountNote")
+							}
 						>
 							<SetupSelector
 								value={selectionMode}
@@ -562,46 +679,83 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 								{selectionMode === "random" ? (
 									<>
 										<div className={styles.quickButtons}>
-											{quickQuestionCounts.map((count) => (
-												<FlashcardButton
-													key={count}
-													type="button"
-													className={styles.chip}
-													active={questionCount === count}
-													aria-pressed={questionCount === count}
-													onClick={() => handleQuickSelect(count)}
-												>
-													{count}
-												</FlashcardButton>
-											))}
+											{quickQuestionCounts.map((count) => {
+												const minutes = estimateMinutes(count, false);
+												return (
+													<FlashcardButton
+														key={count}
+														type="button"
+														className={cls(
+															styles.chip,
+															practiceStyles.chipWithTime,
+														)}
+														active={questionCount === count}
+														aria-pressed={questionCount === count}
+														aria-label={t("practice.chipAria", {
+															count,
+															minutes,
+														})}
+														onClick={() => handleQuickSelect(count)}
+													>
+														<span>{count}</span>
+														<span className={practiceStyles.chipSub}>
+															~{minutes}m
+														</span>
+													</FlashcardButton>
+												);
+											})}
 											<FlashcardButton
 												type="button"
-												className={styles.chip}
+												className={cls(
+													styles.chip,
+													practiceStyles.chipWithTime,
+												)}
 												active={questionCount === maxQuestions}
 												aria-pressed={questionCount === maxQuestions}
+												aria-label={t("practice.allCardsAria", {
+													count: maxQuestions,
+													minutes: estimateMinutes(maxQuestions, false),
+												})}
 												onClick={() => handleQuickSelect(maxQuestions)}
 											>
-												{t("common.all")}
+												<span>{t("common.all")}</span>
+												<span className={practiceStyles.chipSub}>
+													({maxQuestions})
+												</span>
 											</FlashcardButton>
 										</div>
 
-										<label className={styles.customField}>
-											<span className={styles.inputLabel}>
-												{t("practice.customCount")}
-											</span>
-											<FlashcardInput
-												type="number"
-												className={styles.input}
-												value={inputValue}
-												onChange={handleInputChange}
-												onBlur={handleInputBlur}
-												min={1}
-												max={maxQuestions}
-											/>
-											<span className={styles.inputHint}>
-												1–{maxQuestions}
-											</span>
-										</label>
+										<div className={practiceStyles.customInputRow}>
+											<label className={styles.customField}>
+												<span className={styles.inputLabel}>
+													{t("practice.customCount")}
+												</span>
+												<FlashcardInput
+													type="number"
+													className={styles.input}
+													value={inputValue}
+													onChange={handleInputChange}
+													onBlur={handleInputBlur}
+													min={1}
+													max={maxQuestions}
+												/>
+												<span className={styles.inputHint}>
+													1–{maxQuestions}
+												</span>
+											</label>
+											{questionCount > 0 &&
+												!quickQuestionCounts.includes(questionCount) &&
+												questionCount !== maxQuestions && (
+													<span className={practiceStyles.customEstimate}>
+														{t("practice.estimatedTime", {
+															minutes: estimateMinutes(
+																questionCount,
+																false,
+															),
+														})}
+													</span>
+												)}
+										</div>
 									</>
 								) : (
 									<div className={styles.rangeGroup}>
@@ -631,18 +785,35 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 												/>
 											</label>
 										</div>
+										<div className={practiceStyles.rangeSelectedNotice}>
+											<span className={practiceStyles.rangeCountHighlight}>
+												{t("practice.rangeSelectedSummary", {
+													count: rangeQuestionCount,
+												})}
+											</span>
+											<span className={practiceStyles.rangeEstimatedTime}>
+												（
+												{t("practice.estimatedTime", {
+													minutes: estimateMinutes(
+														rangeQuestionCount,
+														false,
+													),
+												})}
+												）
+											</span>
+										</div>
 									</div>
 								)}
 							</div>
 						</SetupControlGroup>
 
 						<SetupControlGroup
-							icon={Repeat2}
+							icon={ArrowRightLeft}
 							title={t("mode.direction")}
 							note={
 								direction === "normal"
-									? t("mode.normalNote")
-									: t("mode.reversedNote")
+									? t("practice.directionNormalNote")
+									: t("practice.directionReversedNote")
 							}
 						>
 							<SetupSelector
@@ -651,17 +822,43 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 								options={[
 									{
 										value: "normal",
-										label: t("mode.normal"),
-										icon: Target,
+										label: t("practice.directionNormal"),
+										icon: ArrowRight,
 									},
 									{
 										value: "reversed",
-										label: t("mode.reversed"),
+										label: t("practice.directionReversed"),
 										icon: Repeat2,
 									},
 								]}
 								onChange={setDirection}
 							/>
+
+							<div className={practiceStyles.directionFlowCard}>
+								<div className={practiceStyles.flowStep}>
+									<span className={practiceStyles.flowBadge}>
+										{t("practice.flowPrompt")}
+									</span>
+									<span className={practiceStyles.flowText}>
+										{direction === "normal"
+											? t("practice.flowFrontPrompt")
+											: t("practice.flowBackPrompt")}
+									</span>
+								</div>
+								<div className={practiceStyles.flowArrow} aria-hidden="true">
+									<ArrowRight size={14} />
+								</div>
+								<div className={practiceStyles.flowStep}>
+									<span className={practiceStyles.flowBadgeAnswer}>
+										{t("practice.flowAnswer")}
+									</span>
+									<span className={practiceStyles.flowText}>
+										{direction === "normal"
+											? t("practice.flowBackAnswer")
+											: t("practice.flowFrontAnswer")}
+									</span>
+								</div>
+							</div>
 						</SetupControlGroup>
 					</>
 				)}

@@ -1,0 +1,124 @@
+@use "../../../../../core/styles/breakpoints.scss";
+
+.chipWithTime {
+	display: inline-flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	padding: var(--fc-space-1) var(--fc-space-3);
+	line-height: 1.2;
+}
+
+.chipSub {
+	font-size: var(--fc-font-2xs, 10px);
+	color: var(--fc-muted);
+	font-weight: var(--fc-weight-normal);
+}
+
+:global(.active) .chipSub {
+	color: color-mix(in srgb, var(--fc-button-ink) 70%, transparent);
+}
+
+.customInputRow {
+	display: flex;
+	align-items: flex-end;
+	flex-wrap: wrap;
+	gap: var(--fc-space-3);
+}
+
+.customEstimate {
+	font-size: var(--fc-font-xs);
+	color: var(--fc-muted);
+	font-family: var(--fc-font-data);
+	padding-bottom: var(--fc-space-1);
+}
+
+.rangeSelectedNotice {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--fc-space-2);
+	margin-top: var(--fc-space-2);
+	padding: var(--fc-space-1) var(--fc-space-3);
+	border-radius: var(--fc-radius-sm);
+	background: var(--fc-surface-section);
+	border: 1px solid var(--fc-line-soft);
+	font-size: var(--fc-font-xs);
+	color: var(--fc-text);
+}
+
+.rangeCountHighlight {
+	font-weight: var(--fc-weight-semibold);
+	font-family: var(--fc-font-data);
+	color: var(--fc-primary);
+}
+
+.rangeEstimatedTime {
+	color: var(--fc-muted);
+}
+
+.directionFlowCard {
+	display: flex;
+	align-items: center;
+	gap: var(--fc-space-3);
+	margin-top: var(--fc-space-3);
+	padding: var(--fc-space-2) var(--fc-space-4);
+	border-radius: var(--fc-radius-md);
+	background: var(--fc-surface-section);
+	border: 1px solid var(--fc-line-soft);
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.flowStep {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+	flex: 1 1 0;
+}
+
+.flowBadge {
+	font-size: var(--fc-font-2xs, 10px);
+	font-weight: var(--fc-weight-medium);
+	color: var(--fc-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.flowBadgeAnswer {
+	font-size: var(--fc-font-2xs, 10px);
+	font-weight: var(--fc-weight-medium);
+	color: var(--fc-primary);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.flowText {
+	font-size: var(--fc-font-sm);
+	font-weight: var(--fc-weight-medium);
+	color: var(--fc-text);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.flowArrow {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--fc-primary);
+	flex-shrink: 0;
+}
+
+@container (max-width: #{breakpoints.$phone}) {
+	.directionFlowCard {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: var(--fc-space-2);
+		padding: var(--fc-space-2) var(--fc-space-3);
+	}
+	.flowArrow {
+		align-self: center;
+		transform: rotate(90deg);
+	}
+}
