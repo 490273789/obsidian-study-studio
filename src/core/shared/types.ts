@@ -19,25 +19,13 @@ export type PronunciationAccent = "system" | "en-US" | "en-GB";
 
 export type PronunciationRate = "normal" | "slow";
 
-export type OnlinePronunciationProvider = "none" | "azure" | "openai";
-
 export interface PronunciationSettings {
 	/** Automatically pronounce a spelling answer after it has been entered correctly. */
 	spellingAutoPlay: boolean;
 	/** Preferred English accent. System uses the device's default local English voice. */
 	accent: PronunciationAccent;
-	/** Speaking speed shared by local and online voices. */
+	/** Speaking speed for local voices. */
 	rate: PronunciationRate;
-	/** Optional provider used only when no local English voice is installed. */
-	onlineProvider: OnlinePronunciationProvider;
-	/** Azure public cloud or Azure operated by 21Vianet. */
-	azureCloud: "china" | "global";
-	/** Azure Speech resource region identifier. */
-	azureRegion: string;
-	/** SecretStorage ID containing the Azure Speech resource key. */
-	azureSecretId: string;
-	/** SecretStorage ID containing the OpenAI API key. */
-	openaiSecretId: string;
 }
 
 /**

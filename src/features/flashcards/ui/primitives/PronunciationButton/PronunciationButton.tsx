@@ -27,7 +27,6 @@ function getAvailabilityKey(text: string, snapshot: PronunciationSnapshot): stri
 		snapshot.voicesLoaded,
 		snapshot.hasLocalEnglishVoice,
 		snapshot.settings,
-		snapshot.cacheUsage.status,
 	]);
 }
 
@@ -105,14 +104,8 @@ function getFailureMessage(
 	t: ReturnType<typeof useFlashcardI18n>["t"],
 ): string {
 	switch (reason) {
-		case "offline":
-			return t("pronunciation.offline");
 		case "not-configured":
 			return t("pronunciation.notConfigured");
-		case "unauthorized":
-			return t("pronunciation.unauthorized");
-		case "quota":
-			return t("pronunciation.quota");
 		default:
 			return t("pronunciation.failed");
 	}

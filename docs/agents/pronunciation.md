@@ -1,34 +1,26 @@
 # Pronunciation Guide
 
-Read this guide before changing pronunciation settings, playback, spelling autoplay, provider requests, secrets, or audio caching.
+Read this guide before changing pronunciation settings, playback, spelling autoplay, or local voice selection.
 
 ## Runtime authority
 
 `src/features/flashcards/domain/pronunciation/pronunciationRuntime.ts` is a plugin-lifetime service owned by the 闪卡 feature (`src/features/flashcards.ts`), which constructs and disposes it. It is shared with the view boundary by injection.
 
-- Its immutable snapshot is the in-process authority for committed pronunciation settings, management activity, cache usage, voice capability, and playback state.
-- Settings adapters call semantic methods such as `configure()`, `testOnlineProvider()`, and `clearCache()`; they must not mirror or directly mutate pronunciation settings/activity.
+- Its immutable snapshot is the in-process authority for committed pronunciation settings, management activity, voice capability, and playback state.
+- Settings adapters call semantic methods such as `configure()`; they must not mirror or directly mutate pronunciation settings/activity.
 - Configuration is persisted before the committed snapshot is published. The write goes through `host.updateSettings({ pronunciation })`, and the composition root serializes settings commits so a stale write cannot overwrite a newer pronunciation configuration.
-- UI components consume the runtime interface. They must not create a second runtime or read provider credentials directly.
+- UI components consume the runtime interface. They must not create a second runtime.
 
-## Fallback and security rules
+## Voice capability and playback rules
 
-Pronunciation is offline-first in this order:
+Pronunciation is local-only using the platform's speech synthesis engine:
 
-1. A matching local English `SpeechSynthesisVoice`.
-2. Device-local cached audio for the configured provider/voice/accent/rate/text descriptor.
-3. The configured Azure Speech or OpenAI provider when online and available.
-
-- Online requests use the outbound port backed by Obsidian `requestUrl`, not browser `fetch` assumptions inside the feature.
-- Provider secret values live only in Obsidian `SecretStorage`; persist secret IDs only. Never include secret values in `DataStore`, logs, notices, fixtures, or source.
-- Preserve offline handling, request timeouts, provider cooldowns, cancellation, and graceful fallback on platforms missing speech, audio, Web Crypto, or IndexedDB.
-- The IndexedDB audio cache has an in-memory fallback and a 100 MiB LRU limit. Cache keys must remain provider/variant/accent/rate/text-specific.
-- A configuration change cancels playback and provider testing. Preserve the runtime's single-flight/busy semantics for configuration, provider tests, cache clearing, and usage refresh.
-
-## Playback lifecycle and tests
+1. A matching local English `SpeechSynthesisVoice` (matching preferred accent if specified, or default local English, or any local English voice).
+2. If no local English voice is installed on the device, speech is reported as unavailable (`not-configured`).
 
 - Stop playback when the current card/session changes, the view closes, or the consumer unmounts.
-- Dispose voice/connectivity listeners and timers on plugin unload.
+- Dispose voice change listeners on plugin unload.
 - Spelling autoplay reads the same runtime snapshot as manual playback and lets `AnswerPresentationTransition` own the presentation wait.
+- A configuration change cancels active playback.
 
-Add focused tests under `src/features/flashcards/domain/pronunciation/__tests__/` and, for spelling integration, `src/features/flashcards/domain/sessions/__tests__/` or `src/core/ui/__tests__/`. Report which fallback path—local voice, cache, Azure, or OpenAI—was actually exercised manually.
+Add focused tests under `src/features/flashcards/domain/pronunciation/__tests__/` and, for spelling integration, `src/features/flashcards/domain/sessions/__tests__/` or `src/core/ui/__tests__/`.

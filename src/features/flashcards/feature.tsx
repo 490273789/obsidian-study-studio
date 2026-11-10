@@ -31,11 +31,7 @@ import {
 } from "./domain/identity/cardIdentityContinuity";
 import { createCardIdentity } from "./domain/identity/cardIdentity";
 import { describeSynchronizationOutcome } from "./domain/identity/synchronizationFeedback";
-import {
-	createPronunciationRuntime,
-	PRONUNCIATION_CACHE_LIMIT_BYTES_MOBILE,
-	type PronunciationRuntime,
-} from "./domain/pronunciation";
+import { createPronunciationRuntime, type PronunciationRuntime } from "./domain/pronunciation";
 import { createSessionLifecycle, type SessionLifecycle } from "./domain/sessions/sessionLifecycle";
 import { CardIdentityMigrationModal, CardIdentityRepairModal } from "./obsidian/continuityModals";
 import { createObsidianContinuitySourceStore } from "./obsidian/continuityAdapters";
@@ -85,7 +81,6 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 	let services: FlashcardServices | null = null;
 	let exportNotice: Notice | null = null;
 	let pronunciationUnsubscribe: (() => void) | null = null;
-	let didRetryFailedCacheUsage = false;
 	// Tag discovery state belongs to the settings section's presentation.
 	let availableTags: string[] = [];
 	let isLoadingTags = false;
@@ -414,51 +409,6 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 		);
 	};
 
-	const testOnlinePronunciation = async (host: FlashcardWorkbenchHost): Promise<void> => {
-		const strings = t(host);
-		try {
-			const outcome = await activeServices().pronunciationRuntime.testOnlineProvider("hello");
-			if (outcome.status === "success") {
-				new Notice(strings("settings.pronunciationTestSuccess"));
-				return;
-			}
-			if (outcome.status === "cancelled") return;
-			if (outcome.status === "busy") {
-				new Notice(strings("settings.pronunciationBusy"));
-				return;
-			}
-			const key =
-				outcome.reason === "offline"
-					? "settings.pronunciationTestOffline"
-					: outcome.reason === "not-configured"
-						? "settings.pronunciationTestNotConfigured"
-						: outcome.reason === "unauthorized"
-							? "settings.pronunciationTestUnauthorized"
-							: outcome.reason === "quota"
-								? "settings.pronunciationTestQuota"
-								: "settings.pronunciationTestFailed";
-			new Notice(strings(key));
-		} catch {
-			new Notice(strings("settings.pronunciationTestFailed"));
-		}
-	};
-
-	const clearPronunciationCache = async (host: FlashcardWorkbenchHost): Promise<void> => {
-		const strings = t(host);
-		try {
-			const outcome = await activeServices().pronunciationRuntime.clearCache();
-			new Notice(
-				outcome.status === "cleared"
-					? strings("settings.pronunciationCacheCleared")
-					: outcome.status === "busy"
-						? strings("settings.pronunciationBusy")
-						: strings("settings.pronunciationCacheClearFailed"),
-			);
-		} catch {
-			new Notice(strings("settings.pronunciationCacheClearFailed"));
-		}
-	};
-
 	let tagsCollapsed: boolean | null = null;
 
 	const createSettingsActions = (host: FlashcardWorkbenchHost): SettingsViewModelActions => {
@@ -525,14 +475,6 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 				configurePronunciation(host, { spellingAutoPlay: value }),
 			setPronunciationAccent: (value) => configurePronunciation(host, { accent: value }),
 			setPronunciationRate: (value) => configurePronunciation(host, { rate: value }),
-			setOnlinePronunciationProvider: (value) =>
-				configurePronunciation(host, { onlineProvider: value }),
-			setAzureCloud: (value) => configurePronunciation(host, { azureCloud: value }),
-			setAzureRegion: (value) => configurePronunciation(host, { azureRegion: value }),
-			setAzureSecretId: (value) => configurePronunciation(host, { azureSecretId: value }),
-			setOpenAiSecretId: (value) => configurePronunciation(host, { openaiSecretId: value }),
-			testOnlinePronunciation: () => testOnlinePronunciation(host),
-			clearPronunciationCache: () => clearPronunciationCache(host),
 		};
 	};
 
@@ -564,18 +506,10 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 			pronunciationUnsubscribe ??= pronunciationRuntime.subscribe(() =>
 				host.settingsTab.refresh(FLASHCARD_SECTION_ID),
 			);
-			if (
-				!didRetryFailedCacheUsage &&
-				pronunciationRuntime.getSnapshot().cacheUsage.status === "failed"
-			) {
-				didRetryFailedCacheUsage = true;
-				void pronunciationRuntime.refreshCacheUsage();
-			}
 		},
 		hide: () => {
 			pronunciationUnsubscribe?.();
 			pronunciationUnsubscribe = null;
-			didRetryFailedCacheUsage = false;
 		},
 	});
 
@@ -614,13 +548,10 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 				createIdentity: createCardIdentity,
 			});
 			const pronunciationRuntime = lifetime.own(
-				createPronunciationRuntime(deps.net, host.settings.read().pronunciation, {
+				createPronunciationRuntime(host.settings.read().pronunciation, {
 					persistSettings: async (pronunciation) => {
 						await host.settings.update({ pronunciation: { ...pronunciation } });
 					},
-					cacheLimitBytes: Platform.isMobile
-						? PRONUNCIATION_CACHE_LIMIT_BYTES_MOBILE
-						: undefined,
 				}),
 			);
 			const deckSettingsDraftSession = lifetime.own(

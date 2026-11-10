@@ -397,9 +397,7 @@ describe("FlashcardSettingTab", () => {
 					hasLocalEnglishVoice: false,
 					voicesLoaded: true,
 					speakingText: null,
-					cacheUsage: { status: "ready", bytes: 0 },
 				}),
-				refreshCacheUsage: vi.fn(),
 			},
 			aiService: {
 				subscribe: vi.fn(() => () => {}),

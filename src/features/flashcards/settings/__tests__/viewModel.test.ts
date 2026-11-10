@@ -27,7 +27,6 @@ const DEFAULT_PRONUNCIATION_STATE = {
 		hasLocalEnglishVoice: false,
 		voicesLoaded: true,
 		speakingText: null,
-		cacheUsage: { status: "ready", bytes: 0 },
 	},
 } as const;
 
@@ -47,13 +46,6 @@ function makeActions(): SettingsViewModelActions {
 		setPronunciationAutoPlay: vi.fn(),
 		setPronunciationAccent: vi.fn(),
 		setPronunciationRate: vi.fn(),
-		setOnlinePronunciationProvider: vi.fn(),
-		setAzureCloud: vi.fn(),
-		setAzureRegion: vi.fn(),
-		setAzureSecretId: vi.fn(),
-		setOpenAiSecretId: vi.fn(),
-		testOnlinePronunciation: vi.fn(),
-		clearPronunciationCache: vi.fn(),
 	};
 }
 
@@ -283,7 +275,7 @@ describe("flashcard settings presentation", () => {
 		expect(actions.addDiscoveredTag).not.toHaveBeenCalled();
 	});
 
-	it("resolves provider visibility and cache status while building the snapshot", () => {
+	it("configures local pronunciation controls without online providers or cache", () => {
 		const presentation = build(
 			makeActions(),
 			{},
@@ -291,22 +283,19 @@ describe("flashcard settings presentation", () => {
 				...DEFAULT_PRONUNCIATION_STATE.pronunciation,
 				settings: {
 					...DEFAULT_SETTINGS.pronunciation,
-					onlineProvider: "openai",
-					openaiSecretId: "openai-flashcard",
+					accent: "en-US",
+					rate: "slow",
 				},
-				cacheUsage: { status: "ready", bytes: 1024 * 1024 },
 			},
 		);
-		expect(row(presentation, "pronunciation", "openai-secret")).toBeDefined();
-		expect(
-			presentation.snapshot.groups
-				.find((group) => group.key === "pronunciation")
-				?.rows.some((candidate) => candidate.key === "azure-secret"),
-		).toBe(false);
-		expect(control(row(presentation, "pronunciation", "cache"), "usage")).toMatchObject({
-			kind: "status",
-			text: "1.0 MB",
-		});
+		const pronunciationGroup = presentation.snapshot.groups.find(
+			(group) => group.key === "pronunciation",
+		);
+		expect(pronunciationGroup?.rows.map((row) => row.key)).toEqual([
+			"auto-play",
+			"accent",
+			"rate",
+		]);
 	});
 
 	it("marks pronunciation interactions disabled while management is busy", async () => {
@@ -317,7 +306,6 @@ describe("flashcard settings presentation", () => {
 			{
 				...DEFAULT_PRONUNCIATION_STATE.pronunciation,
 				management: "configuring",
-				cacheUsage: { status: "failed" },
 			},
 		);
 		const autoPlay = control(row(presentation, "pronunciation", "auto-play"), "control");
@@ -327,9 +315,6 @@ describe("flashcard settings presentation", () => {
 			reason: "disabled",
 		});
 		expect(actions.setPronunciationAutoPlay).not.toHaveBeenCalled();
-		expect(control(row(presentation, "pronunciation", "cache"), "usage")).toMatchObject({
-			text: "Failed to read cache usage",
-		});
 	});
 
 	it("collapses configured tags when more than three exist and toggles on action", async () => {

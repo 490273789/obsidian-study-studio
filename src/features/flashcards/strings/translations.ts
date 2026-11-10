@@ -60,10 +60,7 @@ export const flashcardTranslations = {
 		"pronunciation.play": "朗读 {word}",
 		"pronunciation.autoEnable": "开启自动发音",
 		"pronunciation.autoDisable": "关闭自动发音",
-		"pronunciation.offline": "当前离线，且没有这个词的本地缓存",
-		"pronunciation.notConfigured": "当前设备没有可用的本地英语语音，请先配置在线发音",
-		"pronunciation.unauthorized": "在线发音密钥无效，请检查设置",
-		"pronunciation.quota": "在线发音请求过于频繁，请稍后再试",
+		"pronunciation.notConfigured": "当前设备没有可用的本地英语语音",
 		"pronunciation.failed": "发音失败，请稍后重试",
 		"order.sequential": "顺序学习",
 		"order.random": "乱序学习",
@@ -135,48 +132,6 @@ export const flashcardTranslations = {
 		"settings.pronunciationRateName": "朗读速度",
 		"settings.pronunciationRateNormal": "正常",
 		"settings.pronunciationRateSlow": "慢速",
-		"settings.pronunciationProviderName": "在线发音服务",
-		"settings.pronunciationProviderDesc":
-			"仅当设备没有本地英语语音时使用。每次只启用一家服务，不会跨厂商自动切换。",
-		"settings.pronunciationProviderNone": "关闭在线发音",
-		"settings.pronunciationProviderAzure": "Azure Speech",
-		"settings.pronunciationProviderOpenAi": "OpenAI",
-		"settings.pronunciationAzureCloudName": "Azure 云环境",
-		"settings.pronunciationAzureChina": "中国区",
-		"settings.pronunciationAzureGlobal": "全球区",
-		"settings.pronunciationAzureRegionName": "Azure Region",
-		"settings.pronunciationAzureChinaRegionDesc": "支持 chinaeast2、chinanorth2、chinanorth3。",
-		"settings.pronunciationAzureGlobalRegionDesc":
-			"填写 Azure Speech 资源所在的全球 Region，例如 eastus。",
-		"settings.pronunciationAzureSecretName": "Azure Speech 密钥",
-		"settings.pronunciationAzureSecretDesc":
-			"选择 Obsidian SecretStorage 中保存 Azure Speech Key 的密钥名称；真实 Key 不写入插件数据。",
-		"settings.pronunciationOpenAiSecretName": "OpenAI API Key",
-		"settings.pronunciationOpenAiSecretDesc":
-			"选择 Obsidian SecretStorage 中保存官方 OpenAI API Key 的密钥名称；仅使用官方端点。",
-		"settings.pronunciationOpenAiWarningName": "AI 合成语音与密钥风险",
-		"settings.pronunciationOpenAiWarningDesc":
-			"该声音由 AI 生成。OpenAI 不建议在浏览器或移动客户端直接持有 API Key；启用 BYOK 直连即表示你接受此风险。",
-		"settings.pronunciationTestName": "测试在线配置",
-		"settings.pronunciationTestDesc":
-			"仅在你主动点击时发送测试词 hello，可能产生一次服务费用。",
-		"settings.pronunciationTestButton": "测试发音",
-		"settings.pronunciationTesting": "测试中…",
-		"settings.pronunciationTestSuccess": "在线发音配置可用",
-		"settings.pronunciationTestOffline": "当前没有网络，无法测试在线发音",
-		"settings.pronunciationTestNotConfigured": "请先选择并配置在线服务密钥",
-		"settings.pronunciationTestUnauthorized": "密钥无效或没有发音权限",
-		"settings.pronunciationTestQuota": "请求受限或额度不足，请稍后重试",
-		"settings.pronunciationTestFailed": "在线发音测试失败，请检查 Region 和网络",
-		"settings.pronunciationCacheName": "设备音频缓存",
-		"settings.pronunciationCacheDesc":
-			"云端音频仅缓存在当前设备的 IndexedDB 中，上限 100 MB，不写入题库、学习数据或 Vault。",
-		"settings.pronunciationCacheLoading": "计算中…",
-		"settings.pronunciationCacheReadFailed": "读取失败",
-		"settings.pronunciationCacheClear": "清理缓存",
-		"settings.pronunciationCacheClearing": "清理中…",
-		"settings.pronunciationCacheCleared": "发音缓存已清理",
-		"settings.pronunciationCacheClearFailed": "发音缓存清理失败",
 		"settings.pronunciationSaveFailed": "发音设置保存失败，已保留原设置",
 		"settings.pronunciationBusy": "另一项发音操作正在进行，请稍后再试",
 		"settings.retentionName": "目标记忆保持率",
@@ -610,11 +565,7 @@ export const flashcardTranslations = {
 		"pronunciation.play": "Pronounce {word}",
 		"pronunciation.autoEnable": "Enable automatic pronunciation",
 		"pronunciation.autoDisable": "Disable automatic pronunciation",
-		"pronunciation.offline": "You are offline and this word is not cached on this device",
-		"pronunciation.notConfigured":
-			"No local English voice is available. Configure online pronunciation first.",
-		"pronunciation.unauthorized": "The online pronunciation key is invalid. Check settings.",
-		"pronunciation.quota": "Online pronunciation is rate-limited. Try again later.",
+		"pronunciation.notConfigured": "No local English voice is available on this device",
 		"pronunciation.failed": "Pronunciation failed. Try again later.",
 		"order.sequential": "Sequential",
 		"order.random": "Random",
@@ -692,53 +643,6 @@ export const flashcardTranslations = {
 		"settings.pronunciationRateName": "Speech rate",
 		"settings.pronunciationRateNormal": "Normal",
 		"settings.pronunciationRateSlow": "Slow",
-		"settings.pronunciationProviderName": "Online pronunciation service",
-		"settings.pronunciationProviderDesc":
-			"Used only when the device has no local English voice. Only one provider is active, with no automatic cross-provider fallback.",
-		"settings.pronunciationProviderNone": "Disable online pronunciation",
-		"settings.pronunciationProviderAzure": "Azure Speech",
-		"settings.pronunciationProviderOpenAi": "OpenAI",
-		"settings.pronunciationAzureCloudName": "Azure cloud",
-		"settings.pronunciationAzureChina": "Azure China",
-		"settings.pronunciationAzureGlobal": "Azure global",
-		"settings.pronunciationAzureRegionName": "Azure Region",
-		"settings.pronunciationAzureChinaRegionDesc":
-			"Supports chinaeast2, chinanorth2, and chinanorth3.",
-		"settings.pronunciationAzureGlobalRegionDesc":
-			"Enter the global Region containing the Azure Speech resource, such as eastus.",
-		"settings.pronunciationAzureSecretName": "Azure Speech key",
-		"settings.pronunciationAzureSecretDesc":
-			"Select the Obsidian SecretStorage name containing the Azure Speech key. The real key is never saved in plugin data.",
-		"settings.pronunciationOpenAiSecretName": "OpenAI API key",
-		"settings.pronunciationOpenAiSecretDesc":
-			"Select the Obsidian SecretStorage name containing an official OpenAI API key. Only the official endpoint is used.",
-		"settings.pronunciationOpenAiWarningName": "AI voice and key risk",
-		"settings.pronunciationOpenAiWarningDesc":
-			"This voice is AI-generated. OpenAI advises against keeping API keys in browsers or mobile clients; enabling direct BYOK means accepting that risk.",
-		"settings.pronunciationTestName": "Test online configuration",
-		"settings.pronunciationTestDesc":
-			"Sends the test word “hello” only when you click the button and may incur one provider charge.",
-		"settings.pronunciationTestButton": "Test pronunciation",
-		"settings.pronunciationTesting": "Testing…",
-		"settings.pronunciationTestSuccess": "Online pronunciation is configured correctly",
-		"settings.pronunciationTestOffline":
-			"You are offline, so online pronunciation cannot be tested",
-		"settings.pronunciationTestNotConfigured":
-			"Select an online provider and configure its secret first",
-		"settings.pronunciationTestUnauthorized": "The key is invalid or lacks speech permission",
-		"settings.pronunciationTestQuota":
-			"The request is rate-limited or out of quota. Try later.",
-		"settings.pronunciationTestFailed":
-			"Online pronunciation test failed. Check the Region and network.",
-		"settings.pronunciationCacheName": "Device audio cache",
-		"settings.pronunciationCacheDesc":
-			"Cloud audio is cached only in IndexedDB on this device, up to 100 MB. It is not written to decks, study data, or the Vault.",
-		"settings.pronunciationCacheLoading": "Calculating…",
-		"settings.pronunciationCacheReadFailed": "Failed to read cache usage",
-		"settings.pronunciationCacheClear": "Clear cache",
-		"settings.pronunciationCacheClearing": "Clearing…",
-		"settings.pronunciationCacheCleared": "Pronunciation cache cleared",
-		"settings.pronunciationCacheClearFailed": "Failed to clear the pronunciation cache",
 		"settings.pronunciationSaveFailed":
 			"Failed to save pronunciation settings. The previous settings were kept.",
 		"settings.pronunciationBusy":

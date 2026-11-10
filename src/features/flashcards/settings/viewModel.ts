@@ -1,7 +1,6 @@
 import type { ScopedWorkbenchSettings } from "../../../core/host/settingsSlices";
 import type {
 	Language,
-	OnlinePronunciationProvider,
 	PronunciationAccent,
 	PronunciationRate,
 	StudySettings,
@@ -11,7 +10,7 @@ import {
 	type SettingsActionResult,
 	type SettingsPresentation,
 } from "../../../core/settings/presentation";
-import type { PronunciationCacheUsage, PronunciationSnapshot } from "../domain/pronunciation";
+import type { PronunciationSnapshot } from "../domain/pronunciation";
 import { createTranslator } from "../strings/index";
 import { STUDY_ORDER_OPTIONS, STUDY_SETTINGS_LIMITS, parseStudyOrder } from "./studyMeta";
 
@@ -42,13 +41,6 @@ export interface SettingsViewModelActions {
 	setPronunciationAutoPlay: (value: boolean) => SettingsActionResult;
 	setPronunciationAccent: (value: PronunciationAccent) => SettingsActionResult;
 	setPronunciationRate: (value: PronunciationRate) => SettingsActionResult;
-	setOnlinePronunciationProvider: (value: OnlinePronunciationProvider) => SettingsActionResult;
-	setAzureCloud: (value: "china" | "global") => SettingsActionResult;
-	setAzureRegion: (value: string) => SettingsActionResult;
-	setAzureSecretId: (value: string) => SettingsActionResult;
-	setOpenAiSecretId: (value: string) => SettingsActionResult;
-	testOnlinePronunciation: () => SettingsActionResult;
-	clearPronunciationCache: () => SettingsActionResult;
 }
 
 export function buildSettingsViewModel(
@@ -221,125 +213,6 @@ export function buildSettingsViewModel(
 						actions.setPronunciationRate(parsePronunciationRate(value)),
 				},
 			);
-			group.select(
-				"provider",
-				{
-					name: t("settings.pronunciationProviderName"),
-					description: t("settings.pronunciationProviderDesc"),
-				},
-				{
-					value: pronunciationSettings.onlineProvider,
-					disabled: pronunciationBusy,
-					options: [
-						{ value: "none", label: t("settings.pronunciationProviderNone") },
-						{ value: "azure", label: t("settings.pronunciationProviderAzure") },
-						{ value: "openai", label: t("settings.pronunciationProviderOpenAi") },
-					],
-					onChange: (value) =>
-						actions.setOnlinePronunciationProvider(
-							parseOnlinePronunciationProvider(value),
-						),
-				},
-			);
-			group.select(
-				"azure-cloud",
-				{
-					name: t("settings.pronunciationAzureCloudName"),
-					visible: pronunciationSettings.onlineProvider === "azure",
-				},
-				{
-					value: pronunciationSettings.azureCloud,
-					disabled: pronunciationBusy,
-					options: [
-						{ value: "china", label: t("settings.pronunciationAzureChina") },
-						{ value: "global", label: t("settings.pronunciationAzureGlobal") },
-					],
-					onChange: actions.setAzureCloud,
-				},
-			);
-			group.text(
-				"azure-region",
-				{
-					name: t("settings.pronunciationAzureRegionName"),
-					description:
-						pronunciationSettings.azureCloud === "china"
-							? t("settings.pronunciationAzureChinaRegionDesc")
-							: t("settings.pronunciationAzureGlobalRegionDesc"),
-					visible: pronunciationSettings.onlineProvider === "azure",
-				},
-				{
-					value: pronunciationSettings.azureRegion,
-					placeholder:
-						pronunciationSettings.azureCloud === "china" ? "chinaeast2" : "eastus",
-					disabled: pronunciationBusy,
-					onChange: actions.setAzureRegion,
-				},
-			);
-			group.secret(
-				"azure-secret",
-				{
-					name: t("settings.pronunciationAzureSecretName"),
-					description: t("settings.pronunciationAzureSecretDesc"),
-					visible: pronunciationSettings.onlineProvider === "azure",
-				},
-				{
-					value: pronunciationSettings.azureSecretId,
-					disabled: pronunciationBusy,
-					onChange: actions.setAzureSecretId,
-				},
-			);
-			group.secret(
-				"openai-secret",
-				{
-					name: t("settings.pronunciationOpenAiSecretName"),
-					description: t("settings.pronunciationOpenAiSecretDesc"),
-					visible: pronunciationSettings.onlineProvider === "openai",
-				},
-				{
-					value: pronunciationSettings.openaiSecretId,
-					disabled: pronunciationBusy,
-					onChange: actions.setOpenAiSecretId,
-				},
-			);
-			group.row("openai-warning", {
-				name: t("settings.pronunciationOpenAiWarningName"),
-				description: t("settings.pronunciationOpenAiWarningDesc"),
-				visible: pronunciationSettings.onlineProvider === "openai",
-			});
-			group.button(
-				"test-provider",
-				{
-					name: t("settings.pronunciationTestName"),
-					description: t("settings.pronunciationTestDesc"),
-					visible: pronunciationSettings.onlineProvider !== "none",
-				},
-				{
-					label:
-						pronunciation.management === "testing-provider"
-							? t("settings.pronunciationTesting")
-							: t("settings.pronunciationTestButton"),
-					disabled: pronunciationBusy,
-					onPress: actions.testOnlinePronunciation,
-				},
-			);
-			group.row(
-				"cache",
-				{
-					name: t("settings.pronunciationCacheName"),
-					description: t("settings.pronunciationCacheDesc"),
-				},
-				(row) => {
-					row.status("usage", formatPronunciationCacheUsage(pronunciation.cacheUsage, t));
-					row.button("clear", {
-						label:
-							pronunciation.management === "clearing-cache"
-								? t("settings.pronunciationCacheClearing")
-								: t("settings.pronunciationCacheClear"),
-						disabled: pronunciationBusy,
-						onPress: actions.clearPronunciationCache,
-					});
-				},
-			);
 		});
 
 		page.group("fsrs", t("settings.fsrsGroup"), (group) => {
@@ -419,23 +292,4 @@ function parsePronunciationAccent(value: string): PronunciationAccent {
 
 function parsePronunciationRate(value: string): PronunciationRate {
 	return value === "slow" ? "slow" : "normal";
-}
-
-function parseOnlinePronunciationProvider(value: string): OnlinePronunciationProvider {
-	return value === "azure" || value === "openai" ? value : "none";
-}
-
-function formatBytes(bytes: number): string {
-	if (bytes < 1024) return `${bytes} B`;
-	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatPronunciationCacheUsage(
-	usage: PronunciationCacheUsage,
-	t: ReturnType<typeof createTranslator>,
-): string {
-	if (usage.status === "loading") return t("settings.pronunciationCacheLoading");
-	if (usage.status === "failed") return t("settings.pronunciationCacheReadFailed");
-	return formatBytes(usage.bytes);
 }

@@ -1,67 +1,26 @@
-import { TransportError, type OutboundPort } from "../../../../core/net/types";
 import type { PronunciationAccent, PronunciationSettings } from "../../../../core/shared/types";
 import { extractSpellingWord } from "../cards/spellingWord";
-import { IndexedDbPronunciationAudioCache, createPronunciationCacheKey } from "./audioCache";
-import {
-	createPronunciationRequestDescriptor,
-	synthesizeAzureSpeech,
-	synthesizeOpenAiSpeech,
-} from "./providers";
 import { normalizePronunciationSettings } from "./pronunciationSettings";
 import type {
-	CachedPronunciationAudio,
-	PronunciationAudioCache,
-	PronunciationCacheClearOutcome,
-	PronunciationCacheUsage,
 	PronunciationConfigureOutcome,
-	PronunciationFailureReason,
 	PronunciationManagementAction,
 	PronunciationOutcome,
-	PronunciationRequestDescriptor,
 	PronunciationRuntime,
 	PronunciationSnapshot,
-	PronunciationTestOutcome,
-	SynthesizedAudio,
 } from "./types";
-import { PRONUNCIATION_CACHE_LIMIT_BYTES } from "./types";
-
-const CACHE_KEY_MEMO_LIMIT = 128;
-/** Recently probed audio records, so one card's presence check and playback share one read. */
-const CACHE_PROBE_MEMO_LIMIT = 16;
 
 interface ActivePlayback {
 	cancel(): void;
 }
 
-interface InFlightSpeak {
-	text: string;
-	operationId: number;
-	promise: Promise<PronunciationOutcome>;
-}
-
-interface PronunciationRuntimeDependencies {
+export interface PronunciationRuntimeDependencies {
 	speechSynthesis?: SpeechSynthesis | null;
 	createUtterance?: ((text: string) => SpeechSynthesisUtterance) | null;
-	createAudio?: ((url: string) => HTMLAudioElement) | null;
-	createObjectUrl?: ((blob: Blob) => string) | null;
-	revokeObjectUrl?: ((url: string) => void) | null;
-	net?: Pick<OutboundPort, "request" | "readSecret">;
-	cache?: PronunciationAudioCache;
-	cacheLimitBytes?: number;
-	isOnline?: () => boolean;
-	now?: () => number;
-	requestTimeoutMs?: number;
 	voiceLoadTimeoutMs?: number;
-	getSystemLanguage?: () => string;
-	subscribeConnectivity?: (listener: () => void) => () => void;
 	persistSettings?: (settings: PronunciationSettings) => Promise<void>;
 }
 
-/** Host capability required by pronunciation; the runtime never reads Obsidian APIs itself. */
-export type PronunciationRuntimeHost = Pick<OutboundPort, "request" | "readSecret">;
-
 export function createPronunciationRuntime(
-	host: PronunciationRuntimeHost,
 	settings: PronunciationSettings,
 	dependencies: PronunciationRuntimeDependencies = {},
 ): PronunciationRuntime {
@@ -74,80 +33,26 @@ export function createPronunciationRuntime(
 			(typeof SpeechSynthesisUtterance === "undefined"
 				? null
 				: (text) => new SpeechSynthesisUtterance(text)),
-		createAudio:
-			dependencies.createAudio ??
-			(typeof Audio === "undefined" ? null : (url) => new Audio(url)),
-		createObjectUrl:
-			dependencies.createObjectUrl ??
-			(typeof URL === "undefined" || typeof URL.createObjectURL !== "function"
-				? null
-				: (blob) => URL.createObjectURL(blob)),
-		revokeObjectUrl:
-			dependencies.revokeObjectUrl ??
-			(typeof URL === "undefined" || typeof URL.revokeObjectURL !== "function"
-				? null
-				: (url) => URL.revokeObjectURL(url)),
-		net: dependencies.net ?? host,
-		cache:
-			dependencies.cache ??
-			new IndexedDbPronunciationAudioCache(undefined, dependencies.cacheLimitBytes),
-		isOnline:
-			dependencies.isOnline ??
-			(() => typeof navigator === "undefined" || navigator.onLine !== false),
-		now: dependencies.now ?? Date.now,
-		requestTimeoutMs: dependencies.requestTimeoutMs ?? 8000,
 		voiceLoadTimeoutMs: dependencies.voiceLoadTimeoutMs ?? 400,
-		getSystemLanguage:
-			dependencies.getSystemLanguage ??
-			(() => (typeof navigator === "undefined" ? "en-US" : navigator.language)),
-		subscribeConnectivity:
-			dependencies.subscribeConnectivity ??
-			((listener) => {
-				if (typeof window === "undefined") return () => undefined;
-				window.addEventListener("online", listener);
-				window.addEventListener("offline", listener);
-				return () => {
-					window.removeEventListener("online", listener);
-					window.removeEventListener("offline", listener);
-				};
-			}),
 		persistSettings: dependencies.persistSettings ?? (() => Promise.resolve()),
-		cacheLimitBytes: dependencies.cacheLimitBytes ?? PRONUNCIATION_CACHE_LIMIT_BYTES,
 	});
 }
 
 class BrowserPronunciationRuntime implements PronunciationRuntime {
 	private settings: PronunciationSettings;
-	private readonly cacheKeys = new Map<string, Promise<string | null>>();
-	private readonly cacheProbes = new Map<string, Promise<CachedPronunciationAudio | null>>();
 	private readonly listeners = new Set<() => void>();
 	private voices: SpeechSynthesisVoice[] = [];
 	private voicesLoaded = false;
 	private speakingText: string | null = null;
-	private cacheUsage: PronunciationCacheUsage = { status: "loading" };
 	private management: "idle" | PronunciationManagementAction = "idle";
 	private revision = 0;
 	private snapshot: PronunciationSnapshot | null = null;
 	private activePlayback: ActivePlayback | null = null;
-	private activeSpeak: InFlightSpeak | null = null;
-	private activeRequestController: AbortController | null = null;
 	private operationId = 0;
 	private configureQueue: Promise<void> = Promise.resolve();
 	private queuedConfigurations = 0;
-	private activeTestPromise: Promise<PronunciationTestOutcome> | null = null;
-	private cancelActiveTest: (() => void) | null = null;
-	private activeClearPromise: Promise<PronunciationCacheClearOutcome> | null = null;
-	private cacheRefreshPromise: Promise<PronunciationCacheUsage> | null = null;
-	private cacheRefreshQueued = false;
-	private cacheUsageEpoch = 0;
 	private readonly voiceLoadWaiters = new Set<() => void>();
-	private providerBlockedUntil = new Map<"azure" | "openai", number>();
-	private readonly providerCooldownTimers = new Map<
-		"azure" | "openai",
-		ReturnType<typeof globalThis.setTimeout>
-	>();
 	private readonly voiceChangeListener = () => this.refreshVoices();
-	private readonly unsubscribeConnectivity: () => void;
 
 	constructor(
 		settings: PronunciationSettings,
@@ -159,8 +64,6 @@ class BrowserPronunciationRuntime implements PronunciationRuntime {
 			"voiceschanged",
 			this.voiceChangeListener,
 		);
-		this.unsubscribeConnectivity = this.dependencies.subscribeConnectivity(() => this.bump());
-		void this.refreshCacheUsage();
 	}
 
 	getSnapshot(): PronunciationSnapshot {
@@ -172,7 +75,6 @@ class BrowserPronunciationRuntime implements PronunciationRuntime {
 			hasLocalEnglishVoice: this.hasLocalEnglishVoice(),
 			voicesLoaded: this.voicesLoaded,
 			speakingText: this.speakingText,
-			cacheUsage: Object.freeze({ ...this.cacheUsage }),
 		});
 		return this.snapshot;
 	}
@@ -183,13 +85,6 @@ class BrowserPronunciationRuntime implements PronunciationRuntime {
 	}
 
 	configure(patch: Partial<PronunciationSettings>): Promise<PronunciationConfigureOutcome> {
-		if (this.management === "clearing-cache") {
-			return Promise.resolve({
-				status: "busy",
-				operation: "clearing-cache",
-			});
-		}
-
 		this.stop();
 		this.queuedConfigurations++;
 		if (this.management !== "configuring") {
@@ -211,10 +106,6 @@ class BrowserPronunciationRuntime implements PronunciationRuntime {
 
 				this.stop();
 				this.settings = nextSettings;
-				this.cacheKeys.clear();
-				this.cacheProbes.clear();
-				this.providerBlockedUntil.clear();
-				this.clearProviderCooldownTimers();
 				this.bump();
 				return {
 					status: "applied",
@@ -238,191 +129,33 @@ class BrowserPronunciationRuntime implements PronunciationRuntime {
 	async canSpeak(text: string): Promise<boolean> {
 		const normalizedText = extractSpellingWord(text);
 		if (!normalizedText) return false;
-		await this.ensureVoicesLoaded();
-		if (this.hasLocalEnglishVoice()) return true;
-		const descriptor = this.createOnlineDescriptor(normalizedText);
-		if (!descriptor) return false;
-		const cacheKey = await this.tryCreateCacheKey(descriptor);
-		if (cacheKey && (await this.probeCachedAudio(cacheKey))) return true;
-		return (
-			Boolean(this.getProviderSecret(descriptor)) &&
-			this.dependencies.isOnline() &&
-			!this.isProviderBlocked(descriptor.provider)
-		);
+		if (!this.voicesLoaded) {
+			await this.ensureVoicesLoaded();
+		}
+		return this.hasLocalEnglishVoice();
 	}
 
 	async speak(text: string, _intent: "manual" | "auto"): Promise<PronunciationOutcome> {
 		const normalizedText = extractSpellingWord(text);
-		const inFlight = this.activeSpeak;
-		// Repeated presses for the word that is still being fetched reuse that
-		// request instead of aborting it and paying for a second synthesis.
-		if (normalizedText && inFlight?.text === normalizedText) {
-			return inFlight.promise;
-		}
-
 		this.stop();
 		const operationId = ++this.operationId;
 		if (!normalizedText) return { status: "unavailable", reason: "unsupported" };
-		const promise = this.runSpeak(normalizedText, operationId);
-		this.activeSpeak = { text: normalizedText, operationId, promise };
-		// Playback start or `stop()` clears the flight earlier so pressing again
-		// during playback still restarts it; this only covers early settlement.
-		void promise.then(
-			() => this.clearSpeakFlight(operationId),
-			() => this.clearSpeakFlight(operationId),
-		);
-		return promise;
-	}
 
-	private async runSpeak(
-		normalizedText: string,
-		operationId: number,
-	): Promise<PronunciationOutcome> {
-		await this.ensureVoicesLoaded();
-		if (operationId !== this.operationId) return { status: "cancelled" };
+		if (!this.voicesLoaded) {
+			await this.ensureVoicesLoaded();
+			if (operationId !== this.operationId) return { status: "cancelled" };
+		}
+
 		const voice = selectLocalEnglishVoice(this.voices, this.settings.accent);
-		if (voice) {
-			this.clearSpeakFlight(operationId);
-			return this.playLocal(normalizedText, voice, operationId);
+		if (!voice) {
+			return { status: "unavailable", reason: "not-configured" };
 		}
 
-		const descriptor = this.createOnlineDescriptor(normalizedText);
-		if (!descriptor) return { status: "unavailable", reason: "not-configured" };
-		const cacheKey = await this.tryCreateCacheKey(descriptor);
-		if (operationId !== this.operationId) return { status: "cancelled" };
-		if (cacheKey) {
-			const cached = await this.probeCachedAudio(cacheKey);
-			if (operationId !== this.operationId) return { status: "cancelled" };
-			if (cached) {
-				this.clearSpeakFlight(operationId);
-				return this.playAudio(
-					normalizedText,
-					cached.data,
-					cached.mimeType,
-					"cache",
-					operationId,
-				);
-			}
-		}
-
-		if (!this.dependencies.isOnline()) {
-			return { status: "unavailable", reason: "offline" };
-		}
-		if (this.isProviderBlocked(descriptor.provider)) {
-			return { status: "unavailable", reason: "network" };
-		}
-		const secret = this.getProviderSecret(descriptor);
-		if (!secret) return { status: "unavailable", reason: "not-configured" };
-
-		const requestController = new AbortController();
-		this.activeRequestController = requestController;
-		try {
-			const audio = await this.synthesizeOnline(descriptor, secret, requestController.signal);
-			if (operationId !== this.operationId) return { status: "cancelled" };
-			if (cacheKey) {
-				const record = { data: audio.data, mimeType: audio.mimeType };
-				await this.dependencies.cache.put(cacheKey, record);
-				this.rememberCachedAudio(cacheKey, record);
-				this.requestCacheUsageRefresh();
-			}
-			if (operationId !== this.operationId) return { status: "cancelled" };
-			this.clearSpeakFlight(operationId);
-			return this.playAudio(
-				normalizedText,
-				audio.data,
-				audio.mimeType,
-				audio.source,
-				operationId,
-			);
-		} catch (error) {
-			if (operationId !== this.operationId) return { status: "cancelled" };
-			const reason = this.handleProviderError(descriptor.provider, error);
-			return { status: "failed", reason };
-		} finally {
-			if (this.activeRequestController === requestController) {
-				this.activeRequestController = null;
-			}
-		}
-	}
-
-	testOnlineProvider(text: string): Promise<PronunciationTestOutcome> {
-		if (this.management === "testing-provider" && this.activeTestPromise) {
-			return this.activeTestPromise;
-		}
-		if (this.management !== "idle") {
-			return Promise.resolve({
-				status: "busy",
-				operation: this.management,
-			});
-		}
-
-		this.stop();
-		const operationId = ++this.operationId;
-		this.management = "testing-provider";
-		this.bump();
-		let cancelTest: (() => void) | null = null;
-		const cancelled = new Promise<PronunciationTestOutcome>((resolve) => {
-			cancelTest = () => resolve({ status: "cancelled" });
-		});
-		this.cancelActiveTest = () => cancelTest?.();
-		const active = Promise.race([
-			this.runOnlineProviderTest(text, operationId),
-			cancelled,
-		]).finally(() => {
-			if (this.activeTestPromise !== active) return;
-			this.activeTestPromise = null;
-			this.cancelActiveTest = null;
-			if (this.management === "testing-provider") {
-				this.management = "idle";
-				this.bump();
-			}
-		});
-		this.activeTestPromise = active;
-		return active;
-	}
-
-	private async runOnlineProviderTest(
-		text: string,
-		operationId: number,
-	): Promise<PronunciationOutcome> {
-		const testWord = extractSpellingWord(text);
-		if (!testWord) return { status: "unavailable", reason: "unsupported" };
-		const descriptor = this.createOnlineDescriptor(testWord);
-		if (!descriptor) return { status: "unavailable", reason: "not-configured" };
-		const secret = this.getProviderSecret(descriptor);
-		if (!secret) return { status: "unavailable", reason: "not-configured" };
-		if (!this.dependencies.isOnline()) {
-			return { status: "unavailable", reason: "offline" };
-		}
-		const requestController = new AbortController();
-		this.activeRequestController = requestController;
-		try {
-			const audio = await this.synthesizeOnline(descriptor, secret, requestController.signal);
-			if (operationId !== this.operationId) return { status: "cancelled" };
-			return this.playAudio(
-				descriptor.text,
-				audio.data,
-				audio.mimeType,
-				audio.source,
-				operationId,
-			);
-		} catch (error) {
-			if (operationId !== this.operationId) return { status: "cancelled" };
-			const reason = this.handleProviderError(descriptor.provider, error);
-			return { status: "failed", reason };
-		} finally {
-			if (this.activeRequestController === requestController) {
-				this.activeRequestController = null;
-			}
-		}
+		return this.playLocal(normalizedText, voice, operationId);
 	}
 
 	stop(): void {
 		this.operationId++;
-		this.activeSpeak = null;
-		this.activeRequestController?.abort();
-		this.activeRequestController = null;
-		this.cancelActiveTest?.();
 		this.activePlayback?.cancel();
 		this.activePlayback = null;
 		if (this.speakingText !== null) {
@@ -431,87 +164,12 @@ class BrowserPronunciationRuntime implements PronunciationRuntime {
 		}
 	}
 
-	refreshCacheUsage(): Promise<PronunciationCacheUsage> {
-		if (this.cacheRefreshPromise) return this.cacheRefreshPromise;
-		const epoch = this.cacheUsageEpoch;
-		if (this.cacheUsage.status !== "loading") {
-			this.cacheUsage = { status: "loading" };
-			this.bump();
-		}
-		const active = this.dependencies.cache
-			.getUsageBytes()
-			.then((bytes): PronunciationCacheUsage => {
-				if (epoch !== this.cacheUsageEpoch) return this.cacheUsage;
-				this.cacheUsage = { status: "ready", bytes };
-				this.bump();
-				return this.cacheUsage;
-			})
-			.catch((): PronunciationCacheUsage => {
-				if (epoch !== this.cacheUsageEpoch) return this.cacheUsage;
-				this.cacheUsage = { status: "failed" };
-				this.bump();
-				return this.cacheUsage;
-			})
-			.finally(() => {
-				if (this.cacheRefreshPromise !== active) return;
-				this.cacheRefreshPromise = null;
-				if (this.cacheRefreshQueued) {
-					this.cacheRefreshQueued = false;
-					void this.refreshCacheUsage();
-				}
-			});
-		this.cacheRefreshPromise = active;
-		return active;
-	}
-
-	clearCache(): Promise<PronunciationCacheClearOutcome> {
-		if (this.management === "clearing-cache" && this.activeClearPromise) {
-			return this.activeClearPromise;
-		}
-		if (this.management !== "idle") {
-			return Promise.resolve({
-				status: "busy",
-				operation: this.management,
-			});
-		}
-
-		this.management = "clearing-cache";
-		this.bump();
-		// A clear may remove the records behind shared probes, so drop them even
-		// when the clear itself fails and the store still has to be read again.
-		this.cacheProbes.clear();
-		const active = this.dependencies.cache
-			.clear()
-			.then((): PronunciationCacheClearOutcome => {
-				this.cacheUsageEpoch++;
-				this.cacheRefreshQueued = false;
-				this.cacheUsage = { status: "ready", bytes: 0 };
-				this.bump();
-				return { status: "cleared" };
-			})
-			.catch((): PronunciationCacheClearOutcome => ({ status: "failed", reason: "storage" }))
-			.finally(() => {
-				if (this.activeClearPromise !== active) return;
-				this.activeClearPromise = null;
-				if (this.management === "clearing-cache") {
-					this.management = "idle";
-					this.bump();
-				}
-			});
-		this.activeClearPromise = active;
-		return active;
-	}
-
 	dispose(): void {
 		this.stop();
-		this.cacheKeys.clear();
-		this.cacheProbes.clear();
 		this.dependencies.speechSynthesis?.removeEventListener(
 			"voiceschanged",
 			this.voiceChangeListener,
 		);
-		this.unsubscribeConnectivity();
-		this.clearProviderCooldownTimers();
 		for (const finish of this.voiceLoadWaiters) finish();
 		this.voiceLoadWaiters.clear();
 		this.listeners.clear();
@@ -611,238 +269,6 @@ class BrowserPronunciationRuntime implements PronunciationRuntime {
 				finish({ status: "failed", reason: "playback" });
 			}
 		});
-	}
-
-	private async playAudio(
-		text: string,
-		data: ArrayBuffer,
-		mimeType: string,
-		source: "cache" | "azure" | "openai",
-		operationId: number,
-	): Promise<PronunciationOutcome> {
-		const createAudio = this.dependencies.createAudio;
-		const createObjectUrl = this.dependencies.createObjectUrl;
-		const revokeObjectUrl = this.dependencies.revokeObjectUrl;
-		if (!createAudio || !createObjectUrl || !revokeObjectUrl) {
-			return { status: "unavailable", reason: "unsupported" };
-		}
-		let objectUrl: string;
-		let audio: HTMLAudioElement;
-		try {
-			objectUrl = createObjectUrl(new Blob([data], { type: mimeType }));
-			audio = createAudio(objectUrl);
-		} catch {
-			return { status: "failed", reason: "playback" };
-		}
-		return new Promise((resolve) => {
-			let settled = false;
-			const finish = (outcome: PronunciationOutcome) => {
-				if (settled) return;
-				settled = true;
-				audio.onended = null;
-				audio.onerror = null;
-				try {
-					revokeObjectUrl(objectUrl);
-				} catch {
-					// A failed URL cleanup must not leave playback promises pending.
-				}
-				if (operationId === this.operationId) {
-					this.activePlayback = null;
-					this.speakingText = null;
-					this.bump();
-				}
-				resolve(outcome);
-			};
-			this.activePlayback = {
-				cancel: () => {
-					try {
-						audio.pause();
-						audio.currentTime = 0;
-					} catch {
-						// Continue settling this plugin's active request.
-					} finally {
-						finish({ status: "cancelled" });
-					}
-				},
-			};
-			this.speakingText = text;
-			this.bump();
-			audio.onended = () => finish({ status: "success", source });
-			audio.onerror = () => finish({ status: "failed", reason: "playback" });
-			try {
-				void Promise.resolve(audio.play()).catch(() =>
-					finish({ status: "failed", reason: "playback" }),
-				);
-			} catch {
-				finish({ status: "failed", reason: "playback" });
-			}
-		});
-	}
-
-	private async synthesizeOnline(
-		descriptor: PronunciationRequestDescriptor,
-		secret: string,
-		signal: AbortSignal,
-	): Promise<SynthesizedAudio> {
-		return descriptor.provider === "azure"
-			? synthesizeAzureSpeech(this.dependencies.net, descriptor, this.settings, secret, {
-					signal,
-					timeoutMs: this.dependencies.requestTimeoutMs,
-				})
-			: synthesizeOpenAiSpeech(this.dependencies.net, descriptor, secret, {
-					signal,
-					timeoutMs: this.dependencies.requestTimeoutMs,
-				});
-	}
-
-	private createOnlineDescriptor(text: string): PronunciationRequestDescriptor | null {
-		return createPronunciationRequestDescriptor(
-			text,
-			this.settings,
-			this.dependencies.getSystemLanguage(),
-		);
-	}
-
-	private getProviderSecret(descriptor: PronunciationRequestDescriptor): string | null {
-		const secretId =
-			descriptor.provider === "azure"
-				? this.settings.azureSecretId
-				: this.settings.openaiSecretId;
-		if (!secretId.trim()) return null;
-		try {
-			return this.dependencies.net.readSecret(secretId)?.trim() || null;
-		} catch {
-			return null;
-		}
-	}
-
-	private isProviderBlocked(provider: "azure" | "openai"): boolean {
-		return (this.providerBlockedUntil.get(provider) ?? 0) > this.dependencies.now();
-	}
-
-	private handleProviderError(
-		provider: "azure" | "openai",
-		error: unknown,
-	): PronunciationFailureReason {
-		if (error instanceof TransportError && error.code === "timeout") {
-			this.blockProvider(provider, this.dependencies.now() + 30_000);
-			return "timeout";
-		}
-		if (error instanceof TransportError && error.code === "unauthorized") {
-			this.blockProvider(provider, Number.POSITIVE_INFINITY);
-			return "unauthorized";
-		}
-		if (error instanceof TransportError && error.code === "rate-limited") {
-			this.blockProvider(provider, this.dependencies.now() + 60_000);
-			return "quota";
-		}
-		this.blockProvider(provider, this.dependencies.now() + 30_000);
-		return "network";
-	}
-
-	private blockProvider(provider: "azure" | "openai", until: number): void {
-		const previousTimer = this.providerCooldownTimers.get(provider);
-		if (previousTimer !== undefined) globalThis.clearTimeout(previousTimer);
-		this.providerCooldownTimers.delete(provider);
-		this.providerBlockedUntil.set(provider, until);
-		if (Number.isFinite(until)) {
-			const timer = globalThis.setTimeout(
-				() => {
-					if (this.providerBlockedUntil.get(provider) !== until) return;
-					this.providerBlockedUntil.delete(provider);
-					this.providerCooldownTimers.delete(provider);
-					this.bump();
-				},
-				Math.max(0, until - this.dependencies.now()),
-			);
-			this.providerCooldownTimers.set(provider, timer);
-		}
-		this.bump();
-	}
-
-	private clearProviderCooldownTimers(): void {
-		for (const timer of this.providerCooldownTimers.values()) {
-			globalThis.clearTimeout(timer);
-		}
-		this.providerCooldownTimers.clear();
-	}
-
-	private tryCreateCacheKey(descriptor: PronunciationRequestDescriptor): Promise<string | null> {
-		// Cache only the immutable descriptor hash. Credentials and provider
-		// availability are still checked on every call; audio presence is shared
-		// through the bounded probe memo below, which writes and clears invalidate.
-		const identity = JSON.stringify([
-			descriptor.provider,
-			descriptor.variant,
-			descriptor.accent,
-			descriptor.rate,
-			descriptor.text,
-		]);
-		const cached = this.cacheKeys.get(identity);
-		if (cached) {
-			this.cacheKeys.delete(identity);
-			this.cacheKeys.set(identity, cached);
-			return cached;
-		}
-		const pending = createPronunciationCacheKey(descriptor).catch(() => {
-			// Missing Web Crypto or a transient failure must be retried next time.
-			if (this.cacheKeys.get(identity) === pending) this.cacheKeys.delete(identity);
-			return null;
-		});
-		this.cacheKeys.set(identity, pending);
-		if (this.cacheKeys.size > CACHE_KEY_MEMO_LIMIT) {
-			this.cacheKeys.delete(this.cacheKeys.keys().next().value!);
-		}
-		return pending;
-	}
-
-	private probeCachedAudio(cacheKey: string): Promise<CachedPronunciationAudio | null> {
-		const memoized = this.cacheProbes.get(cacheKey);
-		if (memoized) {
-			// Keep the memo ordered least- to most-recently used.
-			this.cacheProbes.delete(cacheKey);
-			this.cacheProbes.set(cacheKey, memoized);
-			return memoized;
-		}
-		const pending = this.dependencies.cache.get(cacheKey).then(
-			(audio) => audio,
-			(error: unknown) => {
-				// A transient read failure must be retried, not remembered.
-				if (this.cacheProbes.get(cacheKey) === pending) this.cacheProbes.delete(cacheKey);
-				throw error;
-			},
-		);
-		this.rememberCacheProbe(cacheKey, pending);
-		return pending;
-	}
-
-	/** Shares freshly synthesized audio with the next presence check or playback. */
-	private rememberCachedAudio(cacheKey: string, audio: CachedPronunciationAudio): void {
-		this.rememberCacheProbe(cacheKey, Promise.resolve(audio));
-	}
-
-	private rememberCacheProbe(
-		cacheKey: string,
-		probe: Promise<CachedPronunciationAudio | null>,
-	): void {
-		this.cacheProbes.delete(cacheKey);
-		this.cacheProbes.set(cacheKey, probe);
-		if (this.cacheProbes.size > CACHE_PROBE_MEMO_LIMIT) {
-			this.cacheProbes.delete(this.cacheProbes.keys().next().value!);
-		}
-	}
-
-	private clearSpeakFlight(operationId: number): void {
-		if (this.activeSpeak?.operationId === operationId) this.activeSpeak = null;
-	}
-
-	private requestCacheUsageRefresh(): void {
-		this.cacheUsageEpoch++;
-		if (this.cacheRefreshPromise) {
-			this.cacheRefreshQueued = true;
-			return;
-		}
-		void this.refreshCacheUsage();
 	}
 
 	private bump(): void {
