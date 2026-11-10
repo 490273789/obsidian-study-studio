@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { DEFAULT_SETTINGS } from "../../../core/host/settingsSlices";
 import { createFakeWorkbenchHost } from "../../../core/host/__tests__/fakeWorkbenchHost";
 import { createVideoPlayerFeature } from "../feature";
-import type { SubtitleEditingSession } from "../ui/subtitleEditingSession";
+import type { PlayerViewMount } from "../ui/playerViewInteraction";
+import type { ShadowingViewBridge } from "../ui/VideoPlayerView";
 
 const captured = vi.hoisted(() => ({ definition: null as unknown }));
 vi.mock("obsidian", () => ({ Notice: vi.fn(), Platform: { resourcePathPrefix: "app://vault/" } }));
@@ -44,7 +45,7 @@ vi.mock("../obsidian/videoShadowingDesktopAdapter", () => ({
 }));
 
 interface Resource {
-	readonly editing: SubtitleEditingSession;
+	readonly view: PlayerViewMount;
 }
 interface Acquired {
 	readonly resource: Resource;
@@ -57,12 +58,12 @@ interface Definition {
 		rootEl: HTMLElement;
 		resource: Resource;
 	}): React.ReactElement<{
-		children: React.ReactElement<{ editing: SubtitleEditingSession }>;
+		children: React.ReactElement<{ shadowing: ShadowingViewBridge }>;
 	}>;
 }
 
-describe("subtitle editing view lifetime", () => {
-	it("keeps an editor for the acquired view across renders and disposes each view independently", () => {
+describe("player view lifetime", () => {
+	it("mounts a view interaction for each acquired leaf and disposes it independently", () => {
 		const app = {
 			workspace: { getLeavesOfType: () => [] },
 			loadLocalStorage: () => null,
@@ -75,16 +76,14 @@ describe("subtitle editing view lifetime", () => {
 		const rootEl = { ownerDocument: { defaultView: null } } as unknown as HTMLElement;
 		const first = definition.acquire({ rootEl });
 		const second = definition.acquire({ rootEl });
-		expect(first.resource.editing).not.toBe(second.resource.editing);
-		const firstDispose = vi.spyOn(first.resource.editing, "dispose");
-		const secondDispose = vi.spyOn(second.resource.editing, "dispose");
+		expect(first.resource.view).not.toBe(second.resource.view);
 		for (const language of ["zh", "en"] as const) {
 			const rendered = definition.render({ rootEl, language, resource: first.resource });
-			expect(rendered.props.children.props.editing).toBe(first.resource.editing);
+			expect(rendered.props.children.props.shadowing).toBeDefined();
 		}
 		first.dispose();
-		expect(firstDispose).toHaveBeenCalledOnce();
-		expect(secondDispose).not.toHaveBeenCalled();
+		expect(first.resource.view.dispose).toHaveBeenCalledOnce();
+		expect(second.resource.view.dispose).not.toHaveBeenCalled();
 		second.dispose();
 		feature.stop();
 	});

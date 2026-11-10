@@ -1,8 +1,7 @@
-import React, { useState, useSyncExternalStore } from "react";
+import React, { useState } from "react";
 import type { Language } from "../../../core/shared/types";
 import { ConfirmDialog } from "../../../core/ui/primitives/ConfirmDialog";
 import { subtitleEditingStrings } from "../strings/subtitleEditing";
-import type { SubtitleEditingSession } from "./subtitleEditingSession";
 import styles from "./ShadowingWorkspace.module.scss";
 
 import type {
@@ -24,7 +23,6 @@ export interface ShadowingWorkspaceProps {
 	currentTime: number;
 	duration: number | null;
 	state: ShadowingWorkspaceState;
-	editing: SubtitleEditingSession;
 	onAction: (action: ShadowingWorkspaceViewAction) => Promise<void>;
 }
 
@@ -143,18 +141,16 @@ export function ShadowingWorkspace({
 	currentTime,
 	duration,
 	state,
-	editing,
 	onAction,
 }: ShadowingWorkspaceProps): React.ReactNode {
 	const t = copy[language];
 	const editCopy = subtitleEditingStrings(language);
-	const edit = useSyncExternalStore(editing.subscribe, editing.getSnapshot, editing.getSnapshot);
 	const [tab, setTab] = useState<"subtitles" | "records" | "tasks">("subtitles");
 	const [importRole, setImportRole] = useState<"original" | "translation" | "bilingual">(
 		"original",
 	);
-	const selected = edit.selectedCueIds;
-	const editor = edit.editor;
+	const selected = state.selectedCueIds;
+	const editor = state.editor;
 	const current = state.cues.find((cue) => currentTime >= cue.start && currentTime < cue.end);
 
 	return (
@@ -235,7 +231,13 @@ export function ShadowingWorkspace({
 									key={cue.id}
 									type="button"
 									className={`${styles.cue} ${selected.includes(cue.id) ? styles.selected : ""} ${current?.id === cue.id ? styles.current : ""}`}
-									onClick={(event) => editing.choose(cue.id, event.shiftKey)}
+									onClick={(event) =>
+										void onAction({
+											type: "choose-cue",
+											cueId: cue.id,
+											extend: event.shiftKey,
+										})
+									}
 									aria-pressed={selected.includes(cue.id)}
 								>
 									<span className={styles.time}>
@@ -262,9 +264,13 @@ export function ShadowingWorkspace({
 										min="0"
 										max={duration ?? undefined}
 										step="0.1"
-										value={edit.rangeStart}
+										value={state.rangeStart}
 										onChange={(event) =>
-											editing.setRange("start", Number(event.target.value))
+											void onAction({
+												type: "set-cue-range",
+												edge: "start",
+												seconds: Number(event.target.value),
+											})
 										}
 									/>
 								</label>
@@ -275,9 +281,13 @@ export function ShadowingWorkspace({
 										min="0"
 										max={duration ?? undefined}
 										step="0.1"
-										value={edit.rangeEnd}
+										value={state.rangeEnd}
 										onChange={(event) =>
-											editing.setRange("end", Number(event.target.value))
+											void onAction({
+												type: "set-cue-range",
+												edge: "end",
+												seconds: Number(event.target.value),
+											})
 										}
 									/>
 								</label>
@@ -285,13 +295,16 @@ export function ShadowingWorkspace({
 							<button
 								type="button"
 								className={styles.primaryAction}
-								disabled={!edit.canPractice}
-								onClick={() => editing.practice()}
+								disabled={!state.canPractice}
+								onClick={() => void onAction({ type: "start-practice-selected" })}
 							>
 								{t.start}
 							</button>
 							{selected.length === 1 && (
-								<button type="button" onClick={() => editing.toggleEditor()}>
+								<button
+									type="button"
+									onClick={() => void onAction({ type: "toggle-cue-editor" })}
+								>
 									{t.edit}
 								</button>
 							)}
@@ -309,7 +322,12 @@ export function ShadowingWorkspace({
 									value={editor.text}
 									disabled={editor.busy}
 									onChange={(event) =>
-										editing.setField("text", event.target.value, editor)
+										void onAction({
+											type: "set-cue-field",
+											field: "text",
+											value: event.target.value,
+											expectedEditor: editor,
+										})
 									}
 								/>
 							</label>
@@ -319,14 +337,21 @@ export function ShadowingWorkspace({
 									value={editor.translation}
 									disabled={editor.busy}
 									onChange={(event) =>
-										editing.setField("translation", event.target.value, editor)
+										void onAction({
+											type: "set-cue-field",
+											field: "translation",
+											value: event.target.value,
+											expectedEditor: editor,
+										})
 									}
 								/>
 							</label>
 							<button
 								type="button"
 								disabled={!editor.canSave}
-								onClick={() => void editing.submit(editor)}
+								onClick={() =>
+									void onAction({ type: "save-cue-edit", expectedEditor: editor })
+								}
 							>
 								{editor.busy ? editCopy.saving : t.saveEdit}
 							</button>
@@ -334,7 +359,12 @@ export function ShadowingWorkspace({
 								<button
 									type="button"
 									disabled={editor.busy}
-									onClick={() => editing.requestReload(editor)}
+									onClick={() =>
+										void onAction({
+											type: "request-cue-reload",
+											expectedEditor: editor,
+										})
+									}
 								>
 									{editCopy.reload}
 								</button>
@@ -347,8 +377,18 @@ export function ShadowingWorkspace({
 									confirmText={editCopy.reloadConfirm}
 									cancelText={editCopy.cancel}
 									tone="danger"
-									onCancel={() => editing.cancelReload(editor)}
-									onConfirm={() => void editing.confirmReload(editor)}
+									onCancel={() =>
+										void onAction({
+											type: "cancel-cue-reload",
+											expectedEditor: editor,
+										})
+									}
+									onConfirm={() =>
+										void onAction({
+											type: "confirm-cue-reload",
+											expectedEditor: editor,
+										})
+									}
 								/>
 							)}
 						</div>

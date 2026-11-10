@@ -47,6 +47,7 @@ export class VideoShadowingDesktopAdapter {
 	private readonly readSettings: () => VideoPlayerSettings;
 	private readonly runtime: VideoPlayerRuntime;
 	private readonly services?: VideoShadowingServices;
+	private readonly reportError?: (error: unknown) => void;
 
 	private readonly enabledSources: Set<string>;
 	private ffmpegPath: string;
@@ -63,6 +64,7 @@ export class VideoShadowingDesktopAdapter {
 		this.readSettings = options.readSettings;
 		this.runtime = options.runtime;
 		this.services = options.services;
+		this.reportError = options.reportError;
 
 		const savedEnabled = this.app.loadLocalStorage(SHADOW_ENABLED_KEY);
 		this.enabledSources = new Set(
@@ -138,6 +140,13 @@ export class VideoShadowingDesktopAdapter {
 				translateImported: async (sourceId) => {
 					const source = this.sourceFor(sourceId);
 					await this.jobs!.translateSubtitles(source, await this.taskConfig(source));
+				},
+				reportDetachedFailure: (error) => {
+					if (this.reportError) {
+						this.reportError(error);
+					} else {
+						console.error("Video shadowing detached failure:", error);
+					}
 				},
 			});
 		}

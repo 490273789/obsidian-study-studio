@@ -156,6 +156,20 @@ export interface ShadowingWorkspaceState {
 		readonly end: number;
 		readonly text: string;
 	}[];
+	readonly selectedCueIds: readonly string[];
+	readonly rangeStart: number;
+	readonly rangeEnd: number;
+	readonly canPractice: boolean;
+	readonly editor: null | {
+		readonly cueId: string;
+		readonly text: string;
+		readonly translation: string;
+		readonly busy: boolean;
+		readonly conflict: boolean;
+		readonly failure: string | null;
+		readonly confirmingReload: boolean;
+		readonly canSave: boolean;
+	};
 }
 
 export type ShadowingWorkspaceViewAction =
@@ -178,6 +192,32 @@ export type ShadowingWorkspaceViewAction =
 			readonly end: number;
 			readonly text?: string;
 	  }
+	| { readonly type: "choose-cue"; readonly cueId: string; readonly extend: boolean }
+	| { readonly type: "set-cue-range"; readonly edge: "start" | "end"; readonly seconds: number }
+	| { readonly type: "toggle-cue-editor" }
+	| {
+			readonly type: "set-cue-field";
+			readonly field: "text" | "translation";
+			readonly value: string;
+			readonly expectedEditor?: ShadowingWorkspaceState["editor"];
+	  }
+	| {
+			readonly type: "save-cue-edit";
+			readonly expectedEditor?: ShadowingWorkspaceState["editor"];
+	  }
+	| {
+			readonly type: "request-cue-reload";
+			readonly expectedEditor?: ShadowingWorkspaceState["editor"];
+	  }
+	| {
+			readonly type: "cancel-cue-reload";
+			readonly expectedEditor?: ShadowingWorkspaceState["editor"];
+	  }
+	| {
+			readonly type: "confirm-cue-reload";
+			readonly expectedEditor?: ShadowingWorkspaceState["editor"];
+	  }
+	| { readonly type: "start-practice-selected" }
 	| { readonly type: "seek-to"; readonly seconds: number }
 	| { readonly type: "set-mode"; readonly mode: ShadowingMode }
 	| { readonly type: "set-rest-seconds"; readonly seconds: number }

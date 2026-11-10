@@ -24,7 +24,6 @@ import { hasDuplicateShortcuts } from "./settings/keyboardShortcut";
 import type { VideoPlayerSettings } from "./settings/slice";
 import { videoPlayerStrings } from "./strings/videoPlayer";
 import { subtitleEditingStrings } from "./strings/subtitleEditing";
-import { SubtitleEditingSession } from "./ui/subtitleEditingSession";
 import { PlayerViewInteraction } from "./ui/playerViewInteraction";
 import { VideoPlayerView } from "./ui/VideoPlayerView";
 import {
@@ -107,26 +106,6 @@ export function createVideoPlayerFeature(
 					renderErrorMessage: (language) => videoPlayerStrings(language).openFailed,
 					acquire: ({ rootEl }) => {
 						const view = interaction.mount({ ownerDocument: rootEl.ownerDocument });
-						const editing =
-							desktopAdapter.jobs && desktopAdapter.shadowingSession
-								? new SubtitleEditingSession({
-										runtime,
-										workspace: desktopAdapter.shadowingSession,
-										edits: desktopAdapter.jobs,
-										reportDetachedFailure: (error) => {
-											const strings = subtitleEditingStrings(
-												host.settings.read().language,
-											);
-											new Notice(
-												strings.detachedFailure(
-													error instanceof Error
-														? error.message
-														: String(error),
-												),
-											);
-										},
-									})
-								: undefined;
 						let wasPresenter = view.getSnapshot().role === "presenter";
 						if (wasPresenter) {
 							desktopAdapter.bindPresenterWindow(rootEl.ownerDocument.defaultView);
@@ -144,9 +123,8 @@ export function createVideoPlayerFeature(
 							wasPresenter = presenter;
 						});
 						return {
-							resource: { view, editing },
+							resource: { view },
 							dispose: () => {
-								editing?.dispose();
 								if (wasPresenter) {
 									void desktopAdapter.shadowingSession?.stopForPresenterLoss();
 								}
@@ -155,7 +133,7 @@ export function createVideoPlayerFeature(
 							},
 						};
 					},
-					render: ({ language, rootEl, resource: { view, editing } }) => {
+					render: ({ language, rootEl, resource: { view } }) => {
 						const strings = videoPlayerStrings(language);
 						if (!host.settings.read().videoPlayer.enabled) {
 							return (
@@ -181,7 +159,6 @@ export function createVideoPlayerFeature(
 									rootEl={rootEl}
 									settings={host.settings.read().videoPlayer}
 									shadowing={desktopAdapter.shadowingSession}
-									editing={editing}
 									onFocusExisting={() => void open()}
 									onOpenSettings={() =>
 										host.settingsTab.open(VIDEO_PLAYER_SECTION_ID)

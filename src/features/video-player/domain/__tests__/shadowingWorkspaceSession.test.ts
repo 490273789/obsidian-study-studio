@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { VideoPlayerRuntime } from "../videoPlayerRuntime";
-import type { VideoSubtitleJobs } from "../shadowSubtitlesJobs";
+import { ShadowSubtitleEditConflict, type VideoSubtitleJobs } from "../shadowSubtitlesJobs";
 import type { ShadowingSession } from "../shadowingSession";
 import type { ShadowPracticeRecords } from "../../obsidian/shadowPracticeRecords";
 import { ShadowingWorkspaceSession } from "../shadowingWorkspaceSession";
@@ -16,6 +16,7 @@ function setup(initialEnabled: readonly string[] = ["one", "two"]) {
 		else enabled.delete(id);
 	});
 	let runtimeListener: (() => void) | null = null;
+	let jobsListener: (() => void) | null = null;
 	let resolveRead!: (data: ArrayBuffer) => void;
 	const readTake = vi.fn(
 		() =>
@@ -28,6 +29,8 @@ function setup(initialEnabled: readonly string[] = ["one", "two"]) {
 	const play = vi.fn(async (): Promise<void> => undefined);
 	const leave = vi.fn();
 	const retrySave = vi.fn(async () => undefined);
+	const seekTo = vi.fn();
+	const selectRange = vi.fn();
 	const record = {
 		id: "take-1",
 		sourceId: "one",
@@ -39,22 +42,60 @@ function setup(initialEnabled: readonly string[] = ["one", "two"]) {
 		mimeType: "audio/webm",
 		audioPath: "Study Studio/one/take-take-1.webm",
 	};
+	const cues = [
+		{ id: "c1", start: 1, end: 3, text: "first", translation: "第一" },
+		{ id: "c2", start: 4, end: 6, text: "second", translation: "第二" },
+	];
+	const documents: Record<string, { cues: typeof cues }> = {
+		one: { cues },
+		two: { cues: [] },
+	};
+	const editTargets = new Map<
+		string,
+		{ cueId: string; sourceId: string; version: number; text: string; translation?: string }
+	>();
+	editTargets.set("one:c1", {
+		cueId: "c1",
+		sourceId: "one",
+		version: 1,
+		text: "first",
+		translation: "第一",
+	});
+	editTargets.set("one:c2", {
+		cueId: "c2",
+		sourceId: "one",
+		version: 1,
+		text: "second",
+		translation: "第二",
+	});
+	const getCueEditTarget = vi.fn(
+		(sid: string, cid: string) => editTargets.get(`${sid}:${cid}`) ?? null,
+	);
+	const saveCueEdit = vi.fn(async () => undefined);
+
 	const runtime = {
-		getSnapshot: () => ({ currentSourceId: sourceId, playing }),
+		getSnapshot: () => ({ currentSourceId: sourceId, playing, duration: 30 }),
 		subscribe: (listener: () => void) => {
 			runtimeListener = listener;
 			return () => {
 				runtimeListener = null;
 			};
 		},
-		seekTo: vi.fn(),
+		seekTo,
 		play,
 	} as unknown as VideoPlayerRuntime;
 	const jobs = {
-		getSnapshot: () => ({ documents: {}, tasks: [], translationFailures: {} }),
-		subscribe: () => () => undefined,
+		getSnapshot: () => ({ documents, tasks: [], translationFailures: {} }),
+		subscribe: (listener: () => void) => {
+			jobsListener = listener;
+			return () => {
+				jobsListener = null;
+			};
+		},
 		restore,
 		reloadSource,
+		getCueEditTarget,
+		saveCueEdit,
 	} as unknown as VideoSubtitleJobs;
 	const session = {
 		getSnapshot: () => ({
@@ -72,7 +113,7 @@ function setup(initialEnabled: readonly string[] = ["one", "two"]) {
 			],
 		}),
 		subscribe: () => () => undefined,
-		selectRange: vi.fn(),
+		selectRange,
 		stop: vi.fn(),
 		leave,
 		retrySave,
@@ -118,6 +159,13 @@ function setup(initialEnabled: readonly string[] = ["one", "two"]) {
 		audioPlayer,
 		playAudio,
 		stopAudio,
+		seekTo,
+		selectRange,
+		saveCueEdit,
+		getCueEditTarget,
+		editTargets,
+		cues,
+		documents,
 		record,
 		finishRead(data: ArrayBuffer) {
 			resolveRead(data);
@@ -125,6 +173,9 @@ function setup(initialEnabled: readonly string[] = ["one", "two"]) {
 		setSource(id: string) {
 			sourceId = id;
 			runtimeListener?.();
+		},
+		notifyJobsChanged() {
+			jobsListener?.();
 		},
 		setPracticeActive() {
 			playing = true;
@@ -244,7 +295,12 @@ describe("ShadowingWorkspaceSession", () => {
 			dispose: vi.fn(),
 		};
 		const runtime = {
-			getSnapshot: () => ({ currentSourceId: "one", playbackRate: 1, playing: false }),
+			getSnapshot: () => ({
+				currentSourceId: "one",
+				playbackRate: 1,
+				playing: false,
+				duration: 30,
+			}),
 			subscribe: () => () => undefined,
 			subscribeInterruptions: () => () => undefined,
 			seekTo: vi.fn(),
@@ -277,5 +333,150 @@ describe("ShadowingWorkspaceSession", () => {
 		expect(session.getSnapshot().practiceMode).toBe("repeat-after");
 		session.dispose();
 		expect(recorder.dispose).toHaveBeenCalled();
+	});
+
+	it("manages cue selection, range editing, and triggers practice via act()", async () => {
+		const state = setup();
+		expect(state.session.getSnapshot().selectedCueIds).toEqual([]);
+		expect(state.session.getSnapshot().canPractice).toBe(false);
+
+		// Select first cue
+		await state.session.act({ type: "choose-cue", cueId: "c1", extend: false });
+		let snap = state.session.getSnapshot();
+		expect(snap.selectedCueIds).toEqual(["c1"]);
+		expect(snap.rangeStart).toBe(1);
+		expect(snap.rangeEnd).toBe(3);
+		expect(snap.canPractice).toBe(true);
+		expect(state.seekTo).toHaveBeenCalledWith(1);
+
+		// Extend selection to second cue
+		await state.session.act({ type: "choose-cue", cueId: "c2", extend: true });
+		snap = state.session.getSnapshot();
+		expect(snap.selectedCueIds).toEqual(["c1", "c2"]);
+		expect(snap.rangeStart).toBe(1);
+		expect(snap.rangeEnd).toBe(6);
+
+		// Adjust range edges
+		await state.session.act({ type: "set-cue-range", edge: "start", seconds: 0.5 });
+		await state.session.act({ type: "set-cue-range", edge: "end", seconds: 6.5 });
+		snap = state.session.getSnapshot();
+		expect(snap.rangeStart).toBe(0.5);
+		expect(snap.rangeEnd).toBe(6.5);
+
+		// Start practice with selected cues
+		await state.session.act({ type: "start-practice-selected" });
+		expect(state.selectRange).toHaveBeenCalledWith("one", 0.5, 6.5, "first second");
+		state.session.dispose();
+	});
+
+	it("manages cue drafts, edit saving, and conflict resolution via act()", async () => {
+		const state = setup();
+		await state.session.act({ type: "choose-cue", cueId: "c1", extend: false });
+		expect(state.session.getSnapshot().editor).toBeNull();
+
+		// Open editor for c1
+		await state.session.act({ type: "toggle-cue-editor" });
+		let snap = state.session.getSnapshot();
+		expect(snap.editor).not.toBeNull();
+		expect(snap.editor?.cueId).toBe("c1");
+		expect(snap.editor?.text).toBe("first");
+		expect(snap.editor?.translation).toBe("第一");
+		expect(snap.editor?.canSave).toBe(true);
+
+		// Edit text field
+		const initialEditor = snap.editor;
+		await state.session.act({
+			type: "set-cue-field",
+			field: "text",
+			value: "first edit",
+			expectedEditor: initialEditor,
+		});
+		snap = state.session.getSnapshot();
+		expect(snap.editor?.text).toBe("first edit");
+
+		// Stale expectedEditor is ignored
+		await state.session.act({
+			type: "set-cue-field",
+			field: "text",
+			value: "stale value",
+			expectedEditor: initialEditor,
+		});
+		expect(state.session.getSnapshot().editor?.text).toBe("first edit");
+
+		// Save edit successfully
+		await state.session.act({
+			type: "save-cue-edit",
+			expectedEditor: snap.editor,
+		});
+		expect(state.saveCueEdit).toHaveBeenCalledWith(expect.objectContaining({ cueId: "c1" }), {
+			text: "first edit",
+			translation: "第一",
+		});
+		// Editor is closed and draft cleared after successful save
+		expect(state.session.getSnapshot().editor).toBeNull();
+
+		// Open editor again and simulate conflict
+		await state.session.act({ type: "toggle-cue-editor" });
+		snap = state.session.getSnapshot();
+		state.saveCueEdit.mockRejectedValueOnce(new ShadowSubtitleEditConflict());
+
+		await state.session.act({
+			type: "save-cue-edit",
+			expectedEditor: snap.editor,
+		});
+		snap = state.session.getSnapshot();
+		expect(snap.editor?.conflict).toBe(true);
+		expect(snap.editor?.canSave).toBe(false);
+
+		// Request reload and confirm reload
+		await state.session.act({
+			type: "request-cue-reload",
+			expectedEditor: snap.editor,
+		});
+		snap = state.session.getSnapshot();
+		expect(snap.editor?.confirmingReload).toBe(true);
+
+		await state.session.act({
+			type: "cancel-cue-reload",
+			expectedEditor: snap.editor,
+		});
+		snap = state.session.getSnapshot();
+		expect(snap.editor?.confirmingReload).toBe(false);
+
+		await state.session.act({
+			type: "request-cue-reload",
+			expectedEditor: snap.editor,
+		});
+		await state.session.act({
+			type: "confirm-cue-reload",
+			expectedEditor: state.session.getSnapshot().editor,
+		});
+		expect(state.reloadSource).toHaveBeenCalledWith("one");
+		state.session.dispose();
+	});
+
+	it("preserves selection and uncommitted drafts per source when switching sources", async () => {
+		const state = setup();
+		await state.session.act({ type: "choose-cue", cueId: "c1", extend: false });
+		await state.session.act({ type: "toggle-cue-editor" });
+		await state.session.act({
+			type: "set-cue-field",
+			field: "text",
+			value: "uncommitted work",
+			expectedEditor: state.session.getSnapshot().editor,
+		});
+		expect(state.session.getSnapshot().editor?.text).toBe("uncommitted work");
+
+		// Switch to source two
+		state.setSource("two");
+		expect(state.session.getSnapshot().selectedCueIds).toEqual([]);
+		expect(state.session.getSnapshot().editor).toBeNull();
+
+		// Switch back to source one: draft and selection are preserved!
+		state.setSource("one");
+		const snap = state.session.getSnapshot();
+		expect(snap.selectedCueIds).toEqual(["c1"]);
+		expect(snap.editor?.text).toBe("uncommitted work");
+		state.session.dispose();
 	});
 });

@@ -42,15 +42,15 @@ video-player 只传递已接受的签名。每条排队字幕在发请求前重�
 
 ## Presentation 状态
 
-### 视频字幕修正
+### 视频字幕修正与跟读选区
 
-`ui/subtitleEditingSession.ts` 的 `SubtitleEditingSession` 拥有一个 view 的选区、练习范围、修正草稿、提交与恢复状态。`feature.tsx` 在 view acquire 时创建它，关闭 view 时 dispose；React 与浮动呈现只读取快照并发送语义动作。
+`domain/shadowingWorkspaceSession.ts` 的 `ShadowingWorkspaceSession` 是跟读与字幕域的深 module（deep module），拥有字幕选区、微调范围、修正草稿、提交、冲突恢复及跟读练习启动状态。UI view 通过单一快照读取状态并经单一 `act(action)` 接缝发送语义动作。
 
-- 草稿按视频与字幕保存在该 view 内存中；切换字幕、视频、主视图或浮动呈现后仍可恢复。不同 view 的草稿独立，关闭 view 清除草稿。
+- 草稿与选区按视频保存在 session 内部的 `sources` 映射中；切换视频后再切回仍可恢复。关闭或释放 session 时统一清理。
 - 编辑时从 `VideoSubtitleJobs.getCueEditTarget` 捕获目标；提交通过 `saveCueEdit` 绑定原视频和字幕。仅成功保存才退出编辑，失败保留输入，忙碌时阻止重复提交和修改字段。
 - `VideoSubtitleJobs` 拥有文档事务和持久化顺序：当前字幕变化或文档换代使旧编辑目标过期，其他字幕变化不使它过期。保存失败的修正不得进入共享文档或后续后台保存。
 - 切换或关闭 view 不取消已接受的保存，晚到结果只影响原草稿；关闭后的失败由 Obsidian Notice 提示。冲突恢复须明确确认丢弃该条草稿，再经 jobs 重新载入；不提供强制覆盖。
-- 交互测试通过真实 `SubtitleEditingSession` 的 interface 验证生命周期；文档测试通过真实 jobs 和延迟/失败的存储 adapter 验证提交语义。React 测试只验证快照和动作接线。
+- 交互测试通过真实 `ShadowingWorkspaceSession` 的 interface 验证状态流转与生命周期；文档测试通过真实 jobs 和延迟/失败的存储 adapter 验证提交语义。React UI 测试只验证快照展示与动作接线。
 
 ### 播放呈现
 
