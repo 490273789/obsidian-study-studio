@@ -146,7 +146,7 @@ describe("favorite batch", () => {
 		expect(read).not.toHaveBeenCalled();
 		await controller.start("list.txt", "target");
 		expect(controller.getSnapshot()).toMatchObject({ status: "failed", total: 0 });
-		await expect(categories.saveFavorite(async () => true)).resolves.toBe(true);
+		await expect(categories.runExclusive(async () => true)).resolves.toBe(true);
 		expect(generate).not.toHaveBeenCalled();
 	});
 
@@ -173,7 +173,7 @@ describe("favorite batch", () => {
 		);
 		const run = controller.start("list.txt", "target");
 		await vi.waitFor(() => expect(generate).toHaveBeenCalledTimes(1));
-		await expect(categories.saveFavorite(async () => true)).rejects.toMatchObject({
+		await expect(categories.runExclusive(async () => true)).rejects.toMatchObject({
 			reason: "busy",
 		});
 		controller.stop();
@@ -181,7 +181,7 @@ describe("favorite batch", () => {
 		await run;
 		expect(controller.getSnapshot()).toMatchObject({ status: "stopped", saved: 0 });
 		expect(saveNew).not.toHaveBeenCalled();
-		await expect(categories.saveFavorite(async () => true)).resolves.toBe(true);
+		await expect(categories.runExclusive(async () => true)).resolves.toBe(true);
 	});
 
 	it("waits for an accepted save before finishing a stop request", async () => {

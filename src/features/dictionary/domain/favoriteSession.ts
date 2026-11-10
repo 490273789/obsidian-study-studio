@@ -78,16 +78,6 @@ export class DictionaryFavoriteSession {
 		return this.categoriesManager.pathSuggestions(query);
 	}
 
-	/** Executes an action serialized against concurrent writes and file moves. */
-	async runExclusive<T>(action: () => Promise<T>): Promise<T> {
-		return this.categoriesManager.runExclusive(action);
-	}
-
-	/** Backwards-compatible alias for runExclusive. */
-	async saveFavorite<T>(action: () => Promise<T>): Promise<T> {
-		return this.runExclusive(action);
-	}
-
 	async selectCategory(id: string): Promise<void> {
 		if (this.disposed || this.isBusy()) return;
 		this.lookupRevision += 1;

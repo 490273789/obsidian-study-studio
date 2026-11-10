@@ -83,6 +83,10 @@ vi.mock("../domain/dictionaryRuntime", () => ({
 			send: vi.fn().mockResolvedValue(undefined),
 			dispose: vi.fn(),
 		};
+		readonly categories = {
+			runExclusive: vi.fn((action: () => unknown) => action()),
+			categories: [],
+		};
 		readonly favorites = {
 			prefill: vi.fn(),
 			resetSession: vi.fn(),
@@ -93,7 +97,6 @@ vi.mock("../domain/dictionaryRuntime", () => ({
 			editCategory: vi.fn(),
 			createCategory: vi.fn(),
 			deleteCategory: vi.fn(),
-			runExclusive: vi.fn((action: () => unknown) => action()),
 		};
 		readonly dispose = vi.fn();
 		readonly applySettings = vi.fn();

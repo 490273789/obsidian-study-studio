@@ -343,15 +343,10 @@ describe("DictionaryFavoriteSession - integration with FavoriteCategoryManager",
 		expect(session.getSnapshot().meaning).toBe("在第二分类中的苹果");
 	});
 
-	it("delegates runExclusive and pathSuggestions to the category manager", async () => {
-		const { session, categories, file } = setupWordSession();
+	it("delegates pathSuggestions to the category manager", () => {
+		const { session, file } = setupWordSession();
 		file.pathSuggestions.mockReturnValue(["words/suggested.md"]);
 
 		expect(session.pathSuggestions("words")).toEqual(["words/suggested.md"]);
-
-		const runSpy = vi.spyOn(categories, "runExclusive");
-		const result = await session.runExclusive(async () => "executed");
-		expect(runSpy).toHaveBeenCalled();
-		expect(result).toBe("executed");
 	});
 });

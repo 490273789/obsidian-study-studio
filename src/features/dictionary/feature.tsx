@@ -231,7 +231,7 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 			const openBatchFavorite = (): void => {
 				if (batchModal) return;
 				const controller = new FavoriteBatchController({
-					session: dictionary.favorites,
+					categories: dictionary.categories,
 					settings: dictionary.settings,
 					source: new ObsidianFavoriteBatchSource(host.app),
 					store: favoriteStore,

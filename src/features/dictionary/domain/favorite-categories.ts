@@ -101,11 +101,6 @@ export class FavoriteCategoryManager {
 		}
 	}
 
-	/** Backwards-compatible alias for runExclusive. */
-	async saveFavorite<T>(action: () => Promise<T>): Promise<T> {
-		return this.runExclusive(action);
-	}
-
 	async create(rawName: string, rawPath: string, select = false): Promise<FavoriteCategory> {
 		return this.runExclusive(async () => {
 			const { name, path } = this.validate(rawName, rawPath);

@@ -84,14 +84,8 @@ export interface FavoriteBatchSnapshot {
 	readonly failures: readonly FavoriteBatchFailure[];
 }
 
-export interface FavoriteBatchExclusiveLock {
-	runExclusive<T>(action: () => Promise<T>): Promise<T>;
-	readonly categories: readonly FavoriteCategory[];
-}
-
 export interface FavoriteBatchOptions {
-	readonly session?: FavoriteBatchExclusiveLock;
-	readonly categories?: FavoriteCategoryManager;
+	readonly categories: FavoriteCategoryManager;
 	readonly settings: DictionarySettingsStore;
 	readonly source: FavoriteBatchSource;
 	readonly store: FavoriteBatchStore;
@@ -102,7 +96,6 @@ export interface FavoriteBatchOptions {
 
 /** One modal's sequential batch; the category lease spans generation and writes. */
 export class FavoriteBatchController {
-	private readonly lock: FavoriteBatchExclusiveLock;
 	private snapshot: FavoriteBatchSnapshot = {
 		status: "idle",
 		targetPath: "",
@@ -119,12 +112,7 @@ export class FavoriteBatchController {
 	private job: { abort: AbortController; stopRequested: boolean } | null = null;
 	private disposed = false;
 
-	constructor(private readonly options: FavoriteBatchOptions) {
-		this.lock = options.session ?? {
-			runExclusive: (action) => options.categories!.saveFavorite(action),
-			categories: options.categories!.categories,
-		};
-	}
+	constructor(private readonly options: FavoriteBatchOptions) {}
 
 	getSnapshot(): FavoriteBatchSnapshot {
 		return this.snapshot;
@@ -136,7 +124,7 @@ export class FavoriteBatchController {
 	}
 
 	get categories(): readonly FavoriteCategory[] {
-		return this.lock.categories;
+		return this.options.categories.categories;
 	}
 
 	get selectedCategoryId(): string {
@@ -177,7 +165,7 @@ export class FavoriteBatchController {
 				this.patch({ message: t.favoriteAiConfigRequired });
 				return;
 			}
-			await this.lock.runExclusive(async () => {
+			await this.options.categories.runExclusive(async () => {
 				const content = await this.options.source.read(path);
 				if (job.stopRequested) return;
 				const lines = parseFavoriteBatchLines(content);
