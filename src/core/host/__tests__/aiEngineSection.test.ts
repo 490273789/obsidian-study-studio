@@ -2,9 +2,9 @@ import { Notice } from "obsidian";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { AiEngineConfig, AiService, AiSnapshot } from "../../ai";
 import type { SettingsPresentation } from "../../settings/presentation";
-import { AiSettingsEditor } from "../aiSettingsEditor";
+import { AiEngineSettingsSection, createAiEngineSection } from "../aiEngineSection";
 
-vi.mock("obsidian", () => ({ Notice: vi.fn() }));
+vi.mock("obsidian", () => ({ Notice: vi.fn(), Modal: class {} }));
 
 const llm: AiEngineConfig = {
 	id: "eng-1",
@@ -46,10 +46,11 @@ function createMockService(
 		if (defaults.asr === id) defaults = { ...defaults, asr: null };
 	});
 	const testEngine = vi.fn(async () => undefined);
+	const subscribe = vi.fn(() => vi.fn());
 	return {
 		service: {
 			getSnapshot: vi.fn(snapshot),
-			subscribe: vi.fn(() => () => undefined),
+			subscribe,
 			createEngineId: vi.fn(() => `new-${nextId++}`),
 			saveEngine,
 			deleteEngine,
@@ -62,6 +63,7 @@ function createMockService(
 		saveEngine,
 		deleteEngine,
 		testEngine,
+		subscribe,
 	};
 }
 
@@ -82,30 +84,40 @@ async function change(presentation: SettingsPresentation, rowKey: string, value:
 	return presentation.invoke({ action: control.action, value });
 }
 
-describe("AiSettingsEditor presentation operations", () => {
+describe("AiEngineSettingsSection presentation operations", () => {
+	it("conforms to the WorkbenchSettingsSection contract", () => {
+		const { service } = createMockService();
+		const section = createAiEngineSection({ ai: service, refresh: vi.fn() });
+		expect(section.id).toBe("ai");
+		expect(section.category).toBe("language");
+		expect(section.order).toBe(1);
+		expect(section.label("zh")).toBe("AI 引擎设置");
+		expect(section.label("en")).toBe("AI Engine Settings");
+	});
+
 	it("moves from the engine list to the add form and switches service type", async () => {
 		const { service } = createMockService();
-		const editor = new AiSettingsEditor(service, () => "zh", vi.fn());
-		const list = editor.presentation();
+		const section = new AiEngineSettingsSection({ ai: service, refresh: vi.fn() });
+		const list = section.presentation("zh");
 		expect(list.snapshot.groups[0]?.heading).toBe("服务类型");
 		const kinds = rows(list).find((row) => row.key === "kind")?.controls[0];
 		if (kinds?.kind !== "choiceButtons") throw new Error("Missing kind tabs");
 		expect(kinds.value).toBe("llm");
 		await list.invoke({ action: kinds.action, value: "asr" });
-		const asrList = editor.presentation();
+		const asrList = section.presentation("zh");
 		const asrKinds = rows(asrList).find((row) => row.key === "kind")?.controls[0];
 		expect(asrKinds?.kind === "choiceButtons" && asrKinds.value).toBe("asr");
 		expect(asrList.snapshot.groups[1]?.heading).toBe("默认引擎");
-		await press(editor.presentation(), "add", "新增引擎");
-		const form = editor.presentation();
+		await press(section.presentation("zh"), "add", "新增引擎");
+		const form = section.presentation("zh");
 		expect(rows(form).map((row) => row.key)).toContain("workspace");
 	});
 
 	it("edits a draft, tests it, saves it, and returns to the list", async () => {
 		const { service, saveEngine, testEngine } = createMockService();
-		const editor = new AiSettingsEditor(service, () => "zh", vi.fn());
-		await press(editor.presentation(), "add", "新增引擎");
-		const form = editor.presentation();
+		const section = new AiEngineSettingsSection({ ai: service, refresh: vi.fn() });
+		await press(section.presentation("zh"), "add", "新增引擎");
+		const form = section.presentation("zh");
 		await change(form, "name", "New Engine");
 		await change(form, "model", "model-abc");
 		await change(form, "secret", "secret-ref");
@@ -121,20 +133,20 @@ describe("AiSettingsEditor presentation operations", () => {
 		expect(Notice).toHaveBeenCalledWith("AI 文本连接测试成功");
 		await press(form, "configuration", "保存配置");
 		expect(saveEngine).toHaveBeenCalledWith(expect.objectContaining({ name: "New Engine" }));
-		expect(editor.presentation().snapshot.groups[0]?.heading).toBe("服务类型");
+		expect(section.presentation("zh").snapshot.groups[0]?.heading).toBe("服务类型");
 	});
 
 	it("edits and deletes an existing engine through semantic actions", async () => {
 		const { service, saveEngine, deleteEngine } = createMockService([llm]);
-		const editor = new AiSettingsEditor(service, () => "zh", vi.fn());
-		await press(editor.presentation(), "engine-eng-1", "编辑");
-		const form = editor.presentation();
+		const section = new AiEngineSettingsSection({ ai: service, refresh: vi.fn() });
+		await press(section.presentation("zh"), "engine-eng-1", "编辑");
+		const form = section.presentation("zh");
 		await change(form, "name", "Renamed Engine");
 		await press(form, "configuration", "保存配置");
 		expect(saveEngine).toHaveBeenCalledWith(
 			expect.objectContaining({ id: "eng-1", name: "Renamed Engine" }),
 		);
-		await press(editor.presentation(), "engine-eng-1", "删除");
+		await press(section.presentation("zh"), "engine-eng-1", "删除");
 		expect(deleteEngine).toHaveBeenCalledWith("eng-1");
 	});
 
@@ -145,8 +157,12 @@ describe("AiSettingsEditor presentation operations", () => {
 			asr: null,
 		});
 		const confirmDelete = vi.fn().mockResolvedValue(false);
-		const editor = new AiSettingsEditor(service, () => "zh", vi.fn(), confirmDelete);
-		await press(editor.presentation(), "engine-eng-1", "删除");
+		const section = new AiEngineSettingsSection({
+			ai: service,
+			refresh: vi.fn(),
+			confirmDelete,
+		});
+		await press(section.presentation("zh"), "engine-eng-1", "删除");
 		expect(confirmDelete).toHaveBeenCalledWith(llm.name, false);
 		expect(deleteEngine).not.toHaveBeenCalled();
 	});
@@ -154,21 +170,25 @@ describe("AiSettingsEditor presentation operations", () => {
 	it("passes isDefault=true to confirmDelete when deleting default engine", async () => {
 		const { service, deleteEngine } = createMockService([llm], { llm: "eng-1", asr: null });
 		const confirmDelete = vi.fn().mockResolvedValue(true);
-		const editor = new AiSettingsEditor(service, () => "zh", vi.fn(), confirmDelete);
-		await press(editor.presentation(), "engine-eng-1", "删除");
+		const section = new AiEngineSettingsSection({
+			ai: service,
+			refresh: vi.fn(),
+			confirmDelete,
+		});
+		await press(section.presentation("zh"), "engine-eng-1", "删除");
 		expect(confirmDelete).toHaveBeenCalledWith(llm.name, true);
 		expect(deleteEngine).toHaveBeenCalledWith("eng-1");
 	});
 
 	it("applies provider presets when the provider changes", async () => {
 		const { service, saveEngine } = createMockService([llm]);
-		const editor = new AiSettingsEditor(service, () => "zh", vi.fn());
-		await press(editor.presentation(), "engine-eng-1", "编辑");
-		const form = editor.presentation();
+		const section = new AiEngineSettingsSection({ ai: service, refresh: vi.fn() });
+		await press(section.presentation("zh"), "engine-eng-1", "编辑");
+		const form = section.presentation("zh");
 		const provider = rows(form).find((row) => row.key === "provider")?.controls[0];
 		if (provider?.kind !== "select") throw new Error("Missing provider select");
 		await form.invoke({ action: provider.action, value: "bailian" });
-		await press(editor.presentation(), "configuration", "保存配置");
+		await press(section.presentation("zh"), "configuration", "保存配置");
 		expect(saveEngine).toHaveBeenCalledWith(
 			expect.objectContaining({
 				provider: "bailian",
@@ -177,5 +197,19 @@ describe("AiSettingsEditor presentation operations", () => {
 				secretId: "",
 			}),
 		);
+	});
+
+	it("subscribes on activate and unsubscribes on hide", () => {
+		const { service, subscribe } = createMockService();
+		const refresh = vi.fn();
+		const unsubscribeFn = vi.fn();
+		subscribe.mockReturnValue(unsubscribeFn);
+
+		const section = new AiEngineSettingsSection({ ai: service, refresh });
+		section.activate();
+		expect(subscribe).toHaveBeenCalledWith(refresh);
+
+		section.hide();
+		expect(unsubscribeFn).toHaveBeenCalledOnce();
 	});
 });

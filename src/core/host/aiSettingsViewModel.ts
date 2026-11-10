@@ -4,7 +4,7 @@ import type {
 	AiEngineConfig,
 	AiEngineKind,
 	AiModel,
-	AiSnapshot,
+	AiService,
 	AsrProvider,
 	LlmProvider,
 } from "../ai";
@@ -30,29 +30,26 @@ export type AiEngineTextField =
 	| "appKeySecretId"
 	| "appSecretSecretId";
 
-export interface AiEditorState {
-	snapshot: AiSnapshot;
-	kind: AiEngineKind;
-	draft: AiEngineConfig;
-	models: readonly AiModel[];
-	saving: boolean;
-	view?: AiViewMode;
-	draftIsNew?: boolean;
-}
+export interface AiSettingsHost {
+	readonly service: AiService;
+	readonly currentKind: AiEngineKind;
+	readonly currentView: AiViewMode;
+	readonly currentDraft: AiEngineConfig;
+	readonly isDraftNew: boolean;
+	readonly availableModels: readonly AiModel[];
+	readonly isSaving: boolean;
 
-export interface AiEditorActions {
-	kind: (kind: AiEngineKind) => SettingsActionResult;
-	add: () => SettingsActionResult;
-	toEdit: (id: string) => SettingsActionResult;
-	back: () => SettingsActionResult;
-	selectModel: (model: string) => SettingsActionResult;
-	patch: (patch: Partial<Record<AiEngineTextField, string>>) => SettingsActionResult;
-	provider: (provider: LlmProvider | AsrProvider) => SettingsActionResult;
-	setDefault: (kind: "llm" | "asr", id: string) => SettingsActionResult;
-	save: () => SettingsActionResult;
-	remove: (id?: string) => SettingsActionResult;
-	loadModels: () => SettingsActionResult;
-	test: () => SettingsActionResult;
+	setKind(kind: AiEngineKind): void;
+	startAdd(): void;
+	editEngine(id: string): void;
+	backToList(): void;
+	patchDraft(patch: Partial<Record<AiEngineTextField, string>>): void;
+	setProvider(provider: LlmProvider | AsrProvider): void;
+	setDefaultEngine(kind: "llm" | "asr", id: string): Promise<void> | void;
+	saveDraft(): Promise<void> | void;
+	deleteEngine(id?: string): Promise<void> | void;
+	loadModels(): Promise<void> | void;
+	testDraft(): Promise<void> | void;
 }
 
 const KIND_ORDER: readonly AiEngineKind[] = ["llm", "asr", "translation"];
@@ -71,12 +68,20 @@ function engineSummary(engine: AiEngineConfig, t: ReturnType<typeof aiStrings>):
 }
 
 export function buildAiSettingsViewModel(
-	state: AiEditorState,
-	actions: AiEditorActions,
+	host: AiSettingsHost,
 	language: Language,
 ): SettingsPresentation {
 	const t = aiStrings(language);
-	const { draft, snapshot, saving, kind, view = "list", draftIsNew = false } = state;
+	const {
+		currentDraft: draft,
+		service,
+		isSaving: saving,
+		currentKind: kind,
+		currentView: view,
+		isDraftNew: draftIsNew,
+		availableModels: models,
+	} = host;
+	const snapshot = service.getSnapshot();
 	const engines = snapshot.settings.engines.filter((engine) => engine.kind === kind);
 	const loading = snapshot.loadingModels.includes(draft.id);
 	const testing = snapshot.testing.includes(draft.id);
@@ -88,7 +93,7 @@ export function buildAiSettingsViewModel(
 			value: fieldValue(draft, field),
 			placeholder,
 			disabled: saving,
-			onChange: (value) => actions.patch({ [field]: value }),
+			onChange: (value) => host.patchDraft({ [field]: value }),
 		});
 	const button = (
 		row: SettingsRowBuilder,
@@ -112,7 +117,7 @@ export function buildAiSettingsViewModel(
 							label: t[candidate],
 						})),
 						emptyText: t.typeLabel,
-						onChoose: (value) => actions.kind(value as AiEngineKind),
+						onChoose: (value) => host.setKind(value as AiEngineKind),
 					},
 				);
 			});
@@ -135,7 +140,7 @@ export function buildAiSettingsViewModel(
 									label: engine.name,
 								})),
 							],
-							onChange: (value) => actions.setDefault(kind, value),
+							onChange: (value) => host.setDefaultEngine(kind, value),
 						},
 					);
 				});
@@ -157,7 +162,7 @@ export function buildAiSettingsViewModel(
 							}
 						})(),
 					},
-					{ label: t.addEngine, disabled: saving, onPress: actions.add },
+					{ label: t.addEngine, disabled: saving, onPress: () => host.startAdd() },
 				);
 
 				if (engines.length === 0) {
@@ -194,12 +199,12 @@ export function buildAiSettingsViewModel(
 								: engineSummary(engine, t),
 						},
 						(row) => {
-							button(row, "edit", t.edit, () => actions.toEdit(engine.id));
+							button(row, "edit", t.edit, () => host.editEngine(engine.id));
 							button(
 								row,
 								"delete",
 								t.delete,
-								() => actions.remove(engine.id),
+								() => host.deleteEngine(engine.id),
 								saving,
 							);
 						},
@@ -216,7 +221,7 @@ export function buildAiSettingsViewModel(
 				group.button(
 					"back",
 					{ name: t.back, description: t.backDesc },
-					{ label: t.back, disabled: saving, onPress: actions.back },
+					{ label: t.back, disabled: saving, onPress: () => host.backToList() },
 				);
 				group.row("name", { name: t.name }, (row) => text(row, "name", t.namePlaceholder));
 				if (draft.kind === "llm") {
@@ -231,7 +236,7 @@ export function buildAiSettingsViewModel(
 								{ value: "bailian", label: t.bailian },
 								{ value: "youdao", label: t.youdao },
 							],
-							onChange: (value) => actions.provider(value as LlmProvider),
+							onChange: (value) => host.setProvider(value as LlmProvider),
 						},
 					);
 					group.row("base-url", { name: t.baseUrl, description: t.llmBaseHelp }, (row) =>
@@ -243,7 +248,7 @@ export function buildAiSettingsViewModel(
 						{
 							value: draft.secretId,
 							disabled: saving,
-							onChange: (secretId) => actions.patch({ secretId }),
+							onChange: (secretId) => host.patchDraft({ secretId }),
 						},
 					);
 					group.row("model", { name: t.model, description: t.modelHelp }, (row) =>
@@ -254,19 +259,19 @@ export function buildAiSettingsViewModel(
 							row,
 							"load",
 							loading ? t.loading : t.loadModels,
-							actions.loadModels,
+							() => host.loadModels(),
 							saving || loading,
 						);
-						if (state.models.length > 0) {
+						if (models.length > 0) {
 							row.select("available", {
 								value: draft.model,
 								disabled: saving,
-								options: state.models.map((model) => ({
+								options: models.map((model) => ({
 									value: model.id,
 									label: `${model.id} (${t[model.imageInput]})`,
 								})),
 								missingValueLabel: draft.model || t.none,
-								onChange: actions.selectModel,
+								onChange: (model) => host.patchDraft({ model }),
 							});
 						}
 					});
@@ -276,7 +281,7 @@ export function buildAiSettingsViewModel(
 						{
 							label: testing ? t.testing : t.test,
 							disabled: saving || testing,
-							onPress: actions.test,
+							onPress: () => host.testDraft(),
 						},
 					);
 				} else if (draft.kind === "asr") {
@@ -290,7 +295,7 @@ export function buildAiSettingsViewModel(
 								{ value: "bailian", label: t.bailian },
 								{ value: "openai-compatible", label: t.openaiCompatible },
 							],
-							onChange: (value) => actions.provider(value as AsrProvider),
+							onChange: (value) => host.setProvider(value as AsrProvider),
 						},
 					);
 					if (draft.provider === "bailian") {
@@ -301,7 +306,7 @@ export function buildAiSettingsViewModel(
 								value: draft.workspaceSecretId,
 								disabled: saving,
 								onChange: (workspaceSecretId) =>
-									actions.patch({ workspaceSecretId, workspaceId: "" }),
+									host.patchDraft({ workspaceSecretId, workspaceId: "" }),
 							},
 						);
 						if (draft.workspaceId)
@@ -321,7 +326,7 @@ export function buildAiSettingsViewModel(
 									label: model,
 								})),
 								missingValueLabel: `${t.asrModelLegacy}: ${draft.model}`,
-								onChange: (model) => actions.patch({ model }),
+								onChange: (model) => host.patchDraft({ model }),
 							},
 						);
 						group.secret(
@@ -330,7 +335,7 @@ export function buildAiSettingsViewModel(
 							{
 								value: draft.secretId,
 								disabled: saving,
-								onChange: (secretId) => actions.patch({ secretId }),
+								onChange: (secretId) => host.patchDraft({ secretId }),
 							},
 						);
 					} else {
@@ -348,7 +353,7 @@ export function buildAiSettingsViewModel(
 							{
 								value: draft.secretId,
 								disabled: saving,
-								onChange: (secretId) => actions.patch({ secretId }),
+								onChange: (secretId) => host.patchDraft({ secretId }),
 							},
 						);
 					}
@@ -365,7 +370,7 @@ export function buildAiSettingsViewModel(
 						{
 							value: draft.appKeySecretId,
 							disabled: saving,
-							onChange: (appKeySecretId) => actions.patch({ appKeySecretId }),
+							onChange: (appKeySecretId) => host.patchDraft({ appKeySecretId }),
 						},
 					);
 					group.secret(
@@ -374,7 +379,7 @@ export function buildAiSettingsViewModel(
 						{
 							value: draft.appSecretSecretId,
 							disabled: saving,
-							onChange: (appSecretSecretId) => actions.patch({ appSecretSecretId }),
+							onChange: (appSecretSecretId) => host.patchDraft({ appSecretSecretId }),
 						},
 					);
 					group.button(
@@ -383,19 +388,19 @@ export function buildAiSettingsViewModel(
 						{
 							label: testing ? t.testing : t.test,
 							disabled: saving || testing,
-							onPress: actions.test,
+							onPress: () => host.testDraft(),
 						},
 					);
 				}
 				group.row("configuration", { name: t.configActions }, (row) => {
-					button(row, "save", t.save, actions.save);
-					button(row, "cancel", t.cancel, actions.back);
+					button(row, "save", t.save, () => host.saveDraft());
+					button(row, "cancel", t.cancel, () => host.backToList());
 					if (!draftIsNew)
 						button(
 							row,
 							"remove",
 							t.remove,
-							() => actions.remove(draft.id),
+							() => host.deleteEngine(draft.id),
 							saving,
 							"warning",
 						);

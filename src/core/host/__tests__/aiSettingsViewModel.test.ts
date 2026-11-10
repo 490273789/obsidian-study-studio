@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { SettingsPresentation } from "../../settings/presentation";
-import type { AiEngineConfig } from "../../ai";
+import type { AiEngineConfig, AiEngineKind, AiService } from "../../ai";
 import {
 	buildAiSettingsViewModel,
-	type AiEditorActions,
-	type AiEditorState,
+	type AiSettingsHost,
+	type AiViewMode,
 } from "../aiSettingsViewModel";
 
 const llm: AiEngineConfig = {
@@ -28,39 +28,38 @@ const asr: AiEngineConfig = {
 	model: "fun-asr-flash-2026-06-15",
 };
 
-function setup(kind: AiEditorState["kind"] = "llm", view: "list" | "form" = "list") {
-	const state: AiEditorState = {
-		kind,
-		draft: kind === "llm" ? llm : asr,
-		view,
-		draftIsNew: false,
-		saving: false,
-		models: [],
-		snapshot: {
-			settings: {
-				engines: [llm, asr],
-				defaults: { llm: llm.id, asr: asr.id },
-			},
-			models: {},
-			loadingModels: [],
-			testing: [],
-		},
-	};
-	const actions: AiEditorActions = {
-		kind: vi.fn(),
-		add: vi.fn(),
-		toEdit: vi.fn(),
-		back: vi.fn(),
-		patch: vi.fn(),
-		provider: vi.fn(),
-		selectModel: vi.fn(),
-		setDefault: vi.fn(),
-		save: vi.fn(),
-		remove: vi.fn(),
+function setup(kind: AiEngineKind = "llm", view: AiViewMode = "list"): AiSettingsHost {
+	const draft = kind === "llm" ? llm : asr;
+	return {
+		service: {
+			getSnapshot: () => ({
+				settings: {
+					engines: [llm, asr],
+					defaults: { llm: llm.id, asr: asr.id },
+				},
+				models: {},
+				loadingModels: [],
+				testing: [],
+			}),
+		} as unknown as AiService,
+		currentKind: kind,
+		currentView: view,
+		currentDraft: draft,
+		isDraftNew: false,
+		availableModels: [],
+		isSaving: false,
+		setKind: vi.fn(),
+		startAdd: vi.fn(),
+		editEngine: vi.fn(),
+		backToList: vi.fn(),
+		patchDraft: vi.fn(),
+		setProvider: vi.fn(),
+		setDefaultEngine: vi.fn(),
+		saveDraft: vi.fn(),
+		deleteEngine: vi.fn(),
 		loadModels: vi.fn(),
-		test: vi.fn(),
+		testDraft: vi.fn(),
 	};
-	return { state, actions };
 }
 
 const rows = (presentation: SettingsPresentation) =>
@@ -68,15 +67,15 @@ const rows = (presentation: SettingsPresentation) =>
 
 describe("AI settings presentation", () => {
 	it("groups every engine by service type and switches the visible list", async () => {
-		const { state, actions } = setup("llm");
-		const presentation = buildAiSettingsViewModel(state, actions, "zh");
+		const host = setup("llm");
+		const presentation = buildAiSettingsViewModel(host, "zh");
 		expect(presentation.snapshot.groups[0]?.heading).toBe("服务类型");
 		const kinds = rows(presentation).find((row) => row.key === "kind")?.controls[0];
 		if (kinds?.kind !== "choiceButtons") throw new Error("Missing kind tabs");
 		expect(kinds.value).toBe("llm");
 		expect(kinds.choices.map((choice) => choice.id)).toEqual(["llm", "asr", "translation"]);
 		await presentation.invoke({ action: kinds.action, value: "asr" });
-		expect(actions.kind).toHaveBeenCalledWith("asr");
+		expect(host.setKind).toHaveBeenCalledWith("asr");
 
 		const texts = rows(presentation).map((row) => row.name);
 		expect(texts.some((name) => name.includes("Translate"))).toBe(true);
@@ -84,8 +83,8 @@ describe("AI settings presentation", () => {
 	});
 
 	it("uses distinct row names to prevent stutter against group headings", () => {
-		const { state, actions } = setup("llm");
-		const presentation = buildAiSettingsViewModel(state, actions, "zh");
+		const host = setup("llm");
+		const presentation = buildAiSettingsViewModel(host, "zh");
 		for (const group of presentation.snapshot.groups) {
 			if (!group.heading) continue;
 			for (const row of group.rows) {
@@ -95,8 +94,8 @@ describe("AI settings presentation", () => {
 	});
 
 	it("presents the ASR engine list with its default and edits", async () => {
-		const { state, actions } = setup("asr");
-		const presentation = buildAiSettingsViewModel(state, actions, "zh");
+		const host = setup("asr");
+		const presentation = buildAiSettingsViewModel(host, "zh");
 		const engine = rows(presentation).find((row) => row.key === "engine-asr");
 		expect(engine?.name).toContain("Speech");
 		expect(engine?.name).toContain("默认");
@@ -107,20 +106,20 @@ describe("AI settings presentation", () => {
 		if (remove?.kind !== "button") throw new Error("Missing delete");
 		expect(remove.tone).toBe("neutral");
 		await presentation.invoke({ action: remove.action, value: undefined });
-		expect(actions.remove).toHaveBeenCalledWith("asr");
+		expect(host.deleteEngine).toHaveBeenCalledWith("asr");
 		const defaultSelect = rows(presentation).find((row) => row.key === "default")?.controls[0];
 		expect(defaultSelect).toMatchObject({ kind: "select", value: "asr" });
 	});
 
 	it("shows type-specific fields instead of a shared credential form", () => {
-		const llmFormState = setup("llm", "form");
-		const llmForm = buildAiSettingsViewModel(llmFormState.state, llmFormState.actions, "zh");
+		const llmHost = setup("llm", "form");
+		const llmForm = buildAiSettingsViewModel(llmHost, "zh");
 		expect(rows(llmForm).map((row) => row.key)).toEqual(
 			expect.arrayContaining(["provider", "base-url", "secret", "model"]),
 		);
 
-		const asrFormState = setup("asr", "form");
-		const asrForm = buildAiSettingsViewModel(asrFormState.state, asrFormState.actions, "zh");
+		const asrHost = setup("asr", "form");
+		const asrForm = buildAiSettingsViewModel(asrHost, "zh");
 		expect(rows(asrForm).map((row) => row.key)).toEqual(
 			expect.arrayContaining(["workspace", "model", "secret"]),
 		);
@@ -137,22 +136,22 @@ describe("AI settings presentation", () => {
 			appKeySecretId: "app-key",
 			appSecretSecretId: "app-secret",
 		};
-		const state: AiEditorState = {
-			kind: "translation",
-			draft: translation,
-			view: "form",
-			draftIsNew: true,
-			saving: false,
-			models: [],
-			snapshot: {
-				settings: { engines: [translation], defaults: { llm: null, asr: null } },
-				models: {},
-				loadingModels: [],
-				testing: [],
-			},
+		const host: AiSettingsHost = {
+			...setup(),
+			currentKind: "translation",
+			currentDraft: translation,
+			currentView: "form",
+			isDraftNew: true,
+			service: {
+				getSnapshot: () => ({
+					settings: { engines: [translation], defaults: { llm: null, asr: null } },
+					models: {},
+					loadingModels: [],
+					testing: [],
+				}),
+			} as unknown as AiService,
 		};
-		const actions = setup().actions;
-		const presentation = buildAiSettingsViewModel(state, actions, "zh");
+		const presentation = buildAiSettingsViewModel(host, "zh");
 		const keys = rows(presentation).map((row) => row.key);
 		expect(keys).toEqual(expect.arrayContaining(["app-key", "app-secret", "test"]));
 		expect(keys).not.toContain("workspace");
@@ -160,18 +159,18 @@ describe("AI settings presentation", () => {
 		const test = rows(presentation).find((row) => row.key === "test")?.controls[0];
 		if (test?.kind !== "button") throw new Error("Missing translation test");
 		await presentation.invoke({ action: test.action, value: undefined });
-		expect(actions.test).toHaveBeenCalledOnce();
+		expect(host.testDraft).toHaveBeenCalledOnce();
 	});
 
 	it("keeps secrets and manual model input free of callbacks in the snapshot", async () => {
-		const { state, actions } = setup("llm", "form");
-		const presentation = buildAiSettingsViewModel(state, actions, "en");
+		const host = setup("llm", "form");
+		const presentation = buildAiSettingsViewModel(host, "en");
 		const secret = rows(presentation).find((row) => row.key === "secret")?.controls[0];
 		const model = rows(presentation).find((row) => row.key === "model")?.controls[0];
 		expect(secret).toMatchObject({ kind: "secret", value: "secret-id" });
 		if (model?.kind !== "text") throw new Error("Missing model input");
 		await presentation.invoke({ action: model.action, value: "custom-model" });
-		expect(actions.patch).toHaveBeenCalledWith({ model: "custom-model" });
+		expect(host.patchDraft).toHaveBeenCalledWith({ model: "custom-model" });
 		expect(JSON.stringify(presentation.snapshot)).not.toContain("onClick");
 	});
 });
