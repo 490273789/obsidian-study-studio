@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useSyncExternalStore } from "react";
 import {
 	ArrowRight,
 	ArrowRightLeft,
@@ -16,6 +16,14 @@ import type { CardDirection, Deck } from "../../../../../core/shared/types";
 import type { DeckSpellingSnapshot } from "../../../domain/decks/deckHome";
 import type { SessionStartRequest } from "../../../domain/sessions/sessionLifecycle";
 import type { PracticeSetupPlan, SpellingSetupPlan } from "../../../domain/sessions/sessionPlanner";
+import {
+	estimateMinutes,
+	type PracticeKind,
+	type PracticePreferenceStore,
+	type PracticeSelectionMode,
+	PracticeSetupSession,
+	type SpellingSelectionMode,
+} from "../../../domain/sessions/practiceSetupSession";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardInput } from "../../../../../core/ui/primitives/Input";
 import { useFlashcardI18n } from "../../../strings/context";
@@ -23,13 +31,7 @@ import { SetupControlGroup, SetupSelector } from "../../../../../core/ui/primiti
 import { SetupPage, setupStyles as styles } from "../../primitives/SetupPage/SetupPage";
 import practiceStyles from "./PracticeSetup.module.scss";
 
-const QUICK_QUESTION_COUNTS = [20, 50, 100];
-const QUICK_SPELLING_COUNTS = [10, 20, 50];
-const STORAGE_KEY_PREFIX = "study-studio:practice-kind:";
-
-export type PracticeKind = "flip" | "spelling";
-type PracticeSelectionMode = "random" | "range";
-type SpellingSelectionMode = "smart" | "range";
+export type { PracticeKind, PracticePreferenceStore, PracticeSelectionMode, SpellingSelectionMode };
 
 export interface PracticeSetupProps {
 	deck: Deck;
@@ -39,340 +41,67 @@ export interface PracticeSetupProps {
 	defaultDirection?: CardDirection;
 	initialDirection?: CardDirection;
 	initialKind?: PracticeKind;
+	preferenceStore?: PracticePreferenceStore;
+	session?: PracticeSetupSession;
 	onStartSession: (request: SessionStartRequest) => void;
 	onBack: () => void;
 }
 
-const lastPracticeKindByDeck = new Map<string, PracticeKind>();
-
-function getPersistedPracticeKind(deckId: string): PracticeKind | null {
-	const inMem = lastPracticeKindByDeck.get(deckId);
-	if (inMem) return inMem;
-	try {
-		const saved = window.localStorage?.getItem(`${STORAGE_KEY_PREFIX}${deckId}`);
-		if (saved === "spelling" || saved === "flip") return saved;
-	} catch {
-		// safe fallback
-	}
-	return null;
-}
-
-function persistPracticeKind(deckId: string, kind: PracticeKind): void {
-	lastPracticeKindByDeck.set(deckId, kind);
-	try {
-		window.localStorage?.setItem(`${STORAGE_KEY_PREFIX}${deckId}`, kind);
-	} catch {
-		// safe fallback
-	}
-}
-
-/**
- * In flashcard retrieval, each card takes ~7.5 seconds on average (flip + recall).
- * For spelling, each word takes ~12 seconds (typing + recall).
- */
-function estimateMinutes(count: number, isSpelling = false): number {
-	if (count <= 0) return 0;
-	const secondsPerCard = isSpelling ? 12 : 7.5;
-	return Math.max(1, Math.round((count * secondsPerCard) / 60));
-}
-
-export const PracticeSetup = React.memo(function PracticeSetup({
-	deck,
-	plan,
-	spellingPlan,
-	spellingSnapshot,
-	defaultDirection = "normal",
-	initialDirection,
-	initialKind,
-	onStartSession,
-	onBack,
-}: PracticeSetupProps) {
+export const PracticeSetup = React.memo(function PracticeSetup(props: PracticeSetupProps) {
+	const { deck, onStartSession, onBack } = props;
 	const { t } = useFlashcardI18n();
 
-	// Flip practice configuration
-	const maxQuestions = plan.maxQuestions;
-	const maxRangeStart = plan.maxRangeStart;
-	const quickQuestionCounts = Array.from(
-		new Set(
-			QUICK_QUESTION_COUNTS.map((count) => Math.min(count, maxQuestions)).filter(
-				(count) => count > 0 && count < maxQuestions,
-			),
-		),
-	);
-	const [selectionMode, setSelectionMode] = useState<PracticeSelectionMode>(
-		plan.initialSelectionMode,
-	);
-	const [questionCount, setQuestionCount] = useState(plan.initialQuestionCount);
-	const [inputValue, setInputValue] = useState(plan.initialQuestionCount.toString());
-	const [rangeStart, setRangeStart] = useState(plan.initialRangeStart);
-	const [rangeEnd, setRangeEnd] = useState(plan.initialRangeEnd);
-	const [rangeStartInput, setRangeStartInput] = useState(plan.initialRangeStart.toString());
-	const [rangeEndInput, setRangeEndInput] = useState(plan.initialRangeEnd.toString());
-	const [direction, setDirection] = useState<CardDirection>(initialDirection ?? defaultDirection);
+	const [session] = useState(() => props.session ?? new PracticeSetupSession(props));
+	const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot);
 
-	// Spelling configuration
-	const spellingEligible = Boolean(
-		spellingPlan &&
-		(spellingSnapshot
-			? spellingSnapshot.enabled && spellingSnapshot.ready
-			: spellingPlan.maxQuestions > 0),
-	);
+	const {
+		practiceKind,
+		showModeSelector,
+		spellingEligible,
+		isSpelling,
+		activeCount,
+		activeMinutes,
+		isStartDisabled,
+		maxQuestions,
+		quickQuestionCounts,
+		selectionMode,
+		questionCount,
+		questionCountInput,
+		rangeStart,
+		rangeEnd,
+		rangeStartInput,
+		rangeEndInput,
+		rangeQuestionCount,
+		direction,
+		spellingMax,
+		spellingStats,
+		quickSpellingCounts,
+		spellingMode,
+		spellingQuestionCount,
+		spellingQuestionCountInput,
+		spellingRangeStart,
+		spellingRangeEnd,
+		spellingRangeStartInput,
+		spellingRangeEndInput,
+		spellingRangeCount,
+	} = snapshot;
+
 	const spellingUnavailableReason =
-		spellingSnapshot && !spellingSnapshot.enabled
+		snapshot.spellingUnavailableReason?.kind === "disabled"
 			? t("practice.spellingUnavailable")
-			: spellingSnapshot && !spellingSnapshot.ready
-				? t("home.spellingUnavailableTitle", { count: spellingSnapshot.issueCount })
+			: snapshot.spellingUnavailableReason?.kind === "not-ready"
+				? t("home.spellingUnavailableTitle", {
+						count: snapshot.spellingUnavailableReason.issueCount,
+					})
 				: undefined;
 
-	const spellingMax = spellingPlan?.maxQuestions ?? 0;
-	const spellingStats = spellingPlan?.stats ?? { total: spellingMax, unpracticed: 0 };
-	const quickSpellingCounts = Array.from(
-		new Set(
-			QUICK_SPELLING_COUNTS.map((count) => Math.min(count, spellingMax)).filter(
-				(count) => count > 0 && count < spellingMax,
-			),
-		),
-	);
-	const [spellingMode, setSpellingMode] = useState<SpellingSelectionMode>(
-		spellingPlan?.initialSelectionMode ?? "smart",
-	);
-	const [spellingQuestionCount, setSpellingQuestionCount] = useState(
-		spellingPlan?.initialQuestionCount ?? Math.min(20, spellingMax),
-	);
-	const [spellingInputValue, setSpellingInputValue] = useState(
-		(spellingPlan?.initialQuestionCount ?? Math.min(20, spellingMax)).toString(),
-	);
-	const [spellingRangeStart, setSpellingRangeStart] = useState(
-		spellingPlan?.initialRangeStart ?? 1,
-	);
-	const [spellingRangeEnd, setSpellingRangeEnd] = useState(
-		spellingPlan?.initialRangeEnd ?? Math.min(20, spellingMax),
-	);
-	const [spellingRangeStartInput, setSpellingRangeStartInput] = useState(
-		(spellingPlan?.initialRangeStart ?? 1).toString(),
-	);
-	const [spellingRangeEndInput, setSpellingRangeEndInput] = useState(
-		(spellingPlan?.initialRangeEnd ?? Math.min(20, spellingMax)).toString(),
-	);
-
-	// Mode selection: "flip" vs "spelling"
-	const showModeSelector = spellingPlan !== undefined;
-	const resolveInitialKind = (): PracticeKind => {
-		if (initialKind === "spelling") return "spelling";
-		if (initialKind === "flip") return "flip";
-		const saved = getPersistedPracticeKind(deck.id);
-		if (saved === "spelling" && spellingEligible) return "spelling";
-		return "flip";
-	};
-	const [practiceKind, setPracticeKind] = useState<PracticeKind>(resolveInitialKind);
-
 	const handlePracticeKindChange = (kind: PracticeKind) => {
-		setPracticeKind(kind);
-		persistPracticeKind(deck.id, kind);
+		session.setPracticeKind(kind);
 	};
-
-	// Flip handlers
-	const rangeQuestionCount = Math.max(0, rangeEnd - rangeStart + 1);
-	const currentQuestionCount = selectionMode === "range" ? rangeQuestionCount : questionCount;
-
-	const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-		const value = e.target.value;
-		setInputValue(value);
-
-		const num = parseInt(value, 10);
-		if (!isNaN(num) && num >= 1) {
-			setQuestionCount(Math.min(num, maxQuestions));
-		}
-	};
-
-	const handleInputBlur = () => {
-		const num = parseInt(inputValue, 10);
-		if (isNaN(num) || num < 1) {
-			setQuestionCount(1);
-			setInputValue("1");
-		} else {
-			const normalized = Math.min(num, maxQuestions);
-			setQuestionCount(normalized);
-			setInputValue(normalized.toString());
-		}
-	};
-
-	const getNormalizedRange = () => {
-		const parsedStart = parseInt(rangeStartInput, 10);
-		const parsedEnd = parseInt(rangeEndInput, 10);
-		const start =
-			isNaN(parsedStart) || parsedStart < 1
-				? rangeStart
-				: Math.min(parsedStart, maxRangeStart);
-		const end =
-			isNaN(parsedEnd) || parsedEnd < start ? start : Math.min(parsedEnd, maxQuestions);
-
-		return { start, end };
-	};
-
-	const syncRange = (start: number, end: number) => {
-		setRangeStart(start);
-		setRangeEnd(end);
-		setRangeStartInput(start.toString());
-		setRangeEndInput(end.toString());
-	};
-
-	const handleQuickSelect = (count: number) => {
-		const actualCount = Math.min(count, maxQuestions);
-		setQuestionCount(actualCount);
-		setInputValue(actualCount.toString());
-	};
-
-	const handleRangeStartChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-		setRangeStartInput(e.target.value);
-	};
-
-	const handleRangeEndChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-		setRangeEndInput(e.target.value);
-	};
-
-	const handleRangeBlur = () => {
-		const { start, end } = getNormalizedRange();
-		syncRange(start, end);
-	};
-
-	// Spelling handlers
-	const currentSpellingRangeCount = Math.max(0, spellingRangeEnd - spellingRangeStart + 1);
-	const currentSpellingCount =
-		spellingMode === "smart" ? spellingQuestionCount : currentSpellingRangeCount;
-
-	const handleSpellingQuickSelect = (count: number) => {
-		const actual = Math.min(count, spellingMax);
-		setSpellingQuestionCount(actual);
-		setSpellingInputValue(actual.toString());
-	};
-
-	const handleSpellingInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-		const value = e.target.value;
-		setSpellingInputValue(value);
-
-		const num = parseInt(value, 10);
-		if (!isNaN(num) && num >= 1) {
-			setSpellingQuestionCount(Math.min(num, spellingMax));
-		}
-	};
-
-	const handleSpellingInputBlur = () => {
-		const num = parseInt(spellingInputValue, 10);
-		if (isNaN(num) || num < 1) {
-			setSpellingQuestionCount(1);
-			setSpellingInputValue("1");
-		} else {
-			const normalized = Math.min(num, spellingMax);
-			setSpellingQuestionCount(normalized);
-			setSpellingInputValue(normalized.toString());
-		}
-	};
-
-	const handleSpellingRangeStartChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-		const value = e.target.value;
-		setSpellingRangeStartInput(value);
-		const num = parseInt(value, 10);
-		if (!isNaN(num)) {
-			const clamped = Math.max(1, Math.min(num, spellingRangeEnd));
-			setSpellingRangeStart(clamped);
-		}
-	};
-
-	const handleSpellingRangeEndChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-		const value = e.target.value;
-		setSpellingRangeEndInput(value);
-		const num = parseInt(value, 10);
-		if (!isNaN(num)) {
-			const clamped = Math.max(spellingRangeStart, Math.min(num, spellingMax));
-			setSpellingRangeEnd(clamped);
-		}
-	};
-
-	const handleSpellingRangeBlur = () => {
-		const parsedStart = parseInt(spellingRangeStartInput, 10);
-		const parsedEnd = parseInt(spellingRangeEndInput, 10);
-		const start =
-			isNaN(parsedStart) || parsedStart < 1
-				? spellingRangeStart
-				: Math.min(parsedStart, spellingMax);
-		const end =
-			isNaN(parsedEnd) || parsedEnd < start ? start : Math.min(parsedEnd, spellingMax);
-
-		setSpellingRangeStart(start);
-		setSpellingRangeEnd(end);
-		setSpellingRangeStartInput(start.toString());
-		setSpellingRangeEndInput(end.toString());
-	};
-
-	// Start gating
-	const isFlipStartDisabled = maxQuestions === 0 || currentQuestionCount < 1;
-	const isSpellingStartDisabled = spellingMax === 0 || currentSpellingCount < 1;
-	const isStartDisabled = practiceKind === "flip" ? isFlipStartDisabled : isSpellingStartDisabled;
 
 	const handleStart = () => {
-		if (isStartDisabled) return;
-
-		if (practiceKind === "spelling") {
-			if (spellingMode === "range") {
-				onStartSession({
-					mode: "spelling",
-					deckId: deck.id,
-					selection: {
-						kind: "range",
-						startIndex: spellingRangeStart,
-						endIndex: spellingRangeEnd,
-					},
-				});
-				return;
-			}
-			onStartSession({
-				mode: "spelling",
-				deckId: deck.id,
-				selection: {
-					kind: "smart",
-					questionCount: spellingQuestionCount,
-				},
-			});
-			return;
-		}
-
-		// Flip practice
-		if (selectionMode === "range") {
-			const { start, end } = getNormalizedRange();
-			syncRange(start, end);
-
-			if (end >= start && end <= maxQuestions) {
-				onStartSession({
-					mode: "practice",
-					deckId: deck.id,
-					direction,
-					selection: {
-						kind: "range",
-						startIndex: start,
-						endIndex: end,
-					},
-				});
-			}
-			return;
-		}
-
-		if (questionCount >= 1 && questionCount <= maxQuestions) {
-			onStartSession({
-				mode: "practice",
-				deckId: deck.id,
-				direction,
-				selection: {
-					kind: "random",
-					questionCount,
-				},
-			});
-		}
+		session.startSession(onStartSession);
 	};
-
-	const isSpelling = practiceKind === "spelling";
-	const activeCount = isSpelling ? currentSpellingCount : currentQuestionCount;
-	const activeMinutes = estimateMinutes(activeCount, isSpelling);
 
 	return (
 		<SetupPage
@@ -444,8 +173,8 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 			}
 			startLabel={
 				isSpelling
-					? t("spelling.start", { count: currentSpellingCount })
-					: t("practice.startQuestions", { count: currentQuestionCount })
+					? t("spelling.start", { count: activeCount })
+					: t("practice.startQuestions", { count: activeCount })
 			}
 			disabled={isStartDisabled}
 			onStart={handleStart}
@@ -510,7 +239,7 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 									icon: ListOrdered,
 								},
 							]}
-							onChange={setSpellingMode}
+							onChange={(mode) => session.setSpellingMode(mode)}
 						/>
 
 						<div className={styles.controlDetail}>
@@ -533,7 +262,9 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 														count,
 														minutes,
 													})}
-													onClick={() => handleSpellingQuickSelect(count)}
+													onClick={() =>
+														session.selectQuickSpellingCount(count)
+													}
 												>
 													<span>{count}</span>
 													<span className={practiceStyles.chipSub}>
@@ -554,7 +285,9 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 												count: spellingMax,
 												minutes: estimateMinutes(spellingMax, true),
 											})}
-											onClick={() => handleSpellingQuickSelect(spellingMax)}
+											onClick={() =>
+												session.selectQuickSpellingCount(spellingMax)
+											}
 										>
 											<span>{t("common.all")}</span>
 											<span className={practiceStyles.chipSub}>
@@ -571,9 +304,13 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 											<FlashcardInput
 												type="number"
 												className={styles.input}
-												value={spellingInputValue}
-												onChange={handleSpellingInputChange}
-												onBlur={handleSpellingInputBlur}
+												value={spellingQuestionCountInput}
+												onChange={(e) =>
+													session.setSpellingQuestionCountInput(
+														e.target.value,
+													)
+												}
+												onBlur={() => session.commitSpellingQuestionCount()}
 												min={1}
 												max={spellingMax}
 											/>
@@ -606,8 +343,12 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 												type="number"
 												className={styles.input}
 												value={spellingRangeStartInput}
-												onChange={handleSpellingRangeStartChange}
-												onBlur={handleSpellingRangeBlur}
+												onChange={(e) =>
+													session.setSpellingRangeStartInput(
+														e.target.value,
+													)
+												}
+												onBlur={() => session.commitSpellingRange()}
 											/>
 										</label>
 										<label className={styles.rangeField}>
@@ -618,24 +359,23 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 												type="number"
 												className={styles.input}
 												value={spellingRangeEndInput}
-												onChange={handleSpellingRangeEndChange}
-												onBlur={handleSpellingRangeBlur}
+												onChange={(e) =>
+													session.setSpellingRangeEndInput(e.target.value)
+												}
+												onBlur={() => session.commitSpellingRange()}
 											/>
 										</label>
 									</div>
 									<div className={practiceStyles.rangeSelectedNotice}>
 										<span className={practiceStyles.rangeCountHighlight}>
 											{t("practice.rangeSelectedSummary", {
-												count: currentSpellingRangeCount,
+												count: spellingRangeCount,
 											})}
 										</span>
 										<span className={practiceStyles.rangeEstimatedTime}>
 											（
 											{t("practice.estimatedTime", {
-												minutes: estimateMinutes(
-													currentSpellingRangeCount,
-													true,
-												),
+												minutes: estimateMinutes(spellingRangeCount, true),
 											})}
 											）
 										</span>
@@ -672,7 +412,7 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 										icon: ListOrdered,
 									},
 								]}
-								onChange={setSelectionMode}
+								onChange={(mode) => session.setSelectionMode(mode)}
 							/>
 
 							<div className={styles.controlDetail}>
@@ -695,7 +435,9 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 															count,
 															minutes,
 														})}
-														onClick={() => handleQuickSelect(count)}
+														onClick={() =>
+															session.selectQuickQuestionCount(count)
+														}
 													>
 														<span>{count}</span>
 														<span className={practiceStyles.chipSub}>
@@ -716,7 +458,9 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 													count: maxQuestions,
 													minutes: estimateMinutes(maxQuestions, false),
 												})}
-												onClick={() => handleQuickSelect(maxQuestions)}
+												onClick={() =>
+													session.selectQuickQuestionCount(maxQuestions)
+												}
 											>
 												<span>{t("common.all")}</span>
 												<span className={practiceStyles.chipSub}>
@@ -733,9 +477,13 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 												<FlashcardInput
 													type="number"
 													className={styles.input}
-													value={inputValue}
-													onChange={handleInputChange}
-													onBlur={handleInputBlur}
+													value={questionCountInput}
+													onChange={(e) =>
+														session.setQuestionCountInput(
+															e.target.value,
+														)
+													}
+													onBlur={() => session.commitQuestionCount()}
 													min={1}
 													max={maxQuestions}
 												/>
@@ -768,8 +516,10 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 													type="number"
 													className={styles.input}
 													value={rangeStartInput}
-													onChange={handleRangeStartChange}
-													onBlur={handleRangeBlur}
+													onChange={(e) =>
+														session.setRangeStartInput(e.target.value)
+													}
+													onBlur={() => session.commitRange()}
 												/>
 											</label>
 											<label className={styles.rangeField}>
@@ -780,8 +530,10 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 													type="number"
 													className={styles.input}
 													value={rangeEndInput}
-													onChange={handleRangeEndChange}
-													onBlur={handleRangeBlur}
+													onChange={(e) =>
+														session.setRangeEndInput(e.target.value)
+													}
+													onBlur={() => session.commitRange()}
 												/>
 											</label>
 										</div>
@@ -831,7 +583,7 @@ export const PracticeSetup = React.memo(function PracticeSetup({
 										icon: Repeat2,
 									},
 								]}
-								onChange={setDirection}
+								onChange={(dir) => session.setDirection(dir)}
 							/>
 
 							<div className={practiceStyles.directionFlowCard}>

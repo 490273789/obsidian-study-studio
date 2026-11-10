@@ -33,6 +33,7 @@ vi.mock("react", async (original) => ({
 	useId: () => "study-plan",
 	useEffect: () => {},
 	useRef: () => ({ current: null }),
+	useSyncExternalStore: (_subscribe: unknown, read: () => unknown) => read(),
 }));
 vi.mock("../../../strings/context", () => ({
 	useFlashcardI18n: () => ({ language: "en", t: (key: string) => key }),

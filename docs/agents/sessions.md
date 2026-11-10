@@ -8,7 +8,7 @@ Read this guide before changing study, practice, spelling, FSRS scheduling, sess
 
 - Exactly one snapshot branch exists: `idle`, `active`, or `result`.
 - Only `active` counts as an active session. A retained practice/spelling result does not block source synchronization.
-- Setup drafts remain in React; view-local routes and confirmations belong to `FlashcardNavigation`. The lifecycle begins only after validated `start()` succeeds.
+- Practice setup state and calculations live in domain module `PracticeSetupSession`; view-local routes and confirmations belong to `FlashcardNavigation`. The lifecycle begins only after validated `start()` succeeds.
 - React uses immutable snapshots and revision-bound typed references. Stale callbacks must be rejected rather than applied to a newer state.
 - Lifecycle transitions make their write set durable before publishing observable state. Failure keeps the prior lifecycle and persisted data unchanged.
 - Closing the Obsidian view does not end an active session. Normal completion, explicit exit, or source-change termination does.
@@ -45,6 +45,7 @@ Pure engines and planners under `src/features/flashcards/domain/sessions/` are i
 ## Practice and spelling
 
 - Session startup uses domain-owned `SessionStartRequest`, `PracticeSelection`, and `SpellingSelection` definitions. Result snapshots expose mode-neutral `SessionRestartOrigin`; `FlashcardNavigation` maps it to a view route with `toRestartViewState`, so the domain never names `ViewState`.
+- `practiceSetupSession.ts` owns practice and spelling setup draft state, duration estimation, range/count clamping, preference persistence, and `SessionStartRequest` assembly. `PracticeSetup.tsx` acts as a lean view adapter subscribing to its snapshot.
 - `sessionPlanner.ts` exposes semantic planning entries only: the three setup plans, `evaluateSpellingDeckEligibility`, `planSessionQueue`, and `planRetryIncorrectSession`. Sorting, day slicing, and per-mode plan helpers stay private; do not re-export them or add forwarding facades. Tests drive planning through the semantic entries. `practiceSessionEngine.ts` exposes session creation, answer, and undo only; `SessionLifecycle` orchestrates transitions and results.
 - Spelling eligibility and answer normalization live in `src/features/flashcards/domain/cards/spellingWord.ts`. A spellable front is a single-line Latin word or phrase, optionally wrapped in one ATX heading or one Markdown emphasis wrapper.
 - Spelling queue planning and readiness evaluation live in `sessionPlanner.ts`; retrieval/correction transitions live in `spellingSessionEngine.ts`.
