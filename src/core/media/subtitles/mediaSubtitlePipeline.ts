@@ -13,10 +13,12 @@ export interface SubtitleTranslationPort {
 	listProfiles(): { id: string; name: string }[];
 	translate(
 		text: string,
-		profileId: string,
-		expectedSignature: string,
-		signal?: AbortSignal,
-	): Promise<string>;
+		options: {
+			profileId: string;
+			expectedSignature?: string;
+			signal?: AbortSignal;
+		},
+	): Promise<string | { text: string }>;
 }
 
 export interface SubtitlePipelineSignatureOptions {
@@ -101,7 +103,12 @@ export class MediaSubtitlePipeline {
 			throw new Error("翻译配置已变化，请重新生成字幕。");
 		}
 		try {
-			return await this.deps.translation.translate(text, parsed.tp, parsed.tls, signal);
+			const output = await this.deps.translation.translate(text, {
+				profileId: parsed.tp,
+				expectedSignature: parsed.tls,
+				signal,
+			});
+			return typeof output === "string" ? output : output.text;
 		} catch (error) {
 			if (
 				(error instanceof Error && error.name === "TranslationConfigurationChangedError") ||

@@ -14,10 +14,7 @@ import {
 } from "./video-player/feature";
 import { createAudioPracticeFeature } from "./audio-practice/feature";
 import { MediaTranscriptionEngine } from "../core/media/transcription/mediaTranscriptionEngine";
-import {
-	MediaSubtitlePipeline,
-	type SubtitleTranslationPort,
-} from "../core/media/subtitles/mediaSubtitlePipeline";
+import { MediaSubtitlePipeline } from "../core/media/subtitles/mediaSubtitlePipeline";
 import { TranslationExecution } from "./translation/domain/translationExecution";
 import { translateYoudao } from "./translation/domain/youdao";
 
@@ -47,6 +44,7 @@ export function createVideoShadowingServices(
 	const translation = new TranslationExecution({
 		ai: deps.ai,
 		readSettings: () => deps.store.getSettings().translation,
+		defaultDirection: "en-zh",
 		youdao: (engine, text, direction, signal) =>
 			translateYoudao(
 				{
@@ -61,21 +59,9 @@ export function createVideoShadowingServices(
 			),
 	});
 
-	const translationPort: SubtitleTranslationPort = {
-		getProfileId: (selected) => translation.prepare(selected, "en-zh").profileId,
-		getSignature: (profileId) => translation.prepare(profileId, "en-zh").signature,
-		listProfiles: () => translation.listProfiles(),
-		translate: async (text, profileId, expectedSignature, signal) => {
-			const output = await translation
-				.prepare(profileId, "en-zh")
-				.translate(text, signal ?? new AbortController().signal, expectedSignature);
-			return output.text;
-		},
-	};
-
 	return new MediaSubtitlePipeline({
 		transcription,
-		translation: translationPort,
+		translation,
 	});
 }
 

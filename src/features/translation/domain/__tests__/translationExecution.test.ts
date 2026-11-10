@@ -81,16 +81,14 @@ describe("translation execution", () => {
 				"engine-profile",
 				"youdao-profile",
 			]);
-			expect(execution.prepare("").profileId).toBe("engine-profile");
+			expect(execution.getProfileId("")).toBe("engine-profile");
 			settings.profiles[0]!.enabled = false;
-			expect(execution.prepare("").profileId).toBe("youdao-profile");
+			expect(execution.getProfileId("")).toBe("youdao-profile");
 			await expect(
-				execution
-					.prepare("engine-profile")
-					.translate("Hello", new AbortController().signal),
+				execution.translate("Hello", { profileId: "engine-profile" }),
 			).rejects.toMatchObject({ code: "config-not-found" });
 			settings.profiles[1]!.enabled = false;
-			expect(execution.prepare("").signature).toBe("none");
+			expect(execution.getSignature("")).toBe("none");
 			expect(request).not.toHaveBeenCalled();
 			expect(youdao).not.toHaveBeenCalled();
 		} finally {
@@ -101,9 +99,15 @@ describe("translation execution", () => {
 	it("routes a translation engine to Youdao with the captured engine and direction", async () => {
 		const { ai, execution, translationEngine, request, youdao } = setup();
 		try {
-			const operation = execution.prepare("youdao-profile", "en-zh");
 			const signal = new AbortController().signal;
-			await expect(operation.translate("Hello", signal)).resolves.toMatchObject({
+			const signature = execution.getSignature("youdao-profile", "en-zh");
+			await expect(
+				execution.translate("Hello", {
+					profileId: "youdao-profile",
+					direction: "en-zh",
+					signal,
+				}),
+			).resolves.toMatchObject({
 				text: "Youdao translation",
 			});
 			expect(youdao).toHaveBeenCalledWith(
@@ -118,8 +122,8 @@ describe("translation execution", () => {
 				signal,
 			);
 			expect(request).not.toHaveBeenCalled();
-			expect(operation.signature).not.toContain("app-key-reference");
-			expect(operation.signature).not.toContain("app-secret-reference");
+			expect(signature).not.toContain("app-key-reference");
+			expect(signature).not.toContain("app-secret-reference");
 		} finally {
 			ai.dispose();
 		}
@@ -128,9 +132,8 @@ describe("translation execution", () => {
 	it("routes an LLM engine through the shared generate request", async () => {
 		const { ai, execution, llmEngine, request, youdao } = setup();
 		try {
-			const operation = execution.prepare("engine-profile");
 			await expect(
-				operation.translate("Hello", new AbortController().signal),
+				execution.translate("Hello", { profileId: "engine-profile" }),
 			).resolves.toMatchObject({ text: "Translation" });
 			expect(request).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -144,16 +147,19 @@ describe("translation execution", () => {
 		}
 	});
 
-	it("rejects an operation prepared before its Youdao engine changes", async () => {
+	it("rejects an operation when its Youdao engine changes before execution", async () => {
 		const { ai, execution, translationEngine, youdao } = setup();
 		try {
-			const operation = execution.prepare("youdao-profile");
+			const initialSignature = execution.getSignature("youdao-profile");
 			await ai.saveEngine({
 				...translationEngine,
 				appSecretSecretId: "replacement-reference",
 			});
 			await expect(
-				operation.translate("Hello", new AbortController().signal),
+				execution.translate("Hello", {
+					profileId: "youdao-profile",
+					expectedSignature: initialSignature,
+				}),
 			).rejects.toBeInstanceOf(TranslationConfigurationChangedError);
 			expect(youdao).not.toHaveBeenCalled();
 		} finally {
@@ -164,18 +170,20 @@ describe("translation execution", () => {
 	it("rejects prepared AI work after the selected engine changes and never falls back to a default", async () => {
 		const { ai, llmEngine, execution, request } = setup();
 		try {
-			const operation = execution.prepare("engine-profile");
+			const initialSignature = execution.getSignature("engine-profile");
 			await ai.saveEngine({ ...llmEngine, model: "replacement" });
 			await expect(
-				operation.translate("Hello", new AbortController().signal),
+				execution.translate("Hello", {
+					profileId: "engine-profile",
+					expectedSignature: initialSignature,
+				}),
 			).rejects.toBeInstanceOf(TranslationConfigurationChangedError);
 			const fallbackId = ai.createEngineId();
 			await ai.saveEngine({ ...llmEngine, id: fallbackId, name: "Fallback" });
 			await ai.setDefault("llm", fallbackId);
 			await ai.deleteEngine(llmEngine.id);
-			const missing = execution.prepare("engine-profile");
 			await expect(
-				missing.translate("Hello", new AbortController().signal),
+				execution.translate("Hello", { profileId: "engine-profile" }),
 			).rejects.toMatchObject({ code: "config-not-found" });
 			expect(request).not.toHaveBeenCalled();
 		} finally {
@@ -210,9 +218,7 @@ describe("translation execution", () => {
 				youdao,
 			});
 			await expect(
-				asrExecution
-					.prepare("speech-profile")
-					.translate("Hello", new AbortController().signal),
+				asrExecution.translate("Hello", { profileId: "speech-profile" }),
 			).rejects.toMatchObject({ code: "config-not-found" });
 			expect(request).not.toHaveBeenCalled();
 			expect(youdao).not.toHaveBeenCalled();
@@ -224,13 +230,33 @@ describe("translation execution", () => {
 	it("borrows a fixed translation direction independently of the translator view's enabled state and direction", async () => {
 		const { ai, execution, settings, request } = setup();
 		try {
-			const operation = execution.prepare("engine-profile", "en-zh");
+			const signature = execution.getSignature("engine-profile", "en-zh");
 			settings.enabled = false;
 			settings.direction = "en-zh";
-			await operation.translate("Hello", new AbortController().signal);
+			await execution.translate("Hello", { profileId: "engine-profile", direction: "en-zh" });
 			expect(request).toHaveBeenCalledOnce();
 			expect(request.mock.calls[0]![0].body).toContain("英文翻译为中文");
-			expect(operation.signature).not.toContain("credential-reference");
+			expect(signature).not.toContain("credential-reference");
+		} finally {
+			ai.dispose();
+		}
+	});
+
+	it("uses injected defaultDirection when direction is omitted", async () => {
+		const { ai, settings, request, youdao } = setup();
+		try {
+			settings.direction = "zh-en";
+			const subtitleExecution = new TranslationExecution({
+				ai,
+				readSettings: () => settings,
+				defaultDirection: "en-zh",
+				youdao,
+			});
+			const signature = subtitleExecution.getSignature("engine-profile");
+			await subtitleExecution.translate("Hello", { profileId: "engine-profile" });
+			expect(request).toHaveBeenCalledOnce();
+			expect(request.mock.calls[0]![0].body).toContain("英文翻译为中文");
+			expect(signature).toBe(subtitleExecution.getSignature("engine-profile", "en-zh"));
 		} finally {
 			ai.dispose();
 		}
@@ -240,9 +266,10 @@ describe("translation execution", () => {
 		const { ai, execution, request } = setup();
 		try {
 			await expect(
-				execution
-					.prepare("engine-profile")
-					.translate("Hello", new AbortController().signal, "8de0aced"),
+				execution.translate("Hello", {
+					profileId: "engine-profile",
+					expectedSignature: "8de0aced",
+				}),
 			).rejects.toBeInstanceOf(TranslationConfigurationChangedError);
 			expect(request).not.toHaveBeenCalled();
 		} finally {
@@ -256,7 +283,10 @@ describe("translation execution", () => {
 			const controller = new AbortController();
 			controller.abort();
 			await expect(
-				execution.prepare("engine-profile").translate("Hello", controller.signal),
+				execution.translate("Hello", {
+					profileId: "engine-profile",
+					signal: controller.signal,
+				}),
 			).rejects.toMatchObject({ code: "cancelled" });
 			expect(request).not.toHaveBeenCalled();
 			expect(youdao).not.toHaveBeenCalled();

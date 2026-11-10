@@ -213,7 +213,7 @@ export class TranslationRuntime {
 			.filter((profile) => profile.enabled && readyIds.has(profile.id))
 			.map((profile) => ({
 				profile,
-				request: this.execution.prepare(profile.id, settings.direction),
+				signature: this.execution.getSignature(profile.id, settings.direction),
 			}));
 		this.state.status = "loading";
 		this.state.results = this.state.results.map((result) =>
@@ -221,15 +221,20 @@ export class TranslationRuntime {
 		);
 		this.publish();
 		await Promise.all(
-			translations.map(async ({ profile, request }) => {
-				const key = JSON.stringify([request.signature, text.trim()]);
+			translations.map(async ({ profile, signature }) => {
+				const key = JSON.stringify([signature, text.trim()]);
 				try {
 					let output = this.cache.get(key);
 					if (output) {
 						this.cache.delete(key);
 						this.cache.set(key, output);
 					} else {
-						output = await request.translate(text, controller.signal);
+						output = await this.execution.translate(text, {
+							profileId: profile.id,
+							direction: settings.direction,
+							expectedSignature: signature,
+							signal: controller.signal,
+						});
 						if (generation !== this.generation || this.disposed) return;
 						this.cache.set(key, output);
 						if (this.cache.size > 30)
@@ -271,14 +276,19 @@ export class TranslationRuntime {
 		);
 		this.publish();
 		try {
-			const request = this.execution.prepare(profile.id, direction);
-			const key = JSON.stringify([request.signature, text.trim()]);
+			const signature = this.execution.getSignature(profile.id, direction);
+			const key = JSON.stringify([signature, text.trim()]);
 			let output = this.cache.get(key);
 			if (output) {
 				this.cache.delete(key);
 				this.cache.set(key, output);
 			} else {
-				output = await request.translate(text, controller.signal);
+				output = await this.execution.translate(text, {
+					profileId: profile.id,
+					direction,
+					expectedSignature: signature,
+					signal: controller.signal,
+				});
 				if (generation !== this.generation || this.disposed) return;
 				this.cache.set(key, output);
 				if (this.cache.size > 30) this.cache.delete(this.cache.keys().next().value!);

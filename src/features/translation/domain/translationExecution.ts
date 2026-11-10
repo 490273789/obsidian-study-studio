@@ -17,20 +17,18 @@ export type YoudaoTranslation = (
 	signal: AbortSignal,
 ) => Promise<TranslationOutput>;
 
-interface TranslationExecutionDependencies {
-	ai: Pick<AiService, "getSnapshot" | "generate">;
+export interface TranslationExecutionDependencies {
+	readonly ai: Pick<AiService, "getSnapshot" | "generate">;
 	readSettings(): TranslationSettings;
-	youdao: YoudaoTranslation;
+	readonly youdao: YoudaoTranslation;
+	readonly defaultDirection?: TranslationSettings["direction"];
 }
 
-interface PreparedTranslation {
-	readonly profileId: string;
-	readonly signature: string;
-	translate(
-		text: string,
-		signal: AbortSignal,
-		expectedSignature?: string,
-	): Promise<TranslationOutput>;
+export interface TranslationExecutionOptions {
+	readonly profileId?: string;
+	readonly direction?: TranslationSettings["direction"];
+	readonly expectedSignature?: string;
+	readonly signal?: AbortSignal;
 }
 
 export class TranslationConfigurationChangedError extends Error {
@@ -40,7 +38,11 @@ export class TranslationConfigurationChangedError extends Error {
 	}
 }
 
-/** Owns profile selection, execution identity, and requests without sharing view/session state. */
+/**
+ * Deep domain authority for translation execution.
+ * Owns profile resolution, signature fingerprinting, configuration drift detection,
+ * and dispatching to LLM or translation engines behind an atomic interface.
+ */
 export class TranslationExecution {
 	constructor(private readonly deps: TranslationExecutionDependencies) {}
 
@@ -51,36 +53,48 @@ export class TranslationExecution {
 			.map(({ id, name }) => ({ id, name }));
 	}
 
-	/** Capturing is request-free; a missing configuration can still accompany original subtitles. */
-	prepare(profileId: string, direction?: TranslationSettings["direction"]): PreparedTranslation {
-		const prepared = this.capture(profileId, direction);
-		return Object.freeze<PreparedTranslation>({
-			profileId: prepared.profileId,
-			signature: prepared.signature,
-			translate: async (text, signal, expectedSignature = prepared.signature) => {
-				if (signal.aborted) throw new TransportError("cancelled");
-				const current = this.capture(profileId, direction);
-				if (current.signature !== expectedSignature)
-					throw new TranslationConfigurationChangedError();
-				if (!current.profile?.enabled) throw new AiError("config-not-found");
-				if (!text.trim()) throw new AiError("invalid-input");
-				const engine = current.engine;
-				// An ASR engine is never a translation target, even when selected by a
-				// stale profile; there is no fallback to another engine.
-				if (!engine || engine.kind === "asr") throw new AiError("config-not-found");
-				if (engine.kind === "translation")
-					return this.deps.youdao(engine, text, current.direction, signal);
-				// No await separates capture/check from generate(), which captures the engine synchronously.
-				return this.deps.ai.generate({
-					configId: engine.id,
-					thinkingEnabled: current.thinkingEnabled,
-					signal,
-					messages: [
-						{ role: "system", text: current.prompt },
-						{ role: "user", text },
-					],
-				});
-			},
+	getProfileId(selected?: string): string {
+		return this.capture(selected ?? "").profileId;
+	}
+
+	getSignature(profileId?: string, direction?: TranslationSettings["direction"]): string {
+		return this.capture(profileId ?? "", direction).signature;
+	}
+
+	async translate(
+		text: string,
+		options?: TranslationExecutionOptions,
+	): Promise<TranslationOutput> {
+		const signal = options?.signal ?? new AbortController().signal;
+		if (signal.aborted) throw new TransportError("cancelled");
+
+		const current = this.capture(options?.profileId ?? "", options?.direction);
+		if (
+			options?.expectedSignature !== undefined &&
+			current.signature !== options.expectedSignature
+		) {
+			throw new TranslationConfigurationChangedError();
+		}
+		if (!current.profile?.enabled) throw new AiError("config-not-found");
+		if (!text.trim()) throw new AiError("invalid-input");
+
+		const engine = current.engine;
+		// An ASR engine is never a translation target, even when selected by a
+		// stale profile; there is no fallback to another engine.
+		if (!engine || engine.kind === "asr") throw new AiError("config-not-found");
+		if (engine.kind === "translation") {
+			return this.deps.youdao(engine, text, current.direction, signal);
+		}
+
+		// No await separates capture/check from generate(), which captures the engine synchronously.
+		return this.deps.ai.generate({
+			configId: engine.id,
+			thinkingEnabled: current.thinkingEnabled,
+			signal,
+			messages: [
+				{ role: "system", text: current.prompt },
+				{ role: "user", text },
+			],
 		});
 	}
 
@@ -89,7 +103,7 @@ export class TranslationExecution {
 		const profileId =
 			selected.trim() || settings.profiles.find((profile) => profile.enabled)?.id || "";
 		const profile = settings.profiles.find((profile) => profile.id === profileId);
-		const resolvedDirection = direction ?? settings.direction;
+		const resolvedDirection = direction ?? this.deps.defaultDirection ?? settings.direction;
 		const engine = profile ? findEngine(this.registry(), profile.engineId) : undefined;
 		const prompt = renderTranslationPrompt(settings.promptTemplate, resolvedDirection);
 		const signature = profileId

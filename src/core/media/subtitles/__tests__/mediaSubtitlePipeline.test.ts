@@ -112,13 +112,18 @@ describe("MediaSubtitlePipeline", () => {
 	});
 
 	it("translates text using valid signature", async () => {
-		const { pipeline } = setup();
+		const { pipeline, translation } = setup();
 		const sig = await pipeline.getSignature({
 			transcriptionEngineId: "engine-a",
 			translationProfileId: "prof-1",
 		});
 		const result = await pipeline.translate("Hello world", sig);
 		expect(result).toBe("你好世界");
+		expect(translation.translate).toHaveBeenCalledWith("Hello world", {
+			profileId: "prof-1",
+			expectedSignature: "trans-sig-en-zh",
+			signal: undefined,
+		});
 	});
 
 	it("detects translation configuration drift and throws standardized message", async () => {
