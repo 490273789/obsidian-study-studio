@@ -70,7 +70,7 @@ export type PresentedCardKind = "study" | "practice" | "challenge" | "spelling";
 
 /**
  * The one card encounter currently on screen. The encounter key follows
- * `CONTEXT.md`'s 卡片呈现 rule; the presentation key adds the interaction phase
+ * `GLOSSARY.md`'s 卡片呈现 rule; the presentation key adds the interaction phase
  * that must remount a mode's local inputs (challenge feedback). Both are
  * computed here so no view re-derives its own key.
  */

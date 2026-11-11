@@ -32,7 +32,7 @@ Read only the guides relevant to the current task; a task crossing several areas
 | React UI, deck home, Obsidian view/settings, localization, modals, or CSS       | `docs/agents/ui-and-obsidian.md`                                                    |
 | Desktop deck PDF export                                                         | `docs/agents/pdf-export.md`                                                         |
 | Commands, tests, validation, generated files, deployment, commits, or releases  | `docs/agents/testing-and-workflow.md`                                               |
-| Domain terminology, architecture/debugging/TDD context, or an ADR decision      | `docs/agents/domain.md`, then `CONTEXT.md` and only the relevant `docs/adr/` files  |
+| Domain terminology, architecture/debugging/TDD context, or an ADR decision      | `docs/agents/domain.md`, then `GLOSSARY.md` and only the relevant `docs/adr/` files |
 | Dictionary lookup, local dictionaries, sources, or sandbox rendering            | `docs/agents/dictionary.md`                                                         |
 | GitHub issue operations                                                         | `docs/agents/issue-tracker.md`; for triage also read `docs/agents/triage-labels.md` |
 

@@ -6,23 +6,23 @@ Engineering skills should read this repo's domain documentation before architect
 
 ## Before exploring, read these
 
-- `CONTEXT.md` at the repo root
+- `GLOSSARY.md` at the repo root
 - `docs/adr/` for architectural decisions that touch the area being changed
 
-If these files do not exist yet, proceed silently. The domain-modeling workflows create them lazily when terms or decisions are resolved.
+`GLOSSARY.md` is the single source of domain terminology. Keep module ownership and implementation details in the relevant area guide; use ADRs for architectural decisions and their rationale.
 
 ## File structure
 
 ```text
 /
-|-- CONTEXT.md
+|-- GLOSSARY.md
 |-- docs/adr/
 `-- src/
 ```
 
 ## Use the glossary's vocabulary
 
-When output names a domain concept, use the term as defined in `CONTEXT.md`.
+When output names a domain concept, use the term as defined in `GLOSSARY.md`.
 
 If the concept is missing, either reconsider the wording or note the gap for `/domain-modeling`.
 

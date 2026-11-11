@@ -50,7 +50,7 @@ Study Studio 是运行于 Obsidian 内的学习插件。现有功能围绕 Markd
 - `src/features/index.ts` 与各功能目录：现有功能组合及实现，判断能力范围时应与实际代码核对。
 - `docs/agents/cards-data-and-identity.md`：笔记内容权威、学习状态连续性和源文本保护约束。
 - `docs/agents/ui-and-obsidian.md`：宿主集成、本地化及界面可访问性要求。
-- `CONTEXT.md`：现有领域术语，后续工作沿用其词义。
+- `GLOSSARY.md`：现有领域术语，后续工作沿用其词义。
 - 本轮未提供可引用的用户证言、学习效果研究或量化成效数据，不得将功能描述写成已有证据支持的效果承诺。
 
 ## Product Principles

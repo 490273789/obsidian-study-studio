@@ -28,7 +28,7 @@
 | **`refactor`** | 重构（既不新增功能也不修复 Bug） | 提取发音逻辑到独立 Runtime、优化 Session 状态机流转    |
 | **`perf`**     | 性能优化                         | 优化大数据量卡片解析速度、改进 IndexedDB 音频缓存读取  |
 | **`test`**     | 测试相关                         | 新增 Parser 单元测试、修复 Vitest 断言                 |
-| **`docs`**     | 文档更新                         | 更新 README、AGENTS.md、CONTEXT.md、开发文档           |
+| **`docs`**     | 文档更新                         | 更新 README、AGENTS.md、GLOSSARY.md、开发文档          |
 | **`chore`**    | 构建/依赖/配置变动               | 升级依赖库、调整 Vite/Oxlint 配置、版本号 bump         |
 | **`revert`**   | 代码回滚                         | 撤销某次有问题的 commit                                |
 
