@@ -1,5 +1,7 @@
 import { createEmptyCard, State } from "ts-fsrs";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { DEFAULT_SETTINGS } from "../../../../../core/host/settingsSlices";
+import { FSRSScheduler, toFSRSRating } from "../scheduler";
 import {
 	answerStudyCard,
 	canUndoStudyAnswer,
@@ -90,6 +92,41 @@ describe("createStudySession", () => {
 });
 
 describe("answerStudyCard", () => {
+	it.each([1, 2, 3, 4, 5] as const)(
+		"advances past a legacy mastered card with rating %s and preserves undo",
+		(rating) => {
+			const card = makeCard("card-1", State.Review, new Date("2026-07-24T00:00:00.000Z"), 0);
+			card.fsrsCard = {
+				...card.fsrsCard,
+				stability: 21,
+				difficulty: 0,
+				scheduled_days: 21,
+				last_review: new Date("2026-07-03T00:00:00.000Z"),
+			};
+			const fsrs = new FSRSScheduler(DEFAULT_SETTINGS);
+			const scheduler: StudyCardScheduler = {
+				rateStudyCard(current, grade) {
+					if (grade === 5) {
+						return { fsrsCard: fsrs.rateAsGarbage(current), repeatInSession: false };
+					}
+					const rated = fsrs.rateCard(current, toFSRSRating(grade));
+					return { fsrsCard: rated.card, repeatInSession: rated.repeatInSession };
+				},
+			};
+
+			const result = answerStudyCard({ session: makeSession(), card, rating, scheduler });
+
+			if (result.type !== "continue") throw new Error("Expected continue result");
+			expect(getCurrentStudyCardId(result.session)).toBe("card-2");
+			expect(result.cardUpdate.fsrsCard.difficulty).toBeGreaterThanOrEqual(1);
+			expect(result.cardUpdate.fsrsCard.reps).toBe(2);
+			expect(result.session.repeatQueue).toEqual(rating === 1 ? ["card-1"] : []);
+			const undone = undoStudyAnswer(result.session);
+			expect(undone?.cardUpdate.fsrsCard).toEqual(card.fsrsCard);
+			expect(undone && getCurrentStudyCardId(undone.session)).toBe("card-1");
+		},
+	);
+
 	it("returns a card update intent and advances the session", () => {
 		const card = makeCard("card-1", State.New, new Date("2026-07-03T00:00:00.000Z"), 0);
 		const scheduler = makeScheduler();

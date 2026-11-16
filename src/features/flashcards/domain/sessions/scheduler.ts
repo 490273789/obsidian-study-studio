@@ -23,7 +23,12 @@ export class FSRSScheduler {
 	 */
 	rateCard(card: Card, rating: Rating): { card: Card; repeatInSession: boolean } {
 		const now = new Date();
-		const result = this.f.repeat(card, now);
+		// Older custom mastered ratings set stability but left new-card difficulty at zero.
+		const schedulableCard =
+			card.difficulty === 0 && card.stability > 0
+				? { ...card, difficulty: this.initialMasteredDifficulty() }
+				: card;
+		const result = this.f.repeat(schedulableCard, now);
 
 		let ratingResult: RecordLogItem | undefined;
 		switch (rating) {
@@ -66,7 +71,7 @@ export class FSRSScheduler {
 			...card,
 			due: dueDate,
 			stability: card.stability || 21,
-			difficulty: card.difficulty,
+			difficulty: card.difficulty === 0 ? this.initialMasteredDifficulty() : card.difficulty,
 			scheduled_days: 21,
 			reps: card.reps + 1,
 			lapses: card.lapses,
@@ -74,6 +79,12 @@ export class FSRSScheduler {
 			last_review: now,
 			learning_steps: 0,
 		};
+	}
+
+	private initialMasteredDifficulty(): number {
+		// Easy is the closest FSRS grade to the custom “熟练” rating.
+		return this.f.model.step({ memoryState: null, rating: Rating.Easy, elapsedDays: 0 })
+			.difficulty;
 	}
 }
 
