@@ -27,8 +27,17 @@ Before changing behavior, read only the matching guides under `docs/agents/` for
 - React UI, deck home, Obsidian views/settings, localization, modals, CSS → `ui-and-obsidian.md`.
 - Desktop deck PDF export → `pdf-export.md`.
 - Code changes, commands, validation, generated files, commits, releases, deployment → `testing-and-workflow.md`.
-- Domain terms, architecture, debugging, TDD, ADR changes → `domain.md`, then root `GLOSSARY.md` and relevant ADRs.
 - Dictionary lookup, local dictionaries, sources, sandbox rendering → `dictionary.md`.
-- GitHub issues → `issue-tracker.md`; triage also uses `triage-labels.md`.
 
 For library, framework, SDK, API (including Obsidian), CLI, or cloud-service questions, always consult Context7 first, including for syntax, configuration, migration, setup, usage, and debugging.
+
+## Agent skills
+
+### Issue tracker
+
+For issues and specs, use GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+For domain terminology, architecture, debugging, TDD, and ADR changes, follow
+the single-context layout in `docs/agents/domain.md`.
