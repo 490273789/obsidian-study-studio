@@ -26,6 +26,7 @@ vi.mock("../../../../../../core/ui/primitives/Header", () => ({
 }));
 vi.mock("../../../../../../core/ui/primitives/Confetti", () => ({ Confetti: () => null }));
 vi.mock("../../Markdown", () => ({ MarkdownContent: () => <div /> }));
+vi.mock("../../Markdown/MarkdownContent", () => ({ MarkdownContent: () => <div /> }));
 vi.mock("../../../../strings/context", () => ({
 	useFlashcardI18n: () => ({ language: "zh", t: (key: string) => key }),
 }));
@@ -119,10 +120,44 @@ describe("session result actions", () => {
 		);
 		expect(primaryButton().children).toBe("study.backHome");
 		buttons
-			.find((button) => button.children === "study.studyAgain")
+			.find((button) => button.children === "study.backToStudySetup")
 			?.onClick?.({} as React.MouseEvent<HTMLButtonElement>);
 		expect(onRestart).toHaveBeenCalledOnce();
 	});
+
+	it.each([false, true])(
+		"offers optional lapse practice and disables result actions while busy (%s)",
+		(isBusy) => {
+			const onPracticeLapses = vi.fn();
+			const result = {
+				originDeck: { name: "Deck" },
+				cardCount: 1,
+				totalReviews: 1,
+				timeSpent: 3,
+				ratingCounts: { 2: 1 },
+				lapseCards: [
+					{ identity: "a", front: "word", back: "meaning", sourceFile: "deck.md" },
+				],
+			} as unknown as StudyResultSnapshot;
+			renderToStaticMarkup(
+				<StudySummary
+					result={result}
+					onHome={vi.fn()}
+					onRestart={vi.fn()}
+					onPracticeLapses={onPracticeLapses}
+					isBusy={isBusy}
+				/>,
+			);
+			const practice = buttons.find((button) => button.children === "study.practiceLapses");
+			expect(practice).toBeDefined();
+			expect(practice?.disabled).toBe(isBusy);
+			expect(primaryButton().disabled).toBe(isBusy);
+			if (!isBusy) {
+				practice?.onClick?.({} as React.MouseEvent<HTMLButtonElement>);
+				expect(onPracticeLapses).toHaveBeenCalledOnce();
+			}
+		},
+	);
 
 	it.each([
 		[false, true],
@@ -172,7 +207,7 @@ describe("session result actions", () => {
 		},
 	);
 
-	it("renders split layout with lapse cards and note open actions in StudySummary", () => {
+	it("renders a review layout with lapse cards and note open actions in StudySummary", () => {
 		const onHome = vi.fn();
 		const onOpenSourceFile = vi.fn();
 		const result = {
@@ -197,9 +232,8 @@ describe("session result actions", () => {
 			<StudySummary result={result} onHome={onHome} onOpenSourceFile={onOpenSourceFile} />,
 		);
 
-		expect(html).toContain("splitContent");
-		expect(html).toContain("primaryColumn");
-		expect(html).toContain("secondaryColumn");
+		expect(html).toContain("reviewContent");
+		expect(html).toContain("inlineActions");
 		expect(html).toContain("study.weakCardsTitle");
 		expect(html).toContain("vocabulary.md");
 	});
@@ -217,7 +251,7 @@ describe("session result actions", () => {
 
 		const html = renderToStaticMarkup(<StudySummary result={result} onHome={onHome} />);
 
-		expect(html).toContain("splitContent");
+		expect(html).toContain("reviewContent");
 		expect(html).toContain("study.allMasteredTitle");
 	});
 
@@ -266,5 +300,47 @@ describe("session result actions", () => {
 			),
 		).toBe(false);
 		expect(onHome).toHaveBeenCalledTimes(3);
+	});
+
+	it.each(["BUTTON", "A", "SELECT", "SUMMARY"])(
+		"leaves %s activation to the focused control",
+		(tagName) => {
+			const onHome = vi.fn();
+			const preventDefault = vi.fn();
+			const target = { tagName } as unknown as HTMLElement;
+			const options = {
+				actions: [{ label: "Home", onClick: onHome, primary: true }],
+				onHome,
+			};
+			for (const key of ["Enter", " "]) {
+				expect(handleSessionSummaryKeyDown({ key, target, preventDefault }, options)).toBe(
+					false,
+				);
+			}
+			expect(onHome).not.toHaveBeenCalled();
+			expect(preventDefault).not.toHaveBeenCalled();
+		},
+	);
+
+	it("does not intercept descendants of a control or disabled primary actions", () => {
+		const onHome = vi.fn();
+		const options = {
+			actions: [{ label: "Home", onClick: onHome, primary: true, disabled: true }],
+			onHome,
+		};
+		const target = {
+			tagName: "svg",
+			closest: () => ({ tagName: "BUTTON" }),
+		} as unknown as HTMLElement;
+		expect(
+			handleSessionSummaryKeyDown({ key: "Enter", target, preventDefault: vi.fn() }, options),
+		).toBe(false);
+		expect(
+			handleSessionSummaryKeyDown(
+				{ key: "Enter", target: null, preventDefault: vi.fn() },
+				options,
+			),
+		).toBe(false);
+		expect(onHome).not.toHaveBeenCalled();
 	});
 });

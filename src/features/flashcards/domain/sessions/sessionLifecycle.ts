@@ -43,7 +43,7 @@ import {
 	createSpellingSession,
 	getCurrentSpellingCardId,
 } from "./spellingSessionEngine";
-import { planRetryIncorrectSession, planSessionQueue } from "./sessionPlanner";
+import { planPracticeCardSet, planRetryIncorrectSession, planSessionQueue } from "./sessionPlanner";
 import {
 	answerChallengeQuestion,
 	continueChallengeAfterError,
@@ -255,7 +255,9 @@ export type SessionRestartOrigin =
 			readonly mode: "practice";
 			readonly deckId: string;
 			readonly direction: CardDirection;
-			readonly selection: PracticeSelection;
+			readonly selection:
+				| PracticeSelection
+				| { readonly kind: "identities"; readonly cardIds: readonly string[] };
 	  }
 	| {
 			readonly mode: "spelling";
@@ -376,6 +378,8 @@ export type ChallengeLifecycleAction =
 
 type ResultLifecycleAction =
 	| { readonly kind: "retry-incorrect" }
+	| { readonly kind: "practice-lapses" }
+	| { readonly kind: "restart-practice" }
 	| { readonly kind: "next-level" }
 	| { readonly kind: "restart-challenge" }
 	| { readonly kind: "dismiss" };
@@ -991,6 +995,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 
 	private buildChallengeSnapshot(
 		state: Extract<InternalActiveState, { mode: "challenge" }>,
+		revision: number,
 	): ActiveChallengeSnapshot {
 		const question = getCurrentChallengeQuestion(state.session)!;
 		const entry = this.challengeCards().get(question.identity);
@@ -1001,11 +1006,11 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		return {
 			kind: "active",
 			mode: "challenge",
-			revision: this.revision,
+			revision,
 			reference: {
 				kind: "active",
 				mode: "challenge",
-				revision: this.revision,
+				revision,
 				key: state.key,
 			},
 			startTime: state.session.startTime,
@@ -1042,6 +1047,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 
 	private buildChallengeResultSnapshot(
 		state: Extract<InternalResultState, { mode: "challenge" }>,
+		revision: number,
 	): ChallengeResultSnapshot {
 		const round = state.progress.round!;
 		const totals = round.completedLevels.reduce(
@@ -1056,11 +1062,11 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		return {
 			kind: "result",
 			mode: "challenge",
-			revision: this.revision,
+			revision,
 			reference: {
 				kind: "result",
 				mode: "challenge",
-				revision: this.revision,
+				revision,
 				key: state.key,
 			},
 			completedAt: state.completedAt,
@@ -1380,7 +1386,24 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 				expectedRoundId: state.progress.round?.id ?? null,
 			});
 		}
-		if (state.mode === "study" || action.kind !== "retry-incorrect") {
+		if (state.mode === "study") {
+			if (action.kind !== "practice-lapses") return this.rejected("action-not-available");
+			return this.startPracticeCardSet(
+				state.originDeck,
+				state.restartOrigin.direction,
+				(state.lapseCards ?? []).map((card) => card.identity),
+			);
+		}
+		if (action.kind === "restart-practice") {
+			if (state.mode !== "practice" || state.restartOrigin.selection.kind !== "identities")
+				return this.rejected("action-not-available");
+			return this.startPracticeCardSet(
+				state.originDeck,
+				state.restartOrigin.direction,
+				state.restartOrigin.selection.cardIds,
+			);
+		}
+		if (action.kind !== "retry-incorrect") {
 			return this.rejected("action-not-available");
 		}
 		const planResult = planRetryIncorrectSession({
@@ -1427,6 +1450,45 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			});
 		}
 		return this.applied(undefined, planResult.omittedCardCount);
+	}
+
+	private startPracticeCardSet(
+		originDeck: SessionOriginDeckSnapshot,
+		direction: CardDirection,
+		cardIdentities: readonly string[],
+	): LifecycleOutcome {
+		const plan = planPracticeCardSet({
+			direction,
+			cardIdentities,
+			getCard: (cardId) => this.repository.getCard(originDeck.id, cardId),
+			shuffle: this.shuffle,
+		});
+		if (plan.kind === "rejected") return this.rejected(plan.reason);
+		const active: Extract<InternalActiveState, { mode: "practice" }> = {
+			kind: "active",
+			mode: "practice",
+			key: this.makeKey("practice"),
+			session: {
+				...createPracticeSession({
+					deckId: originDeck.id,
+					direction: plan.direction,
+					cardIds: plan.cardIds,
+					startTime: this.now(),
+				}),
+				originDeck,
+			},
+			restartOrigin: {
+				mode: "practice",
+				deckId: originDeck.id,
+				direction: plan.direction,
+				// Keep the original set so a later replay can include restored identities.
+				selection: { kind: "identities", cardIds: Array.from(new Set(cardIdentities)) },
+			},
+		};
+		// No durable commit precedes this result replacement: a failed read must keep the result.
+		const snapshot = this.buildSnapshot(active, this.revision + 1);
+		this.publish(active, snapshot);
+		return this.applied(undefined, plan.omittedCardCount);
 	}
 
 	private async exitActive(state: InternalActiveState): Promise<LifecycleOutcome> {
@@ -1533,92 +1595,90 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		}
 	}
 
-	private publish(state: InternalState): void {
+	private publish(state: InternalState, preparedSnapshot?: SessionLifecycleSnapshot): void {
 		if (this.disposed) return;
 		this.state = state;
 		this.revision++;
-		this.snapshot = this.buildSnapshot();
+		this.snapshot = preparedSnapshot ?? this.buildSnapshot(state, this.revision);
 		for (const listener of this.listeners) listener();
 	}
 
-	private buildSnapshot(): SessionLifecycleSnapshot {
-		if (this.state.kind === "idle") {
-			return makeIdleSnapshot(this.revision, this.state.key, this.state.lastEnd);
+	private buildSnapshot(state: InternalState, revision: number): SessionLifecycleSnapshot {
+		if (state.kind === "idle") {
+			return makeIdleSnapshot(revision, state.key, state.lastEnd);
 		}
-		if (this.state.kind === "result") return this.buildResultSnapshot(this.state);
-		if (this.state.mode === "challenge") return this.buildChallengeSnapshot(this.state);
+		if (state.kind === "result") return this.buildResultSnapshot(state, revision);
+		if (state.mode === "challenge") return this.buildChallengeSnapshot(state, revision);
 		const cardId =
-			this.state.mode === "study"
-				? getCurrentStudyCardId(this.state.session)
-				: this.state.mode === "spelling"
-					? getCurrentSpellingCardId(this.state.session)
-					: (this.state.session.cardQueue[this.state.session.currentIndex] ?? null);
-		const card = cardId
-			? this.repository.getCard(this.state.session.deckId, cardId)
-			: undefined;
+			state.mode === "study"
+				? getCurrentStudyCardId(state.session)
+				: state.mode === "spelling"
+					? getCurrentSpellingCardId(state.session)
+					: (state.session.cardQueue[state.session.currentIndex] ?? null);
+		const card = cardId ? this.repository.getCard(state.session.deckId, cardId) : undefined;
 		if (!card) throw new Error("Active session current card is unavailable");
 		const common = {
 			kind: "active" as const,
-			revision: this.revision,
-			originDeck: getOriginDeck(this.state.session),
-			startTime: this.state.session.startTime,
+			revision,
+			originDeck: getOriginDeck(state.session),
+			startTime: state.session.startTime,
 			currentCard: snapshotCard(card),
-			answerEventCount: getAnswerEventCount(this.state),
+			answerEventCount: getAnswerEventCount(state),
 		};
-		if (this.state.mode === "study") {
-			const progress = getStudyProgress(this.state.session);
+		if (state.mode === "study") {
+			const progress = getStudyProgress(state.session);
 			return {
 				...common,
 				mode: "study",
 				reference: {
 					kind: "active",
 					mode: "study",
-					revision: this.revision,
-					key: this.state.key,
+					revision,
+					key: state.key,
 				},
-				direction: this.state.session.direction,
-				canPrevious: canUndoStudyAnswer(this.state.session),
+				direction: state.session.direction,
+				canPrevious: canUndoStudyAnswer(state.session),
 				progress: {
 					...progress,
-					completed: this.state.session.answerEvents.length,
+					completed: state.session.answerEvents.length,
 				},
 			};
 		}
-		if (this.state.mode === "practice") {
-			const total = this.state.session.totalQuestions;
-			const current = Math.min(this.state.session.currentIndex + 1, total);
+		if (state.mode === "practice") {
+			const total = state.session.totalQuestions;
+			const current = Math.min(state.session.currentIndex + 1, total);
 			return {
 				...common,
 				mode: "practice",
 				reference: {
 					kind: "active",
 					mode: "practice",
-					revision: this.revision,
-					key: this.state.key,
+					revision,
+					key: state.key,
 				},
-				direction: this.state.session.direction,
-				canPrevious: previousPracticeCard(this.state.session) !== null,
+				direction: state.session.direction,
+				canPrevious: previousPracticeCard(state.session) !== null,
 				progress: {
 					current,
-					completed: this.state.session.history.length,
+					completed: state.session.history.length,
 					total,
 					percent: total > 0 ? (current / total) * 100 : 0,
 					label: `${current}/${total}`,
 				},
 			};
 		}
-		const total = this.state.session.selectedCardIds.length;
-		const completed = this.state.session.completedCardIds.length;
+		const total = state.session.selectedCardIds.length;
+		const completed = state.session.completedCardIds.length;
 		return {
 			...common,
 			mode: "spelling",
 			reference: {
 				kind: "active",
 				mode: "spelling",
-				revision: this.revision,
-				key: this.state.key,
+				revision,
+				key: state.key,
 			},
-			phase: this.state.session.phase,
+			phase: state.session.phase,
 			progress: {
 				current: completed,
 				completed,
@@ -1629,17 +1689,20 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		};
 	}
 
-	private buildResultSnapshot(state: InternalResultState): ResultLifecycleSnapshot {
-		if (state.mode === "challenge") return this.buildChallengeResultSnapshot(state);
+	private buildResultSnapshot(
+		state: InternalResultState,
+		revision: number,
+	): ResultLifecycleSnapshot {
+		if (state.mode === "challenge") return this.buildChallengeResultSnapshot(state, revision);
 		if (state.mode === "study") {
 			return {
 				kind: "result",
 				mode: "study",
-				revision: this.revision,
+				revision,
 				reference: {
 					kind: "result",
 					mode: "study",
-					revision: this.revision,
+					revision,
 					key: state.key,
 				},
 				originDeck: state.originDeck,
@@ -1656,11 +1719,11 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			return {
 				kind: "result",
 				mode: "practice",
-				revision: this.revision,
+				revision,
 				reference: {
 					kind: "result",
 					mode: "practice",
-					revision: this.revision,
+					revision,
 					key: state.key,
 				},
 				originDeck: state.originDeck,
@@ -1673,11 +1736,11 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		return {
 			kind: "result",
 			mode: "spelling",
-			revision: this.revision,
+			revision,
 			reference: {
 				kind: "result",
 				mode: "spelling",
-				revision: this.revision,
+				revision,
 				key: state.key,
 			},
 			originDeck: state.originDeck,

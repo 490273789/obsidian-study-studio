@@ -11,6 +11,7 @@ import {
 	getPracticeSetupPlan,
 	getSpellingSetupPlan,
 	getStudySetupPlan,
+	planPracticeCardSet,
 	planRetryIncorrectSession,
 	planSessionQueue,
 } from "../sessionPlanner";
@@ -476,5 +477,49 @@ describe("incorrect retry planning", () => {
 				getCard: (id) => cardMap.get(id) ?? null,
 			}),
 		).toEqual({ kind: "rejected", reason: "no-retryable-cards" });
+	});
+});
+
+describe("explicit practice card set planning", () => {
+	it("revalidates only the unique requested identities and keeps the direction", () => {
+		const moved = { ...makeCard(STABLE_ONE), sourceFile: "notes/moved.md" };
+		const getCard = (identity: string) => (identity === STABLE_ONE ? moved : undefined);
+		expect(
+			planPracticeCardSet({
+				direction: "reversed",
+				cardIdentities: [STABLE_ONE, STABLE_TWO, STABLE_ONE],
+				getCard,
+				shuffle: (ids) => ids,
+			}),
+		).toEqual({
+			kind: "success",
+			cardIds: [STABLE_ONE],
+			direction: "reversed",
+			omittedCardCount: 1,
+		});
+	});
+
+	it("shuffles within the requested set and ignores other cards", () => {
+		const cards = [makeCard(STABLE_ONE), makeCard(STABLE_TWO), makeCard("unselected")];
+		expect(
+			planPracticeCardSet({
+				direction: "normal",
+				cardIdentities: [STABLE_ONE, STABLE_TWO],
+				getCard: (identity) => cards.find((card) => card.id === identity),
+				shuffle: (ids) => ids.reverse(),
+			}),
+		).toMatchObject({ cardIds: [STABLE_TWO, STABLE_ONE], omittedCardCount: 0 });
+	});
+
+	it("rejects an empty or entirely unavailable set without substituting a different identity", () => {
+		for (const cardIdentities of [[], [STABLE_ONE]]) {
+			expect(
+				planPracticeCardSet({
+					direction: "normal",
+					cardIdentities,
+					getCard: () => makeCard(STABLE_TWO),
+				}),
+			).toEqual({ kind: "rejected", reason: "no-eligible-cards" });
+		}
 	});
 });

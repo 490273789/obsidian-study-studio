@@ -198,6 +198,13 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 		if (presentedLifecycleSnapshot.kind === "result")
 			void navigation.result(presentedLifecycleSnapshot.reference, "retry-incorrect");
 	}, [navigation, presentedLifecycleSnapshot]);
+	const handlePracticeLapses = useCallback(() => {
+		if (
+			presentedLifecycleSnapshot.kind === "result" &&
+			presentedLifecycleSnapshot.mode === "study"
+		)
+			void navigation.result(presentedLifecycleSnapshot.reference, "practice-lapses");
+	}, [navigation, presentedLifecycleSnapshot]);
 	const handleResultHomeClick = useCallback(() => {
 		if (presentedLifecycleSnapshot.kind === "result")
 			void navigation.result(presentedLifecycleSnapshot.reference, "home");
@@ -256,6 +263,7 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 		onComplete: handleSessionComplete,
 		onRestart: handlePracticeRestart,
 		onRetryIncorrect: handlePracticeRetryIncorrect,
+		onPracticeLapses: handlePracticeLapses,
 		onResultHome: handleResultHomeClick,
 		onNextLevel: handleNextLevel,
 		onStartChallenge: (request, replaceExisting) => {

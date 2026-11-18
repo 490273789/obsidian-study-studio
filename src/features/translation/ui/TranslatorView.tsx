@@ -212,7 +212,8 @@ export const TranslatorView = React.memo(function TranslatorView({
 	const strings = translationStrings(language);
 	const isLoading = snapshot.status === "loading";
 	const results = snapshot.results;
-	const readyCount = results.filter((result) => !result.setupIssue).length;
+	const readyProfiles = results.filter((result) => !result.setupIssue);
+	const readyCount = readyProfiles.length;
 	const loadingCount = results.filter((result) => result.status === "loading").length;
 	const hasResults = results.some(
 		(result) => result.status === "success" || result.status === "error",
@@ -259,7 +260,6 @@ export const TranslatorView = React.memo(function TranslatorView({
 				: "neutral";
 	const succeeded = snapshot.results.filter((result) => result.status === "success").length;
 	const failed = snapshot.results.filter((result) => result.status === "error").length;
-	const memorySuffix = hasResults ? ` · ${strings.memoryOnly}` : "";
 	const statusText = isLoading
 		? formatTranslationString(strings.loadingProfiles, { count: loadingCount })
 		: snapshot.error
@@ -269,10 +269,12 @@ export const TranslatorView = React.memo(function TranslatorView({
 						success: succeeded,
 						total: succeeded + failed,
 						failed,
-					}) + memorySuffix
+					})
 				: snapshot.status === "success"
-					? formatTranslationString(strings.completedProfiles, { count: succeeded }) +
-						memorySuffix
+					? formatTranslationString(strings.completedProfiles, {
+							count: succeeded,
+							total: succeeded + failed,
+						})
 					: snapshot.status === "error" && failed > 0
 						? strings.failedProfiles
 						: null;
@@ -392,6 +394,7 @@ export const TranslatorView = React.memo(function TranslatorView({
 		const subtitle = result.setupIssue
 			? strings.unavailable
 			: cleanProfileSubtitle(result.name, result.provider, result.model, strings);
+		const hasDetails = !result.setupIssue && Boolean(subtitle || usage);
 		const targetLang = resultsDirection === "zh-en" ? "en" : "zh";
 		const appliedEntry = appliedMap[result.id];
 		const applied =
@@ -403,12 +406,12 @@ export const TranslatorView = React.memo(function TranslatorView({
 			<article
 				key={result.id}
 				aria-label={formatTranslationString(strings.resultLabel, { name: result.name })}
-				className={styles.resultPanel}
+				className={cls(styles.resultPanel, isParallel && styles.comparisonResult)}
 			>
 				<header>
 					<div className={styles.resultTitle}>
 						<strong>{result.name}</strong>
-						{subtitle && <span className={styles.subtitle}>{subtitle}</span>}
+						{result.setupIssue && <span className={styles.subtitle}>{subtitle}</span>}
 					</div>
 				</header>
 				{result.setupIssue ? (
@@ -452,7 +455,7 @@ export const TranslatorView = React.memo(function TranslatorView({
 						</div>
 					)
 				)}
-				{(hasText || error) && (
+				{(hasText || error || hasDetails) && (
 					<footer>
 						<div className={styles.resultMeta}>
 							{error ? (
@@ -480,10 +483,23 @@ export const TranslatorView = React.memo(function TranslatorView({
 										: strings.appliedCard}
 								</span>
 							) : null}
-							{usage && (
-								<span className={styles.usage} title={usage}>
-									{usage}
-								</span>
+							{hasDetails && (
+								<details className={styles.resultDetails}>
+									<summary
+										aria-label={formatTranslationString(
+											strings.resultDetailsLabel,
+											{
+												name: result.name,
+											},
+										)}
+									>
+										{strings.details}
+									</summary>
+									<div className={styles.resultDetailContent}>
+										{subtitle && <p>{subtitle}</p>}
+										{usage && <p>{usage}</p>}
+									</div>
+								</details>
 							)}
 						</div>
 						<div className={styles.cardActions}>
@@ -519,7 +535,7 @@ export const TranslatorView = React.memo(function TranslatorView({
 									</FlashcardButton>
 									<FlashcardButton
 										size="sm"
-										variant="secondary"
+										variant={isParallel ? "ghost" : "secondary"}
 										icon={isCard ? Check : BookmarkPlus}
 										onClick={() => void makeCard(result)}
 									>
@@ -599,6 +615,7 @@ export const TranslatorView = React.memo(function TranslatorView({
 		<main className={cls("fc-page", styles.page)}>
 			<h1 className={styles.srOnly}>{strings.title}</h1>
 			<FlashcardHeader
+				className={styles.pageHeader}
 				icon={Languages}
 				title={strings.title}
 				right={
@@ -666,6 +683,20 @@ export const TranslatorView = React.memo(function TranslatorView({
 							/>
 						</div>
 					</header>
+					{!setupHint && (
+						<details className={styles.profileDetails}>
+							<summary>
+								{formatTranslationString(strings.profilesSummary, {
+									count: readyCount,
+								})}
+							</summary>
+							<ul>
+								{readyProfiles.map((profile) => (
+									<li key={profile.id}>{profile.name}</li>
+								))}
+							</ul>
+						</details>
+					)}
 					<FlashcardTextarea
 						ref={inputRef}
 						id={`${viewId}-translator-input`}
@@ -741,9 +772,7 @@ export const TranslatorView = React.memo(function TranslatorView({
 										? strings.translating
 										: hasCurrentResults
 											? strings.translateAgain
-											: formatTranslationString(strings.translate, {
-													count: readyCount,
-												})}
+											: strings.translate}
 								</FlashcardButton>
 							)}
 						</div>
@@ -759,61 +788,63 @@ export const TranslatorView = React.memo(function TranslatorView({
 						<div className={styles.outputHeading}>
 							<span className={styles.outputLabelText}>{strings.outputLabel}</span>
 							<span className={styles.langPill}>{targetLanguage}</span>
+							<output className={styles.resultStatus}>{statusText}</output>
 						</div>
-						{showTabs && activeIndex === 0 && canHighlight && (
-							<FlashcardButton
-								size="sm"
-								variant={showDiff ? "secondary" : "ghost"}
-								icon={FileDiff}
-								aria-pressed={showDiff}
-								onClick={() => setShowDiff((prev) => !prev)}
-							>
-								{strings.diffToggle}
-							</FlashcardButton>
-						)}
 					</header>
 					{stale && hasResults && (
 						<output className={styles.staleNotice}>{strings.staleNotice}</output>
 					)}
 					{isWaitingForResults ? (
 						<div className={styles.outputEmpty}>
-							<p className={styles.outputEmptyTitle}>{strings.outputPlaceholder}</p>
-							{readyCount > 0 && (
-								<p className={styles.outputEmptyHint}>
-									{formatTranslationString(strings.profilesReady, {
-										count: readyCount,
-									})}
-								</p>
+							<p className={styles.outputEmptyTitle}>
+								{!setupHint && readyCount > 1
+									? strings.outputComparePlaceholder
+									: strings.outputPlaceholder}
+							</p>
+							{!setupHint && (
+								<p className={styles.outputEmptyHint}>{strings.outputStartHint}</p>
 							)}
-							<p className={styles.outputEmptyMeta}>{strings.memoryNote}</p>
 						</div>
 					) : showTabs ? (
 						<>
-							<div
-								className={styles.segmented}
-								role="tablist"
-								aria-label={strings.outputLabel}
-							>
-								{tabLabels.map((label, index) => (
-									<button
-										key={
-											index === 0
-												? "all"
-												: `profile:${results[index - 1]?.id}`
-										}
-										id={`${viewId}-tab-${index}`}
-										role="tab"
-										type="button"
-										aria-selected={index === activeIndex}
-										aria-controls={`${viewId}-panel-${index}`}
-										tabIndex={index === activeIndex ? 0 : -1}
-										className={styles.segmentButton}
-										onKeyDown={handleTabKey}
-										onClick={() => selectTab(index)}
+							<div className={styles.resultsToolbar}>
+								<div
+									className={styles.segmented}
+									role="tablist"
+									aria-label={strings.outputLabel}
+								>
+									{tabLabels.map((label, index) => (
+										<button
+											key={
+												index === 0
+													? "all"
+													: `profile:${results[index - 1]?.id}`
+											}
+											id={`${viewId}-tab-${index}`}
+											role="tab"
+											type="button"
+											aria-selected={index === activeIndex}
+											aria-controls={`${viewId}-panel-${index}`}
+											tabIndex={index === activeIndex ? 0 : -1}
+											className={styles.segmentButton}
+											onKeyDown={handleTabKey}
+											onClick={() => selectTab(index)}
+										>
+											{label}
+										</button>
+									))}
+								</div>
+								{activeIndex === 0 && canHighlight && (
+									<FlashcardButton
+										size="sm"
+										variant={showDiff ? "secondary" : "ghost"}
+										icon={showDiff ? Check : FileDiff}
+										aria-pressed={showDiff}
+										onClick={() => setShowDiff((prev) => !prev)}
 									>
-										{label}
-									</button>
-								))}
+										{strings.diffToggle}
+									</FlashcardButton>
+								)}
 							</div>
 							{tabLabels.map((_, index) => (
 								<div
@@ -850,8 +881,8 @@ export const TranslatorView = React.memo(function TranslatorView({
 							{renderResults(visibleResults, false)}
 						</div>
 					)}
-					<footer>
-						<output>{statusText}</output>
+					<footer className={styles.outputFooter}>
+						<p className={styles.memoryNote}>{strings.memoryNote}</p>
 					</footer>
 				</section>
 			</section>

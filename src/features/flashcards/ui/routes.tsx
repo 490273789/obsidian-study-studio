@@ -126,7 +126,7 @@ export function wordList(deckId: string): ViewState {
 }
 
 /** Maps domain restart provenance onto the route vocabulary owned by navigation. */
-export function fromRestartOrigin(origin: SessionRestartOrigin): ViewState {
+export function fromRestartOrigin(origin: SessionRestartOrigin): ViewState | null {
 	if (origin.mode === "challenge") return challengeSetup();
 	if (origin.mode === "study") {
 		return studySetup(origin.deckId, {
@@ -134,20 +134,22 @@ export function fromRestartOrigin(origin: SessionRestartOrigin): ViewState {
 			initialDirection: origin.direction,
 		});
 	}
-	if (origin.selection.kind === "study-day") {
-		return origin.mode === "practice"
-			? studySetup(origin.deckId, {
-					initialStudyOrder: origin.selection.studyOrder,
-					initialDirection: origin.direction,
-				})
-			: studySetup(origin.deckId);
-	}
 	if (origin.mode === "practice") {
+		const selection = origin.selection;
+		// Explicit card sets restart through the lifecycle rather than a deck-wide setup page.
+		if (selection.kind === "identities") return null;
+		if (selection.kind === "study-day") {
+			return studySetup(origin.deckId, {
+				initialStudyOrder: selection.studyOrder,
+				initialDirection: origin.direction,
+			});
+		}
 		return practiceSetup(origin.deckId, {
-			initialSelection: origin.selection,
+			initialSelection: selection,
 			initialDirection: origin.direction,
 		});
 	}
+	if (origin.selection.kind === "study-day") return studySetup(origin.deckId);
 	return spellingSetup(origin.deckId, { initialSelection: origin.selection });
 }
 
@@ -182,6 +184,7 @@ export interface FlashcardPageContext {
 	readonly onComplete: () => void;
 	readonly onRestart: () => void;
 	readonly onRetryIncorrect: () => void;
+	readonly onPracticeLapses: () => void;
 	readonly onResultHome: () => void;
 	readonly onNextLevel: () => void;
 	readonly onStartChallenge: (
@@ -315,6 +318,8 @@ function resolveResultPage(
 				result={result}
 				onHome={context.onResultHome}
 				onRestart={context.onRestart}
+				onPracticeLapses={context.onPracticeLapses}
+				isBusy={context.isNavigationBusy}
 				markdownRenderer={context.markdownRenderer}
 				onOpenSourceFile={context.onOpenSourceFile}
 			/>

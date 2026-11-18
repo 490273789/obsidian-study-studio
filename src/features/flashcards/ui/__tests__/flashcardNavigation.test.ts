@@ -7,6 +7,7 @@ import type {
 	ActiveStudySnapshot,
 	LifecycleOutcome,
 	LifecycleReference,
+	PracticeResultSnapshot,
 	SessionLifecycle,
 	SessionLifecycleSnapshot,
 	SessionStartRequest,
@@ -113,6 +114,35 @@ function result(revision = 1, key = "result"): StudyResultSnapshot {
 			studyOrder: "sequential",
 			direction: "normal",
 		},
+	};
+}
+
+function practiceResult(
+	selection: PracticeResultSnapshot["restartOrigin"]["selection"],
+): PracticeResultSnapshot {
+	return {
+		kind: "result",
+		mode: "practice",
+		revision: 1,
+		reference: { kind: "result", mode: "practice", key: "practice-result", revision: 1 },
+		originDeck: { id: "deck", name: "Deck" },
+		completedAt: 0,
+		direction: "reversed",
+		totalQuestions: 2,
+		correctCount: 2,
+		incorrectCount: 0,
+		accuracy: 100,
+		timeSpent: 1,
+		incorrectCards: [],
+		restartOrigin: { mode: "practice", deckId: "deck", direction: "reversed", selection },
+	};
+}
+
+function activePractice(): SessionLifecycleSnapshot {
+	return {
+		...active(2, "practice"),
+		mode: "practice",
+		reference: { kind: "active", mode: "practice", key: "practice", revision: 2 },
 	};
 }
 
@@ -457,6 +487,121 @@ describe("FlashcardNavigation", () => {
 			"dismiss",
 			"retry-incorrect",
 		]);
+	});
+
+	it("starts study lapse practice directly and reports unavailable cards without changing the resting route", async () => {
+		const initial = result();
+		const { navigation, lifecycle, notify } = mounted(initial);
+		navigation.stats();
+		lifecycle.actImpl = async () => {
+			const next = activePractice();
+			lifecycle.publish(next);
+			return { kind: "applied", snapshot: next, omittedCardCount: 1 };
+		};
+		await navigation.result(initial.reference, "practice-lapses");
+		expect(lifecycle.actions).toEqual([
+			{ reference: initial.reference, action: { kind: "practice-lapses" } },
+		]);
+		expect(lifecycle.getSnapshot()).toMatchObject({ kind: "active", mode: "practice" });
+		expect(navigation.getSnapshot().view).toEqual({ type: "stats" });
+		expect(notify).toHaveBeenCalledWith("已跳过 1 张已不可用的卡片");
+	});
+
+	it.each(["rejected", "failed"] as const)(
+		"keeps the study result when lapse practice is %s and reports the outcome",
+		async (kind) => {
+			const initial = result();
+			const { navigation, lifecycle, notify } = mounted(initial);
+			lifecycle.actImpl = async () =>
+				kind === "rejected"
+					? { kind, reason: "no-eligible-cards", snapshot: initial }
+					: {
+							kind,
+							failure: {
+								code: "read-failed",
+								message: "index unavailable",
+								retryable: true,
+							},
+							snapshot: initial,
+						};
+			await navigation.result(initial.reference, "practice-lapses");
+			expect(lifecycle.getSnapshot()).toBe(initial);
+			expect(lifecycle.actions).toHaveLength(1);
+			expect(notify).toHaveBeenCalledOnce();
+			if (kind === "failed") expect(notify).toHaveBeenCalledWith("index unavailable");
+		},
+	);
+
+	it("ignores stale lapse callbacks and locks out duplicate startup clicks", async () => {
+		const initial = result();
+		const { navigation, lifecycle } = mounted(initial);
+		const replacement = result(2, "replacement");
+		lifecycle.publish(replacement);
+		await navigation.result(initial.reference, "practice-lapses");
+		expect(lifecycle.actions).toHaveLength(0);
+		lifecycle.publish(initial);
+		const outcome = deferred<LifecycleOutcome>();
+		lifecycle.actImpl = async () => outcome.promise;
+		const first = navigation.result(initial.reference, "practice-lapses");
+		await navigation.result(initial.reference, "practice-lapses");
+		expect(lifecycle.actions).toHaveLength(1);
+		expect(navigation.getSnapshot().busy).toBe(true);
+		const next = activePractice();
+		lifecycle.publish(next);
+		outcome.resolve({ kind: "applied", snapshot: next });
+		await first;
+		expect(navigation.getSnapshot().busy).toBe(false);
+	});
+
+	it("restarts an exact practice set through the lifecycle and preserves normal setup replay", async () => {
+		const exact = practiceResult({ kind: "identities", cardIds: ["one", "two"] });
+		const { navigation, lifecycle } = mounted(exact);
+		navigation.stats();
+		lifecycle.actImpl = async () => {
+			const next = activePractice();
+			lifecycle.publish(next);
+			return { kind: "applied", snapshot: next };
+		};
+		await navigation.result(exact.reference, "restart");
+		expect(lifecycle.actions[0]).toEqual({
+			reference: exact.reference,
+			action: { kind: "restart-practice" },
+		});
+		expect(navigation.getSnapshot().view).toEqual({ type: "stats" });
+		const normal = practiceResult({ kind: "range", startIndex: 1, endIndex: 2 });
+		lifecycle.publish(normal);
+		lifecycle.actImpl = async () => {
+			const next = idle(3);
+			lifecycle.publish(next);
+			return { kind: "applied", snapshot: next };
+		};
+		await navigation.result(normal.reference, "restart");
+		expect(lifecycle.actions[1]).toEqual({
+			reference: normal.reference,
+			action: { kind: "dismiss" },
+		});
+		expect(navigation.getSnapshot().view).toEqual({
+			type: "practice-setup",
+			deckId: "deck",
+			initialDirection: "reversed",
+			initialSelection: { kind: "range", startIndex: 1, endIndex: 2 },
+		});
+	});
+
+	it("keeps the exact practice result available when replay cannot start", async () => {
+		const initial = practiceResult({ kind: "identities", cardIds: ["one"] });
+		const { navigation, lifecycle, notify } = mounted(initial);
+		lifecycle.actImpl = async () => ({
+			kind: "rejected",
+			reason: "no-eligible-cards",
+			snapshot: initial,
+		});
+		await navigation.result(initial.reference, "restart");
+		expect(lifecycle.getSnapshot()).toBe(initial);
+		expect(lifecycle.actions).toEqual([
+			{ reference: initial.reference, action: { kind: "restart-practice" } },
+		]);
+		expect(notify).toHaveBeenCalledOnce();
 	});
 
 	it("returns every mounted view home on a source-change end, acknowledges once per shared lifecycle", async () => {

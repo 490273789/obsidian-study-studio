@@ -1,5 +1,10 @@
 export interface SessionSummaryKeyboardOptions {
-	readonly actions: readonly { label: string; onClick: () => void; primary?: boolean }[];
+	readonly actions: readonly {
+		label: string;
+		onClick: () => void;
+		primary?: boolean;
+		disabled?: boolean;
+	}[];
 	readonly onHome: () => void;
 }
 
@@ -8,13 +13,29 @@ export interface SessionSummaryKeyboardOptions {
  * while ignoring inputs and contenteditable targets.
  */
 export function handleSessionSummaryKeyDown(
-	event: Pick<KeyboardEvent, "key" | "preventDefault" | "target">,
+	event: Pick<KeyboardEvent, "key" | "preventDefault" | "target"> &
+		Partial<
+			Pick<
+				KeyboardEvent,
+				"defaultPrevented" | "isComposing" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey"
+			>
+		>,
 	options: SessionSummaryKeyboardOptions,
 ): boolean {
 	const target = event.target as {
 		tagName?: string;
 		isContentEditable?: boolean;
+		closest?: (selector: string) => Element | null;
 	} | null;
+	if (
+		event.defaultPrevented ||
+		event.isComposing ||
+		event.ctrlKey ||
+		event.metaKey ||
+		event.altKey ||
+		event.shiftKey
+	)
+		return false;
 
 	const isInput =
 		Boolean(target) &&
@@ -25,8 +46,15 @@ export function handleSessionSummaryKeyDown(
 	if (isInput) return false;
 
 	if (event.key === "Enter" || event.key === " ") {
+		// Let focused controls (including descendants such as SVG icons) own
+		// activation; expanding a card must never activate the page's home action.
+		if (
+			["BUTTON", "A", "SELECT", "SUMMARY"].includes(target?.tagName ?? "") ||
+			target?.closest?.("button, a, select, summary, [role='button'], [contenteditable]")
+		)
+			return false;
 		const primaryAction = options.actions.find((a) => a.primary);
-		if (primaryAction) {
+		if (primaryAction && !primaryAction.disabled) {
 			event.preventDefault?.();
 			primaryAction.onClick();
 			return true;

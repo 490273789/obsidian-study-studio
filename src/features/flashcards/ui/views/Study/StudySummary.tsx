@@ -1,27 +1,20 @@
 import { memo, useMemo } from "react";
-import {
-	Award,
-	BarChart3,
-	BookmarkCheck,
-	ExternalLink,
-	FileText,
-	GraduationCap,
-	House,
-	RotateCw,
-} from "lucide-react";
+import { Award, BarChart3, BookmarkCheck, GraduationCap, House, RotateCw } from "lucide-react";
 import { cls } from "../../../../../core/shared/classNames";
 import type { StudyRating } from "../../../../../core/shared/types";
 import type { StudyResultSnapshot } from "../../../domain/sessions/sessionLifecycle";
 import { SessionSummary } from "../../primitives/SessionSummary/SessionSummary";
-import { MarkdownContent } from "../../primitives/Markdown";
 import { useFlashcardI18n } from "../../../strings/context";
 import { formatCompactDuration, getLocalizedRatingButtons } from "../../../strings/index";
+import { StudyReviewCard } from "./StudyReviewCard";
 import styles from "./StudySummary.module.scss";
 
 interface StudySummaryProps {
 	result: StudyResultSnapshot;
 	onHome: () => void;
 	onRestart?: () => void;
+	onPracticeLapses?: () => void;
+	isBusy?: boolean;
 	markdownRenderer?: (content: string, el: HTMLElement) => Promise<void>;
 	onOpenSourceFile?: (filePath: string) => void;
 }
@@ -38,6 +31,8 @@ export const StudySummary = memo(function StudySummary({
 	result,
 	onHome,
 	onRestart,
+	onPracticeLapses,
+	isBusy = false,
 	markdownRenderer,
 	onOpenSourceFile,
 }: StudySummaryProps) {
@@ -48,13 +43,15 @@ export const StudySummary = memo(function StudySummary({
 	const deckSummary = useMemo(() => {
 		const repeats = result.totalReviews - result.cardCount;
 		if (repeats > 0) {
-			return t("study.justCompletedWithRepeats", {
+			return t("study.answersWithRepeats", {
 				deckName: result.originDeck.name,
+				totalReviews: result.totalReviews,
 				repeats,
 			});
 		}
-		return t("study.justCompleted", {
+		return t("study.answers", {
 			deckName: result.originDeck.name,
+			totalReviews: result.totalReviews,
 		});
 	}, [result.cardCount, result.originDeck.name, result.totalReviews, t]);
 
@@ -62,23 +59,26 @@ export const StudySummary = memo(function StudySummary({
 	const hasLapseCards = lapseCards.length > 0;
 
 	const stats = useMemo(() => {
-		const retentionRate = Math.round(
-			((result.cardCount - lapseCards.length) / Math.max(1, result.cardCount)) * 100,
-		);
+		const unflaggedCount = result.cardCount - lapseCards.length;
+		const unflaggedPercent = Math.round((unflaggedCount / Math.max(1, result.cardCount)) * 100);
 		const avgSeconds = (result.timeSpent / Math.max(1, result.totalReviews)).toFixed(1);
 
 		return [
 			{
-				label: t("study.retentionRate"),
-				value: `${retentionRate}%`,
+				label: t("study.unflaggedCards"),
+				value: t("study.unflaggedCardsValue", {
+					count: unflaggedCount,
+					total: result.cardCount,
+					percent: unflaggedPercent,
+				}),
 			},
 			{
 				label: t("study.timeSpent"),
 				value: formatCompactDuration(language, result.timeSpent),
 			},
 			{
-				label: t("study.averageSpeed"),
-				value: t("study.secondsPerCard", { seconds: avgSeconds }),
+				label: t("study.averageAnswerTime"),
+				value: t("study.secondsPerAnswer", { seconds: avgSeconds }),
 			},
 		];
 	}, [lapseCards.length, language, result.cardCount, result.timeSpent, result.totalReviews, t]);
@@ -89,22 +89,45 @@ export const StudySummary = memo(function StudySummary({
 			icon={GraduationCap}
 			title={t("study.completeTitle")}
 			description={deckSummary}
-			layout="split"
+			layout="review"
 			celebrate={true}
 			metric={{ label: t("study.cardCount"), value: result.cardCount }}
 			stats={stats}
 			onHome={onHome}
 			actions={[
 				...(onRestart
-					? [{ label: t("study.studyAgain"), icon: RotateCw, onClick: onRestart }]
+					? [
+							{
+								label: t("study.backToStudySetup"),
+								icon: RotateCw,
+								onClick: onRestart,
+								disabled: isBusy,
+							},
+						]
 					: []),
-				{ label: t("study.backHome"), icon: House, onClick: onHome, primary: true },
+				...(hasLapseCards && onPracticeLapses
+					? [
+							{
+								label: t("study.practiceLapses", { count: lapseCards.length }),
+								icon: BookmarkCheck,
+								onClick: onPracticeLapses,
+								disabled: isBusy,
+							},
+						]
+					: []),
+				{
+					label: t("study.backHome"),
+					icon: House,
+					onClick: onHome,
+					primary: true,
+					disabled: isBusy,
+				},
 			]}
 			overviewExtra={
 				<div className={cls("fc-panel", styles.ratingSection)}>
 					<h2 className={styles.ratingSectionHeader}>
 						<BarChart3 size={16} aria-hidden="true" />
-						<span>{t("study.ratingDistribution")}</span>
+						<span>{t("study.ratingDistribution", { count: result.totalReviews })}</span>
 					</h2>
 					<div className={styles.ratingGrid}>
 						{ratingButtons.map((btn) => {
@@ -141,78 +164,19 @@ export const StudySummary = memo(function StudySummary({
 							{t("study.weakCardsSubtitle")}
 						</span>
 					</div>
+					{onPracticeLapses && (
+						<p className={styles.practiceNote}>{t("study.practiceLapsesNote")}</p>
+					)}
 					<div className={styles.cardList}>
-						{lapseCards.map((card, idx) => {
-							const fileName = card.sourceFile.split("/").pop() ?? card.sourceFile;
-							return (
-								<article key={card.identity} className={styles.cardItem}>
-									<div className={styles.cardItemHeader}>
-										<span className={styles.cardBadge}>#{idx + 1}</span>
-										{onOpenSourceFile && (
-											<button
-												type="button"
-												className={styles.openNoteBtn}
-												onClick={() => onOpenSourceFile(card.sourceFile)}
-												title={`${t("study.openNote")}: ${card.sourceFile}`}
-												aria-label={`${t("study.openNote")}: ${card.sourceFile}`}
-											>
-												<FileText size={13} aria-hidden="true" />
-												<span>{fileName}</span>
-												<ExternalLink size={11} aria-hidden="true" />
-											</button>
-										)}
-									</div>
-									<div className={styles.cardContent}>
-										<div className={styles.cardSide}>
-											<span className={styles.fieldLabel}>
-												{t("common.cardFront")}
-											</span>
-											{markdownRenderer ? (
-												<MarkdownContent
-													content={card.front}
-													className={styles.markdownWrapper}
-													markdownRenderer={markdownRenderer}
-												/>
-											) : (
-												<div className={styles.rawText}>{card.front}</div>
-											)}
-										</div>
-										<div className={styles.cardSide}>
-											<span className={styles.fieldLabel}>
-												{t("common.cardBack")}
-											</span>
-											{markdownRenderer ? (
-												<MarkdownContent
-													content={card.back}
-													className={styles.markdownWrapper}
-													markdownRenderer={markdownRenderer}
-												/>
-											) : (
-												<div className={styles.rawText}>{card.back}</div>
-											)}
-										</div>
-									</div>
-									{card.explanation && (
-										<div className={styles.cardExplanation}>
-											<span className={styles.fieldLabel}>
-												{t("common.explanation")}
-											</span>
-											{markdownRenderer ? (
-												<MarkdownContent
-													content={card.explanation}
-													className={styles.markdownWrapper}
-													markdownRenderer={markdownRenderer}
-												/>
-											) : (
-												<div className={styles.rawText}>
-													{card.explanation}
-												</div>
-											)}
-										</div>
-									)}
-								</article>
-							);
-						})}
+						{lapseCards.map((card, index) => (
+							<StudyReviewCard
+								key={card.identity}
+								card={card}
+								index={index + 1}
+								markdownRenderer={markdownRenderer}
+								onOpenSourceFile={onOpenSourceFile}
+							/>
+						))}
 					</div>
 				</section>
 			) : (

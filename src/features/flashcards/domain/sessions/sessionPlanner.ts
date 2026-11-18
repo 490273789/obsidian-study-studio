@@ -433,6 +433,29 @@ type RetryIncorrectSessionPlanResult =
 			readonly reason: "no-retryable-cards";
 	  };
 
+/** Revalidates an explicit practice set without expanding it to a deck selection. */
+export function planPracticeCardSet(params: {
+	direction: CardDirection;
+	cardIdentities: readonly string[];
+	getCard: (cardId: string) => FlashCard | null | undefined;
+	shuffle?: ShuffleCardIds;
+}):
+	| {
+			readonly kind: "success";
+			readonly cardIds: string[];
+			readonly direction: CardDirection;
+			readonly omittedCardCount: number;
+	  }
+	| { readonly kind: "rejected"; readonly reason: "no-eligible-cards" } {
+	const plan = revalidateCardIdentities({
+		...params,
+		isEligible: () => true,
+	});
+	return plan.cardIds.length > 0
+		? { kind: "success", ...plan, direction: params.direction }
+		: { kind: "rejected", reason: "no-eligible-cards" };
+}
+
 export function planRetryIncorrectSession(params: {
 	mode: "practice" | "spelling";
 	direction: CardDirection;
@@ -440,28 +463,38 @@ export function planRetryIncorrectSession(params: {
 	getCard: (cardId: string) => FlashCard | null | undefined;
 	shuffle?: ShuffleCardIds;
 }): RetryIncorrectSessionPlanResult {
-	const retryableCards: FlashCard[] = [];
-	for (const identity of params.incorrectCardIdentities) {
-		const card = params.getCard(identity);
-		if (card && (params.mode === "practice" || extractSpellingWord(card.front) !== null)) {
-			retryableCards.push(card);
-		}
-	}
-
-	if (retryableCards.length === 0) {
+	const plan = revalidateCardIdentities({
+		cardIdentities: params.incorrectCardIdentities,
+		getCard: params.getCard,
+		shuffle: params.shuffle,
+		isEligible: (card) =>
+			params.mode === "practice" || extractSpellingWord(card.front) !== null,
+	});
+	if (plan.cardIds.length === 0) {
 		return { kind: "rejected", reason: "no-retryable-cards" };
 	}
 
-	const omittedCardCount = params.incorrectCardIdentities.length - retryableCards.length;
-	const shuffle = params.shuffle ?? shuffleArray;
-	const uniqueCardIds = Array.from(new Set(retryableCards.map((c) => c.id)));
-	const cardIds = shuffle(uniqueCardIds);
-
 	return {
 		kind: "success",
-		cardIds,
+		...plan,
 		direction: params.mode === "practice" ? params.direction : "normal",
-		omittedCardCount,
+	};
+}
+
+function revalidateCardIdentities(params: {
+	cardIdentities: readonly string[];
+	getCard: (cardId: string) => FlashCard | null | undefined;
+	isEligible: (card: FlashCard) => boolean;
+	shuffle?: ShuffleCardIds;
+}): { cardIds: string[]; omittedCardCount: number } {
+	const identities = Array.from(new Set(params.cardIdentities));
+	const cardIds = identities.filter((identity) => {
+		const card = params.getCard(identity);
+		return card?.id === identity && params.isEligible(card);
+	});
+	return {
+		cardIds: (params.shuffle ?? shuffleArray)(cardIds),
+		omittedCardCount: identities.length - cardIds.length,
 	};
 }
 

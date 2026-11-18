@@ -9,7 +9,7 @@ import type { PresentedCard } from "../answerPresentationTransition";
 import { ChallengeSetupModal } from "../views/Challenge";
 import { CardView } from "../views/Card";
 import { HomeRoute } from "../views/Home/HomeRoute";
-import { StudySetup } from "../views/Study";
+import { StudySetup, StudySummary } from "../views/Study";
 import { WordListView } from "../views/WordList";
 import {
 	challengeSetup,
@@ -180,6 +180,17 @@ describe("route constructors", () => {
 			initialSelection: { kind: "random", questionCount: 5 },
 		});
 	});
+
+	it("does not map an exact practice set onto a deck setup route", () => {
+		expect(
+			fromRestartOrigin({
+				mode: "practice",
+				deckId: "deck",
+				direction: "reversed",
+				selection: { kind: "identities", cardIds: ["one"] },
+			}),
+		).toBeNull();
+	});
 });
 
 describe("resolvePage", () => {
@@ -251,5 +262,19 @@ describe("resolvePage", () => {
 			presentedCard: presented,
 		});
 		expect(elementType(page.render(context))).toBe(CardView);
+	});
+
+	it("wires the lapse practice action and startup busy state to the study summary", () => {
+		const onPracticeLapses = vi.fn();
+		const studyResult = { kind: "result", mode: "study" } as SessionLifecycleSnapshot;
+		const node = pageFor(home(), { lifecycle: studyResult }).render({
+			...context,
+			onPracticeLapses,
+			isNavigationBusy: true,
+		}) as React.ReactElement<{ onPracticeLapses: () => void; isBusy: boolean }>;
+		expect(node.type).toBe(StudySummary);
+		expect(node.props.isBusy).toBe(true);
+		node.props.onPracticeLapses();
+		expect(onPracticeLapses).toHaveBeenCalledOnce();
 	});
 });

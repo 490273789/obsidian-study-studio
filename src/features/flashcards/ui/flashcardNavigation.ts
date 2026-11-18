@@ -183,7 +183,7 @@ export class FlashcardNavigation {
 
 	async result(
 		reference: ResultReference,
-		action: "home" | "restart" | "retry-incorrect" | "next-level",
+		action: "home" | "restart" | "retry-incorrect" | "practice-lapses" | "next-level",
 	): Promise<void> {
 		const lease = this.lease;
 		const result = this.options.lifecycle.getSnapshot();
@@ -195,26 +195,40 @@ export class FlashcardNavigation {
 		)
 			return;
 		const version = ++this.navigationVersion;
+		const lifecycleAction =
+			action === "restart" &&
+			result.mode === "practice" &&
+			result.restartOrigin.selection.kind === "identities"
+				? "restart-practice"
+				: action === "home" || action === "restart"
+					? "dismiss"
+					: action;
 		const outcome = await this.runLifecycle(() =>
 			this.options.lifecycle.act(reference, {
-				kind:
-					action === "next-level"
-						? "next-level"
-						: action === "retry-incorrect"
-							? "retry-incorrect"
-							: "dismiss",
+				kind: lifecycleAction,
 			}),
 		);
 		if (!this.isNavigationCurrent(lease, version) || !this.matches(outcome.snapshot.reference))
 			return;
+		const startsCardSet =
+			lifecycleAction === "practice-lapses" || lifecycleAction === "restart-practice";
 		if (
-			!this.reportLifecycleOutcome(outcome) ||
-			action === "retry-incorrect" ||
-			action === "next-level"
+			!this.reportLifecycleOutcome(
+				outcome,
+				startsCardSet ? this.t("notice.deckEmpty") : undefined,
+			)
 		)
 			return;
+		const omittedCardCount = outcome.kind === "applied" ? (outcome.omittedCardCount ?? 0) : 0;
+		if (startsCardSet && omittedCardCount > 0)
+			this.options.notify(
+				this.t("session.practiceCardsOmitted", { count: omittedCardCount }),
+			);
+		if (lifecycleAction !== "dismiss") return;
 		this.publishView(
-			action === "restart" ? routes.fromRestartOrigin(result.restartOrigin) : routes.home(),
+			action === "restart"
+				? (routes.fromRestartOrigin(result.restartOrigin) ?? routes.home())
+				: routes.home(),
 		);
 	}
 

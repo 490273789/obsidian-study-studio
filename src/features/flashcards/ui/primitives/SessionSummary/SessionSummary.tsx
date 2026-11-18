@@ -18,6 +18,7 @@ interface SummaryAction {
 	onClick: () => void;
 	icon?: LucideIcon;
 	primary?: boolean;
+	disabled?: boolean;
 }
 
 interface SessionSummaryProps {
@@ -30,7 +31,7 @@ interface SessionSummaryProps {
 	actions: SummaryAction[];
 	onHome: () => void;
 	celebrate?: boolean;
-	layout?: "stacked" | "split";
+	layout?: "stacked" | "review";
 	overviewExtra?: React.ReactNode;
 	children?: React.ReactNode;
 }
@@ -59,6 +60,20 @@ export function SessionSummary({
 		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, [actions, onHome]);
 
+	const actionButtons = actions.map((action) => (
+		<FlashcardButton
+			key={action.label}
+			variant={action.primary ? "primary" : "secondary"}
+			icon={action.icon}
+			onClick={action.onClick}
+			disabled={action.disabled}
+			title={action.primary ? `${action.label} (↵ / Space)` : action.label}
+			aria-keyshortcuts={action.primary ? "Enter Space" : undefined}
+		>
+			{action.label}
+		</FlashcardButton>
+	));
+
 	const overviewCard = (
 		<section className={cls("fc-panel", styles.overview)}>
 			<div className={styles.heading}>
@@ -66,18 +81,21 @@ export function SessionSummary({
 				<h1>{title}</h1>
 			</div>
 			<div className={styles.description}>{description}</div>
-			<div className={styles.metric}>
-				<strong>{metric.value}</strong>
-				<span>{metric.label}</span>
+			<div className={styles.results}>
+				<div className={styles.metric}>
+					<strong>{metric.value}</strong>
+					<span>{metric.label}</span>
+				</div>
+				<dl className={styles.stats}>
+					{stats.map((stat) => (
+						<div key={stat.label}>
+							<dt>{stat.label}</dt>
+							<dd>{stat.value}</dd>
+						</div>
+					))}
+				</dl>
 			</div>
-			<dl className={styles.stats}>
-				{stats.map((stat) => (
-					<div key={stat.label}>
-						<dt>{stat.label}</dt>
-						<dd>{stat.value}</dd>
-					</div>
-				))}
-			</dl>
+			{layout === "review" && <div className={styles.inlineActions}>{actionButtons}</div>}
 		</section>
 	);
 
@@ -86,36 +104,13 @@ export function SessionSummary({
 			{celebrate && <Confetti />}
 			<FlashcardHeader icon={icon} title={mode} onBack={onHome} />
 			<div className={cls("fc-page__body", styles.scroll)}>
-				{layout === "split" ? (
-					<div className={cls(styles.content, styles.splitContent)}>
-						<div className={styles.primaryColumn}>
-							{overviewCard}
-							{overviewExtra}
-						</div>
-						<div className={styles.secondaryColumn}>{children}</div>
-					</div>
-				) : (
-					<div className={styles.content}>
-						{overviewCard}
-						{overviewExtra}
-						{children}
-					</div>
-				)}
+				<div className={cls(styles.content, layout === "review" && styles.reviewContent)}>
+					{overviewCard}
+					{overviewExtra}
+					{children}
+				</div>
 			</div>
-			<footer className={styles.actions}>
-				{actions.map((action) => (
-					<FlashcardButton
-						key={action.label}
-						variant={action.primary ? "primary" : "secondary"}
-						icon={action.icon}
-						onClick={action.onClick}
-						title={action.primary ? `${action.label} (↵ / Space)` : action.label}
-						aria-keyshortcuts={action.primary ? "Enter Space" : undefined}
-					>
-						{action.label}
-					</FlashcardButton>
-				))}
-			</footer>
+			{layout !== "review" && <footer className={styles.actions}>{actionButtons}</footer>}
 		</div>
 	);
 }

@@ -197,6 +197,119 @@ describe("TranslatorView UI", () => {
 		expect(subtitles).toHaveLength(0);
 	});
 
+	it("keeps available model and usage information inside named disclosures without inventing missing usage", () => {
+		const base = mockSnapshot();
+		const snapshot = mockSnapshot({
+			results: [
+				{ ...base.results[0]!, usage: { inputTokens: 94, outputTokens: 19 } },
+				base.results[1]!,
+			],
+		});
+		const all = elements(
+			renderView({
+				runtime: createMockRuntime(snapshot),
+				language: "zh",
+				onOpenSettings: vi.fn(),
+			}),
+		);
+		const deepseek = all.find((element) => element.props["aria-label"] === "DeepSeek 的译文");
+		const details = elements(deepseek).find((element) => element.type === "details");
+		expect(textOf(details)).toContain("deepseek-v3");
+		expect(textOf(details)).toContain("输入 94 · 输出 19 tokens");
+		expect(
+			elements(details).find((element) => element.type === "summary")?.props["aria-label"],
+		).toBe("DeepSeek 的方案详情");
+		expect(
+			textOf(elements(deepseek).find((element) => element.type === "header")),
+		).not.toContain("deepseek-v3");
+		const youdao = all.find((element) => element.props["aria-label"] === "有道智云 的译文");
+		expect(textOf(youdao)).not.toContain("tokens");
+		expect(elements(youdao).some((element) => element.type === "details")).toBe(false);
+	});
+
+	it("shows current completion in the result header and keeps partial failures explicit", () => {
+		const base = mockSnapshot();
+		const runtime = createMockRuntime(base);
+		const outputHeader = () => {
+			const tree = renderView({ runtime, language: "zh", onOpenSettings: vi.fn() });
+			const output = elements(tree).find((element) => element.props["aria-label"] === "译文");
+			return textOf(elements(output).find((element) => element.type === "header"));
+		};
+		expect(outputHeader()).toContain("2/2 已完成");
+		vi.spyOn(runtime, "getSnapshot").mockReturnValue(
+			mockSnapshot({
+				results: [
+					base.results[0]!,
+					{ ...base.results[1]!, status: "error", text: "", error: "network" },
+				],
+			}),
+		);
+		expect(outputHeader()).toContain("已完成 1/2 个方案，1 个失败");
+	});
+
+	it("keeps each result directly actionable while highlighting and after selecting one profile", async () => {
+		vi.useFakeTimers();
+		try {
+			const snapshot = mockSnapshot();
+			const runtime = createMockRuntime(snapshot);
+			const onCreateCard = vi.fn(() => true);
+			const onInsertNote = vi.fn(() => true);
+			const render = () =>
+				elements(
+					renderView({
+						runtime,
+						language: "zh",
+						onOpenSettings: vi.fn(),
+						onCreateCard,
+						onInsertNote,
+					}),
+				);
+			render()
+				.find((element) => element.props.children === "高亮差异")
+				?.props.onClick?.();
+			const highlighted = render();
+			expect(highlighted.some((element) => element.type === "mark")).toBe(true);
+			const deepseek = highlighted.find(
+				(element) => element.props["aria-label"] === "DeepSeek 的译文",
+			);
+			elements(deepseek)
+				.find((element) => element.props.children === "制为闪卡")
+				?.props.onClick?.();
+			await Promise.resolve();
+			expect(onCreateCard).toHaveBeenCalledWith("你好世界", "Hello world");
+			render()
+				.find(
+					(element) =>
+						element.props.role === "tab" && element.props.children === "有道智云",
+				)
+				?.props.onClick?.();
+			const single = render();
+			expect(single.some((element) => element.props.children === "高亮差异")).toBe(false);
+			const youdao = single.find(
+				(element) => element.props["aria-label"] === "有道智云 的译文",
+			);
+			elements(youdao)
+				.find((element) => element.props.children === "插入笔记")
+				?.props.onClick?.();
+			await Promise.resolve();
+			expect(onInsertNote).toHaveBeenCalledWith("Hi world", "你好世界");
+			expect(
+				textOf(
+					render().find((element) => element.props["aria-label"] === "有道智云 的译文"),
+				),
+			).toContain("已插入至当前笔记");
+			vi.advanceTimersByTime(2000);
+			expect(
+				textOf(
+					render().find((element) => element.props["aria-label"] === "有道智云 的译文"),
+				),
+			).toContain("已插入笔记");
+		} finally {
+			vi.clearAllTimers();
+			vi.useRealTimers();
+		}
+	});
+
 	it("shows one waiting message and reveals the model tabs when results arrive", () => {
 		const completed = mockSnapshot();
 		const empty = mockSnapshot({
@@ -212,9 +325,22 @@ describe("TranslatorView UI", () => {
 			});
 		const waiting = elements(render(empty));
 		expect(
-			waiting.filter((element) => element.props.children === "译文将显示在这里"),
+			waiting.filter(
+				(element) => element.props.children === "翻译后，在这里对照不同方案的译文。",
+			),
 		).toHaveLength(1);
 		expect(waiting.some((element) => element.props.role === "tablist")).toBe(false);
+		const profiles = waiting.find((element) => element.type === "details");
+		expect(textOf(profiles)).toContain("翻译方案（2）");
+		expect(
+			elements(profiles)
+				.filter((element) => element.type === "li")
+				.map(textOf),
+		).toEqual(["DeepSeek", "有道智云"]);
+		const output = waiting.find((element) => element.props["aria-label"] === "译文");
+		expect(textOf(elements(output).find((element) => element.type === "footer"))).toContain(
+			"结果只保留在当前视图，关闭后清除。",
+		);
 		const withResults = elements(render(completed));
 		const selected = withResults.find(
 			(element) => element.props.role === "tab" && element.props["aria-selected"],
@@ -319,7 +445,7 @@ describe("TranslatorView UI", () => {
 		expect(render().some((element) => element.props.children === "撤销")).toBe(false);
 	});
 
-	it("shows the submission count and waits for two successful translations to offer highlighting", () => {
+	it("only lists ready profiles and submits without promising a comparison for a single profile", () => {
 		const base = mockSnapshot();
 		const snapshot = mockSnapshot({
 			status: "idle",
@@ -336,12 +462,71 @@ describe("TranslatorView UI", () => {
 		const runtime = createMockRuntime(snapshot);
 		const translate = vi.spyOn(runtime, "translate");
 		const tree = renderView({ runtime, language: "zh", onOpenSettings: vi.fn() });
-		const submit = elements(tree).find((el) => el.props.children === "翻译（1 个方案）");
+		const submit = elements(tree).find((el) => el.props.children === "翻译");
 		expect(submit).toBeDefined();
+		const profiles = elements(tree).find((element) => element.type === "details");
+		expect(textOf(profiles)).toContain("翻译方案（1）");
+		expect(textOf(profiles)).toContain("DeepSeek");
+		expect(textOf(profiles)).not.toContain("有道智云");
 		submit?.props.onClick?.();
 		expect(translate).toHaveBeenCalledOnce();
 		expect(textOf(tree)).toContain("该方案还未配置完整，请先补全设置");
 		expect(textOf(tree)).not.toContain("词汇差异高亮");
+	});
+
+	it("guides a single-profile session without showing a comparison or idle result tabs", () => {
+		const base = mockSnapshot();
+		const tree = renderView({
+			runtime: createMockRuntime(
+				mockSnapshot({
+					input: "",
+					status: "idle",
+					results: [{ ...base.results[0]!, status: "idle", text: "" }],
+				}),
+			),
+			language: "en",
+			onOpenSettings: vi.fn(),
+		});
+		expect(textOf(tree)).toContain("Your translation will appear here.");
+		expect(textOf(tree)).not.toContain("Compare translations");
+		expect(elements(tree).some((element) => element.props.role === "tablist")).toBe(false);
+		expect(
+			elements(tree).find((element) => element.props.children === "Translate")?.props
+				.disabled,
+		).toBe(true);
+	});
+
+	it("preserves shortcut submission and blocks composition and duplicate loading requests", () => {
+		const base = mockSnapshot();
+		const snapshot = mockSnapshot({
+			status: "idle",
+			results: base.results.map((result) => ({ ...result, status: "idle", text: "" })),
+		});
+		const runtime = createMockRuntime(snapshot);
+		const translate = vi.spyOn(runtime, "translate");
+		const render = () =>
+			elements(renderView({ runtime, language: "zh", onOpenSettings: vi.fn() }));
+		const input = render().find((element) => element.props.value === snapshot.input);
+		const event = (isComposing = false) =>
+			({
+				key: "Enter",
+				ctrlKey: true,
+				nativeEvent: { isComposing },
+				preventDefault: vi.fn(),
+			}) as unknown as React.KeyboardEvent<HTMLButtonElement>;
+		input?.props.onKeyDown?.(event(true));
+		expect(translate).not.toHaveBeenCalled();
+		input?.props.onKeyDown?.(event());
+		expect(translate).toHaveBeenCalledOnce();
+		vi.spyOn(runtime, "getSnapshot").mockReturnValue({ ...snapshot, status: "loading" });
+		const loading = render();
+		loading
+			.find((element) => element.props.value === snapshot.input)
+			?.props.onKeyDown?.(event());
+		expect(translate).toHaveBeenCalledOnce();
+		expect(
+			loading.find((element) => element.props.children === "正在翻译…")?.props.disabled,
+		).toBe(true);
 	});
 	it("provides speak, card creation, and note insertion actions", () => {
 		const snapshot = mockSnapshot();
@@ -370,13 +555,13 @@ describe("TranslatorView UI", () => {
 		);
 		expect(speakBtns.length).toBeGreaterThanOrEqual(2);
 		expect(all.filter((el) => el.props["aria-label"] === "复制译文")).toHaveLength(2);
-		const highlight = all.find((el) => el.props.children === "对比用词差异");
+		const highlight = all.find((el) => el.props.children === "高亮差异");
 		expect(highlight?.props["aria-pressed"]).toBe(false);
 		highlight?.props.onClick?.();
 		const updated = elements(renderView({ runtime, language: "zh", onOpenSettings: vi.fn() }));
-		expect(
-			updated.find((el) => el.props.children === "对比用词差异")?.props["aria-pressed"],
-		).toBe(true);
+		expect(updated.find((el) => el.props.children === "高亮差异")?.props["aria-pressed"]).toBe(
+			true,
+		);
 		expect(textOf(updated)).toContain("标出的字词并非所有版本共有");
 	});
 
@@ -386,7 +571,7 @@ describe("TranslatorView UI", () => {
 		const tree = renderView({ runtime, language: "zh", onOpenSettings: vi.fn() });
 		const all = elements(tree);
 		expect(textOf(tree)).toContain("原文或方向已修改；以下译文对应上一次翻译。");
-		const submit = all.find((el) => el.props.children === "翻译（2 个方案）");
+		const submit = all.find((el) => el.props.children === "翻译");
 		expect(submit).toBeDefined();
 		expect(textOf(tree)).not.toContain("重新翻译");
 	});

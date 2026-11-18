@@ -207,7 +207,11 @@ describe("AiEngineSettingsSection presentation operations", () => {
 
 		const section = new AiEngineSettingsSection({ ai: service, refresh });
 		section.activate();
-		expect(subscribe).toHaveBeenCalledWith(refresh);
+		expect(subscribe).toHaveBeenCalledOnce();
+		expect(refresh).not.toHaveBeenCalled();
+		const [onChange] = vi.mocked(service.subscribe).mock.calls[0]!;
+		onChange();
+		expect(refresh).toHaveBeenCalledOnce();
 
 		section.hide();
 		expect(unsubscribeFn).toHaveBeenCalledOnce();

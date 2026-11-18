@@ -1,11 +1,13 @@
 import { createEmptyCard, State, type Card } from "ts-fsrs";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type {
+	CardDirection,
 	Deck,
 	FlashCard,
 	FlashcardSettings,
 	SpellingCardProgress,
 	StudySettings,
+	StudyRating,
 } from "../../../../../core/shared/types";
 import { createSessionLifecycle, type SessionLifecycleRepository } from "../sessionLifecycle";
 import type {
@@ -213,6 +215,37 @@ function makeLifecycle(cards: FlashCard[]) {
 	};
 }
 
+async function completeStudy(
+	subject: ReturnType<typeof makeLifecycle>,
+	ratings: StudyRating[],
+	direction: CardDirection = "normal",
+) {
+	await subject.lifecycle.start({
+		mode: "study",
+		deckId: DECK_ID,
+		studyOrder: "sequential",
+		direction,
+	});
+	for (const rating of ratings) {
+		const active = subject.lifecycle.getSnapshot();
+		if (active.kind !== "active" || active.mode !== "study") throw new Error("active study");
+		expect(
+			await subject.lifecycle.act(active.reference, { kind: "answer", rating }),
+		).toMatchObject({
+			kind: "applied",
+		});
+	}
+	const result = subject.lifecycle.getSnapshot();
+	if (result.kind !== "result" || result.mode !== "study") throw new Error("study result");
+	return result;
+}
+
+async function answerPractice(subject: ReturnType<typeof makeLifecycle>, correct: boolean) {
+	const active = subject.lifecycle.getSnapshot();
+	if (active.kind !== "active" || active.mode !== "practice") throw new Error("active practice");
+	return subject.lifecycle.act(active.reference, { kind: "answer", correct });
+}
+
 describe("SessionLifecycle", () => {
 	it("publishes one mutually exclusive state and captures immutable result content", async () => {
 		const subject = makeLifecycle([makeCard("one", "old one", 0), makeCard("two", "two", 1)]);
@@ -343,6 +376,79 @@ describe("SessionLifecycle", () => {
 		expect(duplicate).toMatchObject({ kind: "rejected", reason: "busy" });
 		releaseCommit();
 		await first;
+	});
+
+	it("reconciles past a deleted next study card after a committed answer without scheduling the previous card twice", async () => {
+		const subject = makeLifecycle([
+			makeCard("one", "one", 0),
+			makeCard("two", "two", 1),
+			makeCard("three", "three", 2),
+		]);
+		await subject.lifecycle.start({
+			mode: "study",
+			deckId: DECK_ID,
+			studyOrder: "sequential",
+			direction: "normal",
+		});
+		const first = subject.lifecycle.getSnapshot();
+		if (first.kind !== "active" || first.mode !== "study") throw new Error("active study");
+		const presentedAfterFirst: string[] = [];
+		subject.lifecycle.subscribe(() => {
+			const snapshot = subject.lifecycle.getSnapshot();
+			if (snapshot.kind === "active") presentedAfterFirst.push(snapshot.currentCard.identity);
+		});
+		let releaseCommit = (): void => undefined;
+		subject.repository.commitBarrier = new Promise<void>((resolve) => {
+			releaseCommit = resolve;
+		});
+		let reportCommitStarted = (): void => undefined;
+		const commitStarted = new Promise<void>((resolve) => {
+			reportCommitStarted = resolve;
+		});
+		const originalCommit = subject.repository.commitSession.bind(subject.repository);
+		vi.spyOn(subject.repository, "commitSession").mockImplementation((commit) => {
+			reportCommitStarted();
+			return originalCommit(commit);
+		});
+		const rate = vi.spyOn(subject.repository, "rateStudyCard");
+		const answer = subject.lifecycle.act(first.reference, { kind: "answer", rating: 3 });
+		await commitStarted;
+		subject.repository.decks.get(DECK_ID)!.cards = subject.repository.decks
+			.get(DECK_ID)!
+			.cards.filter((card) => card.id !== "two");
+		const reconcile = subject.continuitySessions.reconcile({
+			availableIdentities: new Set(["one", "three"]),
+			deletedIdentities: new Set(["two"]),
+		});
+		releaseCommit();
+		expect(await answer).toMatchObject({ kind: "failed" });
+		await reconcile;
+		const next = subject.lifecycle.getSnapshot();
+		expect(next).toMatchObject({
+			kind: "active",
+			mode: "study",
+			currentCard: { identity: "three" },
+			answerEventCount: 1,
+		});
+		expect(presentedAfterFirst).toEqual(["three"]);
+		expect(
+			await subject.lifecycle.act(first.reference, { kind: "answer", rating: 3 }),
+		).toMatchObject({ kind: "rejected", reason: "stale-reference" });
+		expect(rate).toHaveBeenCalledOnce();
+		if (next.kind !== "active" || next.mode !== "study") throw new Error("active study");
+		await subject.lifecycle.act(next.reference, { kind: "answer", rating: 3 });
+		expect(
+			subject.repository.commits.flatMap((commit) => commit.cardSchedules ?? []),
+		).toMatchObject([
+			{ cardId: "one", fsrsCard: { reps: 1 } },
+			{ cardId: "three", fsrsCard: { reps: 1 } },
+		]);
+		expect(subject.lifecycle.getSnapshot()).toMatchObject({
+			kind: "result",
+			mode: "study",
+			cardCount: 2,
+			totalReviews: 2,
+		});
 	});
 
 	it("persists study undo through the same lifecycle seam", async () => {
@@ -753,5 +859,326 @@ describe("SessionLifecycle", () => {
 				intent: "continue",
 			}),
 		).toMatchObject({ kind: "rejected", reason: "no-challenge-progress" });
+	});
+});
+
+describe("study lapse practice", () => {
+	const one = "550e8400-e29b-41d4-a716-446655440000";
+	const two = "7d444840-9dc0-11d1-b245-5ffdce74fad2";
+	const good = "33333333-3333-4333-8333-333333333333";
+	const cards = () => [
+		makeCard(one, "one", 0),
+		makeCard(two, "two", 1),
+		makeCard(good, "good", 2),
+	];
+
+	it("practices the deduplicated ever-Again/Hard set with study direction and records practice without scheduling", async () => {
+		const subject = makeLifecycle(cards());
+		const rate = vi.spyOn(subject.repository, "rateStudyCard");
+		rate.mockImplementationOnce((card) => ({
+			fsrsCard: { ...card, reps: card.reps + 1, state: State.Review },
+			repeatInSession: true,
+		}));
+		const result = await completeStudy(subject, [1, 2, 3, 2], "reversed");
+		expect(result.lapseCards?.map((card) => card.identity)).toEqual([one, two]);
+		const schedules = cards().map((card) => ({
+			...subject.repository.getCard(DECK_ID, card.id)!.fsrsCard,
+		}));
+		const studyCommitCount = subject.repository.commits.length;
+		rate.mockClear();
+		expect(
+			await subject.lifecycle.act(result.reference, { kind: "practice-lapses" }),
+		).toMatchObject({
+			kind: "applied",
+			omittedCardCount: 0,
+		});
+		expect(subject.lifecycle.getSnapshot()).toMatchObject({
+			kind: "active",
+			mode: "practice",
+			direction: "reversed",
+			currentCard: { identity: one },
+			progress: { total: 2 },
+		});
+		await answerPractice(subject, false);
+		expect(subject.lifecycle.getSnapshot()).toMatchObject({ currentCard: { identity: two } });
+		subject.setNow(31_000);
+		await answerPractice(subject, true);
+		expect(subject.lifecycle.getSnapshot()).toMatchObject({
+			kind: "result",
+			mode: "practice",
+			direction: "reversed",
+			totalQuestions: 2,
+			correctCount: 1,
+			incorrectCount: 1,
+			restartOrigin: { selection: { kind: "identities", cardIds: [one, two] } },
+		});
+		expect(rate).not.toHaveBeenCalled();
+		expect(
+			cards().map((card) => subject.repository.getCard(DECK_ID, card.id)!.fsrsCard),
+		).toEqual(schedules);
+		expect(subject.repository.commits.slice(studyCommitCount)).toEqual([
+			{
+				records: [
+					expect.objectContaining({
+						mode: "practice",
+						history: { cardCount: 2, durationSeconds: 30 },
+					}),
+				],
+			},
+		]);
+		expect(subject.repository.history.map((entry) => entry.mode)).toEqual([
+			"study",
+			"practice",
+		]);
+		expect(subject.repository.decks.get(DECK_ID)!.studyCount).toBe(1);
+	});
+
+	it("uses current content for moved identities and omits deleted cards even if the origin deck disappeared", async () => {
+		const subject = makeLifecycle(cards());
+		const result = await completeStudy(subject, [1, 2, 3], "reversed");
+		subject.repository.decks.delete(DECK_ID);
+		subject.repository.decks.set("notes/moved.md", {
+			...makeDeck([{ ...makeCard(two, "current two"), sourceFile: "notes/moved.md" }]),
+			id: "notes/moved.md",
+			filePath: "notes/moved.md",
+			name: "Moved",
+		});
+		expect(
+			await subject.lifecycle.act(result.reference, { kind: "practice-lapses" }),
+		).toMatchObject({
+			kind: "applied",
+			omittedCardCount: 1,
+		});
+		expect(subject.lifecycle.getSnapshot()).toMatchObject({
+			kind: "active",
+			mode: "practice",
+			direction: "reversed",
+			progress: { total: 1 },
+			originDeck: { id: DECK_ID, name: "Deck" },
+			currentCard: { identity: two, front: "current two", currentDeckId: "notes/moved.md" },
+		});
+		expect(result.lapseCards?.[1]?.front).toBe("two");
+	});
+
+	it.each([false, true])(
+		"retains the study result when there are no available lapse cards (deleted: %s)",
+		async (deleted) => {
+			const subject = makeLifecycle(cards());
+			const result = await completeStudy(subject, deleted ? [1, 2, 3] : [3, 4, 5]);
+			if (deleted) subject.repository.decks.get(DECK_ID)!.cards = [makeCard(good)];
+			expect(
+				await subject.lifecycle.act(result.reference, { kind: "practice-lapses" }),
+			).toMatchObject({
+				kind: "rejected",
+				reason: "no-eligible-cards",
+			});
+			expect(subject.lifecycle.getSnapshot()).toBe(result);
+		},
+	);
+
+	it.each([1, 2])(
+		"retains both state and reference if startup card read %s fails, then allows retry",
+		async (failingRead) => {
+			const subject = makeLifecycle([makeCard(one)]);
+			const result = await completeStudy(subject, [1]);
+			const originalGetCard = subject.repository.getCard.bind(subject.repository);
+			let calls = 0;
+			const getCard = vi
+				.spyOn(subject.repository, "getCard")
+				.mockImplementation((deckId, cardId) => {
+					if (++calls === failingRead) throw new Error("index unavailable");
+					return originalGetCard(deckId, cardId);
+				});
+			expect(
+				await subject.lifecycle.act(result.reference, { kind: "practice-lapses" }),
+			).toMatchObject({
+				kind: "failed",
+				failure: { message: "index unavailable" },
+			});
+			expect(subject.lifecycle.getSnapshot()).toBe(result);
+			expect(subject.continuitySessions.hasActiveSession()).toBe(false);
+			getCard.mockRestore();
+			expect(
+				await subject.lifecycle.act(result.reference, { kind: "practice-lapses" }),
+			).toMatchObject({ kind: "applied" });
+		},
+	);
+
+	it("rejects a stale study result reference after a new practice starts", async () => {
+		const subject = makeLifecycle([makeCard(one)]);
+		const result = await completeStudy(subject, [1]);
+		await subject.lifecycle.act(result.reference, { kind: "practice-lapses" });
+		const active = subject.lifecycle.getSnapshot();
+		expect(
+			await subject.lifecycle.act(result.reference, { kind: "practice-lapses" }),
+		).toMatchObject({
+			kind: "rejected",
+			reason: "stale-reference",
+		});
+		expect(subject.lifecycle.getSnapshot()).toBe(active);
+	});
+
+	it("keeps the original exact set through incorrect retry and revalidates it on replay", async () => {
+		const subject = makeLifecycle(cards());
+		const result = await completeStudy(subject, [1, 2, 3], "reversed");
+		await subject.lifecycle.act(result.reference, { kind: "practice-lapses" });
+		await answerPractice(subject, false);
+		await answerPractice(subject, true);
+		let practiceResult = subject.lifecycle.getSnapshot();
+		if (practiceResult.kind !== "result" || practiceResult.mode !== "practice")
+			throw new Error("practice result");
+		await subject.lifecycle.act(practiceResult.reference, { kind: "retry-incorrect" });
+		expect(subject.lifecycle.getSnapshot()).toMatchObject({
+			direction: "reversed",
+			progress: { total: 1 },
+			currentCard: { identity: one },
+		});
+		await answerPractice(subject, true);
+		practiceResult = subject.lifecycle.getSnapshot();
+		if (practiceResult.kind !== "result" || practiceResult.mode !== "practice")
+			throw new Error("practice result");
+		await subject.lifecycle.act(practiceResult.reference, { kind: "restart-practice" });
+		expect(subject.lifecycle.getSnapshot()).toMatchObject({
+			direction: "reversed",
+			progress: { total: 2 },
+			currentCard: { identity: one },
+		});
+		await answerPractice(subject, true);
+		await answerPractice(subject, true);
+		practiceResult = subject.lifecycle.getSnapshot();
+		if (practiceResult.kind !== "result" || practiceResult.mode !== "practice")
+			throw new Error("practice result");
+		subject.repository.decks.get(DECK_ID)!.cards = [
+			makeCard(two, "edited two"),
+			makeCard(good),
+		];
+		expect(
+			await subject.lifecycle.act(practiceResult.reference, { kind: "restart-practice" }),
+		).toMatchObject({ kind: "applied", omittedCardCount: 1 });
+		expect(subject.lifecycle.getSnapshot()).toMatchObject({
+			progress: { total: 1 },
+			currentCard: { identity: two, front: "edited two" },
+		});
+		await answerPractice(subject, true);
+		practiceResult = subject.lifecycle.getSnapshot();
+		if (practiceResult.kind !== "result" || practiceResult.mode !== "practice")
+			throw new Error("practice result");
+		subject.repository.decks.get(DECK_ID)!.cards = [makeCard(good)];
+		expect(
+			await subject.lifecycle.act(practiceResult.reference, { kind: "restart-practice" }),
+		).toMatchObject({ kind: "rejected", reason: "no-eligible-cards" });
+		expect(subject.lifecycle.getSnapshot()).toBe(practiceResult);
+	});
+
+	it.each(["initial-start", "replay"] as const)(
+		"restores the original lapse set after a card is temporarily unavailable at %s",
+		async (unavailableAt) => {
+			const subject = makeLifecycle(cards());
+			let result: ReturnType<typeof subject.lifecycle.getSnapshot> = await completeStudy(
+				subject,
+				[1, 2, 3],
+				"reversed",
+			);
+			if (unavailableAt === "replay") {
+				await subject.lifecycle.act(result.reference, { kind: "practice-lapses" });
+				await answerPractice(subject, true);
+				await answerPractice(subject, true);
+				result = subject.lifecycle.getSnapshot();
+			}
+			if (result.kind !== "result") throw new Error("result");
+			subject.repository.decks.get(DECK_ID)!.cards = [makeCard(one), makeCard(good)];
+			expect(
+				await subject.lifecycle.act(result.reference, {
+					kind: unavailableAt === "replay" ? "restart-practice" : "practice-lapses",
+				}),
+			).toMatchObject({ kind: "applied", omittedCardCount: 1 });
+			expect(subject.lifecycle.getSnapshot()).toMatchObject({
+				mode: "practice",
+				progress: { total: 1 },
+				currentCard: { identity: one },
+			});
+			await answerPractice(subject, true);
+			result = subject.lifecycle.getSnapshot();
+			if (result.kind !== "result" || result.mode !== "practice")
+				throw new Error("practice result");
+			expect(result.restartOrigin.selection).toEqual({
+				kind: "identities",
+				cardIds: [one, two],
+			});
+
+			subject.repository.decks.get(DECK_ID)!.cards = [
+				makeCard(two, "restored two"),
+				makeCard(one),
+				makeCard(good),
+			];
+			expect(
+				await subject.lifecycle.act(result.reference, { kind: "restart-practice" }),
+			).toMatchObject({ kind: "applied", omittedCardCount: 0 });
+			expect(subject.lifecycle.getSnapshot()).toMatchObject({
+				direction: "reversed",
+				progress: { total: 2 },
+				currentCard: { identity: one },
+			});
+			await answerPractice(subject, true);
+			expect(subject.lifecycle.getSnapshot()).toMatchObject({
+				currentCard: { identity: two, front: "restored two" },
+			});
+			await answerPractice(subject, true);
+			expect(subject.lifecycle.getSnapshot()).toMatchObject({
+				kind: "result",
+				mode: "practice",
+				totalQuestions: 2,
+			});
+		},
+	);
+
+	it("uses the existing active practice reconciliation without admitting new cards", async () => {
+		const subject = makeLifecycle(cards());
+		const result = await completeStudy(subject, [1, 2, 3]);
+		await subject.lifecycle.act(result.reference, { kind: "practice-lapses" });
+		subject.repository.decks.get(DECK_ID)!.cards = [
+			makeCard(two),
+			makeCard(good),
+			makeCard("new"),
+		];
+		await subject.continuitySessions.reconcile({
+			availableIdentities: new Set([two, good, "new"]),
+			deletedIdentities: new Set([one]),
+		});
+		expect(subject.lifecycle.getSnapshot()).toMatchObject({
+			kind: "active",
+			mode: "practice",
+			progress: { total: 1 },
+			currentCard: { identity: two },
+		});
+		await answerPractice(subject, true);
+		expect(subject.lifecycle.getSnapshot()).toMatchObject({
+			kind: "result",
+			mode: "practice",
+			totalQuestions: 1,
+		});
+	});
+
+	it("keeps ordinary practice replay behavior outside the exact-set action", async () => {
+		const subject = makeLifecycle([makeCard(one)]);
+		await subject.lifecycle.start({
+			mode: "practice",
+			deckId: DECK_ID,
+			direction: "normal",
+			selection: { kind: "random", questionCount: 1 },
+		});
+		await answerPractice(subject, true);
+		const result = subject.lifecycle.getSnapshot();
+		if (result.kind !== "result") throw new Error("result");
+		expect(
+			await subject.lifecycle.act(result.reference, { kind: "restart-practice" }),
+		).toMatchObject({ kind: "rejected", reason: "action-not-available" });
+		expect(
+			await subject.lifecycle.act(result.reference, { kind: "practice-lapses" }),
+		).toMatchObject({ kind: "rejected", reason: "action-not-available" });
+		expect(result.restartOrigin).toMatchObject({
+			mode: "practice",
+			selection: { kind: "random", questionCount: 1 },
+		});
 	});
 });
