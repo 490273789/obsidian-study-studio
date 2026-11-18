@@ -4,6 +4,8 @@ Read this guide when changing code, choosing validation, touching generated/rele
 
 ## Commands
 
+- Stack: TypeScript, React, Obsidian API, Vite Plus (Vite, Vitest, Oxlint, Oxfmt), `ts-fsrs`.
+
 Run commands from the repository root with pnpm — the only package manager this project uses, pinned through `packageManager` in `package.json`.
 
 Use the Node.js version pinned in `.node-version`; CI and release builds read the same file. The local Vite Plus dependency supplies build, test, lint, and format tools, configured together in `vite.config.ts`. Keep the managed Vite alias/catalog entries in `pnpm-workspace.yaml` when updating Vite Plus.
@@ -39,6 +41,8 @@ pnpm run setup-hooks
 
 ## Validation matrix
 
+- After any code change, run `pnpm run build` at minimum. Report checks performed and any required checks or relevant manual verification left incomplete. Purely visual and styling changes need no new tests; behavior changes, including UI interactions, need focused tests beside the affected module.
+
 Always run `pnpm run build` after code changes, then add checks based on risk:
 
 | Change                                                                                                              | Required validation                                                       |
@@ -66,4 +70,3 @@ Follow Conventional Commits and `docs/git-commit-guide.md`.
 - Common scopes: `ui`, `styles`, `cards`, `parser`, `identity`, `session`, `pronunciation`, `deck`, `obsidian`, `settings`, `storage`, `history`, `word-list`, `i18n`, `deps`, `release`.
 - Hooks configured by `scripts/setup-hooks.mjs` enforce pre-commit checks and commit-message format.
 - `pnpm release:patch|minor|major` runs `scripts/version-bump.mjs` to keep `package.json`, `manifest.json`, and `versions.json` in sync, and creates the Conventional Commit-compatible release commit and tag. Do not add a redundant second release commit.
-- Do not create a commit, bump a version, push, release, or deploy unless the user asks for that action.

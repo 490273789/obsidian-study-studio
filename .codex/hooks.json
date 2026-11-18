@@ -1,0 +1,17 @@
+{
+	"hooks": {
+		"PostToolUse": [
+			{
+				"matcher": "^Bash$",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/session-persistence.mjs\"",
+						"statusMessage": "Loading session persistence guidance",
+						"timeout": 5
+					}
+				]
+			}
+		]
+	}
+}

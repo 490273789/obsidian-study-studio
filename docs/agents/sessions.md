@@ -1,3 +1,8 @@
+---
+paths:
+    - "src/features/flashcards/domain/sessions/sessionPersistence.ts"
+---
+
 # Session Guide
 
 Read this guide before changing study, practice, spelling, FSRS scheduling, session results, retry, undo, source reconciliation, or answer presentation.
