@@ -32,7 +32,7 @@ data.backup-v*.json
 # ai
 .agents
 
-.impecable
+.impeccable/
 tmp
 GLOSSARYY.md
 DESIGN.md
