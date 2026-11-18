@@ -500,3 +500,12 @@ const en: typeof zh = {
 export function dictionaryStrings(language: Language): DictionaryStrings {
 	return language === "en" ? en : zh;
 }
+
+export function favoriteSaveMessages(strings: DictionaryStrings) {
+	return {
+		"migration-required": strings.favoriteMigrationRequired,
+		"source-needs-repair": strings.favoriteSourceNeedsRepair,
+		"source-changing": strings.favoriteSourceChanging,
+		"invalid-card-content": strings.favoriteInvalidCardContent,
+	};
+}

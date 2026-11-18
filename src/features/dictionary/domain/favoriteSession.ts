@@ -12,6 +12,7 @@ import type { Language } from "../../../core/shared/types";
 import { dictionaryText } from "./messages";
 import type { DictionaryFavoriteViewState, FavoriteCategory } from "./types";
 import { FavoriteCategoryError, type FavoriteCategoryManager } from "./favorite-categories";
+import { favoriteSaveMessages } from "../strings/dictionary";
 
 export interface FavoriteAiOptions {
 	readonly generator: FavoriteDraftGenerator;
@@ -246,15 +247,9 @@ export class DictionaryFavoriteSession {
 		} catch (error) {
 			if (this.disposed || revision !== this.sessionRevision) return;
 			const strings = dictionaryText(this.ai.language());
-			const messages = {
-				"migration-required": strings.favoriteMigrationRequired,
-				"source-needs-repair": strings.favoriteSourceNeedsRepair,
-				"source-changing": strings.favoriteSourceChanging,
-				"invalid-card-content": strings.favoriteInvalidCardContent,
-			};
 			this.state.message =
 				error instanceof FavoriteSaveError
-					? messages[error.reason]
+					? favoriteSaveMessages(strings)[error.reason]
 					: error instanceof FavoriteCategoryError && error.reason === "busy"
 						? strings.favoriteCategoryBusy
 						: strings.favoriteSaveFailed;

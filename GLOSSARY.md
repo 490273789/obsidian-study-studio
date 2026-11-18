@@ -92,7 +92,7 @@ AI-generated Chinese meanings and learning notes for a word or phrase, which the
 _Avoid_: Saved favorite, dictionary definition
 
 **Batch favorite task (批量收藏任务)**:
-The learner's one-time conversion of a vault word list into favorite entries in one chosen category. A single-word favorite save can replace an existing entry, while a batch task skips existing entries and keeps entries saved before a failure or stop.
+The learner's one-time conversion of a vault word list into favorite entries in one chosen category, keeping entries saved before a failure or stop. Each distinct word is fulfilled when saved or found in the favorites document; existing entries are skipped even though a single-word save can replace them, and repeated input lines count only toward progress.
 _Avoid_: Favorite generated draft, dictionary import
 
 **Local dictionary (本地字典)**:

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { App } from "obsidian";
+import type { Language } from "../../../../core/shared/types";
 import type { FavoriteBatchController, FavoriteBatchSnapshot } from "../../domain/favorite-batch";
 import { DictionaryFavoriteBatchModal } from "../favoriteBatchModal";
 
@@ -169,7 +170,7 @@ function controller() {
 		skipped: 0,
 		failed: 0,
 		currentWord: "",
-		message: "",
+		reason: null,
 		failures: [],
 	};
 	let listener: () => void = () => undefined;
@@ -189,8 +190,8 @@ function controller() {
 	};
 	return {
 		fake: fake as unknown as FavoriteBatchController,
-		update: (next: FavoriteBatchSnapshot) => {
-			snapshot = next;
+		update: (changes: Partial<FavoriteBatchSnapshot>) => {
+			snapshot = { ...snapshot, ...changes };
 			listener();
 		},
 		spies: fake,
@@ -227,7 +228,7 @@ describe("batch favorite modal", () => {
 			skipped: 0,
 			failed: 0,
 			currentWord: "banana",
-			message: "",
+			reason: null,
 			failures: [],
 		});
 		modal.close();
@@ -245,11 +246,16 @@ describe("batch favorite modal", () => {
 			skipped: 1,
 			failed: 1,
 			currentWord: "",
-			message: "",
-			failures: [{ line: 3, word: "carrot", reason: "AI 错误" }],
+			reason: "target-stopped",
+			failures: [
+				{ line: 3, word: "carrot", reason: { kind: "ai", code: "invalid-response" } },
+			],
 		});
-		expect(ui.paragraphs.map((item) => item.text)).toContain("批量收藏部分完成。");
+		expect(ui.paragraphs.map((item) => item.text)).toContain(
+			"批量收藏部分完成。 目标收藏文件发生错误，已停止后续转换。",
+		);
 		expect(JSON.stringify(modal.contentEl)).toContain("第 3 行 · carrot");
+		expect(JSON.stringify(modal.contentEl)).toContain("AI 返回的收藏内容格式无效");
 		expect(ui.buttons[2]!.disabled).toBe(false);
 		ui.buttons[2]!.click();
 		await vi.waitFor(() => expect(spies.openTarget).toHaveBeenCalledOnce());
@@ -257,5 +263,37 @@ describe("batch favorite modal", () => {
 		expect(ui.closes).toBe(1);
 		expect(ui.suggests[0]!.closed).toBe(true);
 		expect(dismissed).toHaveBeenCalledOnce();
+	});
+
+	it("locks the form while stopping and displays the accepted write's failure afterward", () => {
+		const { fake, update } = controller();
+		let language: Language = "zh";
+		const modal = new DictionaryFavoriteBatchModal({} as App, fake, () => language, vi.fn());
+		modal.open();
+		ui.texts[0]!.change("list.txt");
+		update({ status: "running", targetPath: "words.md", total: 2, currentWord: "apple" });
+		expect(ui.buttons[1]!.disabled).toBe(false);
+
+		language = "en";
+		update({ status: "stopping" });
+		expect(ui.buttons.map((button) => button.disabled)).toEqual([true, true, true]);
+		expect(ui.paragraphs.map((item) => item.text)).toContain(
+			"Stopping. Saved entries will remain.",
+		);
+		modal.close();
+		expect(ui.closes).toBe(0);
+
+		update({
+			status: "stopped",
+			processed: 1,
+			failed: 1,
+			currentWord: "",
+			failures: [{ line: 1, word: "apple", reason: "source-changing" }],
+		});
+		expect(ui.paragraphs.map((item) => item.text)).toContain("Batch favorites stopped.");
+		expect(JSON.stringify(modal.contentEl)).toContain(
+			"The favorites file has changed. Retry saving.",
+		);
+		expect(ui.buttons.map((button) => button.disabled)).toEqual([false, true, false]);
 	});
 });

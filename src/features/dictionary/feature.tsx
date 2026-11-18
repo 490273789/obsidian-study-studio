@@ -242,7 +242,6 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 							.settings.engines.some(
 								(engine) => engine.id === id && engine.kind === "llm",
 							),
-					language: () => host.settings.read().language,
 				});
 				batchModal = new DictionaryFavoriteBatchModal(
 					host.app,

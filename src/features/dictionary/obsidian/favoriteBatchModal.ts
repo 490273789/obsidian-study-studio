@@ -6,11 +6,35 @@ import {
 	type DropdownComponent,
 	type TextComponent,
 } from "obsidian";
+import { aiErrorText } from "../../../core/i18n/ai";
 import type { Language } from "../../../core/shared/types";
-import { FavoriteBatchController } from "../domain/favorite-batch";
-import { dictionaryStrings } from "../strings/dictionary";
+import type { FavoriteBatchController, FavoriteBatchReason } from "../domain/favorite-batch";
+import { dictionaryStrings, favoriteSaveMessages } from "../strings/dictionary";
 import { PathInputSuggest } from "./pathInputSuggest";
 import styles from "../ui/Dictionary.module.scss";
+
+function batchReasonText(reason: FavoriteBatchReason, language: Language): string {
+	const t = dictionaryStrings(language);
+	if (typeof reason === "object") {
+		return reason.code === "invalid-response" || reason.code === "incomplete-response"
+			? t.favoriteAiInvalidResponse
+			: aiErrorText(language, reason.code);
+	}
+	return {
+		...favoriteSaveMessages(t),
+		"source-missing": t.favoriteBatchSourceInvalid,
+		"source-invalid": t.favoriteBatchSourceInvalid,
+		"source-read-failed": t.favoriteBatchSourceReadFailed,
+		"target-missing": t.favoriteBatchTargetMissing,
+		"same-file": t.favoriteBatchSameFile,
+		"no-words": t.favoriteBatchNoWords,
+		busy: t.favoriteCategoryBusy,
+		"target-failed": t.favoriteBatchTargetFailed,
+		"target-stopped": t.favoriteBatchTargetStopped,
+		"ai-config-required": t.favoriteAiConfigRequired,
+		"invalid-word": t.favoriteBatchInvalidWord,
+	}[reason];
+}
 
 /** Native vault-path form and progress surface for one batch task. */
 export class DictionaryFavoriteBatchModal extends Modal {
@@ -111,7 +135,8 @@ export class DictionaryFavoriteBatchModal extends Modal {
 	}
 
 	override close(): void {
-		if (!this.forceClosing && this.controller.getSnapshot().status === "running") return;
+		const { status } = this.controller.getSnapshot();
+		if (!this.forceClosing && (status === "running" || status === "stopping")) return;
 		super.close();
 	}
 
@@ -133,16 +158,17 @@ export class DictionaryFavoriteBatchModal extends Modal {
 	}
 
 	private render(): void {
-		const t = dictionaryStrings(this.language());
+		const language = this.language();
+		const t = dictionaryStrings(language);
 		const state = this.controller.getSnapshot();
-		const running = state.status === "running";
+		const active = state.status === "running" || state.status === "stopping";
 		const category = this.controller.categories.find((item) => item.id === this.categoryId);
 		this.targetSetting?.setDesc(category?.path ?? "");
-		this.sourceInput?.setDisabled(running);
-		this.categoryDropdown?.setDisabled(running);
-		this.startButton?.setDisabled(running || !this.sourcePath.trim() || !category);
-		this.stopButton?.setDisabled(!running || state.message === t.favoriteBatchStopping);
-		this.openButton?.setDisabled(running || state.status === "idle" || !state.targetPath);
+		this.sourceInput?.setDisabled(active);
+		this.categoryDropdown?.setDisabled(active);
+		this.startButton?.setDisabled(active || !this.sourcePath.trim() || !category);
+		this.stopButton?.setDisabled(state.status !== "running");
+		this.openButton?.setDisabled(active || state.status === "idle" || !state.targetPath);
 		this.progressEl?.setText(
 			state.status === "idle" ? "" : t.favoriteBatchProgress(state.processed, state.total),
 		);
@@ -152,17 +178,19 @@ export class DictionaryFavoriteBatchModal extends Modal {
 				: t.favoriteBatchCounts(state.saved, state.skipped, state.failed),
 		);
 		this.currentEl?.setText(
-			running && state.currentWord ? t.favoriteBatchCurrent(state.currentWord) : "",
+			active && state.currentWord ? t.favoriteBatchCurrent(state.currentWord) : "",
 		);
 		const result = {
 			idle: "",
 			running: "",
+			stopping: t.favoriteBatchStopping,
 			success: t.favoriteBatchResultSuccess,
 			partial: t.favoriteBatchResultPartial,
 			failed: t.favoriteBatchResultFailed,
 			stopped: t.favoriteBatchResultStopped,
 		}[state.status];
-		this.statusEl?.setText([result, state.message].filter(Boolean).join(" "));
+		const reason = state.reason ? batchReasonText(state.reason, language) : "";
+		this.statusEl?.setText([result, reason].filter(Boolean).join(" "));
 		if (this.failuresEl) {
 			this.failuresEl.empty();
 			if (state.failures.length) {
@@ -173,7 +201,7 @@ export class DictionaryFavoriteBatchModal extends Modal {
 					item.createEl("strong", {
 						text: t.favoriteBatchFailureLine(failure.line, failure.word),
 					});
-					item.createSpan({ text: `：${failure.reason}` });
+					item.createSpan({ text: `：${batchReasonText(failure.reason, language)}` });
 				}
 			}
 		}

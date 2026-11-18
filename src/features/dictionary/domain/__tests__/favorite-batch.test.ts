@@ -50,7 +50,6 @@ function setup(content: string, initialWords: string[] = []) {
 		store,
 		generator: { generate },
 		hasAiConfig: (id) => id === "engine",
-		language: () => "zh",
 	});
 	return { controller, categories, dictionary, generate, inspect, read, saveNew, words };
 }
@@ -93,6 +92,26 @@ describe("favorite batch", () => {
 		});
 	});
 
+	it.each([
+		{ words: [], status: "failed" },
+		{ words: ["banana"], status: "partial" },
+	])(
+		"only counts fulfilled words toward $status after a failed generation",
+		async ({ words, status }) => {
+			const { controller, generate } = setup(["apple", "APPLE", ...words].join("\n"), words);
+			generate.mockRejectedValueOnce(new TransportError("invalid-response"));
+			await controller.start("list.txt", "target");
+			expect(controller.getSnapshot()).toMatchObject({
+				status,
+				saved: 0,
+				skipped: 1 + words.length,
+				failed: 1,
+				processed: 2 + words.length,
+			});
+			expect(generate).toHaveBeenCalledTimes(1);
+		},
+	);
+
 	it("continues after a word's AI failure and reruns only words still absent", async () => {
 		const { controller, generate, saveNew } = setup("apple\nbanana\n");
 		generate.mockRejectedValueOnce(new TransportError("invalid-response"));
@@ -122,7 +141,7 @@ describe("favorite batch", () => {
 		expect(generate).not.toHaveBeenCalled();
 		inspect.mockRejectedValueOnce(new FavoriteSaveError("migration-required"));
 		await controller.start("list.txt", "target");
-		expect(controller.getSnapshot().message).toContain("迁移");
+		expect(controller.getSnapshot().reason).toBe("migration-required");
 		expect(generate).not.toHaveBeenCalled();
 	});
 
@@ -133,7 +152,7 @@ describe("favorite batch", () => {
 			dictionary.favoriteAiConfigId = configId;
 			await controller.start("list.txt", "target");
 			expect(controller.getSnapshot()).toMatchObject({ status: "failed", processed: 0 });
-			expect(controller.getSnapshot().message).toContain("AI");
+			expect(controller.getSnapshot().reason).toBe("ai-config-required");
 			expect(read).not.toHaveBeenCalled();
 			expect(inspect).not.toHaveBeenCalled();
 			expect(generate).not.toHaveBeenCalled();
@@ -165,6 +184,20 @@ describe("favorite batch", () => {
 		expect(generate).toHaveBeenCalledTimes(3);
 	});
 
+	it("honors a stop from a progress subscriber before starting the next generation", async () => {
+		const { controller, generate } = setup("apple\nbanana");
+		controller.subscribe(() => {
+			if (controller.getSnapshot().currentWord === "banana") controller.stop();
+		});
+		await controller.start("list.txt", "target");
+		expect(controller.getSnapshot()).toMatchObject({
+			status: "stopped",
+			processed: 1,
+			saved: 1,
+		});
+		expect(generate).toHaveBeenCalledTimes(1);
+	});
+
 	it("aborts the active AI request and leaves accepted writes to settle", async () => {
 		const { controller, categories, generate, saveNew } = setup("apple\nbanana\n");
 		let resolveGeneration!: (value: { meaning: string; note: string }) => void;
@@ -184,6 +217,31 @@ describe("favorite batch", () => {
 		await expect(categories.runExclusive(async () => true)).resolves.toBe(true);
 	});
 
+	it("reports the last write failure after a stop without starting the next word", async () => {
+		const { controller, generate, saveNew } = setup("apple\nbanana");
+		let failSave!: (error: Error) => void;
+		saveNew.mockImplementationOnce(
+			() =>
+				new Promise((_, reject) => {
+					failSave = reject;
+				}),
+		);
+		const run = controller.start("list.txt", "target");
+		await vi.waitFor(() => expect(saveNew).toHaveBeenCalledOnce());
+		controller.stop();
+		expect(controller.getSnapshot().status).toBe("stopping");
+		failSave(new FavoriteSaveError("source-changing"));
+		await run;
+		expect(controller.getSnapshot()).toMatchObject({
+			status: "stopped",
+			processed: 1,
+			failed: 1,
+			saved: 0,
+			failures: [{ line: 1, word: "apple", reason: "source-changing" }],
+		});
+		expect(generate).toHaveBeenCalledOnce();
+	});
+
 	it("waits for an accepted save before finishing a stop request", async () => {
 		const { controller, generate, saveNew } = setup("apple\nbanana\n");
 		let finishSave!: (outcome: "saved" | "skipped") => void;
@@ -191,7 +249,7 @@ describe("favorite batch", () => {
 		const run = controller.start("list.txt", "target");
 		await vi.waitFor(() => expect(saveNew).toHaveBeenCalledTimes(1));
 		controller.stop();
-		expect(controller.getSnapshot().status).toBe("running");
+		expect(controller.getSnapshot().status).toBe("stopping");
 		finishSave("saved");
 		await run;
 		expect(controller.getSnapshot()).toMatchObject({

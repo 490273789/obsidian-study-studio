@@ -1,11 +1,8 @@
 import { aiFailureCode } from "../../../core/ai";
-import { aiErrorText } from "../../../core/i18n/ai";
-import type { Language } from "../../../core/shared/types";
 import { DICTIONARY_QUERY_MAX_LENGTH, normalizeDictionaryQuery } from "./configuration";
 import { isFavoriteAiWord, type FavoriteDraftGenerator } from "./favorite-ai";
 import { FavoriteCategoryError, type FavoriteCategoryManager } from "./favorite-categories";
 import { FavoriteSaveError, favoriteWordKey, type DictionaryFavoriteEntry } from "./favorite-file";
-import { dictionaryText } from "./messages";
 import type { DictionarySettingsStore, FavoriteCategory } from "./types";
 
 export type FavoriteBatchErrorReason =
@@ -63,12 +60,36 @@ export function parseFavoriteBatchLines(content: string): FavoriteBatchLine[] {
 	return lines;
 }
 
-export type FavoriteBatchStatus = "idle" | "running" | "success" | "partial" | "failed" | "stopped";
+export type FavoriteBatchStatus =
+	| "idle"
+	| "running"
+	| "stopping"
+	| "success"
+	| "partial"
+	| "failed"
+	| "stopped";
+
+export type FavoriteBatchReason =
+	| FavoriteBatchErrorReason
+	| FavoriteSaveError["reason"]
+	| "busy"
+	| "target-failed"
+	| "target-stopped"
+	| "ai-config-required"
+	| "invalid-word"
+	| { readonly kind: "ai"; readonly code: ReturnType<typeof aiFailureCode> };
+
+function batchFailureReason(error: unknown): FavoriteBatchReason {
+	if (error instanceof FavoriteBatchError || error instanceof FavoriteSaveError)
+		return error.reason;
+	if (error instanceof FavoriteCategoryError && error.reason === "busy") return "busy";
+	return "target-failed";
+}
 
 export interface FavoriteBatchFailure {
 	readonly line: number;
 	readonly word: string;
-	readonly reason: string;
+	readonly reason: FavoriteBatchReason;
 }
 
 export interface FavoriteBatchSnapshot {
@@ -80,7 +101,7 @@ export interface FavoriteBatchSnapshot {
 	readonly skipped: number;
 	readonly failed: number;
 	readonly currentWord: string;
-	readonly message: string;
+	readonly reason: FavoriteBatchReason | null;
 	readonly failures: readonly FavoriteBatchFailure[];
 }
 
@@ -91,7 +112,6 @@ export interface FavoriteBatchOptions {
 	readonly store: FavoriteBatchStore;
 	readonly generator: FavoriteDraftGenerator;
 	readonly hasAiConfig: (id: string) => boolean;
-	readonly language: () => Language;
 }
 
 /** One modal's sequential batch; the category lease spans generation and writes. */
@@ -105,11 +125,11 @@ export class FavoriteBatchController {
 		skipped: 0,
 		failed: 0,
 		currentWord: "",
-		message: "",
+		reason: null,
 		failures: [],
 	};
 	private readonly listeners = new Set<() => void>();
-	private job: { abort: AbortController; stopRequested: boolean } | null = null;
+	private job: AbortController | null = null;
 	private disposed = false;
 
 	constructor(private readonly options: FavoriteBatchOptions) {}
@@ -137,12 +157,13 @@ export class FavoriteBatchController {
 
 	async start(sourcePath: string, categoryId: string): Promise<void> {
 		if (this.disposed || this.job) return;
-		const t = dictionaryText(this.options.language());
 		const category = this.categories.find((item) => item.id === categoryId);
 		const path = sourcePath.trim().replaceAll("\\", "/");
 		const targetPath = category?.path ?? "";
 		const configId = this.options.settings.getDictionarySettings().favoriteAiConfigId;
-		const job = { abort: new AbortController(), stopRequested: false };
+		const job = new AbortController();
+		let hasFulfilledWord = false;
+		let reason: FavoriteBatchReason | null = null;
 		this.job = job;
 		this.setSnapshot({
 			status: "running",
@@ -153,35 +174,39 @@ export class FavoriteBatchController {
 			skipped: 0,
 			failed: 0,
 			currentWord: "",
-			message: "",
+			reason: null,
 			failures: [],
 		});
 		try {
+			if (job.signal.aborted) return;
 			if (!category) throw new FavoriteBatchError("target-missing");
 			if (!path) throw new FavoriteBatchError("source-missing");
 			if (path.toLocaleLowerCase() === targetPath.toLocaleLowerCase())
 				throw new FavoriteBatchError("same-file");
 			if (!configId || !this.options.hasAiConfig(configId)) {
-				this.patch({ message: t.favoriteAiConfigRequired });
+				reason = "ai-config-required";
 				return;
 			}
 			await this.options.categories.runExclusive(async () => {
 				const content = await this.options.source.read(path);
-				if (job.stopRequested) return;
+				if (job.signal.aborted) return;
 				const lines = parseFavoriteBatchLines(content);
 				if (lines.length === 0) throw new FavoriteBatchError("no-words");
 				this.patch({ total: lines.length });
+				if (job.signal.aborted) return;
 				const existing = new Set(
 					(await this.options.store.inspect(targetPath)).map(favoriteWordKey),
 				);
 				for (const line of lines) {
-					if (job.stopRequested) break;
+					if (job.signal.aborted) break;
 					this.patch({ currentWord: line.word });
+					if (job.signal.aborted) break;
 					if (line.kind === "invalid") {
-						this.recordFailure(line, t.favoriteBatchInvalidWord);
+						this.recordFailure(line, "invalid-word");
 						continue;
 					}
 					if (line.kind === "duplicate" || existing.has(line.key)) {
+						if (line.kind !== "duplicate") hasFulfilledWord = true;
 						this.patch({
 							processed: this.snapshot.processed + 1,
 							skipped: this.snapshot.skipped + 1,
@@ -189,7 +214,7 @@ export class FavoriteBatchController {
 						continue;
 					}
 					if (!this.options.hasAiConfig(configId)) {
-						this.patch({ message: t.favoriteAiConfigRequired });
+						reason = "ai-config-required";
 						break;
 					}
 					let draft: Awaited<ReturnType<FavoriteDraftGenerator["generate"]>>;
@@ -197,20 +222,14 @@ export class FavoriteBatchController {
 						draft = await this.options.generator.generate(
 							line.word,
 							configId,
-							job.abort.signal,
+							job.signal,
 						);
 					} catch (error) {
-						if (job.stopRequested) break;
-						const code = aiFailureCode(error);
-						this.recordFailure(
-							line,
-							code === "invalid-response" || code === "incomplete-response"
-								? t.favoriteAiInvalidResponse
-								: aiErrorText(this.options.language(), code),
-						);
+						if (job.signal.aborted) break;
+						this.recordFailure(line, { kind: "ai", code: aiFailureCode(error) });
 						continue;
 					}
-					if (job.stopRequested) break;
+					if (job.signal.aborted) break;
 					try {
 						const outcome = await this.options.store.saveNew({
 							path: targetPath,
@@ -218,46 +237,41 @@ export class FavoriteBatchController {
 							meaning: draft.meaning,
 							note: draft.note,
 						});
-						existing.add(line.key);
+						hasFulfilledWord = true;
 						this.patch({
 							processed: this.snapshot.processed + 1,
-							[outcome === "saved" ? "saved" : "skipped"]:
-								this.snapshot[outcome === "saved" ? "saved" : "skipped"] + 1,
+							[outcome]: this.snapshot[outcome] + 1,
 						});
 					} catch (error) {
-						this.recordFailure(line, this.errorText(error));
+						this.recordFailure(line, batchFailureReason(error));
 						if (
 							error instanceof FavoriteSaveError &&
 							error.reason === "invalid-card-content"
 						)
 							continue;
-						this.patch({ message: t.favoriteBatchTargetStopped });
+						reason = "target-stopped";
 						break;
 					}
 				}
 			});
 		} catch (error) {
-			if (!job.stopRequested) this.patch({ message: this.errorText(error) });
+			reason = batchFailureReason(error);
 		} finally {
 			if (this.job === job) this.job = null;
 			if (!this.disposed) {
-				const status: FavoriteBatchStatus = job.stopRequested
-					? "stopped"
-					: this.snapshot.message || this.snapshot.failed
-						? this.snapshot.saved + this.snapshot.skipped > 0
-							? "partial"
-							: "failed"
-						: "success";
-				this.patch({ status, currentWord: "" });
+				let status: FavoriteBatchStatus = "success";
+				if (job.signal.aborted) status = "stopped";
+				else if (reason || this.snapshot.failed > 0)
+					status = hasFulfilledWord ? "partial" : "failed";
+				this.patch({ status, reason: job.signal.aborted ? null : reason, currentWord: "" });
 			}
 		}
 	}
 
 	stop(): void {
-		if (!this.job) return;
-		this.job.stopRequested = true;
-		this.job.abort.abort();
-		this.patch({ message: dictionaryText(this.options.language()).favoriteBatchStopping });
+		if (!this.job || this.job.signal.aborted) return;
+		this.job.abort();
+		this.patch({ status: "stopping" });
 	}
 
 	async openTarget(): Promise<boolean> {
@@ -272,46 +286,12 @@ export class FavoriteBatchController {
 		this.listeners.clear();
 	}
 
-	private recordFailure(line: FavoriteBatchLine, reason: string): void {
+	private recordFailure(line: FavoriteBatchLine, reason: FavoriteBatchReason): void {
 		this.patch({
 			processed: this.snapshot.processed + 1,
 			failed: this.snapshot.failed + 1,
 			failures: [...this.snapshot.failures, { line: line.line, word: line.word, reason }],
 		});
-	}
-
-	private errorText(error: unknown): string {
-		const t = dictionaryText(this.options.language());
-		if (error instanceof FavoriteBatchError) {
-			switch (error.reason) {
-				case "source-missing":
-				case "source-invalid":
-					return t.favoriteBatchSourceInvalid;
-				case "source-read-failed":
-					return t.favoriteBatchSourceReadFailed;
-				case "target-missing":
-					return t.favoriteBatchTargetMissing;
-				case "same-file":
-					return t.favoriteBatchSameFile;
-				case "no-words":
-					return t.favoriteBatchNoWords;
-			}
-		}
-		if (error instanceof FavoriteSaveError) {
-			switch (error.reason) {
-				case "migration-required":
-					return t.favoriteMigrationRequired;
-				case "source-needs-repair":
-					return t.favoriteSourceNeedsRepair;
-				case "source-changing":
-					return t.favoriteSourceChanging;
-				case "invalid-card-content":
-					return t.favoriteInvalidCardContent;
-			}
-		}
-		if (error instanceof FavoriteCategoryError && error.reason === "busy")
-			return t.favoriteCategoryBusy;
-		return t.favoriteBatchTargetFailed;
 	}
 
 	private patch(changes: Partial<FavoriteBatchSnapshot>): void {
