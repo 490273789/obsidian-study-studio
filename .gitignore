@@ -32,5 +32,10 @@ data.backup-v*.json
 # ai
 .agents
 
-docs/adr/
+.impecable
+tmp
+GLOSSARYY.md
+DESIGN.md
+design-qa.md
+docs/
 .vitest/
