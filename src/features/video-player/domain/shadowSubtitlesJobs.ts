@@ -114,14 +114,7 @@ export class VideoSubtitleJobs {
 	}
 	getCueEditTarget(sourceId: string, cueId: string): ShadowSubtitleEditTarget | null {
 		const cue = this.documents[sourceId]?.cues.find((item) => item.id === cueId);
-		if (!cue) return null;
-		return Object.freeze({
-			sourceId,
-			cueId,
-			text: cue.text,
-			translation: cue.translation,
-			version: this.cueStates.get(cue)!.version,
-		});
+		return cue ? this.editTarget(sourceId, cue) : null;
 	}
 	async restore(id: string): Promise<void> {
 		await this.documentTransaction(id, async () => {
@@ -134,7 +127,7 @@ export class VideoSubtitleJobs {
 		});
 	}
 	/** Reconcile an external vault edit after pausing this source's current work. */
-	async reloadSource(id: string): Promise<void> {
+	async reloadSource(id: string, editedCueId?: string): Promise<void> {
 		this.pause(id);
 		if (this.activeId === id) await this.activeDone;
 		await this.translations;
@@ -142,7 +135,10 @@ export class VideoSubtitleJobs {
 			if (this.disposed) return;
 			const document = (await this.ports.store.load(id)) ?? emptyShadowDocument(id);
 			if (this.disposed) return;
-			this.acceptDocument(id, structuredClone(document));
+			const reloaded = structuredClone(document);
+			if (editedCueId !== undefined)
+				this.preserveUnchangedCueVersions(id, reloaded, editedCueId);
+			this.acceptDocument(id, reloaded);
 			delete this.translationFailures[id];
 			this.tasks = this.tasks.filter(
 				(item) => item.source.id !== id || item.status === "complete",
@@ -284,10 +280,13 @@ export class VideoSubtitleJobs {
 			await this.saveDocument(id, document, true);
 		});
 	}
-	async saveCueEdit(target: ShadowSubtitleEditTarget, patch: CueEditPatch): Promise<void> {
+	async saveCueEdit(
+		target: ShadowSubtitleEditTarget,
+		patch: CueEditPatch,
+	): Promise<ShadowSubtitleEditTarget> {
 		const { sourceId, cueId, version } = target;
 		const acceptedPatch = { ...patch };
-		await this.documentTransaction(sourceId, async () => {
+		return this.documentTransaction(sourceId, async () => {
 			const current = this.documents[sourceId];
 			const currentCue = current?.cues.find((item) => item.id === cueId);
 			if (!currentCue || this.cueStates.get(currentCue)?.version !== version)
@@ -307,6 +306,8 @@ export class VideoSubtitleJobs {
 			}
 			document.revision++;
 			await this.saveDocument(sourceId, document);
+			// Capture this write before the next transaction can replace the active cue.
+			return this.editTarget(sourceId, cue);
 		});
 	}
 	async translateSubtitles(
@@ -406,6 +407,30 @@ export class VideoSubtitleJobs {
 	}
 	private allCues(document: ShadowSubtitleDocument): ShadowSubtitleCue[] {
 		return [...document.cues, ...(document.candidate ?? []), ...(document.previous ?? [])];
+	}
+	private editTarget(sourceId: string, cue: ShadowSubtitleCue): ShadowSubtitleEditTarget {
+		return Object.freeze({
+			sourceId,
+			cueId: cue.id,
+			text: cue.text,
+			translation: cue.translation,
+			version: this.cueStates.get(cue)!.version,
+		});
+	}
+	private preserveUnchangedCueVersions(
+		sourceId: string,
+		reloaded: ShadowSubtitleDocument,
+		editedCueId: string,
+	): void {
+		const previous = this.documents[sourceId];
+		if (!previous) return;
+		const previousCues = indexUniqueCues(previous.cues);
+		for (const [id, cue] of indexUniqueCues(reloaded.cues)) {
+			if (!cue || id === editedCueId) continue;
+			const original = previousCues.get(id);
+			if (original && sameCue(original, cue))
+				this.cueStates.set(cue, this.cueStates.get(original)!);
+		}
 	}
 	private acceptDocument(
 		id: string,
@@ -596,6 +621,14 @@ export class VideoSubtitleJobs {
 			}
 		}
 	}
+}
+
+function indexUniqueCues(
+	cues: readonly ShadowSubtitleCue[],
+): Map<string, ShadowSubtitleCue | null> {
+	const byId = new Map<string, ShadowSubtitleCue | null>();
+	for (const cue of cues) byId.set(cue.id, byId.has(cue.id) ? null : cue);
+	return byId;
 }
 
 function sameCue(left: ShadowSubtitleCue, right: ShadowSubtitleCue): boolean {

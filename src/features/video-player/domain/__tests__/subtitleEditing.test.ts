@@ -147,6 +147,38 @@ describe("subtitle editing commits", () => {
 		expect(jobs.getCues(source.id)[0]?.text).toBe("First view");
 		jobs.dispose();
 	});
+	it("returns each save's own committed version when publication queues another edit", async () => {
+		const { jobs, writes } = fixture();
+		await jobs.restore(source.id);
+		const original = jobs.getCueEditTarget(source.id, "import-0")!;
+		let published: ReturnType<typeof jobs.getCueEditTarget> = null;
+		let followup: ReturnType<typeof jobs.saveCueEdit> | undefined;
+		const unsubscribe = jobs.subscribe(() => {
+			const committed = jobs.getCueEditTarget(source.id, original.cueId)!;
+			if (committed.text !== "First edit") return;
+			published = committed;
+			followup = jobs.saveCueEdit(committed, { text: "Second edit" });
+		});
+
+		const first = await jobs.saveCueEdit(original, { text: "First edit" });
+		const second = await followup;
+
+		expect(writes).toHaveLength(2);
+		expect(first).toMatchObject({
+			sourceId: source.id,
+			cueId: original.cueId,
+			text: "First edit",
+			translation: "",
+		});
+		expect(Object.isFrozen(first)).toBe(true);
+		expect(first).toEqual(published);
+		expect(first.version).not.toBe(original.version);
+		expect(second?.version).not.toBe(first.version);
+		expect(second).toEqual(jobs.getCueEditTarget(source.id, original.cueId));
+		expect(second?.text).toBe("Second edit");
+		unsubscribe();
+		jobs.dispose();
+	});
 	it("allows a target to save after another cue changes", async () => {
 		const { jobs, documents } = fixture();
 		await jobs.restore(source.id);
@@ -161,7 +193,7 @@ describe("subtitle editing commits", () => {
 		]);
 		jobs.dispose();
 	});
-	it.each(["adopt", "restore", "reload"] as const)(
+	it.each(["adopt", "restore", "reload", "scoped reload"] as const)(
 		"rejects an old target after %s even when the cue id and content are reused",
 		async (replacement) => {
 			const initial = initialDocument();
@@ -173,13 +205,46 @@ describe("subtitle editing commits", () => {
 				await jobs.importSubtitles(source.id, imported, "srt");
 				await jobs.adoptCandidate(source.id);
 			} else if (replacement === "restore") await jobs.restorePrevious(source.id);
-			else await jobs.reloadSource(source.id);
+			else
+				await jobs.reloadSource(
+					source.id,
+					replacement === "scoped reload" ? target.cueId : undefined,
+				);
 			const count = writes.length;
 			await expect(jobs.saveCueEdit(target, { text: "Stale" })).rejects.toBeInstanceOf(
 				ShadowSubtitleEditConflict,
 			);
 			expect(writes).toHaveLength(count);
 			expect(jobs.getCues(source.id)[0]?.text).toBe("Original");
+			jobs.dispose();
+		},
+	);
+	it.each(["unchanged", "changed", "ambiguous"] as const)(
+		"reconciles a deleted cue and preserves only an unambiguous, unchanged edit target (%s)",
+		async (otherCue) => {
+			const { jobs, documents } = fixture();
+			await jobs.restore(source.id);
+			const first = jobs.getCueEditTarget(source.id, "import-0")!;
+			const second = jobs.getCueEditTarget(source.id, "import-1")!;
+			const editedOnDisk = documents.get(source.id)!;
+			editedOnDisk.cues.shift();
+			const remaining = editedOnDisk.cues[0]!;
+			if (otherCue === "changed") remaining.translation = "外部修改";
+			if (otherCue === "ambiguous") editedOnDisk.cues.push({ ...remaining });
+
+			await jobs.reloadSource(source.id, first.cueId);
+
+			expect(jobs.getCueEditTarget(source.id, first.cueId)).toBeNull();
+			if (otherCue === "unchanged") {
+				expect(jobs.getCueEditTarget(source.id, second.cueId)).toEqual(second);
+				await expect(
+					jobs.saveCueEdit(second, { text: "Second corrected" }),
+				).resolves.toMatchObject({ text: "Second corrected" });
+			} else {
+				await expect(
+					jobs.saveCueEdit(second, { text: "Stale second edit" }),
+				).rejects.toBeInstanceOf(ShadowSubtitleEditConflict);
+			}
 			jobs.dispose();
 		},
 	);
@@ -373,7 +438,7 @@ describe("subtitle editing commits", () => {
 		jobs.subscribe(healthy);
 		await expect(
 			jobs.saveCueEdit(jobs.getCueEditTarget(source.id, "import-0")!, { text: "Committed" }),
-		).resolves.toBeUndefined();
+		).resolves.toMatchObject({ text: "Committed" });
 		expect(documents.get(source.id)?.cues[0]?.text).toBe("Committed");
 		expect(jobs.getCues(source.id)[0]?.text).toBe("Committed");
 		expect(healthy).toHaveBeenCalledOnce();

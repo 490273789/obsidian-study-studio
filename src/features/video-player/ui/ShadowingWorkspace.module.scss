@@ -74,6 +74,7 @@
 .workspace select:focus-visible,
 .workspace input:focus-visible,
 .workspace textarea:focus-visible,
+.deletedDrafts summary:focus-visible,
 .fileButton:focus-within {
 	outline: 2px solid var(--interactive-accent) !important;
 	outline-offset: 2px;
@@ -223,6 +224,58 @@
 	width: 100%;
 	min-width: 0;
 	min-height: 56px;
+}
+
+.deletedDrafts {
+	padding: 8px 12px;
+	border: 1px solid var(--fc-line-soft);
+	border-radius: var(--fc-radius-md);
+	background: var(--fc-surface-section);
+
+	summary {
+		color: var(--fc-text);
+		font-size: var(--fc-font-sm);
+		cursor: pointer;
+	}
+
+	ul {
+		display: grid;
+		gap: 12px;
+		margin: 8px 0 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	li {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: end;
+		gap: 8px;
+		padding-top: 8px;
+		border-top: 1px solid var(--fc-line-soft);
+	}
+}
+
+.draftField {
+	display: grid;
+	min-width: 0;
+	flex: 1 1 150px;
+	justify-items: start;
+	gap: 4px;
+
+	label {
+		display: grid;
+		width: 100%;
+		min-width: 0;
+		gap: 4px;
+		color: var(--fc-muted);
+		font-size: var(--fc-font-sm);
+	}
+
+	textarea {
+		width: 100%;
+		min-height: 56px;
+	}
 }
 
 .task p,

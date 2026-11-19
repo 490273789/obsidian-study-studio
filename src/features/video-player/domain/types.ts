@@ -160,12 +160,19 @@ export interface ShadowingWorkspaceState {
 	readonly rangeStart: number;
 	readonly rangeEnd: number;
 	readonly canPractice: boolean;
+	readonly deletedDrafts: readonly {
+		readonly sourceId: string;
+		readonly cueId: string;
+		readonly text: string;
+		readonly translation: string;
+	}[];
 	readonly editor: null | {
 		readonly cueId: string;
 		readonly text: string;
 		readonly translation: string;
 		readonly busy: boolean;
 		readonly conflict: boolean;
+		readonly deleted: boolean;
 		readonly failure: string | null;
 		readonly confirmingReload: boolean;
 		readonly canSave: boolean;
@@ -195,6 +202,10 @@ export type ShadowingWorkspaceViewAction =
 	| { readonly type: "choose-cue"; readonly cueId: string; readonly extend: boolean }
 	| { readonly type: "set-cue-range"; readonly edge: "start" | "end"; readonly seconds: number }
 	| { readonly type: "toggle-cue-editor" }
+	| {
+			readonly type: "discard-deleted-draft";
+			readonly draft: ShadowingWorkspaceState["deletedDrafts"][number];
+	  }
 	| {
 			readonly type: "set-cue-field";
 			readonly field: "text" | "translation";

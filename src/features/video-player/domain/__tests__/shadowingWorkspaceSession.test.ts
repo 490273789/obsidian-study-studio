@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { VideoPlayerRuntime } from "../videoPlayerRuntime";
-import { ShadowSubtitleEditConflict, type VideoSubtitleJobs } from "../shadowSubtitlesJobs";
+import {
+	ShadowSubtitleEditConflict,
+	type ShadowSubtitleEditTarget,
+	type VideoSubtitleJobs,
+} from "../shadowSubtitlesJobs";
 import type { ShadowingSession } from "../shadowingSession";
 import type { ShadowPracticeRecords } from "../../obsidian/shadowPracticeRecords";
 import { ShadowingWorkspaceSession } from "../shadowingWorkspaceSession";
@@ -24,7 +28,7 @@ function setup(initialEnabled: readonly string[] = ["one", "two"]) {
 				resolveRead = resolve;
 			}),
 	);
-	const reloadSource = vi.fn(async () => undefined);
+	const reloadSource = vi.fn(async (): Promise<void> => undefined);
 	const restore = vi.fn(async () => undefined);
 	const play = vi.fn(async (): Promise<void> => undefined);
 	const leave = vi.fn();
@@ -50,28 +54,30 @@ function setup(initialEnabled: readonly string[] = ["one", "two"]) {
 		one: { cues },
 		two: { cues: [] },
 	};
-	const editTargets = new Map<
-		string,
-		{ cueId: string; sourceId: string; version: number; text: string; translation?: string }
-	>();
+	const editTargets = new Map<string, ShadowSubtitleEditTarget>();
 	editTargets.set("one:c1", {
 		cueId: "c1",
 		sourceId: "one",
-		version: 1,
+		version: "initial",
 		text: "first",
 		translation: "第一",
 	});
 	editTargets.set("one:c2", {
 		cueId: "c2",
 		sourceId: "one",
-		version: 1,
+		version: "initial",
 		text: "second",
 		translation: "第二",
 	});
 	const getCueEditTarget = vi.fn(
 		(sid: string, cid: string) => editTargets.get(`${sid}:${cid}`) ?? null,
 	);
-	const saveCueEdit = vi.fn(async () => undefined);
+	const saveCueEdit = vi.fn<VideoSubtitleJobs["saveCueEdit"]>(async (target, patch) => {
+		const saved = { ...target, ...patch, version: target.version + "-saved" };
+		editTargets.set(target.sourceId + ":" + target.cueId, saved);
+		jobsListener?.();
+		return saved;
+	});
 
 	const runtime = {
 		getSnapshot: () => ({ currentSourceId: sourceId, playing, duration: 30 }),
@@ -182,6 +188,22 @@ function setup(initialEnabled: readonly string[] = ["one", "two"]) {
 			practiceRange = { sourceId, start: 4, end: 6 };
 		},
 	};
+}
+
+function pending<T>() {
+	let resolve!: (value: T) => void;
+	let reject!: (error: Error) => void;
+	const promise = new Promise<T>((done, fail) => {
+		resolve = done;
+		reject = fail;
+	});
+	return { promise, resolve, reject };
+}
+
+async function editFirstCue(state: ReturnType<typeof setup>) {
+	await state.session.act({ type: "choose-cue", cueId: "c1", extend: false });
+	await state.session.act({ type: "toggle-cue-editor" });
+	await state.session.act({ type: "set-cue-field", field: "text", value: "My correction" });
 }
 
 describe("ShadowingWorkspaceSession", () => {
@@ -443,6 +465,16 @@ describe("ShadowingWorkspaceSession", () => {
 		snap = state.session.getSnapshot();
 		expect(snap.editor?.confirmingReload).toBe(false);
 
+		const replacement = {
+			...state.editTargets.get("one:c1")!,
+			version: "reloaded",
+			text: "Vault edit",
+			translation: "新译文",
+		};
+		state.reloadSource.mockImplementationOnce(async () => {
+			state.editTargets.set("one:c1", replacement);
+			state.notifyJobsChanged();
+		});
 		await state.session.act({
 			type: "request-cue-reload",
 			expectedEditor: snap.editor,
@@ -451,7 +483,136 @@ describe("ShadowingWorkspaceSession", () => {
 			type: "confirm-cue-reload",
 			expectedEditor: state.session.getSnapshot().editor,
 		});
-		expect(state.reloadSource).toHaveBeenCalledWith("one");
+		expect(state.reloadSource).toHaveBeenCalledWith("one", "c1");
+		expect(state.session.getSnapshot().editor).toMatchObject({
+			text: replacement.text,
+			translation: replacement.translation,
+			conflict: false,
+			canSave: true,
+		});
+		state.session.dispose();
+	});
+
+	it.each([false, true])(
+		"uses the committed version after reopening, subsequent edit = %s",
+		async (externalEdit) => {
+			const state = setup();
+			await editFirstCue(state);
+			const writing = pending<ShadowSubtitleEditTarget>();
+			state.saveCueEdit.mockReturnValueOnce(writing.promise);
+			const saving = state.session.act({ type: "save-cue-edit" });
+			await state.session.act({ type: "choose-cue", cueId: "c2", extend: false });
+			await state.session.act({ type: "choose-cue", cueId: "c1", extend: false });
+			const receipt = {
+				...state.editTargets.get("one:c1")!,
+				text: "My correction",
+				version: "saved",
+			};
+			state.editTargets.set("one:c1", receipt);
+			state.notifyJobsChanged();
+			expect(state.session.getSnapshot().editor).toMatchObject({
+				busy: true,
+				conflict: false,
+			});
+			if (externalEdit) {
+				state.editTargets.set("one:c1", { ...receipt, version: "external" });
+				state.notifyJobsChanged();
+			}
+			writing.resolve(receipt);
+			await saving;
+			expect(state.session.getSnapshot().editor).toMatchObject({
+				text: "My correction",
+				conflict: externalEdit,
+				canSave: !externalEdit,
+				busy: false,
+			});
+			if (!externalEdit) {
+				await state.session.act({ type: "save-cue-edit" });
+				expect(state.saveCueEdit).toHaveBeenLastCalledWith(receipt, {
+					text: "My correction",
+					translation: "第一",
+				});
+			}
+			state.session.dispose();
+		},
+	);
+
+	it("keeps a failed save with its original cue while another cue is being edited", async () => {
+		const state = setup();
+		await editFirstCue(state);
+		const writing = pending<ShadowSubtitleEditTarget>();
+		state.saveCueEdit.mockReturnValueOnce(writing.promise);
+		const saving = state.session.act({ type: "save-cue-edit" });
+		await state.session.act({ type: "choose-cue", cueId: "c2", extend: false });
+		await state.session.act({ type: "toggle-cue-editor" });
+		writing.reject(new Error("disk full"));
+		await saving;
+		expect(state.session.getSnapshot().editor).toMatchObject({ cueId: "c2", failure: null });
+		await state.session.act({ type: "choose-cue", cueId: "c1", extend: false });
+		expect(state.session.getSnapshot().editor).toMatchObject({
+			text: "My correction",
+			translation: "第一",
+			failure: "disk full",
+			canSave: true,
+		});
+		state.session.dispose();
+	});
+
+	it("recovers a deleted subtitle after a confirmed reload without disturbing the active editor", async () => {
+		const state = setup();
+		await editFirstCue(state);
+		state.saveCueEdit.mockRejectedValueOnce(new ShadowSubtitleEditConflict());
+		await state.session.act({ type: "save-cue-edit" });
+		await state.session.act({ type: "request-cue-reload" });
+		const reading = pending<void>();
+		state.reloadSource.mockReturnValueOnce(reading.promise);
+		const reload = state.session.act({ type: "confirm-cue-reload" });
+		await state.session.act({ type: "choose-cue", cueId: "c2", extend: false });
+		await state.session.act({ type: "toggle-cue-editor" });
+		state.documents.one!.cues = state.cues.filter((cue) => cue.id !== "c1");
+		state.editTargets.delete("one:c1");
+		state.notifyJobsChanged();
+		reading.resolve();
+		await reload;
+		const snapshot = state.session.getSnapshot();
+		expect(snapshot.editor).toMatchObject({ cueId: "c2", conflict: false });
+		expect(snapshot.deletedDrafts).toMatchObject([
+			{ sourceId: "one", cueId: "c1", text: "My correction", translation: "第一" },
+		]);
+		state.setSource("two");
+		expect(state.session.getSnapshot().deletedDrafts).toEqual([]);
+		await state.session.act({
+			type: "discard-deleted-draft",
+			draft: snapshot.deletedDrafts[0]!,
+		});
+		state.setSource("one");
+		const draft = state.session.getSnapshot().deletedDrafts[0]!;
+		expect(draft.text).toBe("My correction");
+		await state.session.act({ type: "discard-deleted-draft", draft });
+		expect(state.session.getSnapshot().deletedDrafts).toEqual([]);
+		expect(state.session.getSnapshot().editor?.cueId).toBe("c2");
+		state.session.dispose();
+	});
+
+	it("releases drafts when the workspace closes, even with a save in flight", async () => {
+		const state = setup();
+		await editFirstCue(state);
+		const writing = pending<ShadowSubtitleEditTarget>();
+		state.saveCueEdit.mockReturnValueOnce(writing.promise);
+		const saving = state.session.act({ type: "save-cue-edit" });
+		state.session.clearSubtitleDrafts();
+		await editFirstCue(state);
+		await state.session.act({
+			type: "set-cue-field",
+			field: "text",
+			value: "New workspace draft",
+		});
+		writing.reject(new Error("late failure"));
+		await saving;
+		expect(state.session.getSnapshot().editor).toMatchObject({
+			text: "New workspace draft",
+			failure: null,
+		});
 		state.session.dispose();
 	});
 

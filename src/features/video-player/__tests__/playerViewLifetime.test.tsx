@@ -6,7 +6,7 @@ import { createVideoPlayerFeature } from "../feature";
 import type { PlayerViewMount } from "../ui/playerViewInteraction";
 import type { ShadowingViewBridge } from "../ui/VideoPlayerView";
 
-const captured = vi.hoisted(() => ({ definition: null as unknown }));
+const captured = vi.hoisted(() => ({ definition: null as unknown, clearDrafts: vi.fn() }));
 vi.mock("obsidian", () => ({ Notice: vi.fn(), Platform: { resourcePathPrefix: "app://vault/" } }));
 vi.mock("../../../core/host/reactItemView", () => ({
 	createReactItemView: (definition: unknown) => {
@@ -38,6 +38,7 @@ vi.mock("../obsidian/videoShadowingDesktopAdapter", () => ({
 			subscribe: () => () => undefined,
 			act: vi.fn(),
 			stopForPresenterLoss: vi.fn(),
+			clearSubtitleDrafts: captured.clearDrafts,
 		};
 		bindPresenterWindow() {}
 		dispose() {}
@@ -84,7 +85,9 @@ describe("player view lifetime", () => {
 		first.dispose();
 		expect(first.resource.view.dispose).toHaveBeenCalledOnce();
 		expect(second.resource.view.dispose).not.toHaveBeenCalled();
+		expect(captured.clearDrafts).not.toHaveBeenCalled();
 		second.dispose();
+		expect(captured.clearDrafts).toHaveBeenCalledOnce();
 		feature.stop();
 	});
 });

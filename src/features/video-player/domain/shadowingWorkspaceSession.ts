@@ -1,9 +1,6 @@
 import type { VideoPlayerRuntime } from "./videoPlayerRuntime";
-import {
-	ShadowSubtitleEditConflict,
-	type ShadowSubtitleEditTarget,
-	type VideoSubtitleJobs,
-} from "./shadowSubtitlesJobs";
+import type { VideoSubtitleJobs } from "./shadowSubtitlesJobs";
+import { VideoSubtitleDrafts } from "./videoSubtitleDrafts";
 import { ShadowingSession, type ShadowRecorderPort, type ShadowingTake } from "./shadowingSession";
 import type {
 	ShadowPracticeRecord,
@@ -31,24 +28,11 @@ export interface ShadowingWorkspaceSessionOptions {
 	reportDetachedFailure?(error: unknown): void;
 }
 
-interface Draft {
-	openToken: object;
-	target: ShadowSubtitleEditTarget;
-	text: string;
-	translation: string;
-	busy: boolean;
-	conflict: boolean;
-	failure: string | null;
-	confirmingReload: boolean;
-}
-
 interface SourceSelection {
 	anchor: string | null;
 	end: string | null;
 	start: number;
 	finish: number;
-	editor: Draft | null;
-	readonly drafts: Map<string, Draft>;
 }
 
 /**
@@ -57,6 +41,7 @@ interface SourceSelection {
  * saved takes persistence, audio replay, and race tokens behind a small snapshot + act interface.
  */
 export class ShadowingWorkspaceSession {
+	private readonly subtitleDrafts: VideoSubtitleDrafts;
 	private readonly sources = new Map<string, SourceSelection>();
 	private snapshot: ShadowingWorkspaceState;
 	private readonly listeners = new Set<() => void>();
@@ -73,6 +58,12 @@ export class ShadowingWorkspaceSession {
 	constructor(private readonly options: ShadowingWorkspaceSessionOptions) {
 		this.sourceId = options.runtime.getSnapshot().currentSourceId;
 		this.audioPlayer = options.audioPlayer;
+		this.subtitleDrafts = new VideoSubtitleDrafts(
+			options.jobs,
+			() => this.publish(),
+			(error) => options.reportDetachedFailure?.(error),
+		);
+		this.subtitleDrafts.activate(this.sourceId);
 
 		if (options.session) {
 			this.session = options.session;
@@ -129,6 +120,11 @@ export class ShadowingWorkspaceSession {
 			this.records = [];
 			this.error = null;
 		}
+		this.publish();
+	}
+
+	clearSubtitleDrafts(): void {
+		this.subtitleDrafts.clear();
 		this.publish();
 	}
 
@@ -200,21 +196,19 @@ export class ShadowingWorkspaceSession {
 				this.setCueRange(action.edge, action.seconds);
 				return;
 			case "toggle-cue-editor":
-				this.toggleCueEditor();
+				this.subtitleDrafts.toggle(
+					this.snapshot.selectedCueIds.length === 1
+						? this.snapshot.selectedCueIds[0]!
+						: null,
+				);
 				return;
 			case "set-cue-field":
-				this.setCueField(action.field, action.value, action.expectedEditor);
-				return;
 			case "save-cue-edit":
-				return this.saveCueEdit(action.expectedEditor);
 			case "request-cue-reload":
-				this.requestCueReload(action.expectedEditor);
-				return;
 			case "cancel-cue-reload":
-				this.cancelCueReload(action.expectedEditor);
-				return;
 			case "confirm-cue-reload":
-				return this.confirmCueReload(action.expectedEditor);
+			case "discard-deleted-draft":
+				return this.subtitleDrafts.act(action);
 			case "start-practice-selected":
 				this.startPracticeSelected();
 				return;
@@ -286,6 +280,7 @@ export class ShadowingWorkspaceSession {
 		for (const release of this.cleanup) release();
 		this.session.dispose?.();
 		this.audioPlayer?.dispose?.();
+		this.subtitleDrafts.dispose();
 		this.sources.clear();
 		this.listeners.clear();
 	}
@@ -301,8 +296,7 @@ export class ShadowingWorkspaceSession {
 		state.end = cueId;
 		state.start = Math.min(anchor?.start ?? cue.start, cue.start);
 		state.finish = Math.max(anchor?.end ?? cue.end, cue.end);
-		state.editor = state.anchor === state.end ? (state.drafts.get(cueId) ?? null) : null;
-		if (state.editor) state.editor.openToken = {};
+		this.subtitleDrafts.select(state.anchor === state.end ? cueId : null);
 		if (!anchor) this.options.runtime.seekTo(cue.start);
 		this.publish();
 	}
@@ -331,148 +325,6 @@ export class ShadowingWorkspaceSession {
 		);
 	}
 
-	private toggleCueEditor(): void {
-		if (this.disposed || !this.sourceId) return;
-		const state = this.currentSelection();
-		if (!state) return;
-		if (state.editor) {
-			state.editor = null;
-		} else if (this.snapshot.selectedCueIds.length === 1) {
-			const cueId = this.snapshot.selectedCueIds[0]!;
-			let draft = state.drafts.get(cueId);
-			if (!draft) {
-				const target = this.options.jobs.getCueEditTarget(this.sourceId, cueId);
-				if (!target) return;
-				draft = this.newDraft(target);
-				state.drafts.set(cueId, draft);
-			}
-			draft.openToken = {};
-			state.editor = draft;
-		}
-		this.publish();
-	}
-
-	private setCueField(
-		field: "text" | "translation",
-		value: string,
-		expectedEditor?: ShadowingWorkspaceState["editor"],
-	): void {
-		if (this.disposed) return;
-		if (expectedEditor !== undefined && expectedEditor !== this.snapshot.editor) return;
-		const draft = this.currentSelection()?.editor;
-		if (!draft || draft.busy) return;
-		draft[field] = value;
-		draft.failure = null;
-		this.publish();
-	}
-
-	private async saveCueEdit(expectedEditor?: ShadowingWorkspaceState["editor"]): Promise<void> {
-		if (this.disposed) return;
-		if (expectedEditor !== undefined && expectedEditor !== this.snapshot.editor) return;
-		const state = this.currentSelection();
-		const draft = state?.editor;
-		if (!state || !draft || !this.snapshot.editor?.canSave) return;
-		const openToken = draft.openToken;
-		draft.busy = true;
-		draft.failure = null;
-		this.publish();
-		try {
-			await this.options.jobs.saveCueEdit(draft.target, {
-				text: draft.text,
-				translation: draft.translation,
-			});
-			if (this.disposed) return;
-			draft.busy = false;
-			if (openToken === draft.openToken && state.editor === draft) {
-				state.editor = null;
-				state.drafts.delete(draft.target.cueId);
-			} else if (state.editor !== draft) {
-				state.drafts.delete(draft.target.cueId);
-			}
-		} catch (error) {
-			if (this.disposed) {
-				this.options.reportDetachedFailure?.(error);
-				return;
-			}
-			draft.busy = false;
-			if (error instanceof ShadowSubtitleEditConflict) draft.conflict = true;
-			else draft.failure = error instanceof Error ? error.message : String(error);
-		}
-		this.publish();
-	}
-
-	private requestCueReload(expectedEditor?: ShadowingWorkspaceState["editor"]): void {
-		if (this.disposed) return;
-		if (expectedEditor !== undefined && expectedEditor !== this.snapshot.editor) return;
-		const draft = this.currentSelection()?.editor;
-		if (!draft || draft.busy || (!draft.conflict && !draft.failure)) return;
-		draft.confirmingReload = true;
-		this.publish();
-	}
-
-	private cancelCueReload(expectedEditor?: ShadowingWorkspaceState["editor"]): void {
-		if (this.disposed) return;
-		if (expectedEditor !== undefined && expectedEditor !== this.snapshot.editor) return;
-		const draft = this.currentSelection()?.editor;
-		if (!draft || draft.busy) return;
-		draft.confirmingReload = false;
-		this.publish();
-	}
-
-	private async confirmCueReload(
-		expectedEditor?: ShadowingWorkspaceState["editor"],
-	): Promise<void> {
-		if (this.disposed) return;
-		if (expectedEditor !== undefined && expectedEditor !== this.snapshot.editor) return;
-		const state = this.currentSelection();
-		const draft = state?.editor;
-		if (!state || !draft?.confirmingReload || draft.busy) return;
-		const openToken = draft.openToken;
-		draft.busy = true;
-		draft.failure = null;
-		this.publish();
-		try {
-			await this.options.jobs.reloadSource(draft.target.sourceId);
-			if (this.disposed) return;
-			const target = this.options.jobs.getCueEditTarget(
-				draft.target.sourceId,
-				draft.target.cueId,
-			);
-			if (target) {
-				Object.assign(draft, this.newDraft(target), { openToken: draft.openToken });
-			} else {
-				draft.busy = false;
-				draft.confirmingReload = false;
-				if (state.editor !== draft || openToken === draft.openToken) {
-					state.drafts.delete(draft.target.cueId);
-					if (state.editor === draft) state.editor = null;
-				}
-			}
-		} catch (error) {
-			if (this.disposed) {
-				this.options.reportDetachedFailure?.(error);
-				return;
-			}
-			draft.busy = false;
-			draft.confirmingReload = false;
-			draft.failure = error instanceof Error ? error.message : String(error);
-		}
-		this.publish();
-	}
-
-	private newDraft(target: ShadowSubtitleEditTarget): Draft {
-		return {
-			openToken: {},
-			target,
-			text: target.text,
-			translation: target.translation ?? "",
-			busy: false,
-			conflict: false,
-			failure: null,
-			confirmingReload: false,
-		};
-	}
-
 	private currentSelection(): SourceSelection | null {
 		if (!this.sourceId) return null;
 		let state = this.sources.get(this.sourceId);
@@ -482,8 +334,6 @@ export class ShadowingWorkspaceSession {
 				end: null,
 				start: 0,
 				finish: 0,
-				editor: null,
-				drafts: new Map(),
 			};
 			this.sources.set(this.sourceId, state);
 		}
@@ -497,6 +347,7 @@ export class ShadowingWorkspaceSession {
 			this.activityToken++;
 			this.audioPlayer?.stop();
 			this.sourceId = next;
+			this.subtitleDrafts.activate(next);
 			this.records = [];
 			this.error = null;
 			if (next && this.options.readEnabled(next)) void this.loadSource(next);
@@ -588,14 +439,6 @@ export class ShadowingWorkspaceSession {
 						Math.min(first, last < 0 ? first : last),
 						Math.max(first, last < 0 ? first : last) + 1,
 					);
-		const draft = state?.editor;
-		if (draft) {
-			const latest = this.options.jobs.getCueEditTarget(
-				draft.target.sourceId,
-				draft.target.cueId,
-			);
-			if (!latest || latest.version !== draft.target.version) draft.conflict = true;
-		}
 		const start = state?.start ?? 0;
 		const end = state?.finish ?? 0;
 		const duration = runtime.duration;
@@ -648,22 +491,7 @@ export class ShadowingWorkspaceSession {
 			rangeStart: start,
 			rangeEnd: end,
 			canPractice,
-			editor: draft
-				? Object.freeze({
-						cueId: draft.target.cueId,
-						text: draft.text,
-						translation: draft.translation,
-						busy: draft.busy,
-						conflict: draft.conflict,
-						failure: draft.failure,
-						confirmingReload: draft.confirmingReload,
-						canSave:
-							!draft.busy &&
-							!draft.conflict &&
-							!draft.confirmingReload &&
-							draft.text.trim().length > 0,
-					})
-				: null,
+			...this.subtitleDrafts.snapshotForView(),
 		};
 	}
 }
@@ -696,16 +524,7 @@ function sameSnapshot(a: ShadowingWorkspaceState, b: ShadowingWorkspaceState): b
 		a.canPractice === b.canPractice &&
 		a.selectedCueIds.length === b.selectedCueIds.length &&
 		a.selectedCueIds.every((id, index) => id === b.selectedCueIds[index]) &&
-		(a.editor === b.editor ||
-			(!!a.editor &&
-				!!b.editor &&
-				a.editor.cueId === b.editor.cueId &&
-				a.editor.text === b.editor.text &&
-				a.editor.translation === b.editor.translation &&
-				a.editor.busy === b.editor.busy &&
-				a.editor.conflict === b.editor.conflict &&
-				a.editor.failure === b.editor.failure &&
-				a.editor.confirmingReload === b.editor.confirmingReload &&
-				a.editor.canSave === b.editor.canSave))
+		a.editor === b.editor &&
+		a.deletedDrafts === b.deletedDrafts
 	);
 }

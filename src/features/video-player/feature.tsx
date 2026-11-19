@@ -96,6 +96,7 @@ export function createVideoPlayerFeature(
 				}
 			};
 
+			let mountedPlayerViews = 0;
 			host.registerView(
 				VIEW_TYPE_VIDEO_PLAYER,
 				createReactItemView({
@@ -106,6 +107,7 @@ export function createVideoPlayerFeature(
 					renderErrorMessage: (language) => videoPlayerStrings(language).openFailed,
 					acquire: ({ rootEl }) => {
 						const view = interaction.mount({ ownerDocument: rootEl.ownerDocument });
+						mountedPlayerViews++;
 						let wasPresenter = view.getSnapshot().role === "presenter";
 						if (wasPresenter) {
 							desktopAdapter.bindPresenterWindow(rootEl.ownerDocument.defaultView);
@@ -130,6 +132,9 @@ export function createVideoPlayerFeature(
 								}
 								unsubscribe();
 								view.dispose();
+								if (--mountedPlayerViews === 0) {
+									desktopAdapter.shadowingSession?.clearSubtitleDrafts();
+								}
 							},
 						};
 					},

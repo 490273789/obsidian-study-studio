@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { Notice } from "obsidian";
+import { copyTextToClipboard } from "../../../core/shared/clipboard";
 import type { Language } from "../../../core/shared/types";
 import { ConfirmDialog } from "../../../core/ui/primitives/ConfirmDialog";
 import { subtitleEditingStrings } from "../strings/subtitleEditing";
@@ -31,6 +33,11 @@ function clock(seconds: number): string {
 	return `${Math.floor(whole / 60)
 		.toString()
 		.padStart(2, "0")}:${(whole % 60).toString().padStart(2, "0")}`;
+}
+
+async function copyDraftText(text: string, copy: ReturnType<typeof subtitleEditingStrings>) {
+	const copied = await copyTextToClipboard(text);
+	new Notice(copied ? copy.copied : copy.copyFailed);
 }
 
 const copy = {
@@ -151,6 +158,7 @@ export function ShadowingWorkspace({
 	);
 	const selected = state.selectedCueIds;
 	const editor = state.editor;
+	const [firstDeletedDraft] = state.deletedDrafts;
 	const current = state.cues.find((cue) => currentTime >= cue.start && currentTime < cue.end);
 
 	return (
@@ -312,7 +320,11 @@ export function ShadowingWorkspace({
 					)}
 					{editor && (
 						<div className={styles.editor} aria-busy={editor.busy}>
-							{editor.conflict && <p role="alert">{editCopy.conflict}</p>}
+							{(editor.deleted || editor.conflict) && (
+								<p role="alert">
+									{editor.deleted ? editCopy.deleted : editCopy.conflict}
+								</p>
+							)}
 							{editor.failure && (
 								<p role="alert">{editCopy.saveFailed(editor.failure)}</p>
 							)}
@@ -321,6 +333,7 @@ export function ShadowingWorkspace({
 								<textarea
 									value={editor.text}
 									disabled={editor.busy}
+									readOnly={editor.deleted}
 									onChange={(event) =>
 										void onAction({
 											type: "set-cue-field",
@@ -336,6 +349,7 @@ export function ShadowingWorkspace({
 								<textarea
 									value={editor.translation}
 									disabled={editor.busy}
+									readOnly={editor.deleted}
 									onChange={(event) =>
 										void onAction({
 											type: "set-cue-field",
@@ -348,14 +362,14 @@ export function ShadowingWorkspace({
 							</label>
 							<button
 								type="button"
-								disabled={!editor.canSave}
+								disabled={editor.deleted || !editor.canSave}
 								onClick={() =>
 									void onAction({ type: "save-cue-edit", expectedEditor: editor })
 								}
 							>
 								{editor.busy ? editCopy.saving : t.saveEdit}
 							</button>
-							{(editor.conflict || editor.failure) && (
+							{(editor.deleted || editor.conflict || editor.failure) && (
 								<button
 									type="button"
 									disabled={editor.busy}
@@ -392,6 +406,47 @@ export function ShadowingWorkspace({
 								/>
 							)}
 						</div>
+					)}
+					{firstDeletedDraft && (
+						<details key={firstDeletedDraft.sourceId} className={styles.deletedDrafts}>
+							<summary>{editCopy.deletedDrafts}</summary>
+							<ul>
+								{state.deletedDrafts.map((draft) => (
+									<li key={draft.cueId}>
+										{(["text", "translation"] as const).map((field) => (
+											<div className={styles.draftField} key={field}>
+												<label>
+													{field === "text" ? t.text : t.translationText}
+													<textarea readOnly value={draft[field]} />
+												</label>
+												<button
+													type="button"
+													disabled={!draft[field]}
+													onClick={() =>
+														void copyDraftText(draft[field], editCopy)
+													}
+												>
+													{field === "text"
+														? editCopy.copyOriginal
+														: editCopy.copyTranslation}
+												</button>
+											</div>
+										))}
+										<button
+											type="button"
+											onClick={() =>
+												void onAction({
+													type: "discard-deleted-draft",
+													draft,
+												})
+											}
+										>
+											{editCopy.discardDraft}
+										</button>
+									</li>
+								))}
+							</ul>
+						</details>
 					)}
 				</>
 			)}

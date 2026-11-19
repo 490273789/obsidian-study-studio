@@ -5,6 +5,19 @@ import type { ShadowingWorkspaceState } from "../../domain/types";
 import { ShadowingWorkspace } from "../ShadowingWorkspace";
 
 const hooks = vi.hoisted(() => ({ values: [] as unknown[], index: 0 }));
+const clipboard = vi.hoisted(() => ({
+	copy: vi.fn(async (_text: string) => true),
+	notice: vi.fn(),
+}));
+vi.mock("../../../../core/shared/clipboard", () => ({ copyTextToClipboard: clipboard.copy }));
+vi.mock("obsidian", () => ({
+	Notice: class {
+		constructor(message: string) {
+			clipboard.notice(message);
+		}
+	},
+}));
+
 vi.mock("react", async (original) => ({
 	...(await original<typeof import("react")>()),
 	useState: (initial: unknown) => {
@@ -64,6 +77,7 @@ describe("ShadowingWorkspace", () => {
 				rangeStart: 0,
 				rangeEnd: 0,
 				canPractice: false,
+				deletedDrafts: [],
 				editor: null,
 			} as unknown as ShadowingWorkspaceState;
 			const tree = ShadowingWorkspace({
@@ -103,6 +117,7 @@ describe("ShadowingWorkspace", () => {
 			rangeStart: 4,
 			rangeEnd: 6,
 			canPractice: false,
+			deletedDrafts: [],
 			editor: null,
 		} as unknown as ShadowingWorkspaceState;
 		const render = () => {
@@ -138,7 +153,7 @@ describe("ShadowingWorkspace", () => {
 		expect(onAction).toHaveBeenCalledWith({ type: "start-practice-selected" });
 	});
 
-	it("renders failed drafts even when the edited cue has disappeared and delegates recovery", () => {
+	it("shows the deleted cue's draft in a read-only editor and keeps reload available", () => {
 		hooks.values = [];
 		hooks.index = 0;
 		const onAction = vi.fn(async () => undefined);
@@ -148,6 +163,7 @@ describe("ShadowingWorkspace", () => {
 			translation: "我的译文",
 			busy: false,
 			conflict: true,
+			deleted: true,
 			failure: null,
 			confirmingReload: false,
 			canSave: false,
@@ -161,6 +177,7 @@ describe("ShadowingWorkspace", () => {
 			rangeStart: 0,
 			rangeEnd: 0,
 			canPractice: false,
+			deletedDrafts: [],
 			editor,
 		} as unknown as ShadowingWorkspaceState;
 		const tree = ShadowingWorkspace({
@@ -172,7 +189,8 @@ describe("ShadowingWorkspace", () => {
 		});
 		const markup = renderToStaticMarkup(tree);
 		expect(markup).toContain("My correction");
-		expect(markup).toContain("This subtitle has changed");
+		expect(markup).toContain("This subtitle was deleted");
+		expect(markup.match(/readonly=""/giu)).toHaveLength(2);
 		const save = findButton(tree, (button) => button.props.children === "Save correction");
 		expect(save.props.disabled).toBe(true);
 		const reload = findButton(
@@ -184,6 +202,58 @@ describe("ShadowingWorkspace", () => {
 			type: "request-cue-reload",
 			expectedEditor: editor,
 		});
+	});
+
+	it("offers collapsed recovery with no remaining cues and copies or discards the exact draft", async () => {
+		hooks.values = [];
+		hooks.index = 0;
+		const onAction = vi.fn(async () => undefined);
+		const draft = {
+			sourceId: "video",
+			cueId: "missing",
+			text: "My correction",
+			translation: "我的译文",
+		};
+		const state = {
+			cues: [],
+			records: [],
+			failedSaves: [],
+			practiceStart: null,
+			practiceEnd: null,
+			selectedCueIds: [],
+			editor: null,
+			deletedDrafts: [draft],
+		} as unknown as ShadowingWorkspaceState;
+		const tree = ShadowingWorkspace({
+			language: "en",
+			currentTime: 0,
+			duration: 30,
+			state,
+			onAction,
+		});
+
+		const markup = renderToStaticMarkup(tree);
+		expect(markup).toMatch(
+			/<details class="[^"]+"><summary>View drafts for deleted subtitles<\/summary>/u,
+		);
+		expect(markup).toContain(draft.text);
+		expect(markup).toContain(draft.translation);
+		const click = (label: string) =>
+			findButton(tree, (button) => button.props.children === label).props.onClick?.(
+				{} as React.MouseEvent<HTMLButtonElement>,
+			);
+		click("Copy original");
+		await vi.waitFor(() => expect(clipboard.notice).toHaveBeenCalledWith("Copied."));
+		clipboard.copy.mockResolvedValueOnce(false);
+		click("Copy translation");
+		await vi.waitFor(() =>
+			expect(clipboard.notice).toHaveBeenCalledWith(
+				"Could not copy. You can select and copy the text manually.",
+			),
+		);
+		expect(clipboard.copy.mock.calls).toEqual([[draft.text], [draft.translation]]);
+		click("Discard this draft");
+		expect(onAction).toHaveBeenCalledExactlyOnceWith({ type: "discard-deleted-draft", draft });
 	});
 
 	it("renders the pending write without closing the editor after submission", () => {
@@ -199,12 +269,14 @@ describe("ShadowingWorkspace", () => {
 			rangeStart: 0,
 			rangeEnd: 0,
 			canPractice: false,
+			deletedDrafts: [],
 			editor: {
 				cueId: "cue-1",
 				text: "Draft",
 				translation: "",
 				busy: true,
 				conflict: false,
+				deleted: false,
 				failure: null,
 				confirmingReload: false,
 				canSave: false,
