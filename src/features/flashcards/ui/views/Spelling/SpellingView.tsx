@@ -43,15 +43,23 @@ interface SpellingViewProps {
 	presentedCard: PresentedCard;
 }
 
-function renderDiff(diff: readonly SpellingDiffSegment[], submittedInput: string) {
+function renderDiff(
+	diff: readonly SpellingDiffSegment[],
+	submittedInput: string,
+	t: ReturnType<typeof useFlashcardI18n>["t"],
+) {
 	if (diff.length === 0 || submittedInput.trim().length === 0) {
-		return <span className={styles.emptyAnswer}>{submittedInput || "未作答"}</span>;
+		return (
+			<span className={styles.emptyAnswer}>
+				{submittedInput.trim() ? submittedInput : t("spelling.noAnswer")}
+			</span>
+		);
 	}
 
 	const hasAnyCorrect = diff.some((s) => s.kind === "correct");
 	if (!hasAnyCorrect) {
 		return (
-			<span className={styles.diffIncorrect} title="拼写错误">
+			<span className={styles.diffIncorrect} title={t("spelling.diffIncorrect")}>
 				{submittedInput}
 			</span>
 		);
@@ -59,12 +67,13 @@ function renderDiff(diff: readonly SpellingDiffSegment[], submittedInput: string
 
 	return diff.map((segment, index) => {
 		if (segment.kind === "missing") {
+			const label = t("spelling.diffMissing", { letters: segment.value });
 			return (
 				<span
 					key={`missing-${index}`}
 					className={styles.diffMissing}
-					title={`缺失字母: ${segment.value}`}
-					aria-label={`缺失 ${segment.value}`}
+					title={label}
+					aria-label={label}
 				>
 					‸
 				</span>
@@ -74,7 +83,11 @@ function renderDiff(diff: readonly SpellingDiffSegment[], submittedInput: string
 			<span
 				key={`${segment.kind}-${index}`}
 				className={DIFF_CLASSES[segment.kind]}
-				title={segment.expected ? `应为: ${segment.expected}` : undefined}
+				title={
+					segment.expected
+						? t("spelling.diffExpected", { letters: segment.expected })
+						: undefined
+				}
 			>
 				{segment.value || " "}
 			</span>
@@ -238,9 +251,9 @@ const SpellingQuestion = React.memo(function SpellingQuestion({
 											setInput(feedback.expectedAnswer);
 											inputRef.current?.focus();
 										}}
-										title="填入标准答案"
+										title={t("spelling.fillAnswerTitle")}
 									>
-										填入
+										{t("spelling.fillAnswer")}
 									</button>
 								</div>
 							</div>
@@ -250,7 +263,7 @@ const SpellingQuestion = React.memo(function SpellingQuestion({
 									{t("spelling.yourInput")}
 								</span>
 								<div className={styles.diff} aria-label={t("spelling.yourInput")}>
-									{renderDiff(feedback.diff, feedback.submittedInput)}
+									{renderDiff(feedback.diff, feedback.submittedInput, t)}
 								</div>
 							</div>
 						</div>
@@ -270,6 +283,7 @@ const SpellingQuestion = React.memo(function SpellingQuestion({
 
 				{isCorrection && currentCard.explanation && (
 					<CardExplanationPanel
+						sourcePath={currentCard.sourceFile}
 						block={{
 							label: "common.explanation",
 							content: currentCard.explanation,

@@ -64,11 +64,14 @@ export function estimateMinutes(count: number, isSpelling = false): number {
 	return Math.max(1, Math.round((count * secondsPerCard) / 60));
 }
 
-export interface PracticeSetupOptions {
+interface PracticeSetupSource {
 	deck: Deck;
 	plan: PracticeSetupPlan;
 	spellingPlan?: SpellingSetupPlan | null;
 	spellingSnapshot?: DeckSpellingSnapshot;
+}
+
+export interface PracticeSetupOptions extends PracticeSetupSource {
 	defaultDirection?: CardDirection;
 	initialDirection?: CardDirection;
 	initialKind?: PracticeKind;
@@ -78,6 +81,61 @@ export interface PracticeSetupOptions {
 export type SpellingUnavailableReason =
 	| { kind: "disabled" }
 	| { kind: "not-ready"; issueCount: number };
+
+function getConstraints({ plan, spellingPlan, spellingSnapshot }: PracticeSetupSource) {
+	const spellingMax = spellingPlan?.maxQuestions ?? 0;
+	const spellingUnavailableReason: SpellingUnavailableReason | undefined =
+		spellingSnapshot && !spellingSnapshot.enabled
+			? { kind: "disabled" }
+			: spellingSnapshot && !spellingSnapshot.ready
+				? { kind: "not-ready", issueCount: spellingSnapshot.issueCount }
+				: undefined;
+	return {
+		maxQuestions: plan.maxQuestions,
+		maxRangeStart: plan.maxRangeStart,
+		showModeSelector: spellingPlan != null,
+		spellingEligible: spellingMax > 0 && spellingUnavailableReason === undefined,
+		spellingUnavailableReason,
+		spellingMax,
+		spellingStats: spellingPlan?.stats ?? { total: spellingMax, unpracticed: 0 },
+	};
+}
+
+type PracticeSetupConstraints = ReturnType<typeof getConstraints>;
+
+function sameConstraints(a: PracticeSetupConstraints, b: PracticeSetupConstraints): boolean {
+	const leftReason = a.spellingUnavailableReason;
+	const rightReason = b.spellingUnavailableReason;
+	return (
+		a.maxQuestions === b.maxQuestions &&
+		a.maxRangeStart === b.maxRangeStart &&
+		a.showModeSelector === b.showModeSelector &&
+		a.spellingEligible === b.spellingEligible &&
+		a.spellingMax === b.spellingMax &&
+		a.spellingStats.total === b.spellingStats.total &&
+		a.spellingStats.unpracticed === b.spellingStats.unpracticed &&
+		leftReason?.kind === rightReason?.kind &&
+		(leftReason?.kind !== "not-ready" ||
+			(rightReason?.kind === "not-ready" && leftReason.issueCount === rightReason.issueCount))
+	);
+}
+
+function constrainDraft(
+	value: number,
+	input: string,
+	min: number,
+	max: number,
+	fallback = min,
+): [number, string] {
+	const nextValue = Math.max(min, Math.min(value > 0 ? value : fallback, max));
+	const parsed = parseInt(input, 10);
+	const nextInput = parsed > max || (value === 0 && input === "0") ? nextValue.toString() : input;
+	return [nextValue, nextInput];
+}
+
+function quickCounts(choices: readonly number[], max: number): readonly number[] {
+	return choices.filter((count) => count < max);
+}
 
 export interface PracticeSetupSnapshot {
 	readonly deck: Deck;
@@ -121,16 +179,11 @@ export interface PracticeSetupSnapshot {
 }
 
 export class PracticeSetupSession {
-	private readonly deck: Deck;
+	private deck: Deck;
 	private readonly preferenceStore: PracticePreferenceStore;
-	private readonly showModeSelector: boolean;
-	private readonly spellingEligible: boolean;
-	private readonly spellingUnavailableReason?: SpellingUnavailableReason;
+	private constraints: PracticeSetupConstraints;
 
 	// Flip properties
-	private readonly maxQuestions: number;
-	private readonly maxRangeStart: number;
-	private readonly quickQuestionCounts: readonly number[];
 	private selectionMode: PracticeSelectionMode;
 	private questionCount: number;
 	private questionCountInput: string;
@@ -141,9 +194,6 @@ export class PracticeSetupSession {
 	private direction: CardDirection;
 
 	// Spelling properties
-	private readonly spellingMax: number;
-	private readonly spellingStats: { total: number; unpracticed: number };
-	private readonly quickSpellingCounts: readonly number[];
 	private spellingMode: SpellingSelectionMode;
 	private spellingQuestionCount: number;
 	private spellingQuestionCountInput: string;
@@ -159,17 +209,9 @@ export class PracticeSetupSession {
 	constructor(options: PracticeSetupOptions) {
 		this.deck = options.deck;
 		this.preferenceStore = options.preferenceStore ?? browserPracticePreferenceStore;
+		this.constraints = getConstraints(options);
 
 		// Flip setup
-		this.maxQuestions = options.plan.maxQuestions;
-		this.maxRangeStart = options.plan.maxRangeStart;
-		this.quickQuestionCounts = Array.from(
-			new Set(
-				QUICK_QUESTION_COUNTS.map((count) => Math.min(count, this.maxQuestions)).filter(
-					(count) => count > 0 && count < this.maxQuestions,
-				),
-			),
-		);
 		this.selectionMode = options.plan.initialSelectionMode;
 		this.questionCount = options.plan.initialQuestionCount;
 		this.questionCountInput = options.plan.initialQuestionCount.toString();
@@ -180,36 +222,12 @@ export class PracticeSetupSession {
 		this.direction = options.initialDirection ?? options.defaultDirection ?? "normal";
 
 		// Spelling setup
-		const { spellingPlan, spellingSnapshot } = options;
-		this.showModeSelector = spellingPlan !== undefined && spellingPlan !== null;
-		this.spellingEligible = Boolean(
-			spellingPlan &&
-			(spellingSnapshot
-				? spellingSnapshot.enabled && spellingSnapshot.ready
-				: spellingPlan.maxQuestions > 0),
-		);
-		this.spellingUnavailableReason =
-			spellingSnapshot && !spellingSnapshot.enabled
-				? { kind: "disabled" }
-				: spellingSnapshot && !spellingSnapshot.ready
-					? { kind: "not-ready", issueCount: spellingSnapshot.issueCount }
-					: undefined;
-
-		this.spellingMax = spellingPlan?.maxQuestions ?? 0;
-		this.spellingStats = spellingPlan?.stats ?? { total: this.spellingMax, unpracticed: 0 };
-		this.quickSpellingCounts = Array.from(
-			new Set(
-				QUICK_SPELLING_COUNTS.map((count) => Math.min(count, this.spellingMax)).filter(
-					(count) => count > 0 && count < this.spellingMax,
-				),
-			),
-		);
+		const { spellingPlan } = options;
 		this.spellingMode = spellingPlan?.initialSelectionMode ?? "smart";
-		this.spellingQuestionCount =
-			spellingPlan?.initialQuestionCount ?? Math.min(20, this.spellingMax);
+		this.spellingQuestionCount = spellingPlan?.initialQuestionCount ?? 0;
 		this.spellingQuestionCountInput = this.spellingQuestionCount.toString();
 		this.spellingRangeStart = spellingPlan?.initialRangeStart ?? 1;
-		this.spellingRangeEnd = spellingPlan?.initialRangeEnd ?? Math.min(20, this.spellingMax);
+		this.spellingRangeEnd = spellingPlan?.initialRangeEnd ?? 0;
 		this.spellingRangeStartInput = this.spellingRangeStart.toString();
 		this.spellingRangeEndInput = this.spellingRangeEnd.toString();
 
@@ -217,11 +235,69 @@ export class PracticeSetupSession {
 		this.practiceKind = this.resolveInitialKind(options.initialKind);
 	}
 
+	/** Updates live deck limits without replacing the learner's setup draft. */
+	updateSource(source: PracticeSetupSource): void {
+		const previous = this.constraints;
+		const next = getConstraints(source);
+		if (this.deck === source.deck && sameConstraints(previous, next)) return;
+		this.deck = source.deck;
+		this.constraints = next;
+		if (
+			next.maxQuestions > 0 &&
+			(previous.maxQuestions !== next.maxQuestions ||
+				previous.maxRangeStart !== next.maxRangeStart)
+		) {
+			[this.questionCount, this.questionCountInput] = constrainDraft(
+				this.questionCount,
+				this.questionCountInput,
+				1,
+				next.maxQuestions,
+				source.plan.initialQuestionCount,
+			);
+			[this.rangeStart, this.rangeStartInput] = constrainDraft(
+				this.rangeStart,
+				this.rangeStartInput,
+				1,
+				next.maxRangeStart,
+			);
+			[this.rangeEnd, this.rangeEndInput] = constrainDraft(
+				this.rangeEnd,
+				this.rangeEndInput,
+				this.rangeStart,
+				next.maxQuestions,
+				source.plan.initialRangeEnd,
+			);
+		}
+		if (next.spellingMax > 0 && previous.spellingMax !== next.spellingMax) {
+			[this.spellingQuestionCount, this.spellingQuestionCountInput] = constrainDraft(
+				this.spellingQuestionCount,
+				this.spellingQuestionCountInput,
+				1,
+				next.spellingMax,
+				source.spellingPlan?.initialQuestionCount,
+			);
+			[this.spellingRangeStart, this.spellingRangeStartInput] = constrainDraft(
+				this.spellingRangeStart,
+				this.spellingRangeStartInput,
+				1,
+				next.spellingMax,
+			);
+			[this.spellingRangeEnd, this.spellingRangeEndInput] = constrainDraft(
+				this.spellingRangeEnd,
+				this.spellingRangeEndInput,
+				this.spellingRangeStart,
+				next.spellingMax,
+				source.spellingPlan?.initialRangeEnd,
+			);
+		}
+		this.notify();
+	}
+
 	private resolveInitialKind(initialKind?: PracticeKind): PracticeKind {
 		if (initialKind === "spelling") return "spelling";
 		if (initialKind === "flip") return "flip";
 		const saved = this.preferenceStore.getPreference(this.deck.id);
-		if (saved === "spelling" && this.spellingEligible) return "spelling";
+		if (saved === "spelling" && this.constraints.spellingEligible) return "spelling";
 		return "flip";
 	}
 
@@ -251,28 +327,31 @@ export class PracticeSetupSession {
 		const activeSpellingCount =
 			this.spellingMode === "smart" ? this.spellingQuestionCount : spellingRangeCount;
 
-		const activeCount = isSpelling ? activeSpellingCount : activeQuestionCount;
+		const activeCount = isSpelling
+			? Math.min(activeSpellingCount, this.constraints.spellingMax)
+			: Math.min(activeQuestionCount, this.constraints.maxQuestions);
 		const activeMinutes = estimateMinutes(activeCount, isSpelling);
 
-		const isFlipStartDisabled = this.maxQuestions === 0 || activeQuestionCount < 1;
-		const isSpellingStartDisabled = this.spellingMax === 0 || activeSpellingCount < 1;
+		const isFlipStartDisabled = this.constraints.maxQuestions === 0 || activeQuestionCount < 1;
+		const isSpellingStartDisabled =
+			!this.constraints.spellingEligible || activeSpellingCount < 1;
 		const isStartDisabled = isSpelling ? isSpellingStartDisabled : isFlipStartDisabled;
 
 		this.cachedSnapshot = {
 			deck: this.deck,
 			practiceKind: this.practiceKind,
-			showModeSelector: this.showModeSelector,
-			spellingEligible: this.spellingEligible,
-			spellingUnavailableReason: this.spellingUnavailableReason,
+			showModeSelector: this.constraints.showModeSelector,
+			spellingEligible: this.constraints.spellingEligible,
+			spellingUnavailableReason: this.constraints.spellingUnavailableReason,
 			isSpelling,
 
 			activeCount,
 			activeMinutes,
 			isStartDisabled,
 
-			maxQuestions: this.maxQuestions,
-			maxRangeStart: this.maxRangeStart,
-			quickQuestionCounts: this.quickQuestionCounts,
+			maxQuestions: this.constraints.maxQuestions,
+			maxRangeStart: this.constraints.maxRangeStart,
+			quickQuestionCounts: quickCounts(QUICK_QUESTION_COUNTS, this.constraints.maxQuestions),
 			selectionMode: this.selectionMode,
 			questionCount: this.questionCount,
 			questionCountInput: this.questionCountInput,
@@ -283,9 +362,9 @@ export class PracticeSetupSession {
 			rangeQuestionCount,
 			direction: this.direction,
 
-			spellingMax: this.spellingMax,
-			spellingStats: this.spellingStats,
-			quickSpellingCounts: this.quickSpellingCounts,
+			spellingMax: this.constraints.spellingMax,
+			spellingStats: this.constraints.spellingStats,
+			quickSpellingCounts: quickCounts(QUICK_SPELLING_COUNTS, this.constraints.spellingMax),
 			spellingMode: this.spellingMode,
 			spellingQuestionCount: this.spellingQuestionCount,
 			spellingQuestionCountInput: this.spellingQuestionCountInput,
@@ -329,7 +408,7 @@ export class PracticeSetupSession {
 		this.questionCountInput = value;
 		const num = parseInt(value, 10);
 		if (!isNaN(num) && num >= 1) {
-			this.questionCount = Math.min(num, this.maxQuestions);
+			this.questionCount = Math.min(num, this.constraints.maxQuestions);
 		}
 		this.notify();
 	}
@@ -340,7 +419,7 @@ export class PracticeSetupSession {
 			this.questionCount = 1;
 			this.questionCountInput = "1";
 		} else {
-			const normalized = Math.min(num, this.maxQuestions);
+			const normalized = Math.min(num, this.constraints.maxQuestions);
 			this.questionCount = normalized;
 			this.questionCountInput = normalized.toString();
 		}
@@ -348,7 +427,7 @@ export class PracticeSetupSession {
 	}
 
 	selectQuickQuestionCount(count: number): void {
-		const actual = Math.min(count, this.maxQuestions);
+		const actual = Math.min(count, this.constraints.maxQuestions);
 		this.questionCount = actual;
 		this.questionCountInput = actual.toString();
 		this.notify();
@@ -370,9 +449,11 @@ export class PracticeSetupSession {
 		const start =
 			isNaN(parsedStart) || parsedStart < 1
 				? this.rangeStart
-				: Math.min(parsedStart, this.maxRangeStart);
+				: Math.min(parsedStart, this.constraints.maxRangeStart);
 		const end =
-			isNaN(parsedEnd) || parsedEnd < start ? start : Math.min(parsedEnd, this.maxQuestions);
+			isNaN(parsedEnd) || parsedEnd < start
+				? start
+				: Math.min(parsedEnd, this.constraints.maxQuestions);
 
 		this.rangeStart = start;
 		this.rangeEnd = end;
@@ -386,7 +467,7 @@ export class PracticeSetupSession {
 		this.spellingQuestionCountInput = value;
 		const num = parseInt(value, 10);
 		if (!isNaN(num) && num >= 1) {
-			this.spellingQuestionCount = Math.min(num, this.spellingMax);
+			this.spellingQuestionCount = Math.min(num, this.constraints.spellingMax);
 		}
 		this.notify();
 	}
@@ -397,7 +478,7 @@ export class PracticeSetupSession {
 			this.spellingQuestionCount = 1;
 			this.spellingQuestionCountInput = "1";
 		} else {
-			const normalized = Math.min(num, this.spellingMax);
+			const normalized = Math.min(num, this.constraints.spellingMax);
 			this.spellingQuestionCount = normalized;
 			this.spellingQuestionCountInput = normalized.toString();
 		}
@@ -405,7 +486,7 @@ export class PracticeSetupSession {
 	}
 
 	selectQuickSpellingCount(count: number): void {
-		const actual = Math.min(count, this.spellingMax);
+		const actual = Math.min(count, this.constraints.spellingMax);
 		this.spellingQuestionCount = actual;
 		this.spellingQuestionCountInput = actual.toString();
 		this.notify();
@@ -426,7 +507,7 @@ export class PracticeSetupSession {
 		if (!isNaN(num)) {
 			this.spellingRangeEnd = Math.max(
 				this.spellingRangeStart,
-				Math.min(num, this.spellingMax),
+				Math.min(num, this.constraints.spellingMax),
 			);
 		}
 		this.notify();
@@ -438,9 +519,11 @@ export class PracticeSetupSession {
 		const start =
 			isNaN(parsedStart) || parsedStart < 1
 				? this.spellingRangeStart
-				: Math.min(parsedStart, this.spellingMax);
+				: Math.min(parsedStart, this.constraints.spellingMax);
 		const end =
-			isNaN(parsedEnd) || parsedEnd < start ? start : Math.min(parsedEnd, this.spellingMax);
+			isNaN(parsedEnd) || parsedEnd < start
+				? start
+				: Math.min(parsedEnd, this.constraints.spellingMax);
 
 		this.spellingRangeStart = start;
 		this.spellingRangeEnd = end;
@@ -478,7 +561,10 @@ export class PracticeSetupSession {
 		// Flip practice
 		if (this.selectionMode === "range") {
 			this.commitRange();
-			if (this.rangeEnd >= this.rangeStart && this.rangeEnd <= this.maxQuestions) {
+			if (
+				this.rangeEnd >= this.rangeStart &&
+				this.rangeEnd <= this.constraints.maxQuestions
+			) {
 				return {
 					mode: "practice",
 					deckId: this.deck.id,
@@ -493,7 +579,7 @@ export class PracticeSetupSession {
 			return null;
 		}
 
-		if (this.questionCount >= 1 && this.questionCount <= this.maxQuestions) {
+		if (this.questionCount >= 1 && this.questionCount <= this.constraints.maxQuestions) {
 			return {
 				mode: "practice",
 				deckId: this.deck.id,

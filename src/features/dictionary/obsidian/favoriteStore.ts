@@ -230,6 +230,3 @@ export class ObsidianDictionaryFavoriteStore
 		}
 	}
 }
-
-/** Backward-compatible export alias */
-export { ObsidianDictionaryFavoriteStore as DictionaryFavoriteFile };

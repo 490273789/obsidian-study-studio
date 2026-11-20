@@ -6,6 +6,8 @@ import {
 	YoudaoTransportError,
 } from "../../../core/net/youdaoTransport";
 
+const TRANSLATION_TIMEOUT_MS = 120_000;
+
 interface YoudaoConnection {
 	baseUrl: string;
 	appKeySecretId: string;
@@ -72,6 +74,7 @@ export async function translateYoudao(
 				direction === "zh-en" ? { from: "zh-CHS", to: "en" } : { from: "en", to: "zh-CHS" },
 			net,
 			label: "translation-youdao",
+			timeoutMs: TRANSLATION_TIMEOUT_MS,
 			...(signal === undefined ? {} : { signal }),
 		});
 		return parseTranslationPayload(payload);

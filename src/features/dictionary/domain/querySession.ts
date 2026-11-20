@@ -151,7 +151,7 @@ class DictionaryQuerySessionModule implements DictionaryQuerySession {
 			case "retry-source":
 				return this.retry(intent.sourceId);
 			case "generate-ai":
-				return this.loadAi();
+				return this.retry("ai");
 			case "select-source":
 				this.selectSource(intent.sourceId);
 				return;
@@ -215,6 +215,7 @@ class DictionaryQuerySessionModule implements DictionaryQuerySession {
 		if (generation !== this.requestGeneration || this.disposed) return;
 		if (saved) this.refreshSettings();
 		else this.options.notify(dictionaryText().saveFailed);
+		if (generation !== this.requestGeneration || this.disposed) return;
 
 		const configuredSources = this.options.settings
 			.getDictionarySettings()
@@ -241,16 +242,13 @@ class DictionaryQuerySessionModule implements DictionaryQuerySession {
 
 	private async retry(sourceId: string): Promise<void> {
 		if (this.disposed || !this.state.query) return;
-		await this.runSource(sourceId, this.requestGeneration);
-		if (this.disposed) return;
+		const generation = this.requestGeneration;
+		const ran = await this.runSource(sourceId, generation);
+		if (!ran || generation !== this.requestGeneration || this.disposed) return;
+		if (this.state.status === "loading") return;
 		const successful = this.state.sources.some((source) => source.status === "success");
 		this.state.status = successful ? "ready" : "error";
 		this.publish();
-	}
-
-	private async loadAi(): Promise<void> {
-		if (this.disposed || !this.state.query) return;
-		await this.runSource("ai", this.requestGeneration);
 	}
 
 	private selectSource(sourceId: string): void {
@@ -334,22 +332,25 @@ class DictionaryQuerySessionModule implements DictionaryQuerySession {
 		this.listeners.clear();
 	}
 
-	private async runSource(sourceId: string, generation: number): Promise<void> {
+	private async runSource(sourceId: string, generation: number): Promise<boolean> {
+		if (generation !== this.requestGeneration || this.disposed) return false;
 		const sourceSettings = this.options.settings
 			.getDictionarySettings()
 			.sources.find((candidate) => candidate.id === sourceId && candidate.enabled);
 		const sourceState = this.state.sources.find((candidate) => candidate.id === sourceId);
-		if (!sourceSettings || !sourceState || sourceState.status === "loading") return;
+		if (!sourceSettings || !sourceState || sourceState.status === "loading") return false;
+		const query = this.state.query;
 		sourceState.activeSectionIndex = null;
 		sourceState.error = "";
 		sourceState.result = null;
 		sourceState.status = "loading";
 		this.publish();
+		if (generation !== this.requestGeneration || this.disposed) return false;
 		try {
 			const result = await this.options.resolveSource(sourceSettings).lookup({
-				text: this.state.query,
+				text: query,
 			});
-			if (generation !== this.requestGeneration || this.disposed) return;
+			if (generation !== this.requestGeneration || this.disposed) return false;
 			sourceState.result = freezeDictionaryResult(result);
 			const activeSection = result.sections.findIndex(
 				(section) => section.presentation === "tab",
@@ -357,13 +358,14 @@ class DictionaryQuerySessionModule implements DictionaryQuerySession {
 			sourceState.activeSectionIndex = activeSection < 0 ? null : activeSection;
 			sourceState.status = "success";
 		} catch (error) {
-			if (generation !== this.requestGeneration || this.disposed) return;
+			if (generation !== this.requestGeneration || this.disposed) return false;
 			sourceState.error =
 				error instanceof DictionaryError ? error.message : dictionaryText().errors.request;
 			sourceState.status =
 				error instanceof DictionaryError && error.code === "not-found" ? "empty" : "error";
 		}
 		this.publish();
+		return true;
 	}
 
 	private applyAiEngineInfo(): void {

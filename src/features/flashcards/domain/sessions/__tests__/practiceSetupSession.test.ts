@@ -250,6 +250,73 @@ describe("PracticeSetupSession", () => {
 		expect(onStart).not.toHaveBeenCalled();
 	});
 
+	it("updates range limits without losing direction, selection mode or valid input", () => {
+		const session = new PracticeSetupSession({
+			deck,
+			plan: defaultPracticePlan,
+			preferenceStore: createMemoryPracticePreferenceStore(),
+		});
+		session.setSelectionMode("range");
+		session.setDirection("reversed");
+		session.setRangeStartInput("5");
+		session.setRangeEndInput("42");
+		session.commitRange();
+		const smaller = {
+			deck: { ...deck, name: "Renamed" },
+			plan: { ...defaultPracticePlan, maxQuestions: 20, maxRangeStart: 19 },
+		};
+		session.updateSource(smaller);
+		expect(session.getSnapshot()).toMatchObject({
+			deck: { name: "Renamed" },
+			maxQuestions: 20,
+			direction: "reversed",
+			selectionMode: "range",
+			rangeStart: 5,
+			rangeEnd: 20,
+			rangeStartInput: "5",
+			rangeEndInput: "20",
+		});
+		expect(session.buildSessionStartRequest()).toMatchObject({
+			mode: "practice",
+			direction: "reversed",
+			selection: { kind: "range", startIndex: 5, endIndex: 20 },
+		});
+		const snapshot = session.getSnapshot();
+		session.updateSource({ ...smaller, plan: { ...smaller.plan } });
+		expect(session.getSnapshot()).toBe(snapshot);
+	});
+
+	it("disables invalid spelling starts and resumes the same draft when eligibility returns", () => {
+		const source = { deck, plan: defaultPracticePlan, spellingPlan: defaultSpellingPlan };
+		const session = new PracticeSetupSession({ ...source, initialKind: "spelling" });
+		session.setSpellingMode("range");
+		session.setSpellingRangeStartInput("5");
+		session.setSpellingRangeEndInput("8");
+		session.updateSource({
+			...source,
+			spellingSnapshot: {
+				enabled: false,
+				ready: false,
+				valid: true,
+				canStart: false,
+				hasStableIdentities: true,
+				issueCount: 0,
+				ignoredCardCount: 0,
+			},
+		});
+		expect(session.getSnapshot()).toMatchObject({
+			spellingEligible: false,
+			isSpelling: true,
+			isStartDisabled: true,
+		});
+		expect(session.buildSessionStartRequest()).toBeNull();
+		session.updateSource(source);
+		expect(session.buildSessionStartRequest()).toMatchObject({
+			mode: "spelling",
+			selection: { kind: "range", startIndex: 5, endIndex: 8 },
+		});
+	});
+
 	it("notifies subscribers when state changes", () => {
 		const session = new PracticeSetupSession({
 			deck,

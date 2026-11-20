@@ -138,7 +138,11 @@ function lastRenderedBoundary(): React.ReactElement<{
 }
 
 function renderedBody(): React.ReactElement<{ children: string }> {
-	return lastRenderedBoundary().props.children as React.ReactElement<{ children: string }>;
+	const element = lastRenderedBoundary().props.children as React.ReactElement<
+		Record<string, unknown>,
+		(props: Record<string, unknown>) => React.ReactElement<{ children: string }>
+	>;
+	return element.type(element.props);
 }
 
 /** The i18n provider element the seam last rendered, for asserting its props. */
@@ -205,6 +209,19 @@ describe("react item view seam", () => {
 		expect(renderedBody().props.children).toBe("en:light");
 	});
 
+	it("leaves the feature render for React to evaluate under the error boundary", async () => {
+		const failure = new Error("cannot render view content");
+		const render = vi.fn(() => {
+			throw failure;
+		});
+		const view = buildView({ settings: () => settings(), render });
+
+		await expect(view.onOpen()).resolves.toBeUndefined();
+		expect(render).not.toHaveBeenCalled();
+		expect(lastRenderedBoundary().type).toBe(ReactViewErrorBoundary);
+		expect(() => renderedBody()).toThrow(failure);
+	});
+
 	it("re-renders from the committed settings when the host pushes a change", async () => {
 		let current = settings({ language: "zh" });
 		const view = buildView({ settings: () => current });
@@ -258,7 +275,9 @@ describe("react item view seam", () => {
 		const view = buildView({ settings: () => settings(), acquire, render });
 
 		await view.onOpen();
+		renderedBody();
 		view.updateSettings();
+		renderedBody();
 		const root = env.roots[0]!;
 		root.unmount.mockImplementation(() => calls.push("unmount"));
 		await view.onClose();

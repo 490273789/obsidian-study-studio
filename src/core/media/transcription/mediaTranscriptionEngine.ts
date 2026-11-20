@@ -20,10 +20,6 @@ export interface MediaTranscriptionEngineDeps {
 	readonly resolveEngineId: () => string;
 	readonly readSecret: (id: string) => Promise<string | null> | string | null;
 	readonly outbound: OutboundPort;
-	readonly chunkAudio?: (
-		audio: ArrayBuffer,
-		signal: AbortSignal,
-	) => Promise<{ duration: number; chunks: AudioChunk[] }>;
 }
 
 export interface TranscribeMediaInput {
@@ -32,7 +28,6 @@ export interface TranscribeMediaInput {
 	readonly engineId?: string;
 	readonly expectedSignature?: string;
 	readonly signal?: AbortSignal;
-	readonly onProgress?: (progress: { completedChunks: number; totalChunks: number }) => void;
 }
 
 export interface MediaTranscriptionResult {
@@ -177,29 +172,7 @@ export class MediaTranscriptionEngine {
 				return { cues, words, duration, signature };
 			}
 
-			if (this.deps.chunkAudio) {
-				const { duration, chunks } = await this.deps.chunkAudio(
-					input.audio,
-					input.signal ?? new AbortController().signal,
-				);
-				const allCues: DraftCue[] = [];
-				const allWords: TimedWord[] = [];
-				for (let i = 0; i < chunks.length; i++) {
-					const chunk = chunks[i]!;
-					const transcript = await this.transcribeProvider(
-						chunk,
-						config,
-						input.signal ?? new AbortController().signal,
-					);
-					allCues.push(...sanitizeTranscriptCues(transcript.cues, chunk.index));
-					allWords.push(...transcript.words);
-					input.onProgress?.({ completedChunks: i + 1, totalChunks: chunks.length });
-				}
-				allWords.sort((a, b) => a.start - b.start);
-				return { cues: allCues, words: allWords, duration, signature };
-			}
-
-			// Single chunk fallback for ArrayBuffer
+			// A raw buffer already contains one segment prepared by the caller.
 			const singleChunk: AudioChunk = {
 				index: 0,
 				start: 0,

@@ -115,22 +115,21 @@ export function mergeTranscripts(
 	const words: TimedWord[] = [];
 	const cues: DraftCue[] = [];
 	const sameObservation = (left: TimedWord, right: TimedWord): boolean => {
+		const overlap = Math.min(left.end, right.end) - Math.max(left.start, right.start);
+		const shortest = Math.min(left.end - left.start, right.end - right.start);
+		if (!(overlap > 0 && overlap / shortest >= 0.5)) return false;
 		const normLeft = tokenizeUnicodeWords(left.text)
 			.map((t) => t.text)
 			.join(" ");
 		const normRight = tokenizeUnicodeWords(right.text)
 			.map((t) => t.text)
 			.join(" ");
-		if (!normLeft || normLeft !== normRight) return false;
-		const overlap = Math.min(left.end, right.end) - Math.max(left.start, right.start);
-		const shortest = Math.min(left.end - left.start, right.end - right.start);
-		return overlap > 0 && overlap / shortest >= 0.5;
+		return Boolean(normLeft) && normLeft === normRight;
 	};
 	for (let index = 0; index < results.length; index++) {
 		const chunk = chunks[index];
 		const result = results[index];
 		if (!chunk || !result) continue;
-		const previousWords = [...words];
 		const previousCues = [...cues];
 		const mapped = result.words.map((word) => ({
 			...word,
@@ -141,7 +140,7 @@ export function mergeTranscripts(
 		let matchedIndex = -1;
 		for (const word of mapped) {
 			if (word.start < chunk.start || word.end <= word.start) continue;
-			const duplicate = previousWords.findIndex(
+			const duplicate = words.findIndex(
 				(previous, previousIndex) =>
 					previousIndex > matchedIndex && sameObservation(previous, word),
 			);

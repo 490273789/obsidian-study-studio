@@ -227,7 +227,8 @@ export class SelectionHelper {
 		source: SelectionSource,
 		candidate?: { text: string; x: number; y: number },
 	): void {
-		if (this.disposed || !this.sources.has(source)) return;
+		const owner = this.sources.get(source)?.owner;
+		if (this.disposed || !owner) return;
 		this.interrupt();
 		const text = candidate?.text.trim() ?? "";
 		const valid = slotId === "dictionary" ? isEnglishWordOrPhrase(text) : Boolean(text);
@@ -235,7 +236,10 @@ export class SelectionHelper {
 		if (
 			current.visible &&
 			(current.mode === "slot" || (current.mode as string) === "dictionary") &&
-			(!valid || (current.target?.source === source && current.target.text === text))
+			current.activeSlotId === slotId &&
+			(!valid
+				? this.ownsSource(owner, current.target?.source)
+				: current.target?.source === source && current.target.text === text)
 		) {
 			this.explicitlyOpened = true;
 			return;

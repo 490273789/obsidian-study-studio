@@ -14,8 +14,9 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
 	}
 
 	if (typeof document !== "undefined") {
+		let textArea: HTMLTextAreaElement | undefined;
 		try {
-			const textArea = document.createElement("textarea");
+			textArea = document.createElement("textarea");
 			textArea.value = text;
 			textArea.style.position = "fixed";
 			textArea.style.left = "-9999px";
@@ -24,11 +25,11 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
 			document.body.appendChild(textArea);
 			textArea.focus();
 			textArea.select();
-			const successful = document.execCommand("copy");
-			textArea.remove();
-			return successful;
+			return document.execCommand("copy");
 		} catch {
 			return false;
+		} finally {
+			textArea?.remove();
 		}
 	}
 

@@ -6,7 +6,7 @@ import React, {
 	useRef,
 	useSyncExternalStore,
 } from "react";
-import { App, Component, MarkdownRenderer, Notice, TFile } from "obsidian";
+import { App, type Component, MarkdownRenderer, Notice, TFile } from "obsidian";
 import type { ScopedWorkbenchSettings } from "../../../core/host/settingsSlices";
 import type { WorkbenchFeatureShortcut } from "../../../core/host/workbench";
 import type { DeckHome, DeckHomeDestination } from "../domain/decks/deckHome";
@@ -118,6 +118,21 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 	const presentedLifecycleSnapshot = answerPresentationSnapshot.lifecycle;
 	const presentedCard = answerPresentationSnapshot.presentedCard;
 	const isAnswerTransitioning = answerPresentationSnapshot.activity.kind === "transitioning";
+	const routeDeckId =
+		presentedLifecycleSnapshot.kind === "idle" && "deckId" in viewState
+			? viewState.deckId
+			: null;
+	const subscribeRouteDeck = useCallback(
+		(listener: () => void) =>
+			routeDeckId === null ? () => undefined : deckHome.subscribe(listener),
+		[deckHome, routeDeckId],
+	);
+	const readRouteDeck = useCallback(
+		() => (routeDeckId === null ? undefined : deckHome.getDeck(routeDeckId)),
+		[deckHome, routeDeckId],
+	);
+	// A source removal can change the page key, so the shell observes the resting route's deck.
+	useSyncExternalStore(subscribeRouteDeck, readRouteDeck, readRouteDeck);
 	const cardEditing = useMemo(
 		() =>
 			new CardEditingInteraction({
@@ -140,8 +155,8 @@ export const FlashcardApp: React.FC<FlashcardAppProps> = ({
 	);
 
 	const renderMarkdown = useCallback(
-		async (content: string, el: HTMLElement, component?: Component): Promise<void> => {
-			await MarkdownRenderer.render(app, content, el, "", component ?? new Component());
+		(content: string, el: HTMLElement, component: Component, sourcePath: string) => {
+			return MarkdownRenderer.render(app, content, el, sourcePath, component);
 		},
 		[app],
 	);

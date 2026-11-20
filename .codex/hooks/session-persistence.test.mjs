@@ -27,13 +27,13 @@ function runHook(overrides) {
 
 test("injects the original session persistence section after a matching read", () => {
 	const output = JSON.parse(runHook());
-	const guide = readFileSync(resolve(root, "docs/agents/sessions.md"), "utf8");
-	const section = guide.match(/^## Session persistence\r?\n[\s\S]+?(?=^## )/m)[0].trimEnd();
+	const guide = readFileSync(resolve(root, ".claude/rules/session-persistence.md"), "utf8");
+	const section = guide.match(/^## Session persistence\r?\n[\s\S]+/m)[0].trimEnd();
 
 	assert.equal(output.hookSpecificOutput.hookEventName, "PostToolUse");
 	assert.equal(
 		output.hookSpecificOutput.additionalContext,
-		`From docs/agents/sessions.md\n\n${section}`,
+		`From .claude/rules/session-persistence.md\n\n${section}`,
 	);
 });
 

@@ -19,10 +19,16 @@ jobs:
                   node-version-file: .node-version
                   cache: pnpm
             - run: pnpm install --frozen-lockfile
+            - uses: dtolnay/rust-toolchain@1.95.0
+              with:
+                  components: clippy
+                  targets: wasm32-unknown-unknown
+            - run: cargo install --locked wasm-bindgen-cli --version 0.2.127
+            - run: pnpm run dictionary:engine
+            - run: git diff --exit-code -- src/features/dictionary/domain/engine
             - run: pnpm run check:all
             - run: pnpm build
             - run: pnpm run artifacts:check
-            - uses: dtolnay/rust-toolchain@stable
             - run: cargo test --workspace
             - run: cargo clippy --workspace --all-targets -- -D warnings
             - uses: actions/upload-artifact@v6

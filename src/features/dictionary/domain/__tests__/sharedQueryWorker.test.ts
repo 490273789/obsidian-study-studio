@@ -207,4 +207,57 @@ describe("SharedDictionaryQueryWorker", () => {
 			message: "WASM out of memory",
 		});
 	});
+
+	it("reopens active dictionary sessions on first demand after the worker crashes", async () => {
+		const manager = new SharedDictionaryQueryWorker();
+		const plan = {} as never;
+		manager.register("kept", { readPackageFile: vi.fn() });
+		manager.register("removed", { readPackageFile: vi.fn() });
+		manager.open("kept", plan, 1024);
+		manager.open("removed", plan, 2048);
+
+		const crashed = mocks.workers[0]!;
+		crashed.emitError("Worker crashed");
+		expect(crashed.terminate).toHaveBeenCalledOnce();
+		expect(manager.activeWorkerCount).toBe(0);
+		manager.unregister("removed");
+		expect(mocks.workers).toHaveLength(1);
+
+		const lookup = manager.lookup("kept", "pear");
+		const recovered = mocks.workers[1]!;
+		expect(recovered.postMessage.mock.calls).toEqual([
+			[{ type: "open", dictionaryId: "kept", queryPlan: plan, cacheBytes: 1024 }],
+			[expect.objectContaining({ type: "lookup", dictionaryId: "kept", word: "pear" })],
+		]);
+		const request = recovered.postMessage.mock.calls[1]![0];
+		crashed.emitError("Late error");
+		recovered.emit({
+			id: request.id,
+			type: "lookup-result",
+			result: { suggestions: ["pears"] },
+		});
+		await expect(lookup).resolves.toMatchObject({ suggestions: ["pears"] });
+		manager.dispose();
+	});
+
+	it("drops the result of an old read after the dictionary is re-registered", async () => {
+		const manager = new SharedDictionaryQueryWorker();
+		let resolveRead!: (data: Uint8Array) => void;
+		const pending = new Promise<Uint8Array>((resolve) => (resolveRead = resolve));
+		manager.register("dict1", { readPackageFile: () => pending });
+		manager.register("dict2", { readPackageFile: vi.fn() });
+		manager.open("dict1", {} as never, 1024);
+		const worker = mocks.workers[0]!;
+		worker.emit({ type: "read", dictionaryId: "dict1", id: 77, path: "package.bin" });
+		manager.unregister("dict1");
+		manager.register("dict1", { readPackageFile: vi.fn() });
+		manager.open("dict1", {} as never, 1024);
+		resolveRead(new Uint8Array([1]));
+		await pending;
+
+		expect(worker.postMessage).not.toHaveBeenCalledWith(
+			expect.objectContaining({ id: 77, type: "read-result" }),
+			expect.any(Array),
+		);
+	});
 });

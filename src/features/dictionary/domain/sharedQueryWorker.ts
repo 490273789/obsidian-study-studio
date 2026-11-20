@@ -41,6 +41,10 @@ export interface RegisteredDictionaryPackageReader {
 export class SharedDictionaryQueryWorker {
 	private worker: Worker | null = null;
 	private readonly registrations = new Map<string, RegisteredDictionaryPackageReader>();
+	private readonly opened = new Map<
+		string,
+		{ readonly queryPlan: CompiledPackageQueryPlan; readonly cacheBytes: number }
+	>();
 	private readonly pending = new Map<number, PendingRequest>();
 	private nextRequestId = 1;
 
@@ -54,13 +58,24 @@ export class SharedDictionaryQueryWorker {
 
 	private ensureWorker(): Worker {
 		if (!this.worker) {
-			this.worker = new QueryWorker();
-			this.worker.addEventListener("message", (event: MessageEvent<WorkerOutput>) => {
-				void this.handleWorkerMessage(event.data);
+			const worker = new QueryWorker();
+			this.worker = worker;
+			worker.addEventListener("message", (event: MessageEvent<WorkerOutput>) => {
+				if (this.worker === worker) void this.handleWorkerMessage(worker, event.data);
 			});
-			this.worker.addEventListener("error", (event) => {
+			worker.addEventListener("error", (event) => {
+				if (this.worker !== worker) return;
+				this.stopWorker();
 				this.failAll(new DictionaryError("invalid-response", event.message));
 			});
+			try {
+				for (const [dictionaryId, plan] of this.opened) {
+					worker.postMessage({ type: "open", dictionaryId, ...plan });
+				}
+			} catch (error) {
+				this.stopWorker();
+				throw error;
+			}
 		}
 		return this.worker;
 	}
@@ -70,6 +85,7 @@ export class SharedDictionaryQueryWorker {
 	}
 
 	unregister(dictionaryId: string): void {
+		this.opened.delete(dictionaryId);
 		if (!this.registrations.has(dictionaryId)) return;
 		this.registrations.delete(dictionaryId);
 
@@ -84,10 +100,7 @@ export class SharedDictionaryQueryWorker {
 			}
 		}
 
-		if (this.registrations.size === 0 && this.worker) {
-			this.worker.terminate();
-			this.worker = null;
-		}
+		if (this.registrations.size === 0) this.stopWorker();
 	}
 
 	open(dictionaryId: string, queryPlan: CompiledPackageQueryPlan, cacheBytes: number): void {
@@ -98,6 +111,7 @@ export class SharedDictionaryQueryWorker {
 			queryPlan,
 			cacheBytes,
 		});
+		this.opened.set(dictionaryId, { queryPlan, cacheBytes });
 	}
 
 	lookup(dictionaryId: string, word: string): Promise<QueryResult> {
@@ -108,9 +122,9 @@ export class SharedDictionaryQueryWorker {
 		return this.request<CompiledResource | null>(dictionaryId, { type: "resource", path });
 	}
 
-	request<T>(dictionaryId: string, value: Record<string, unknown>): Promise<T> {
+	async request<T>(dictionaryId: string, value: Record<string, unknown>): Promise<T> {
 		if (!this.registrations.has(dictionaryId)) {
-			return Promise.reject(new DictionaryError("request", dictionaryText().errors.request));
+			throw new DictionaryError("request", dictionaryText().errors.request);
 		}
 		const worker = this.ensureWorker();
 		const id = this.nextRequestId++;
@@ -120,32 +134,39 @@ export class SharedDictionaryQueryWorker {
 				reject,
 				resolve: (result) => resolve(result as T),
 			});
-			worker.postMessage({ ...value, id, dictionaryId });
+			try {
+				worker.postMessage({ ...value, id, dictionaryId });
+			} catch (error) {
+				this.pending.delete(id);
+				reject(error);
+			}
 		});
 	}
 
-	private async handleWorkerMessage(message: WorkerOutput): Promise<void> {
+	private async handleWorkerMessage(worker: Worker, message: WorkerOutput): Promise<void> {
 		if (message.type === "read" && message.path) {
 			const dictionaryId = message.dictionaryId;
-			const registration = dictionaryId
-				? this.registrations.get(dictionaryId)
-				: (this.registrations.values().next().value ?? null);
+			const registrationId = dictionaryId ?? this.registrations.keys().next().value;
+			if (registrationId === undefined) return;
+			const registration = this.registrations.get(registrationId);
 			if (!registration) return;
+			const isCurrentRead = () =>
+				this.worker === worker && this.registrations.get(registrationId) === registration;
 
 			try {
 				const data = await registration.readPackageFile(message.path);
-				if (dictionaryId && !this.registrations.has(dictionaryId)) return;
+				if (!isCurrentRead()) return;
 				const transfer = data.buffer.slice(
 					data.byteOffset,
 					data.byteOffset + data.byteLength,
 				);
-				this.ensureWorker().postMessage(
+				worker.postMessage(
 					{ data: transfer, id: message.id, type: "read-result", dictionaryId },
 					[transfer],
 				);
 			} catch (error) {
-				if (dictionaryId && !this.registrations.has(dictionaryId)) return;
-				this.ensureWorker().postMessage({
+				if (!isCurrentRead()) return;
+				worker.postMessage({
 					error:
 						error instanceof Error ? error.message : "Dictionary package read failed.",
 					id: message.id,
@@ -182,10 +203,14 @@ export class SharedDictionaryQueryWorker {
 	dispose(): void {
 		this.failAll(new DictionaryError("request", dictionaryText().errors.request));
 		this.registrations.clear();
-		if (this.worker) {
-			this.worker.terminate();
-			this.worker = null;
-		}
+		this.opened.clear();
+		this.stopWorker();
+	}
+
+	private stopWorker(): void {
+		const worker = this.worker;
+		this.worker = null;
+		worker?.terminate();
 	}
 }
 

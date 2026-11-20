@@ -152,6 +152,17 @@ Use :: inline as plain answer text.
 		expect(card.back).toBe("Use :: inline as plain answer text.");
 	});
 
+	it("keeps hash-prefixed front text and tags in card bodies", () => {
+		const cards = parseFlashcards(
+			"#word with context\n??\n#meaning\n;;\n#next\n??\nanswer\n;;",
+			"notes/untagged.md",
+		);
+		expect(cards.map(({ front, back }) => [front, back])).toEqual([
+			["#word with context", "#meaning"],
+			["#next", "answer"],
+		]);
+	});
+
 	it("skips incomplete blocks and assigns ids by valid card order", () => {
 		const cards = parseFlashcards(
 			`#单词

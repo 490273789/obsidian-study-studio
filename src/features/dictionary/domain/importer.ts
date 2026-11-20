@@ -47,6 +47,30 @@ function storageError(error: unknown): LocalDictionaryStorageError {
 	);
 }
 
+async function cleanDeletedPackages(root: string): Promise<void> {
+	const { readdir, rm } = await import("node:fs/promises");
+	try {
+		const entries = await readdir(root, { withFileTypes: true });
+		const deleted = entries.filter(
+			(entry) =>
+				entry.isDirectory() &&
+				/^\.removed-[a-z\d][a-z\d-]{2,80}-[a-f\d]{8}$/i.test(entry.name),
+		);
+		for (const entry of deleted) {
+			// oxlint-disable-next-line no-await-in-loop -- avoid concurrent recursive deletes.
+			await rm(`${root}/${entry.name}`, { force: true, recursive: true }).catch(
+				(error: unknown) => {
+					console.warn("Failed to clean a deleted dictionary package:", error);
+				},
+			);
+		}
+	} catch (error) {
+		if (!hasErrorCode(error, "ENOENT")) {
+			console.warn("Failed to list deleted dictionary packages:", error);
+		}
+	}
+}
+
 export class LocalDictionaryImporter implements LocalDictionaryStorageAdapter {
 	private readonly controllers = new Set<AbortController>();
 
@@ -144,9 +168,13 @@ export class LocalDictionaryImporter implements LocalDictionaryStorageAdapter {
 
 	async stageRemoval(dictionaryId: string): Promise<LocalDictionaryStorageRemoval> {
 		validateDictionaryId(dictionaryId);
-		const source = `${this.rootPath}/${dictionaryId}`;
-		const staged = `${this.rootPath}/.remove-${dictionaryId}-${crypto.randomUUID().slice(0, 8)}`;
+		const root = this.rootPath;
+		const source = `${root}/${dictionaryId}`;
+		const suffix = `${dictionaryId}-${crypto.randomUUID().slice(0, 8)}`;
+		const staged = `${root}/.remove-${suffix}`;
+		const deleted = `${root}/.removed-${suffix}`;
 		const { rename, rm } = await import("node:fs/promises");
+		await cleanDeletedPackages(root);
 		try {
 			await rename(source, staged);
 		} catch (error) {
@@ -160,10 +188,17 @@ export class LocalDictionaryImporter implements LocalDictionaryStorageAdapter {
 			commit: async () => {
 				if (state !== "staged") return;
 				try {
-					await rm(staged, { force: true, recursive: true });
-					state = "committed";
+					await rename(staged, deleted);
 				} catch (error) {
 					throw storageError(error);
+				}
+				// A recursive deletion can remove some files before failing. After the
+				// directory is marked as deleted, the catalog must never restore it.
+				state = "committed";
+				try {
+					await rm(deleted, { force: true, recursive: true });
+				} catch (error) {
+					console.warn("Failed to clean a deleted dictionary package:", error);
 				}
 			},
 			rollback: async () => {

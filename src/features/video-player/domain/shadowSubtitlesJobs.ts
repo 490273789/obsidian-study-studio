@@ -153,7 +153,10 @@ export class VideoSubtitleJobs {
 			const existing = this.tasks.find((task) => task.source.id === source.id);
 			if (existing && (existing.status === "running" || existing.status === "queued")) return;
 			const document = this.cloneDocument(this.documents[source.id]!);
-			document.candidate = document.cues.length ? [] : null;
+			const candidate = document.cues.length ? [] : null;
+			if (candidate === null ? document.candidate !== null : document.candidate?.length !== 0)
+				document.revision++;
+			document.candidate = candidate;
 			await this.saveDocument(source.id, document);
 			if (existing) this.tasks = this.tasks.filter((task) => task !== existing);
 			this.tasks.push({

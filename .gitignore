@@ -37,5 +37,7 @@ tmp
 GLOSSARYY.md
 DESIGN.md
 design-qa.md
-docs/
+docs/*
+!docs/agents/
+!docs/adr/
 .vitest/

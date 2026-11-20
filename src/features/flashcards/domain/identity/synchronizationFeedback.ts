@@ -50,29 +50,35 @@ export function describeSynchronizationOutcome(
 		return translate(language, "identity.syncFailed", { message: outcome.message });
 	}
 
+	const unreadablePaths = outcome.change.unreadablePaths;
+	const readWarning = unreadablePaths?.length
+		? translate(language, "identity.syncUnreadable", {
+				sources: formatSources(unreadablePaths, language),
+			})
+		: null;
 	const issue = findReportedIssue(outcome.issueIds, snapshot.issues);
-	if (!issue) return translate(language, "identity.syncAttention");
+	if (!issue) return readWarning ?? translate(language, "identity.syncAttention");
 
 	const sources = formatSources(issue.affectedSources, language);
 	const more = formatRemainingIssues(outcome.issueIds.length - 1, language);
 	const command = translate(language, "main.commandRepairCardIdentities");
 
-	if (issue.type === "identity-conflict") {
-		return translate(language, "identity.syncConflictDetails", {
-			sources,
-			identity: issue.identity,
-			card: formatCandidateName(issue),
-			command,
-			more,
-		});
-	}
-
-	return translate(language, "identity.syncAmbiguityDetails", {
-		sources,
-		count: issue.missingIdentities.length,
-		command,
-		more,
-	});
+	const identityWarning =
+		issue.type === "identity-conflict"
+			? translate(language, "identity.syncConflictDetails", {
+					sources,
+					identity: issue.identity,
+					card: formatCandidateName(issue),
+					command,
+					more,
+				})
+			: translate(language, "identity.syncAmbiguityDetails", {
+					sources,
+					count: issue.missingIdentities.length,
+					command,
+					more,
+				});
+	return readWarning ? `${readWarning}\n${identityWarning}` : identityWarning;
 }
 
 function findReportedIssue(
@@ -86,7 +92,7 @@ function findReportedIssue(
 	return issues[0];
 }
 
-function formatSources(sources: string[], language: Language): string {
+function formatSources(sources: readonly string[], language: Language): string {
 	return sources.join(language === "zh" ? "、" : ", ");
 }
 

@@ -44,6 +44,10 @@ describe("extractFirstTag", () => {
 	it("ignores inline hash text that is not a line tag", () => {
 		expect(extractFirstTag("front text #单词\n内容")).toBeNull();
 	});
+
+	it("retains compatibility with legacy line-leading tags followed by prose", () => {
+		expect(extractFirstTag("#word with context\n??\n#answer\n;;")).toBe("#word");
+	});
 });
 
 describe("formatCardBlock", () => {

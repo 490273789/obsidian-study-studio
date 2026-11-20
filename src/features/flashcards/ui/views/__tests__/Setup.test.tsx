@@ -13,8 +13,12 @@ import { SetupPage } from "../../primitives/SetupPage/SetupPage";
 import { StudySetup, StudyPlan, StudyDayRow } from "../Study/StudySetup";
 import { PracticeSetup } from "../Practice/PracticeSetup";
 
-// Exercise React adapter events in node, without a browser renderer or effects.
-const hooks = vi.hoisted(() => ({ cursor: 0, state: [] as unknown[] }));
+// Exercise React adapter events in node and commit layout effects after rendering.
+const hooks = vi.hoisted(() => ({
+	cursor: 0,
+	state: [] as unknown[],
+	layoutEffects: [] as Array<() => void>,
+}));
 vi.mock("react", async (original) => ({
 	...(await original<typeof import("react")>()),
 	useState: (initial: unknown) => {
@@ -32,6 +36,7 @@ vi.mock("react", async (original) => ({
 	useCallback: (callback: unknown) => callback,
 	useId: () => "study-plan",
 	useEffect: () => {},
+	useLayoutEffect: (effect: () => void) => hooks.layoutEffects.push(effect),
 	useRef: () => ({ current: null }),
 	useSyncExternalStore: (_subscribe: unknown, read: () => unknown) => read(),
 }));
@@ -42,6 +47,7 @@ vi.mock("../../../strings/context", () => ({
 beforeEach(() => {
 	hooks.cursor = 0;
 	hooks.state = [];
+	hooks.layoutEffects = [];
 });
 
 type NodeProps = {
@@ -68,7 +74,9 @@ function find<P>(node: React.ReactNode, type: unknown, index = 0): P {
 }
 function renderMemo<P>(component: unknown, props: P): React.ReactNode {
 	hooks.cursor = 0;
-	return (component as { type: (props: P) => React.ReactNode }).type(props);
+	const tree = (component as { type: (props: P) => React.ReactNode }).type(props);
+	for (const effect of hooks.layoutEffects.splice(0)) effect();
+	return tree;
 }
 const deck: Deck = {
 	id: "deck",
@@ -307,6 +315,26 @@ describe("setup selections and start requests", () => {
 			selection: { kind: "range", startIndex: 10, endIndex: 100 },
 		});
 	});
+	it("applies live practice limits to the existing setup before starting", () => {
+		const props = { deck, plan: practicePlan, onStartSession: vi.fn(), onBack: vi.fn() };
+		let tree = renderMemo(PracticeSetup, props);
+		find<SelectorProps>(tree, SetupSelector, 1).onChange("reversed");
+		const updatedProps = {
+			...props,
+			plan: { ...practicePlan, maxQuestions: 10, maxRangeStart: 9 },
+		};
+		void renderMemo(PracticeSetup, updatedProps);
+		tree = renderMemo(PracticeSetup, updatedProps);
+		expect(find<PageProps>(tree, SetupPage).count).toBe(10);
+		find<PageProps>(tree, SetupPage).onStart();
+		expect(props.onStartSession).toHaveBeenCalledWith({
+			mode: "practice",
+			deckId: deck.id,
+			direction: "reversed",
+			selection: { kind: "random", questionCount: 10 },
+		});
+	});
+
 	it("updates spelling smart quantity and clamps range endpoints", () => {
 		const props = {
 			deck,

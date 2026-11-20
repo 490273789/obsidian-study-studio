@@ -5,15 +5,15 @@ import type {
 import {
 	CARD_END_SEPARATOR,
 	EXPLANATION_SEPARATOR,
-	FIRST_TAG_LINE_PATTERN,
 	FRONT_BACK_SEPARATOR,
 	type CardSourceNewline,
 	type ParsedCardBlock,
+	cardSourceBodyStart,
 	extractCardIdentityMarker,
+	findSourceTagLine,
 	formatCardBlock,
 	formatCardIdentityMarker,
 	isMarkerLine,
-	isTagLine,
 	parseCardBlock,
 } from "./cardFormat";
 
@@ -124,9 +124,20 @@ export function editCards(
 	}
 
 	const newline = scan.blocks[scan.blocks.length - 1]?.newline ?? scan.documentNewline;
-	let next = applyEdits(source, mergeRemovalEdits(edits));
+	const merged = mergeRemovalEdits(edits);
+	// A legacy first front may straddle the deck tag. Keep the original tag
+	// line when replacing that front, including its spacing and line ending.
+	const tag = scan.tag;
+	if (tag) {
+		const covering = merged.findIndex((edit) => edit.start <= tag.start && edit.end >= tag.end);
+		if (covering >= 0) {
+			const edit = merged[covering]!;
+			merged[covering] = { ...edit, text: source.slice(tag.start, tag.end) + edit.text };
+		}
+	}
+	let next = applyEdits(source, merged);
 	if (additions.length > 0) {
-		next = insertAdditions(next, additions, newline, scan.documentNewline);
+		next = insertAdditions(next, additions, newline);
 	}
 	return { nextContent: next, createdIdentities };
 }
@@ -148,7 +159,7 @@ export function maintainIdentities(
 		const registered: string[] = [];
 		for (const block of scan.blocks) {
 			if (block.identity !== null) continue;
-			const anchor = findMarkerAnchorLine(scan.lines, block);
+			const anchor = findMarkerAnchorLine(scan, block);
 			if (anchor === null) {
 				throw new DeckSourceEditException({ type: "source-file-invalid" });
 			}
@@ -171,7 +182,7 @@ export function maintainIdentities(
 
 	const edits: TextEdit[] = [];
 	scan.blocks.forEach((block, index) => {
-		const anchor = findMarkerAnchorLine(scan.lines, block);
+		const anchor = findMarkerAnchorLine(scan, block);
 		if (anchor === null) {
 			throw new DeckSourceEditException({ type: "source-file-invalid" });
 		}
@@ -248,6 +259,7 @@ interface ScanResult {
 	readonly lines: readonly SourceLine[];
 	readonly documentNewline: CardSourceNewline;
 	readonly blocks: readonly ScannedBlock[];
+	readonly tag: ReturnType<typeof findSourceTagLine>;
 }
 
 interface TextEdit {
@@ -263,20 +275,22 @@ interface FormattedAddition {
 
 function scanSource(source: string): ScanResult {
 	const lines = splitSourceLines(source);
-	const documentNewline = detectDocumentNewline(lines);
+	const documentNewline = detectDocumentNewline(source);
+	const tag = findSourceTagLine(source);
+	const tagStart = tag?.start;
 	const blocks: ScannedBlock[] = [];
 	let regionStartLine = 0;
 
 	for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
 		if (!isMarkerLine(lines[lineIndex]!.text, CARD_END_SEPARATOR)) continue;
 		const regionStart = regionStartLine;
-		const blockText = lines
+		const blockLines = lines
 			.slice(regionStart, lineIndex)
-			.map((line) => line.text)
-			.join("\n");
-		const parsed = parseBlockText(blockText, regionStart === 0);
+			.filter((line) => line.start !== tagStart)
+			.map((line) => line.text);
+		const parsed = parseCardBlock(blockLines);
 		const contentStartLine = parsed
-			? findContentStartLine(lines, regionStart, lineIndex)
+			? findContentStartLine(lines, regionStart, lineIndex, tagStart)
 			: null;
 		if (parsed && contentStartLine !== null) {
 			blocks.push({
@@ -292,13 +306,13 @@ function scanSource(source: string): ScanResult {
 		regionStartLine = lineIndex + 1;
 	}
 
-	return { lines, documentNewline, blocks };
+	return { lines, documentNewline, blocks, tag };
 }
 
 function splitSourceLines(source: string): SourceLine[] {
 	const lines: SourceLine[] = [];
-	let offset = 0;
-	for (const match of source.matchAll(/[^\n]*(?:\n|$)/g)) {
+	let offset = cardSourceBodyStart(source);
+	for (const match of source.slice(offset).matchAll(/[^\n]*(?:\n|$)/g)) {
 		const raw = match[0];
 		if (raw.length === 0) continue;
 		const start = offset;
@@ -315,8 +329,9 @@ function splitSourceLines(source: string): SourceLine[] {
 	return lines;
 }
 
-function detectDocumentNewline(lines: readonly SourceLine[]): CardSourceNewline {
-	return lines.find((line) => line.newline !== "")?.newline || "\n";
+function detectDocumentNewline(source: string): CardSourceNewline {
+	const firstBreak = source.indexOf("\n");
+	return firstBreak > 0 && source[firstBreak - 1] === "\r" ? "\r\n" : "\n";
 }
 
 function detectBlockNewline(
@@ -332,50 +347,30 @@ function detectBlockNewline(
 	return documentNewline;
 }
 
-/**
- * Parse one block the way the reader does: the first tag line of the file is
- * outside card content, later tag-like lines remain front content.
- */
-function parseBlockText(blockText: string, firstBlock: boolean): ParsedCardBlock | null {
-	const normalized = firstBlock ? stripByteOrderMark(blockText) : blockText;
-	const text = firstBlock ? normalized.replace(FIRST_TAG_LINE_PATTERN, "\n") : normalized;
-	return parseCardBlock(text.split("\n"));
-}
-
-function stripByteOrderMark(text: string): string {
-	return text.startsWith("\uFEFF") ? text.slice(1) : text;
-}
-
 /** First non-blank line of the whole block range; update edits replace from here. */
 function findContentStartLine(
 	lines: readonly SourceLine[],
 	regionStartLine: number,
 	terminatorLine: number,
+	tagStart: number | undefined,
 ): number | null {
 	for (let index = regionStartLine; index < terminatorLine; index++) {
-		const text = editableLineText(lines[index]!.text, regionStartLine, index);
-		if (text.trim().length === 0) continue;
-		if (regionStartLine === 0 && isTagLine(text)) continue;
+		const line = lines[index]!;
+		if (!line.text.trim() || line.start === tagStart) continue;
 		return index;
 	}
 	return null;
 }
 
 /** First line card content can be written to: skips the identity marker and tag prefix. */
-function findMarkerAnchorLine(lines: readonly SourceLine[], block: ScannedBlock): number | null {
+function findMarkerAnchorLine(scan: ScanResult, block: ScannedBlock): number | null {
 	for (let index = block.regionStartLine; index < block.terminatorLine; index++) {
-		const text = editableLineText(lines[index]!.text, block.regionStartLine, index);
-		if (text.trim().length === 0) continue;
-		if (extractCardIdentityMarker(text) !== null) continue;
-		if (block.regionStartLine === 0 && isTagLine(text)) continue;
+		const line = scan.lines[index]!;
+		if (!line.text.trim() || line.start === scan.tag?.start) continue;
+		if (extractCardIdentityMarker(line.text) !== null) continue;
 		return index;
 	}
 	return null;
-}
-
-/** A leading BOM belongs to the document prefix, not to the first content line. */
-function editableLineText(text: string, regionStartLine: number, index: number): string {
-	return regionStartLine === 0 && index === 0 ? stripByteOrderMark(text) : text;
 }
 
 // ---------------------------------------------------------------------------
@@ -487,31 +482,25 @@ function insertAdditions(
 	current: string,
 	additions: readonly FormattedAddition[],
 	newline: CardSourceNewline,
-	documentNewline: CardSourceNewline,
 ): string {
 	const lines = splitSourceLines(current);
 	const lastTerminator = [...lines]
 		.reverse()
 		.find((line) => isMarkerLine(line.text, CARD_END_SEPARATOR));
-	let insertion = lastTerminator?.end ?? null;
-	if (insertion === null) {
-		const tag = FIRST_TAG_LINE_PATTERN.exec(current);
-		insertion = tag?.index !== undefined ? tag.index + tag[0].length : 0;
-	}
-	const effectiveNewline = newline || documentNewline;
+	const bodyStart = cardSourceBodyStart(current);
+	const insertion = lastTerminator?.end ?? findSourceTagLine(current)?.end ?? bodyStart;
 	let prefix = current.slice(0, insertion);
 	const suffix = current.slice(insertion);
 	for (const addition of additions) {
-		const separator = !prefix
-			? ""
-			: prefix.endsWith(effectiveNewline + effectiveNewline)
+		const separator =
+			prefix === "" || prefix === "\uFEFF"
 				? ""
-				: prefix.endsWith(effectiveNewline)
-					? effectiveNewline
-					: effectiveNewline + effectiveNewline;
-		prefix +=
-			separator +
-			formatOperation(addition.content, addition.identity, effectiveNewline, true);
+				: prefix.endsWith(newline + newline)
+					? ""
+					: prefix.endsWith(newline)
+						? newline
+						: newline + newline;
+		prefix += separator + formatOperation(addition.content, addition.identity, newline, true);
 	}
 	return prefix + suffix;
 }

@@ -1,4 +1,5 @@
 import type { Plugin } from "obsidian";
+import { isRecord } from "../shared/isRecord";
 import type { FlashcardSettings } from "../shared/types";
 import {
 	DEFAULT_SETTINGS,
@@ -94,8 +95,7 @@ export class WorkbenchStore {
 	 */
 	async loadSettings(): Promise<FlashcardSettings> {
 		return this.enqueueWrite(async () => {
-			const data = (await this.backend.loadData()) as StoredWorkbenchDocument | null;
-			this.restoreDocument(data);
+			this.restoreDocument(await this.backend.loadData());
 			this.loaded = true;
 			return cloneSettingsDocument(this.settings);
 		});
@@ -191,7 +191,10 @@ export class WorkbenchStore {
 	 */
 	async reloadExternalSettings(): Promise<void> {
 		await this.enqueueWrite(async () => {
-			const data = (await this.backend.loadData()) as StoredWorkbenchDocument | null;
+			const data = await this.backend.loadData();
+			if (data != null && !isRecord(data)) {
+				throw new Error("Invalid synchronized Study Studio document");
+			}
 			this.restoreDocument(data);
 			this.publishRevision({ kind: "external" });
 		});
@@ -213,27 +216,13 @@ export class WorkbenchStore {
 		return () => this.revisionListeners.delete(listener);
 	}
 
-	private restoreDocument(data: StoredWorkbenchDocument | null): void {
-		let rawSettings: unknown = {};
-		if (data?.settings) {
-			rawSettings = data.settings;
-		} else if (data && ("flashcardTags" in data || "flashcardTag" in data)) {
-			rawSettings = data;
-		}
-		this.settings = normalizeSettingsDocument(rawSettings);
-
-		if (data && typeof data === "object") {
-			this.document = {
-				...data,
-				schemaVersion: 2,
-				settings: this.settings,
-			};
-		} else {
-			this.document = {
-				schemaVersion: 2,
-				settings: this.settings,
-			};
-		}
+	private restoreDocument(data: unknown): void {
+		const document = isRecord(data) ? data : {};
+		const legacySettings = "flashcardTags" in document || "flashcardTag" in document;
+		this.settings = normalizeSettingsDocument(
+			document.settings || (legacySettings ? document : {}),
+		);
+		this.document = { ...document, schemaVersion: 2, settings: this.settings };
 	}
 
 	/**

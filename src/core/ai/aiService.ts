@@ -66,13 +66,15 @@ export class AiService {
 	/** Upserts one engine for its kind; the first engine of a kind becomes its default. */
 	async saveEngine(input: AiEngineConfig): Promise<string> {
 		const engine = cleanEngine(input);
-		const updating = this.settings.engines.some((item) => item.id === engine.id);
-		if (updating && this.engineKind(engine.id) !== engine.kind)
-			throw new AiError("config-not-found");
 		await this.write((next) => {
 			const index = next.engines.findIndex((item) => item.id === engine.id);
-			if (index < 0) next.engines.push(engine);
-			else next.engines[index] = engine;
+			const existing = next.engines[index];
+			if (existing) {
+				if (existing.kind !== engine.kind) throw new AiError("config-not-found");
+				next.engines[index] = engine;
+			} else {
+				next.engines.push(engine);
+			}
 			if (engine.kind !== "translation" && !next.defaults[engine.kind])
 				next.defaults[engine.kind] = engine.id;
 		});
@@ -230,10 +232,6 @@ export class AiService {
 		this.publish();
 	}
 
-	private engineKind(id: string): AiEngineKind | undefined {
-		return this.settings.engines.find((engine) => engine.id === id)?.kind;
-	}
-
 	private resolveLlm(id: string | undefined): LlmEngineConfig {
 		const selected = id === undefined ? this.settings.defaults.llm : id;
 		if (selected === null) throw new AiError("no-default");
@@ -255,7 +253,9 @@ export class AiService {
 	}
 
 	private async write(change: (settings: AiSettings) => void): Promise<void> {
-		const write = this.writes.then(() => this.commit(change));
+		const operation = () => this.commit(change);
+		if (this.deps.queueWrite) return this.deps.queueWrite(operation);
+		const write = this.writes.then(operation);
 		this.writes = write.catch(() => {});
 		return write;
 	}

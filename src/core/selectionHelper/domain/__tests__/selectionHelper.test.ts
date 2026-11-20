@@ -47,6 +47,33 @@ describe("SelectionHelper", () => {
 		expect(helper.getSnapshot().target?.text).toBe("second");
 	});
 
+	it("opens a blank lookup in the requesting window even when another window has a query", () => {
+		const { helper } = setup();
+		const oldSource = helper.openSource({});
+		const requestedSource = helper.openSource({});
+		helper.openDictionary(oldSource.reference, { text: "hello", x: 4, y: 8 });
+
+		helper.openDictionary(requestedSource.reference);
+
+		expect(helper.getSnapshot().target).toMatchObject({
+			source: requestedSource.reference,
+			text: "",
+		});
+	});
+
+	it("preserves a lookup in its own window when opening from a blank selection", () => {
+		const { helper } = setup();
+		const owner = {};
+		const oldSource = helper.openSource(owner);
+		const requestedSource = helper.openSource(owner);
+		helper.openDictionary(oldSource.reference, { text: "hello", x: 4, y: 8 });
+		const lookup = helper.getSnapshot();
+
+		helper.openDictionary(requestedSource.reference);
+
+		expect(helper.getSnapshot()).toBe(lookup);
+	});
+
 	it("keeps manual lookup visible when no dictionary source is available", () => {
 		const { helper, dictionary } = setup();
 		dictionary.sources = () => [];

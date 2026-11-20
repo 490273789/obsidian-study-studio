@@ -136,6 +136,8 @@ export interface AiEngineTesters {
 export interface AiDependencies {
 	net: Pick<OutboundPort, "request" | "readSecret">;
 	persist: (settings: AiSettings) => Promise<void>;
+	/** Schedules the entire registry transition alongside external settings reloads. */
+	queueWrite?: (operation: () => Promise<void>) => Promise<void>;
 	createId: () => string;
 	testers?: AiEngineTesters;
 }

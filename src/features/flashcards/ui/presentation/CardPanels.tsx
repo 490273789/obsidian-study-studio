@@ -4,8 +4,13 @@ import { useFlashcardI18n } from "../../strings/context";
 import type { CardPresentationBlock } from "./cardPresentation";
 import { useCardPresentationDependencies } from "./context";
 
+interface CardPanelProps {
+	block: CardPresentationBlock;
+	sourcePath: string;
+}
+
 /** The question panel shared by every session view. */
-export const CardQuestionPanel: React.FC<{ block: CardPresentationBlock }> = ({ block }) => {
+export const CardQuestionPanel: React.FC<CardPanelProps> = ({ block, sourcePath }) => {
 	const { t } = useFlashcardI18n();
 	const { markdownRenderer, pronunciationRuntime } = useCardPresentationDependencies();
 	return (
@@ -17,12 +22,14 @@ export const CardQuestionPanel: React.FC<{ block: CardPresentationBlock }> = ({ 
 					word={block.pronunciationWord}
 					runtime={pronunciationRuntime}
 					markdownRenderer={markdownRenderer}
+					sourcePath={sourcePath}
 				/>
 			) : (
 				<MarkdownContent
 					content={block.content}
 					className="flashcard-markdown"
 					markdownRenderer={markdownRenderer}
+					sourcePath={sourcePath}
 				/>
 			)}
 		</div>
@@ -30,7 +37,7 @@ export const CardQuestionPanel: React.FC<{ block: CardPresentationBlock }> = ({ 
 };
 
 /** The answer panel; pronunciation belongs to whichever side exposes the word. */
-export const CardAnswerPanel: React.FC<{ block: CardPresentationBlock }> = ({ block }) => {
+export const CardAnswerPanel: React.FC<CardPanelProps> = ({ block, sourcePath }) => {
 	const { t } = useFlashcardI18n();
 	const { markdownRenderer, pronunciationRuntime } = useCardPresentationDependencies();
 	return (
@@ -42,12 +49,14 @@ export const CardAnswerPanel: React.FC<{ block: CardPresentationBlock }> = ({ bl
 					word={block.pronunciationWord}
 					runtime={pronunciationRuntime}
 					markdownRenderer={markdownRenderer}
+					sourcePath={sourcePath}
 				/>
 			) : (
 				<MarkdownContent
 					content={block.content}
 					className="flashcard-markdown"
 					markdownRenderer={markdownRenderer}
+					sourcePath={sourcePath}
 				/>
 			)}
 		</div>
@@ -55,7 +64,7 @@ export const CardAnswerPanel: React.FC<{ block: CardPresentationBlock }> = ({ bl
 };
 
 /** The explanation panel, rendered wherever the view places it. */
-export const CardExplanationPanel: React.FC<{ block: CardPresentationBlock }> = ({ block }) => {
+export const CardExplanationPanel: React.FC<CardPanelProps> = ({ block, sourcePath }) => {
 	const { t } = useFlashcardI18n();
 	const { markdownRenderer } = useCardPresentationDependencies();
 	return (
@@ -65,6 +74,7 @@ export const CardExplanationPanel: React.FC<{ block: CardPresentationBlock }> = 
 				content={block.content}
 				className="flashcard-markdown"
 				markdownRenderer={markdownRenderer}
+				sourcePath={sourcePath}
 			/>
 		</div>
 	);
@@ -74,10 +84,11 @@ export const CardExplanationPanel: React.FC<{ block: CardPresentationBlock }> = 
 export const CardAnswerSection: React.FC<{
 	answer: CardPresentationBlock;
 	explanation: CardPresentationBlock | null;
-}> = ({ answer, explanation }) => (
+	sourcePath: string;
+}> = ({ answer, explanation, sourcePath }) => (
 	<div className="flashcard-answer-section">
 		<div className="flashcard-divider" />
-		<CardAnswerPanel block={answer} />
-		{explanation ? <CardExplanationPanel block={explanation} /> : null}
+		<CardAnswerPanel block={answer} sourcePath={sourcePath} />
+		{explanation ? <CardExplanationPanel block={explanation} sourcePath={sourcePath} /> : null}
 	</div>
 );

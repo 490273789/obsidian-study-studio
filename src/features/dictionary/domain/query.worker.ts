@@ -1,6 +1,7 @@
 import { fst_exact, fst_fuzzy, fst_prefix, inflate_zlib } from "./engine/dictionary_engine.js";
 import { ensureDictionaryEngine } from "./engine-loader";
 import {
+	compareCompiledIndexKeys,
 	isCompiledResourceMime,
 	normalizeCompiledLookupKey,
 	normalizeCompiledResourceKey,
@@ -67,10 +68,8 @@ interface ResourceLocator {
 const context = self as unknown as WorkerContext;
 const pendingReads = new Map<
 	number,
-	{ reject(error: Error): void; resolve(data: Uint8Array): void }
+	{ session: DictionarySession; reject(error: Error): void; resolve(data: Uint8Array): void }
 >();
-const inflightBytes = new Map<string, Promise<Uint8Array>>();
-const inflightJson = new Map<string, Promise<unknown>>();
 
 async function coalesce<T>(
 	pending: Map<string, Promise<T>>,
@@ -94,9 +93,22 @@ interface DictionarySession {
 	readonly id: string;
 	readonly manifest: CompiledDictionaryManifest;
 	readonly cache: ByteLru;
+	readonly inflightBytes: Map<string, Promise<Uint8Array>>;
+	readonly inflightJson: Map<string, Promise<unknown>>;
 }
 
 const sessions = new Map<string, DictionarySession>();
+
+function closeSession(id: string): void {
+	const session = sessions.get(id);
+	if (!session) return;
+	sessions.delete(id);
+	for (const [readId, read] of pendingReads) {
+		if (read.session !== session) continue;
+		pendingReads.delete(readId);
+		read.reject(new Error("Compiled dictionary is closed."));
+	}
+}
 
 function getSession(dictionaryId?: string): DictionarySession {
 	const key = dictionaryId ?? "";
@@ -114,16 +126,18 @@ context.addEventListener("message", (event) => {
 	const message = event.data;
 	if (message.type === "open") {
 		const key = message.dictionaryId ?? "";
+		closeSession(key);
 		sessions.set(key, {
 			id: key,
 			manifest: readCompiledPackageQueryPlan(message.queryPlan),
 			cache: new ByteLru(message.cacheBytes),
+			inflightBytes: new Map(),
+			inflightJson: new Map(),
 		});
 		return;
 	}
 	if (message.type === "close") {
-		const key = message.dictionaryId ?? "";
-		sessions.delete(key);
+		closeSession(message.dictionaryId ?? "");
 		return;
 	}
 	if (message.type === "read-result") {
@@ -146,8 +160,8 @@ context.addEventListener("message", (event) => {
 });
 
 async function run(message: LookupInput | ResourceInput): Promise<void> {
-	await ensureDictionaryEngine();
 	const session = getSession(message.dictionaryId);
+	await ensureDictionaryEngine();
 	if (message.type === "lookup") {
 		const result = await lookup(session, message.word);
 		context.postMessage({
@@ -204,9 +218,7 @@ async function lookup(
 
 async function exactDefinitions(session: DictionarySession, key: string): Promise<RecordValue[]> {
 	const current = session.manifest;
-	const shard = current.indexes.find(
-		(candidate) => candidate.firstKey <= key && candidate.lastKey >= key,
-	);
+	const shard = current.indexes.find((candidate) => containsIndexKey(candidate, key));
 	if (!shard) return [];
 	const fst = await readCached(session, shard.fstFile);
 	const postingIndex = fst_exact(fst, key);
@@ -333,7 +345,7 @@ async function readFrameJson<T>(
 ): Promise<T> {
 	const cached = session.cache.getJson<T>(key);
 	if (cached) return cached;
-	return coalesce(inflightJson, `${session.id}:${key}`, async () => {
+	return coalesce(session.inflightJson, key, async () => {
 		const bytes = await readFrame(session, frame, `${key}:bytes`);
 		const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 		const value = JSON.parse(text) as T;
@@ -349,7 +361,7 @@ async function readFrame(
 ): Promise<Uint8Array> {
 	const cached = session.cache.getBytes(key);
 	if (cached) return cached;
-	return coalesce(inflightBytes, `${session.id}:${key}`, async () => {
+	return coalesce(session.inflightBytes, key, async () => {
 		const pack = await readFile(session, frame.file);
 		const end = frame.offset + frame.length;
 		if (frame.offset < 0 || end > pack.byteLength)
@@ -368,7 +380,7 @@ async function readCached(session: DictionarySession, path: string): Promise<Uin
 	const key = `file:${path}`;
 	const cached = session.cache.getBytes(key);
 	if (cached) return cached;
-	return coalesce(inflightBytes, `${session.id}:${key}`, async () => {
+	return coalesce(session.inflightBytes, key, async () => {
 		const bytes = await readFile(session, path);
 		session.cache.setBytes(key, bytes);
 		return bytes;
@@ -379,7 +391,7 @@ async function readJsonCached<T>(session: DictionarySession, path: string): Prom
 	const key = `json:${path}`;
 	const cached = session.cache.getJson<T>(key);
 	if (cached) return cached;
-	return coalesce(inflightJson, `${session.id}:${key}`, async () => {
+	return coalesce(session.inflightJson, key, async () => {
 		const bytes = await readFile(session, path);
 		const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as T;
 		session.cache.setJson(key, value, bytes.byteLength);
@@ -388,14 +400,17 @@ async function readJsonCached<T>(session: DictionarySession, path: string): Prom
 }
 
 function readFile(session: DictionarySession, path: string): Promise<Uint8Array> {
-	return coalesce(inflightBytes, `${session.id}:read:${path}`, () => readFileNow(session, path));
+	return coalesce(session.inflightBytes, `read:${path}`, () => readFileNow(session, path));
 }
 
 function readFileNow(session: DictionarySession, path: string): Promise<Uint8Array> {
+	if (sessions.get(session.id) !== session) {
+		return Promise.reject(new Error("Compiled dictionary is closed."));
+	}
 	const id = nextReadId;
 	nextReadId += 1;
 	return new Promise((resolve, reject) => {
-		pendingReads.set(id, { reject, resolve });
+		pendingReads.set(id, { session, reject, resolve });
 		context.postMessage({ id, path, type: "read", dictionaryId: session.id || undefined });
 	});
 }
@@ -404,15 +419,26 @@ function relevantPrefixShards(
 	shards: readonly CompiledIndexDescriptor[],
 	prefix: string,
 ): readonly CompiledIndexDescriptor[] {
-	const upper = `${prefix}\u{10ffff}`;
-	return shards.filter((shard) => shard.lastKey >= prefix && shard.firstKey <= upper);
+	return shards.filter(
+		(shard) =>
+			compareCompiledIndexKeys(shard.lastKey, prefix) >= 0 &&
+			(compareCompiledIndexKeys(shard.firstKey, prefix) <= 0 ||
+				shard.firstKey.startsWith(prefix)),
+	);
 }
 
 function matchingJsonShards(
 	shards: readonly CompiledJsonIndexDescriptor[],
 	key: string,
 ): readonly CompiledJsonIndexDescriptor[] {
-	return shards.filter((shard) => shard.firstKey <= key && shard.lastKey >= key);
+	return shards.filter((shard) => containsIndexKey(shard, key));
+}
+
+function containsIndexKey(shard: { firstKey: string; lastKey: string }, key: string): boolean {
+	return (
+		compareCompiledIndexKeys(shard.firstKey, key) <= 0 &&
+		compareCompiledIndexKeys(shard.lastKey, key) >= 0
+	);
 }
 
 function unique(values: readonly string[], limit: number): string[] {

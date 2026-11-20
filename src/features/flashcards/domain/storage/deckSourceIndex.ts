@@ -192,6 +192,7 @@ export class DeckSourceIndex {
 	restoreFromCache(cache: DeckIndexCache<SerializedDeck>, learning: LearningStateDocument): void {
 		this.decks = new Map();
 		for (const [deckId, serializedDeck] of Object.entries(cache.decks)) {
+			if (!serializedDeck.tag) continue;
 			const deck = this.codec.decodeDeck(serializedDeck);
 			const persistedDeck = learning.decks[deckId];
 			if (persistedDeck) {
@@ -206,28 +207,46 @@ export class DeckSourceIndex {
 			}
 			this.decks.set(deckId, deck);
 		}
+		this.restoreUnindexedLearning(learning);
 		this.availableTags = [...cache.availableTags];
 		this.hasAvailableTagsSnapshotValue = true;
 	}
 
 	restorePlaceholders(learning: LearningStateDocument): void {
-		const placeholder = (deckId: string): Deck => ({
-			id: deckId,
-			name: deckId.split("/").pop()?.replace(/\.md$/i, "") ?? deckId,
-			filePath: deckId,
-			tag: "",
-			cards: [],
-			studyCount: learning.decks[deckId]?.studyCount ?? 0,
-			lastStudied: learning.decks[deckId]?.lastStudied ?? null,
-		});
-		const decks = new Map(Object.keys(learning.decks).map((id) => [id, placeholder(id)]));
+		this.decks = new Map();
+		this.restoreUnindexedLearning(learning);
+	}
+
+	private restoreUnindexedLearning(learning: LearningStateDocument): void {
+		const existingIds = new Set<string>();
+		for (const deck of this.decks.values()) {
+			for (const card of deck.cards) existingIds.add(card.id);
+		}
+		const placeholder = (deckId: string): Deck => {
+			const previous = this.decks.get(deckId);
+			if (previous) return previous;
+			const deck = {
+				id: deckId,
+				name: deckId.split("/").pop()?.replace(/\.md$/i, "") ?? deckId,
+				filePath: deckId,
+				tag: "",
+				cards: [],
+				studyCount: learning.decks[deckId]?.studyCount ?? 0,
+				lastStudied: learning.decks[deckId]?.lastStudied ?? null,
+			};
+			this.decks.set(deckId, deck);
+			return deck;
+		};
+		for (const deckId of Object.keys(learning.decks)) placeholder(deckId);
 		for (const [cardId, state] of Object.entries(learning.cards)) {
-			const deckId = state.sourceFile ?? LEARNING_PLACEHOLDER_DECK_ID;
-			let deck = decks.get(deckId);
-			if (!deck) {
-				deck = placeholder(deckId);
-				decks.set(deckId, deck);
-			}
+			if (existingIds.has(cardId)) continue;
+			// Never add an unparsed card to the visible contents of a cached source.
+			const cached = state.sourceFile ? this.decks.get(state.sourceFile) : undefined;
+			const deck = placeholder(
+				cached?.tag
+					? LEARNING_PLACEHOLDER_DECK_ID
+					: (state.sourceFile ?? LEARNING_PLACEHOLDER_DECK_ID),
+			);
 			deck.cards.push({
 				id: cardId,
 				front: "",
@@ -237,7 +256,6 @@ export class DeckSourceIndex {
 				indexInFile: deck.cards.length,
 			});
 		}
-		this.decks = decks;
 	}
 
 	restoreLegacyDecks(legacyDecks: Iterable<[string, Deck]>): void {
@@ -358,7 +376,9 @@ export class DeckSourceIndex {
 	): Promise<void> {
 		if (!this.deckIndexCache) return;
 		const serializedDecks: Record<string, SerializedDeck> = {};
-		for (const [id, deck] of decks) serializedDecks[id] = this.codec.deck(deck);
+		for (const [id, deck] of decks) {
+			if (deck.tag) serializedDecks[id] = this.codec.deck(deck);
+		}
 		await this.deckIndexCache.save({
 			version: DECK_INDEX_CACHE_VERSION,
 			updatedAt: new Date().toISOString(),

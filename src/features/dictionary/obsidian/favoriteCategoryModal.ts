@@ -18,6 +18,8 @@ type CategoryModalMode =
 
 function categoryError(reason: FavoriteCategoryFailure, t: DictionaryStrings): string {
 	switch (reason) {
+		case "conflict":
+			return t.favoriteCategoryConflict;
 		case "busy":
 			return t.favoriteCategoryBusy;
 		case "invalid-name":

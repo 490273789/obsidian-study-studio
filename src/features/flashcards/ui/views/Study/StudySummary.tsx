@@ -1,3 +1,4 @@
+import type { MarkdownRendererFn } from "../../primitives/Markdown";
 import { memo, useMemo } from "react";
 import { Award, BarChart3, BookmarkCheck, GraduationCap, House, RotateCw } from "lucide-react";
 import { cls } from "../../../../../core/shared/classNames";
@@ -15,7 +16,7 @@ interface StudySummaryProps {
 	onRestart?: () => void;
 	onPracticeLapses?: () => void;
 	isBusy?: boolean;
-	markdownRenderer?: (content: string, el: HTMLElement) => Promise<void>;
+	markdownRenderer?: MarkdownRendererFn;
 	onOpenSourceFile?: (filePath: string) => void;
 }
 

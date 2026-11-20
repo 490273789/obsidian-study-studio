@@ -16,6 +16,7 @@ interface ShadowVault {
 /** Subtitles are vault files; absolute video paths and checkpoints remain device-local. */
 export class ObsidianShadowSubtitleStore implements ShadowSubtitleStore {
 	private observed = new Map<string, string | null>();
+	private historyNeedsVerification = new Set<string>();
 	constructor(
 		private readonly app: Pick<App, "loadLocalStorage" | "saveLocalStorage"> & {
 			vault: ShadowVault;
@@ -45,19 +46,25 @@ export class ObsidianShadowSubtitleStore implements ShadowSubtitleStore {
 		const path = `${directory}/subtitles.json`;
 		const adapter = this.app.vault.adapter;
 		const text = (await adapter.exists(path)) ? await adapter.read(path) : null;
+		const changed = this.observed.get(id) !== text;
 		this.observed.set(id, text);
 		if (text !== null) {
 			try {
-				return this.parse(text, id);
+				const document = this.parse(text, id);
+				if (changed) this.historyNeedsVerification.add(id);
+				return document;
 			} catch {
 				/* Recover the active index from immutable versions. */
 			}
 		}
 		if (!(await adapter.exists(directory))) return null;
 		const versions: ShadowSubtitleDocument[] = [];
-		for (const file of (await adapter.list(directory)).files.filter((file) =>
-			file.startsWith(`${directory}/revision-`),
-		)) {
+		const files = (await adapter.list(directory)).files;
+		const recoveryPath = `${directory}/recovery.json`;
+		// When revisions tie, prefer the copy of the last known active document.
+		const history = files.filter((file) => file.startsWith(`${directory}/revision-`));
+		if (files.includes(recoveryPath)) history.unshift(recoveryPath);
+		for (const file of history) {
 			try {
 				versions.push(this.parse(await adapter.read(file), id));
 			} catch {
@@ -97,29 +104,56 @@ export class ObsidianShadowSubtitleStore implements ShadowSubtitleStore {
 			throw new Error("字幕资料格式无效。");
 		return parsed;
 	}
+	private async ensurePreviousHistory(
+		directory: string,
+		revision: number,
+		text: string,
+	): Promise<void> {
+		const adapter = this.app.vault.adapter;
+		const prefix = `${directory}/revision-${revision}-`;
+		const recoveryPath = `${directory}/recovery.json`;
+		const files = (await adapter.list(directory)).files;
+		const versions = files.filter((file) => file.startsWith(prefix));
+		if (files.includes(recoveryPath)) versions.unshift(recoveryPath);
+		// An existing recovery copy wins ties. Otherwise a sole matching revision suffices.
+		const candidate =
+			versions[0] === recoveryPath || versions.length === 1 ? versions[0] : undefined;
+		if (candidate) {
+			try {
+				if ((await adapter.read(candidate)) === text) return;
+			} catch {
+				// An incomplete history file cannot protect the current document.
+			}
+		}
+		await adapter.write(recoveryPath, text);
+	}
+	private writeHistory(directory: string, revision: number, text: string): Promise<void> {
+		return this.app.vault.adapter.write(
+			`${directory}/revision-${revision}-${crypto.randomUUID()}.json`,
+			text,
+		);
+	}
 	async save(document: ShadowSubtitleDocument): Promise<void> {
-		const directory = this.directory(document.sourceId);
+		const id = document.sourceId;
+		const directory = this.directory(id);
 		await this.ensureDirectory(directory);
 		const path = `${directory}/subtitles.json`;
 		const adapter = this.app.vault.adapter;
 		const current = (await adapter.exists(path)) ? await adapter.read(path) : null;
-		if (
-			this.observed.has(document.sourceId) &&
-			this.observed.get(document.sourceId) !== current
-		) {
+		const preserveConflict = async (): Promise<never> => {
 			await adapter.write(
 				`${directory}/conflict-${crypto.randomUUID()}.json`,
 				JSON.stringify(document, null, 2),
 			);
 			throw new Error("字幕资料已被外部修改；已保留冲突副本，请重新载入后选择。");
-		}
-		if (!this.observed.has(document.sourceId) && current !== null)
-			throw new Error("请先载入字幕资料再保存。");
+		};
+		if (this.observed.has(id) && this.observed.get(id) !== current) return preserveConflict();
+		if (!this.observed.has(id) && current !== null) throw new Error("请先载入字幕资料再保存。");
 		const text = JSON.stringify(document, null, 2);
 		let previous: ShadowSubtitleDocument | null = null;
 		if (current !== null) {
 			try {
-				previous = this.parse(current, document.sourceId);
+				previous = this.parse(current, id);
 			} catch {
 				/* Snapshot before repairing an invalid index. */
 			}
@@ -139,13 +173,24 @@ export class ObsidianShadowSubtitleStore implements ShadowSubtitleStore {
 			manualEdit ||
 			!!document.previous !== !!previous.previous ||
 			!!document.candidate !== !!previous.candidate;
-		if (versioned)
-			await adapter.write(
-				`${directory}/revision-${document.revision}-${crypto.randomUUID()}.json`,
-				text,
-			);
+		if (previous && current !== null && this.historyNeedsVerification.has(id)) {
+			// Protect the accepted document before overwriting an uncertain history entry.
+			await this.ensurePreviousHistory(directory, previous.revision, current);
+			const latest = (await adapter.exists(path)) ? await adapter.read(path) : null;
+			if (latest !== current) return preserveConflict();
+		}
 		await adapter.write(path, text);
-		this.observed.set(document.sourceId, text);
+		this.observed.set(id, text);
+		this.historyNeedsVerification.delete(id);
+		if (versioned) {
+			try {
+				await this.writeHistory(directory, document.revision, text);
+			} catch (error) {
+				// The active document has committed. Missing history must not report a failed save.
+				this.historyNeedsVerification.add(id);
+				console.warn("Unable to create a Study Studio subtitle revision", error);
+			}
+		}
 	}
 	loadCheckpoints(): ShadowSubtitleCheckpoint[] {
 		const raw: unknown = this.app.loadLocalStorage(CHECKPOINT_KEY);

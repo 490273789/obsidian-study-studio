@@ -1,18 +1,12 @@
-import type { App } from "obsidian";
-import { AiService, type AiEngineTesters, type AiSettings } from "../ai";
-import { createOutboundPort, type OutboundPort } from "../net";
+import { AiService, type AiSettings } from "../ai";
+import type { AiDependencies } from "../ai/types";
 
 export function createObsidianAiService(
-	app: App,
 	settings: AiSettings,
-	persist: (settings: AiSettings) => Promise<void>,
-	net: OutboundPort = createOutboundPort({ app }),
-	testers?: AiEngineTesters,
+	dependencies: Omit<AiDependencies, "createId"> & Required<Pick<AiDependencies, "queueWrite">>,
 ): AiService {
 	return new AiService(settings, {
-		persist,
+		...dependencies,
 		createId: () => crypto.randomUUID(),
-		net,
-		...(testers ? { testers } : {}),
 	});
 }

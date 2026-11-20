@@ -41,7 +41,6 @@ interface ConfirmationRequest {
 
 interface PendingConfirmation {
 	readonly request: ConfirmationRequest;
-	readonly content: FlashcardConfirmation;
 	readonly reference?: ActiveReference;
 	readonly resolve: (confirmed: boolean) => void;
 }
@@ -340,7 +339,7 @@ export class FlashcardNavigation {
 	): Promise<boolean> {
 		if (!this.isConfirmationCurrent(request)) return Promise.resolve(false);
 		return new Promise((resolve) => {
-			this.pending = { request, content, reference, resolve };
+			this.pending = { request, reference, resolve };
 			this.publishConfirmation(Object.freeze({ ...content, id: request.id }));
 		});
 	}

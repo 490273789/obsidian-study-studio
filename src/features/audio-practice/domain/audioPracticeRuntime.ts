@@ -573,22 +573,44 @@ export class AudioPracticeRuntime {
 	}
 	private async bindSubtitle(
 		id: string,
-		path: string | null,
+		path: string,
 		operation: { token: number; epoch: number; audioPath: string },
 		wordTimings?: Readonly<Record<string, readonly TimedTextWord[]>>,
 	): Promise<void> {
-		const cues = path ? parseSubtitles(await this.files.readText(path)) : [];
+		const cues = parseSubtitles(await this.files.readText(path));
+		let invalidatedMarks = 0;
+		try {
+			await this.commitMaterialChange(
+				operation.epoch,
+				() => this.assertSubtitleOperation(id, operation),
+				(data) => {
+					const remapped =
+						data.currentMaterialId === id
+							? remapCueProgress(
+									this.cues,
+									cues,
+									data.progress[id] ?? emptyProgress(),
+								)
+							: null;
+					invalidatedMarks = remapped?.invalidatedMarks ?? 0;
+					return {
+						...data,
+						materials: data.materials.map((item) =>
+							item.id === id ? { ...item, subtitlePath: path, wordTimings } : item,
+						),
+						progress: remapped
+							? { ...data.progress, [id]: remapped.progress }
+							: data.progress,
+					};
+				},
+			);
+		} catch (error) {
+			if (toAudioFailure(error).kind === "persist-failed")
+				this.fail({ kind: "persist-failed" });
+			throw error;
+		}
 		this.assertSubtitleOperation(id, operation);
-		if (id === this.data.currentMaterialId) this.reconcileCues(cues, false);
-		this.data = {
-			...this.data,
-			materials: this.data.materials.map((item) =>
-				item.id === id ? { ...item, subtitlePath: path, wordTimings } : item,
-			),
-		};
-		await this.persist(true);
-		this.assertSubtitleOperation(id, operation);
-		if (id === this.data.currentMaterialId) await this.loadMaterial();
+		if (id === this.data.currentMaterialId) await this.loadMaterial(false, invalidatedMarks);
 		else this.publish();
 	}
 	async saveSubtitles(
@@ -827,7 +849,7 @@ export class AudioPracticeRuntime {
 		const next = cues[index < 0 ? (direction > 0 ? 0 : cues.length - 1) : index + direction];
 		if (next) this.selectCue(next.id, true);
 	}
-	private async loadMaterial(reconcile = false): Promise<void> {
+	private async loadMaterial(reconcile = false, alreadyInvalidatedMarks = 0): Promise<void> {
 		this.cancelBoundary();
 		this.cancelWordBoundary();
 		const token = ++this.generation;
@@ -854,8 +876,10 @@ export class AudioPracticeRuntime {
 				const retained = this.progress().difficultCueIds.filter((id) =>
 					cues.some((cue) => cue.id === id),
 				);
-				this.invalidatedMarks = this.progress().difficultCueIds.length - retained.length;
-				if (this.invalidatedMarks) {
+				const newlyInvalidatedMarks =
+					this.progress().difficultCueIds.length - retained.length;
+				this.invalidatedMarks = alreadyInvalidatedMarks + newlyInvalidatedMarks;
+				if (newlyInvalidatedMarks) {
 					this.patchProgress({ difficultCueIds: retained });
 					void this.persist();
 				}
@@ -877,12 +901,12 @@ export class AudioPracticeRuntime {
 		this.publish();
 		this.observer?.onMaterialSelected?.(material);
 	}
-	private reconcileCues(next: readonly SubtitleCue[], persist = true): void {
+	private reconcileCues(next: readonly SubtitleCue[]): void {
 		const remapped = remapCueProgress(this.cues, next, this.progress());
 		this.invalidatedMarks = remapped.invalidatedMarks;
 		this.patchProgress(remapped.progress);
 		this.cues = next;
-		if (persist) void this.persist();
+		void this.persist();
 	}
 	private loadMedia(): void {
 		this.cancelBoundary();
@@ -1105,17 +1129,11 @@ export class AudioPracticeRuntime {
 		this.media = null;
 		this.publish();
 	}
-	private persist(required = false): Promise<void> {
-		if (this.disposed)
-			return required
-				? Promise.reject(audioFailure({ kind: "cancelled" }))
-				: Promise.resolve();
+	private persist(): Promise<void> {
+		if (this.disposed) return Promise.resolve();
 		const epoch = this.epoch;
 		const pending = this.persistenceTail.then(async () => {
-			if (epoch !== this.epoch) {
-				if (required) throw audioFailure({ kind: "stale-material" });
-				return;
-			}
+			if (epoch !== this.epoch) return;
 			await this.repository.save(this.data);
 		});
 		this.persistenceTail = pending.catch(() => this.fail({ kind: "persist-failed" }));

@@ -33,9 +33,13 @@ export const CardSurface: React.FC<CardSurfaceProps> = ({
 
 	return (
 		<CardPresentationStack key={presented.presentationKey}>
-			<CardQuestionPanel block={model.question} />
+			<CardQuestionPanel block={model.question} sourcePath={presented.card.sourceFile} />
 			{model.answer ? (
-				<CardAnswerSection answer={model.answer} explanation={model.explanation} />
+				<CardAnswerSection
+					answer={model.answer}
+					explanation={model.explanation}
+					sourcePath={presented.card.sourceFile}
+				/>
 			) : null}
 			{children}
 		</CardPresentationStack>

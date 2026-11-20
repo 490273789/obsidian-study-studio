@@ -49,6 +49,7 @@ export interface InitOutput {
     readonly compile_eudic_file: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly compile_mdict_files: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => void;
     readonly compileddictionary_engine_version: (a: number, b: number) => void;
+    readonly compileddictionary_entry_count: (a: number) => bigint;
     readonly compileddictionary_file_count: (a: number) => number;
     readonly compileddictionary_file_path: (a: number, b: number, c: number) => void;
     readonly compileddictionary_take_file: (a: number, b: number, c: number) => void;
@@ -63,7 +64,6 @@ export interface InitOutput {
     readonly mdictcompilesession_file_path: (a: number, b: number, c: number) => void;
     readonly mdictcompilesession_finish: (a: number, b: number) => void;
     readonly mdictcompilesession_take_file: (a: number, b: number, c: number) => void;
-    readonly compileddictionary_entry_count: (a: number) => bigint;
     readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;

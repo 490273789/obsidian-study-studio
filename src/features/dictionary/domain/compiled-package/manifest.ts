@@ -4,6 +4,7 @@ import {
 	COMPILED_DICTIONARY_FORMAT_VERSION,
 	COMPILED_DICTIONARY_MANIFEST,
 	DICTIONARY_ENGINE_VERSION,
+	compareCompiledIndexKeys,
 	digestSha256Hex,
 	sourceFingerprint,
 	type CompiledDictionaryManifest,
@@ -222,7 +223,7 @@ function validRange(value: Record<string, unknown>): boolean {
 		typeof value.lastKey === "string" &&
 		value.firstKey.length <= 1_024 &&
 		value.lastKey.length <= 1_024 &&
-		value.firstKey <= value.lastKey
+		compareCompiledIndexKeys(value.firstKey, value.lastKey) <= 0
 	);
 }
 

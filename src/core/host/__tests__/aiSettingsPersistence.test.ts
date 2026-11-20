@@ -1,12 +1,18 @@
 import { expect, it, vi } from "vite-plus/test";
 import FlashcardPlugin from "../main";
 import { DEFAULT_SETTINGS } from "../settingsSlices";
-import { WorkbenchStore } from "../../storage/workbenchStore";
 import type { AiSettings } from "../../ai";
 import type { TranslationSettings } from "../../../features/translation/domain/types";
+import { createDictionarySettingsStore } from "../../../features/dictionary/obsidian/settingsStore";
+import type { WorkbenchHost } from "../workbench";
+
+const captureDictionaryHost = vi.hoisted(() =>
+	vi.fn<(host: WorkbenchHost<"dictionary">) => void>(),
+);
 
 vi.mock("obsidian", () => ({
 	Plugin: class {
+		addSettingTab() {}
 		removeCommand() {}
 		addRibbonIcon() {
 			return { remove() {} };
@@ -25,12 +31,11 @@ vi.mock("obsidian", () => ({
 	Platform: { isDesktopApp: true },
 }));
 vi.mock("../settingsTab", () => ({ FlashcardSettingTab: class {} }));
-vi.mock("../aiAdapter", () => ({ createObsidianAiService: vi.fn() }));
-vi.mock("../../../features/flashcards/domain/pronunciation", () => ({
-	createPronunciationRuntime: vi.fn(),
-}));
-vi.mock("../../../features/flashcards/domain/decks/deckPdfExporter", () => ({
-	exportDeckToPdf: vi.fn(),
+vi.mock("../../../features", () => ({
+	createWorkbenchModules: () => [
+		{ id: "dictionary", render: captureDictionaryHost, stop: () => undefined },
+	],
+	createAiEngineTesters: () => ({}),
 }));
 
 /**
@@ -46,9 +51,8 @@ async function createPlugin() {
 		saveData: vi.fn().mockResolvedValue(undefined),
 	};
 	const plugin = new FlashcardPlugin(app as never, {} as never);
-	plugin.app = app as never;
-	plugin.store = new WorkbenchStore(host as never);
-	plugin.settings = await plugin.store.loadSettings();
+	Object.assign(plugin, host);
+	await plugin.onload();
 	const commit: (patch: Partial<typeof plugin.settings>) => Promise<void> = Reflect.get(
 		plugin,
 		"commitSettings",
@@ -58,7 +62,6 @@ async function createPlugin() {
 
 it("applies concurrent feature patches to the settings committed at write time", async () => {
 	const { plugin, commit } = await createPlugin();
-	const persistAi: (ai: AiSettings) => Promise<void> = Reflect.get(plugin, "persistAiSettings");
 	const ai: AiSettings = {
 		engines: [
 			{
@@ -75,7 +78,7 @@ it("applies concurrent feature patches to the settings committed at write time",
 	};
 
 	await Promise.all([
-		persistAi(ai),
+		plugin.aiService.saveEngine(ai.engines[0]!),
 		commit({ dailyNewCards: 42 }),
 		commit({ studyOrder: "sequential" }),
 	]);
@@ -109,6 +112,141 @@ it("keeps feature slices independent of each other", async () => {
 	const stored = plugin.store.getSettings();
 	expect(stored.translation).toEqual(translation);
 	expect(stored.dailyReviewCards).toBe(7);
+});
+
+it("applies a local patch after an in-flight external settings reload", async () => {
+	const { plugin, commit, host } = await createPlugin();
+	let resolveLoad!: (document: unknown) => void;
+	host.loadData.mockImplementationOnce(
+		() =>
+			new Promise((resolve) => {
+				resolveLoad = resolve;
+			}),
+	);
+	const reload = plugin.onExternalSettingsChange();
+	await vi.waitFor(() => expect(resolveLoad).toBeTypeOf("function"));
+	const localPatch = commit({ dailyNewCards: 42 });
+	resolveLoad({ settings: { language: "en" } });
+	await Promise.all([reload, localPatch]);
+
+	expect(plugin.settings).toMatchObject({ language: "en", dailyNewCards: 42 });
+	expect(plugin.store.getSettings()).toMatchObject({ language: "en", dailyNewCards: 42 });
+});
+
+const localEngine = {
+	id: "local-engine",
+	kind: "llm",
+	name: "Local",
+	provider: "deepseek",
+	baseUrl: "https://api.deepseek.com",
+	secretId: "key-id",
+	model: "deepseek-v4-flash",
+} as const;
+const syncedEngine = { ...localEngine, id: "synced-engine", name: "Synced" };
+
+it("applies a queued AI edit to the engine registry loaded by sync", async () => {
+	const { plugin, host } = await createPlugin();
+	let resolveLoad!: (document: unknown) => void;
+	host.loadData.mockImplementationOnce(
+		() =>
+			new Promise((resolve) => {
+				resolveLoad = resolve;
+			}),
+	);
+	const reload = plugin.onExternalSettingsChange();
+	await vi.waitFor(() => expect(resolveLoad).toBeTypeOf("function"));
+	const localSave = plugin.aiService.saveEngine(localEngine);
+	await Promise.resolve();
+	resolveLoad({
+		settings: { ai: { engines: [syncedEngine], defaults: { llm: syncedEngine.id } } },
+	});
+	await Promise.all([reload, localSave]);
+
+	expect(plugin.aiService.getSnapshot().settings.engines).toEqual([syncedEngine, localEngine]);
+	expect(plugin.settings.ai).toEqual(plugin.aiService.getSnapshot().settings);
+	expect(plugin.store.getSettings().ai).toEqual(plugin.settings.ai);
+});
+
+it("merges queued dictionary history writes with the dictionary settings loaded by sync", async () => {
+	const { plugin, host } = await createPlugin();
+	const dictionaryHost = captureDictionaryHost.mock.lastCall?.[0];
+	if (!dictionaryHost) throw new Error("Expected the dictionary settings capability");
+	const dictionarySettings = createDictionarySettingsStore(dictionaryHost.settings);
+	let resolveLoad!: (document: unknown) => void;
+	host.loadData.mockImplementationOnce(
+		() =>
+			new Promise((resolve) => {
+				resolveLoad = resolve;
+			}),
+	);
+	const reload = plugin.onExternalSettingsChange();
+	await vi.waitFor(() => expect(resolveLoad).toBeTypeOf("function"));
+	const localWrites = ["apple", "pear"].map((word) =>
+		dictionarySettings.updateDictionarySettings((draft) => {
+			draft.history.unshift(word);
+		}),
+	);
+	resolveLoad({
+		settings: {
+			dictionary: {
+				enabled: true,
+				history: ["synced"],
+				sources: [{ id: "youdao", kind: "youdao", enabled: false, label: "Synced source" }],
+			},
+		},
+	});
+	expect(await Promise.all([reload, ...localWrites])).toEqual([undefined, true, true]);
+
+	expect(dictionarySettings.getDictionarySettings()).toMatchObject({
+		enabled: true,
+		history: ["pear", "apple", "synced"],
+		sources: expect.arrayContaining([
+			expect.objectContaining({ id: "youdao", enabled: false, label: "Synced source" }),
+		]),
+	});
+	expect(plugin.store.getSettings().dictionary).toEqual(
+		dictionarySettings.getDictionarySettings(),
+	);
+});
+
+it("authorizes settings returned by deferred feature updates", async () => {
+	const { plugin, host } = await createPlugin();
+	const dictionaryHost = captureDictionaryHost.mock.lastCall?.[0];
+	if (!dictionaryHost) throw new Error("Expected the dictionary settings capability");
+	const previous = plugin.settings;
+
+	await expect(
+		dictionaryHost.settings.update((current) => {
+			expect(Object.keys(current).sort()).toEqual(["dictionary", "language"]);
+			current.dictionary.history.push("mutated");
+			return { dictionary: current.dictionary, language: "en" };
+		}),
+	).rejects.toMatchObject({ moduleId: "dictionary", unauthorizedKeys: ["language"] });
+
+	expect(plugin.settings).toBe(previous);
+	expect(plugin.settings.dictionary.history).toEqual([]);
+	expect(host.saveData).not.toHaveBeenCalled();
+});
+
+it("publishes the newer sync registry when a local write was already in flight", async () => {
+	const { plugin, host } = await createPlugin();
+	let resolveSave!: () => void;
+	host.saveData.mockImplementationOnce(
+		() =>
+			new Promise<void>((resolve) => {
+				resolveSave = resolve;
+			}),
+	);
+	const localSave = plugin.aiService.saveEngine(localEngine);
+	await vi.waitFor(() => expect(resolveSave).toBeTypeOf("function"));
+	host.loadData.mockResolvedValueOnce({ settings: { ai: { engines: [syncedEngine] } } });
+	const reload = plugin.onExternalSettingsChange();
+	resolveSave();
+	await Promise.all([reload, localSave]);
+
+	expect(plugin.aiService.getSnapshot().settings.engines).toEqual([syncedEngine]);
+	expect(plugin.settings.ai).toEqual(plugin.aiService.getSnapshot().settings);
+	expect(plugin.store.getSettings().ai).toEqual(plugin.settings.ai);
 });
 
 it("publishes settings that still contain every slice the host owns", async () => {

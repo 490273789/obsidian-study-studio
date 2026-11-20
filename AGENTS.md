@@ -20,7 +20,7 @@ Before changing behavior, read only the matching guides under `docs/agents/` for
 
 - Lifecycle, ownership, cross-module changes → `architecture.md`; consult relevant `docs/adr/` decisions.
 - Card syntax, parsing, source edits/deletion, persistence, migration, identity → `cards-data-and-identity.md`.
-- Study, practice, spelling, scheduling, results, undo, answer transitions → `sessions.md`. The persistence guide loads on a matching Claude Read or a trusted Codex hook for a full, direct `cat src/features/flashcards/domain/sessions/sessionPersistence.ts` from the repo root. Use the guide directly for other reads.
+- Study, practice, spelling, scheduling, results, undo, answer transitions → `sessions.md`. The persistence guide loads on a matching Claude Read or a trusted Codex hook for a full, direct `cat src/features/flashcards/domain/sessions/sessionPersistence.ts` from the repo root. For other reads, consult the tracked persistence rule at `.claude/rules/session-persistence.md`.
 - Pronunciation, autoplay, providers, secrets, audio cache → `pronunciation.md`.
 - Listening practice, material editing, subtitles, transcription → `audio-practice.md`.
 - Video playback, focus, shortcuts, floating player, queue → `video-player.md`.

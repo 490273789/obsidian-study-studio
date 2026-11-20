@@ -23,6 +23,7 @@ export function parseSubtitles(contents: string): SubtitleCue[] {
 		.replace(/\r\n?/g, "\n")
 		.split(/\n\s*\n/);
 	const cues: SubtitleCue[] = [];
+	const countsByBaseId = new Map<string, number>();
 	for (const block of blocks) {
 		const lines = block.trim().split("\n");
 		if (/^(WEBVTT|NOTE|STYLE|REGION)(?:\s|$)/.test(lines[0] ?? "")) continue;
@@ -43,8 +44,10 @@ export function parseSubtitles(contents: string): SubtitleCue[] {
 		for (let i = 0; i < identity.length; i++)
 			hash = Math.imul(hash ^ identity.charCodeAt(i), 16777619);
 		const baseId = `cue-${(hash >>> 0).toString(36)}`;
+		const count = countsByBaseId.get(baseId) ?? 0;
+		countsByBaseId.set(baseId, count + 1);
 		cues.push({
-			id: `${baseId}-${cues.filter((cue) => cue.id.startsWith(`${baseId}-`)).length}`,
+			id: `${baseId}-${count}`,
 			start,
 			end,
 			text,
@@ -63,11 +66,13 @@ export function validateCues(cues: readonly SubtitleCue[], duration?: number): S
 		ids.add(cue.id);
 		if (!cue.text.trim()) problems.push({ kind: "empty-text", cueIndex: index });
 		if (/\n[ \t\r]*\n/.test(cue.text)) problems.push({ kind: "blank-line", cueIndex: index });
+		const start = toMilliseconds(cue.start);
+		const end = toMilliseconds(cue.end);
 		if (
-			!Number.isFinite(cue.start) ||
-			!Number.isFinite(cue.end) ||
+			!Number.isSafeInteger(start) ||
+			!Number.isSafeInteger(end) ||
 			cue.start < 0 ||
-			cue.end <= cue.start
+			end <= start
 		)
 			problems.push({ kind: "bad-timing", cueIndex: index });
 		if (duration !== undefined && Number.isFinite(duration) && cue.end > duration)
@@ -77,8 +82,12 @@ export function validateCues(cues: readonly SubtitleCue[], duration?: number): S
 	return problems;
 }
 
+function toMilliseconds(seconds: number): number {
+	return Math.round(seconds * 1000);
+}
+
 function formatTime(seconds: number): string {
-	const ms = Math.round(seconds * 1000);
+	const ms = toMilliseconds(seconds);
 	return `${Math.floor(ms / 3600000)
 		.toString()
 		.padStart(2, "0")}:${Math.floor((ms / 60000) % 60)

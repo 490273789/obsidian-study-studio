@@ -184,8 +184,10 @@ export class VideoSubtitleDrafts {
 				if (!editor.canSave) return;
 				return this.run(source, draft, async () => {
 					const saved = await this.jobs.saveCueEdit(draft.target, {
-						text: draft.text,
-						translation: draft.translation,
+						...(draft.text !== draft.target.text ? { text: draft.text } : {}),
+						...(draft.translation !== draft.target.translation
+							? { translation: draft.translation }
+							: {}),
 					});
 					if (this.sources.get(source.id) !== source) return;
 					if (source.opened !== opened && source.opened?.draft === draft) {
@@ -291,7 +293,9 @@ export class VideoSubtitleDrafts {
 				!conflict &&
 				!draft.busy &&
 				!draft.confirmingReload &&
-				draft.text.trim().length > 0,
+				draft.text.trim().length > 0 &&
+				(draft.text !== draft.target.text ||
+					draft.translation !== draft.target.translation),
 		};
 		if (
 			previous &&

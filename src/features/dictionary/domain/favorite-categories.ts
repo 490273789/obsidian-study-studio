@@ -8,6 +8,7 @@ export type FavoriteCategoryFailure =
 	| "invalid-path"
 	| "duplicate-path"
 	| "missing"
+	| "conflict"
 	| "last-category"
 	| "file-failed"
 	| "save-failed"
@@ -45,6 +46,35 @@ export function favoriteCategoryPathSuggestions(paths: readonly string[], query:
 					Number(a.toLocaleLowerCase().startsWith(normalized)) || a.localeCompare(b),
 		)
 		.slice(0, 300);
+}
+
+function claimsPath(category: FavoriteCategory, path: string): boolean {
+	return category.path.toLocaleLowerCase() === path.toLocaleLowerCase();
+}
+
+function assertUniqueCategory(
+	categories: readonly FavoriteCategory[],
+	name: string,
+	path: string,
+	exceptId?: string,
+): void {
+	const normalizedName = name.toLocaleLowerCase();
+	for (const category of categories) {
+		if (category.id === exceptId) continue;
+		if (category.name.toLocaleLowerCase() === normalizedName)
+			throw new FavoriteCategoryError("duplicate-name");
+		if (claimsPath(category, path)) throw new FavoriteCategoryError("duplicate-path");
+	}
+}
+
+function expectCurrentCategory(
+	categories: readonly FavoriteCategory[],
+	expected: FavoriteCategory,
+): FavoriteCategory {
+	const current = categories.find((category) => category.id === expected.id);
+	if (!current || current.name !== expected.name || current.path !== expected.path)
+		throw new FavoriteCategoryError("conflict");
+	return current;
 }
 
 /** Serializes category and selection writes against their vault file operations. */
@@ -113,11 +143,13 @@ export class FavoriteCategoryManager {
 			}
 			try {
 				await this.persist((draft) => {
+					assertUniqueCategory(draft.favoriteCategories, name, path);
 					draft.favoriteCategories.push(category);
 					if (select) draft.selectedFavoriteCategoryId = category.id;
 				});
 			} catch (error) {
-				await this.rollback(undo);
+				if (!this.categories.some((category) => claimsPath(category, path)))
+					await this.rollback(undo);
 				throw error;
 			}
 			return category;
@@ -126,8 +158,7 @@ export class FavoriteCategoryManager {
 
 	async edit(id: string, rawName: string, rawPath: string): Promise<void> {
 		await this.runExclusive(async () => {
-			const current = this.categories.find((item) => item.id === id);
-			if (!current) throw new FavoriteCategoryError("missing");
+			const current = this.snapshotCategory(id);
 			const { name, path } = this.validate(rawName, rawPath, id);
 			if (name === current.name && path === current.path) return;
 			let undo: (() => Promise<void>) | null = null;
@@ -140,14 +171,22 @@ export class FavoriteCategoryManager {
 			}
 			try {
 				await this.persist((draft) => {
-					const category = draft.favoriteCategories.find((item) => item.id === id);
-					if (category) {
-						category.name = name;
-						category.path = path;
-					}
+					const category = expectCurrentCategory(draft.favoriteCategories, current);
+					assertUniqueCategory(draft.favoriteCategories, name, path, id);
+					category.name = name;
+					category.path = path;
 				});
 			} catch (error) {
-				if (undo) await this.rollback(undo);
+				if (undo) {
+					// Moving the file back would orphan the synchronized destination category.
+					const destinationClaimed = this.categories.some(
+						(category) =>
+							(category.id !== current.id || category.path !== current.path) &&
+							claimsPath(category, path),
+					);
+					if (destinationClaimed) throw new FavoriteCategoryError("recovery-incomplete");
+					await this.rollback(undo);
+				}
 				throw error;
 			}
 		});
@@ -155,10 +194,12 @@ export class FavoriteCategoryManager {
 
 	async remove(id: string): Promise<void> {
 		await this.runExclusive(async () => {
-			if (!this.categories.some((item) => item.id === id))
-				throw new FavoriteCategoryError("missing");
+			const current = this.snapshotCategory(id);
 			if (this.categories.length === 1) throw new FavoriteCategoryError("last-category");
 			await this.persist((draft) => {
+				expectCurrentCategory(draft.favoriteCategories, current);
+				if (draft.favoriteCategories.length === 1)
+					throw new FavoriteCategoryError("last-category");
 				draft.favoriteCategories = draft.favoriteCategories.filter(
 					(item) => item.id !== id,
 				);
@@ -174,12 +215,20 @@ export class FavoriteCategoryManager {
 				throw new FavoriteCategoryError("missing");
 			if (this.settings.getDictionarySettings().selectedFavoriteCategoryId === id) return;
 			await this.persist((draft) => {
+				if (!draft.favoriteCategories.some((category) => category.id === id))
+					throw new FavoriteCategoryError("conflict");
 				draft.selectedFavoriteCategoryId = id;
 			});
 		});
 	}
 
 	delete = (id: string) => this.remove(id);
+
+	private snapshotCategory(id: string): FavoriteCategory {
+		const category = this.categories.find((item) => item.id === id);
+		if (!category) throw new FavoriteCategoryError("missing");
+		return { ...category };
+	}
 
 	private validate(
 		rawName: string,
@@ -189,13 +238,7 @@ export class FavoriteCategoryManager {
 		const name = rawName.trim();
 		if (!name || name.length > 120) throw new FavoriteCategoryError("invalid-name");
 		const path = favoriteCategoryPath(rawPath);
-		for (const category of this.categories) {
-			if (category.id === exceptId) continue;
-			if (category.name.toLocaleLowerCase() === name.toLocaleLowerCase())
-				throw new FavoriteCategoryError("duplicate-name");
-			if (category.path.toLocaleLowerCase() === path.toLocaleLowerCase())
-				throw new FavoriteCategoryError("duplicate-path");
-		}
+		assertUniqueCategory(this.categories, name, path, exceptId);
 		return { name, path };
 	}
 
@@ -203,13 +246,26 @@ export class FavoriteCategoryManager {
 		mutate: Parameters<DictionarySettingsStore["updateDictionarySettings"]>[0],
 	): Promise<void> {
 		let saved = false;
+		let invalid: FavoriteCategoryError | undefined;
 		try {
-			saved = await this.settings.updateDictionarySettings(mutate);
+			saved = await this.settings.updateDictionarySettings((draft) => {
+				try {
+					mutate(draft);
+				} catch (error) {
+					// The settings adapter can return false for a rejected mutation.
+					if (error instanceof FavoriteCategoryError) invalid = error;
+					throw error;
+				}
+			});
 		} catch {
 			/* Report the same error as a failed save. */
 		}
-		if (!saved) throw new FavoriteCategoryError("save-failed");
-		this.changed();
+		if (!saved) throw invalid ?? new FavoriteCategoryError("save-failed");
+		try {
+			this.changed();
+		} catch (error) {
+			console.error("Failed to report a saved favorite category change:", error);
+		}
 		this.publish();
 	}
 

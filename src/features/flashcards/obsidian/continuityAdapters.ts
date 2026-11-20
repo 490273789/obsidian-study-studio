@@ -53,7 +53,10 @@ class ObsidianContinuitySourceStore implements ContinuitySourceStore {
 		};
 	}
 
-	async list(configuredTags?: string[]): Promise<ContinuitySourceDocument[]> {
+	async list(
+		configuredTags?: string[],
+		onReadFailure?: (path: string) => void,
+	): Promise<ContinuitySourceDocument[]> {
 		const files = this.app.vault.getMarkdownFiles();
 		if (files.length === 0) return [];
 
@@ -96,25 +99,31 @@ class ObsidianContinuitySourceStore implements ContinuitySourceStore {
 			while (nextIndex < candidates.length) {
 				const index = nextIndex++;
 				const { file, discoveryOnly } = candidates[index]!;
+				const { path, basename } = file;
 				// Deliberately uncached read: migration previews must match the
 				// content that replaceIfUnchanged() will compare against, which is
 				// the live file content read by vault.process(). Unrelated tagged
 				// files use cachedRead only for flashcard-tag discovery.
-				documents[index] = {
-					path: file.path,
-					basename: file.basename,
-					content: discoveryOnly
-						? await this.app.vault.cachedRead(file)
-						: await this.app.vault.read(file),
-					...(discoveryOnly ? { discoveryOnly: true } : {}),
-				};
+				try {
+					documents[index] = {
+						path,
+						basename,
+						content: discoveryOnly
+							? await this.app.vault.cachedRead(file)
+							: await this.app.vault.read(file),
+						...(discoveryOnly ? { discoveryOnly: true } : {}),
+					};
+				} catch (error) {
+					if (!onReadFailure) throw error;
+					onReadFailure(path);
+				}
 			}
 		};
 		const workers = Array.from({ length: Math.min(LIST_CONCURRENCY, candidates.length) }, () =>
 			worker(),
 		);
 		await Promise.all(workers);
-		return documents;
+		return onReadFailure ? documents.filter(Boolean) : documents;
 	}
 
 	async replaceIfUnchanged(

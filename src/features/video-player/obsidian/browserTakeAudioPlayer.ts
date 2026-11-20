@@ -40,7 +40,12 @@ export function createBrowserTakeAudioPlayer(): TakeAudioPlayerPort {
 				},
 				{ once: true },
 			);
-			await current.play();
+			try {
+				await current.play();
+			} catch (error) {
+				if (audio === current) stop();
+				throw error;
+			}
 		},
 		stop,
 		dispose: stop,

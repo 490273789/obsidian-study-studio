@@ -214,19 +214,51 @@ describe("audio practice runtime", () => {
 		expect(runtime.getSnapshot().currentMaterial!.subtitlePath).toBe("test.srt");
 		runtime.dispose();
 	});
-	it("does not report subtitle save success when the partition commit fails", async () => {
-		const { runtime, repo } = await setup();
-		vi.spyOn(repo, "save").mockImplementation(async (data) => {
+	it("retains the active subtitle and cues when the partition commit fails", async () => {
+		const { runtime, repo, setSubtitle } = await setup();
+		const previous = runtime.getSnapshot();
+		setSubtitle("1\n00:05,000 --> 00:06,000\nReplacement");
+		const save = vi.spyOn(repo, "save").mockImplementation(async (data) => {
 			if (data.materials.some((material) => material.subtitlePath === "generated.srt"))
 				throw new Error("disk full");
 		});
 		await expect(
-			runtime.saveSubtitles(
-				runtime.getSnapshot().currentMaterialId!,
-				runtime.getSnapshot().cues,
-			),
-		).rejects.toThrow("disk full");
+			runtime.saveSubtitles(previous.currentMaterialId!, previous.cues),
+		).rejects.toThrow();
 		expect(runtime.getSnapshot().failure).toEqual({ kind: "persist-failed" });
+		expect(runtime.getSnapshot().currentMaterial?.subtitlePath).toBe("test.srt");
+		expect(runtime.getSnapshot().cues).toEqual(previous.cues);
+		runtime.setMode("continuous");
+		await vi.waitFor(() =>
+			expect(save).toHaveBeenLastCalledWith(
+				expect.objectContaining({
+					materials: [expect.objectContaining({ subtitlePath: "test.srt" })],
+				}),
+			),
+		);
+		runtime.dispose();
+	});
+	it("reports difficult marks invalidated when saving new subtitles", async () => {
+		const { runtime, repo, files, setSubtitle } = await setup();
+		const { currentMaterialId, cues } = runtime.getSnapshot();
+		const [retained, removed] = cues;
+		runtime.toggleDifficult(retained!.id);
+		runtime.toggleDifficult(removed!.id);
+		vi.spyOn(files, "writeSubtitle").mockImplementation(async (_path, contents) => {
+			setSubtitle(contents);
+			return "generated.srt";
+		});
+
+		await runtime.saveSubtitles(currentMaterialId!, [retained!]);
+
+		const snapshot = runtime.getSnapshot();
+		expect(snapshot.progress[currentMaterialId!]?.difficultCueIds).toEqual([
+			snapshot.cues[0]!.id,
+		]);
+		expect(repo.load().progress[currentMaterialId!]?.difficultCueIds).toEqual([
+			snapshot.cues[0]!.id,
+		]);
+		expect(snapshot.invalidatedMarks).toBe(1);
 		runtime.dispose();
 	});
 	it("stops at the boundary even when timeupdate is absent", async () => {

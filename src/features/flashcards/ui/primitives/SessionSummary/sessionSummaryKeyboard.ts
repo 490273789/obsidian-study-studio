@@ -8,6 +8,22 @@ export interface SessionSummaryKeyboardOptions {
 	readonly onHome: () => void;
 }
 
+const HIDDEN = '[hidden], [inert], [aria-hidden="true"]';
+const MODALS = 'dialog[open], [aria-modal="true"]:not([aria-hidden="true"]), .modal-container';
+
+function canHandleSummaryShortcuts(root: HTMLElement): boolean {
+	return root.isConnected && !root.closest(HIDDEN) && !root.ownerDocument.querySelector(MODALS);
+}
+
+export function focusSessionSummary(root: HTMLElement): void {
+	if (
+		root.ownerDocument.activeElement === root.ownerDocument.body &&
+		canHandleSummaryShortcuts(root)
+	) {
+		root.focus({ preventScroll: true });
+	}
+}
+
 /**
  * Dispatches primary action on Enter / Space and onHome on Escape
  * while ignoring inputs and contenteditable targets.
@@ -17,10 +33,17 @@ export function handleSessionSummaryKeyDown(
 		Partial<
 			Pick<
 				KeyboardEvent,
-				"defaultPrevented" | "isComposing" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey"
+				| "defaultPrevented"
+				| "isComposing"
+				| "ctrlKey"
+				| "metaKey"
+				| "altKey"
+				| "shiftKey"
+				| "repeat"
 			>
 		>,
 	options: SessionSummaryKeyboardOptions,
+	root: HTMLElement,
 ): boolean {
 	const target = event.target as {
 		tagName?: string;
@@ -30,10 +53,13 @@ export function handleSessionSummaryKeyDown(
 	if (
 		event.defaultPrevented ||
 		event.isComposing ||
+		event.repeat ||
 		event.ctrlKey ||
 		event.metaKey ||
 		event.altKey ||
-		event.shiftKey
+		event.shiftKey ||
+		!canHandleSummaryShortcuts(root) ||
+		!root.contains(root.ownerDocument.activeElement)
 	)
 		return false;
 

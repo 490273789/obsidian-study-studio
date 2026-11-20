@@ -3,7 +3,6 @@ import { Notice, type Plugin } from "obsidian";
 import { BookOpen } from "lucide-react";
 import type { AiService } from "../../core/ai";
 import type { OutboundPort } from "../../core/net";
-import { normalizeDictionarySettings } from "./domain/configuration";
 import { DictionaryRuntime } from "./domain/dictionaryRuntime";
 import { FavoriteBatchController } from "./domain/favorite-batch";
 import { createFavoriteDraftGenerator } from "./domain/favorite-ai";
@@ -209,18 +208,10 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 			const favoriteStore = new ObsidianDictionaryFavoriteStore(host.app, deps.sourceEdits);
 			const dictionary = lifetime.own(
 				new DictionaryRuntime({
-					sourceEdits: deps.sourceEdits,
 					favoriteStore,
 					app: host.app,
 					plugin: deps.plugin,
-					settings: createDictionarySettingsStore({
-						readDictionarySettings: () => host.settings.read().dictionary,
-						commitDictionarySettings: async (dictionarySettings) => {
-							await host.settings.update({
-								dictionary: normalizeDictionarySettings(dictionarySettings),
-							});
-						},
-					}),
+					settings: createDictionarySettingsStore(host.settings),
 					ai: deps.ai,
 					language: () => host.settings.read().language,
 					net: deps.net,

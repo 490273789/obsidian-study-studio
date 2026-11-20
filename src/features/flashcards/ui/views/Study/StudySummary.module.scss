@@ -146,10 +146,10 @@
 	img {
 		max-width: 100%;
 	}
-	> :first-child {
+	> :global(.flashcard-markdown-render) > :first-child {
 		margin-top: 0;
 	}
-	> :last-child {
+	> :global(.flashcard-markdown-render) > :last-child {
 		margin-bottom: 0;
 	}
 	pre {

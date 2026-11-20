@@ -37,9 +37,13 @@ export interface ContinuitySourceStore {
 	/**
 	 * Lists authoritative source documents plus optional discovery-only cached
 	 * documents. Adapters may use `configuredTags` to avoid live reads for files
-	 * that cannot belong to the current deck index.
+	 * that cannot belong to the current deck index. With a failure callback,
+	 * adapters report unreadable paths and omit those documents.
 	 */
-	list(configuredTags?: string[]): Promise<ContinuitySourceDocument[]>;
+	list(
+		configuredTags?: string[],
+		onReadFailure?: (path: string) => void,
+	): Promise<ContinuitySourceDocument[]>;
 	replaceIfUnchanged(
 		path: string,
 		expectedContent: string,
@@ -148,6 +152,8 @@ interface DeckContentChange {
 	/** Decks that disappeared from the index. */
 	readonly removedDeckIds: readonly string[];
 	readonly tagsChanged: boolean;
+	/** Incomplete scans cannot discard learning state for unindexed sources. */
+	readonly unreadablePaths?: readonly string[];
 }
 
 export type SynchronizeOutcome =
@@ -353,7 +359,7 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 	private async synchronizeNow(authoritativePath?: string): Promise<SynchronizeOutcome> {
 		try {
 			let currentState = await this.options.state.load();
-			let documents = await this.listSynchronizationSources(
+			let { documents, failedPaths } = await this.listSynchronizationSources(
 				currentState.configuredTags,
 				authoritativePath,
 			);
@@ -370,15 +376,18 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 					};
 				}
 				currentState = await this.options.state.load();
-				documents = await this.listSynchronizationSources(
+				({ documents, failedPaths } = await this.listSynchronizationSources(
 					currentState.configuredTags,
 					authoritativePath,
-				);
+				));
 			}
 			const configuredTags = new Set(
 				currentState.configuredTags.map((tag) => tag.toLowerCase()),
 			);
-			const sourcePaths = new Set(documents.map((document) => document.path));
+			const sourcePaths = new Set([
+				...documents.map((document) => document.path),
+				...failedPaths,
+			]);
 			this.sourceSyntax.retain(sourcePaths);
 			const existingCards = buildExistingCardMap(currentState.decks);
 			const nextDecks = new Map<string, Deck>();
@@ -386,7 +395,14 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 			const preparedSources: PreparedSource[] = [];
 			const availableTags = new Set<string>();
 			const changedDeckIds: string[] = [];
-			let attentionRequired = false;
+			let attentionRequired = failedPaths.size > 0;
+			for (const path of failedPaths) {
+				const deck = currentState.decks.get(path);
+				nextSources[path] = { type: "last-known-good", reason: "source-failure" };
+				if (!deck?.tag) continue;
+				availableTags.add(deck.tag);
+				if (configuredTags.has(deck.tag.toLowerCase())) nextDecks.set(path, deck);
+			}
 
 			for (const document of documents) {
 				const { tag, hasCards } = this.inspectSource(
@@ -451,15 +467,27 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 				});
 			}
 
+			const deferred = deferUnreadableIdentityClaims(
+				preparedSources,
+				failedPaths,
+				currentState.decks,
+			);
+			const readableSources = preparedSources.filter((source) => !deferred.has(source));
+			for (const source of deferred) {
+				const path = source.document.path;
+				if (source.existingDeck?.tag) nextDecks.set(path, source.existingDeck);
+				nextSources[path] = { type: "last-known-good", reason: "source-failure" };
+			}
+
 			const currentStableIdentities = new Set(
-				preparedSources.flatMap((source) =>
+				readableSources.flatMap((source) =>
 					source.cards
 						.filter((card) => !isLegacyIdentity(source.document.path, card.id))
 						.map((card) => card.id),
 				),
 			);
 			const ambiguities: CardIdentityIssue[] = [];
-			for (const source of preparedSources) {
+			for (const source of readableSources) {
 				if (!source.existingDeck) continue;
 				const hasUnmarkedCard = source.cards.some((card) =>
 					isLegacyIdentity(source.document.path, card.id),
@@ -509,7 +537,7 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 				);
 			}
 
-			const conflicts = findIdentityConflicts(preparedSources);
+			const conflicts = findIdentityConflicts(readableSources);
 			const conflictPaths = new Set(
 				conflicts.flatMap((conflict) => conflict.affectedSources),
 			);
@@ -518,7 +546,7 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 			);
 			if (conflicts.length > 0 || ambiguities.length > 0) attentionRequired = true;
 
-			for (const source of preparedSources) {
+			for (const source of readableSources) {
 				if (
 					conflictPaths.has(source.document.path) ||
 					ambiguityPaths.has(source.document.path)
@@ -561,6 +589,7 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 				changedDeckIds,
 				removedDeckIds,
 				tagsChanged: !sameStringSet(currentState.availableTags ?? [], availableTags),
+				...(failedPaths.size ? { unreadablePaths: [...failedPaths].sort() } : {}),
 			};
 			await this.options.state.commit({
 				...currentState,
@@ -594,17 +623,23 @@ class DefaultCardIdentityContinuity implements CardIdentityContinuity {
 	private async listSynchronizationSources(
 		configuredTags: string[],
 		authoritativePath?: string,
-	): Promise<ContinuitySourceDocument[]> {
-		const documents = await this.options.sources.list(configuredTags);
-		if (!authoritativePath) return documents;
+	): Promise<{ documents: ContinuitySourceDocument[]; failedPaths: Set<string> }> {
+		const failedPaths = new Set<string>();
+		const documents = await this.options.sources.list(configuredTags, (path) =>
+			failedPaths.add(path),
+		);
+		if (!authoritativePath) return { documents, failedPaths };
+
+		// An edited target must still be read successfully for the edit transaction to succeed.
 		const target = this.options.sources.read
 			? await this.options.sources.read(authoritativePath)
 			: (await this.options.sources.list()).find(
 					(document) => document.path === authoritativePath,
 				);
+		failedPaths.delete(authoritativePath);
 		const others = documents.filter((document) => document.path !== authoritativePath);
 		if (target) others.push(target);
-		return others;
+		return { documents: others, failedPaths };
 	}
 
 	private inspectSource(path: string, content: string, cacheable = true): CachedSourceSyntax {
@@ -1237,6 +1272,47 @@ function canMigrateLegacyCards(
 			(legacyCard.explanation ?? "") === (currentCard.explanation ?? "")
 		);
 	});
+}
+
+/** Propagate fallback through older decks until no readable source can take a retained ID. */
+function deferUnreadableIdentityClaims(
+	sources: readonly PreparedSource[],
+	failedPaths: ReadonlySet<string>,
+	retainedDecks: ReadonlyMap<string, Deck>,
+): Set<PreparedSource> {
+	const deferred = new Set<PreparedSource>();
+	if (failedPaths.size === 0) return deferred;
+	const reserved = new Set<string>();
+	for (const path of failedPaths) {
+		for (const card of retainedDecks.get(path)?.cards ?? []) reserved.add(card.id);
+	}
+	// Without a complete scan, a parsed claim to an anonymous learning ID
+	// could duplicate a card in an unreadable source.
+	for (const deck of retainedDecks.values()) {
+		if (deck.tag !== "") continue;
+		for (const card of deck.cards) {
+			if (!card.sourceFile || failedPaths.has(card.sourceFile)) reserved.add(card.id);
+		}
+	}
+	if (reserved.size === 0) return deferred;
+
+	const claims = new Map<string, Set<PreparedSource>>();
+	for (const source of sources) {
+		for (const card of source.cards) {
+			const claimants = claims.get(card.id) ?? new Set();
+			claimants.add(source);
+			claims.set(card.id, claimants);
+		}
+	}
+	// The Set iterator also visits reservations added by newly deferred sources.
+	for (const identity of reserved) {
+		for (const source of claims.get(identity) ?? []) {
+			if (deferred.has(source)) continue;
+			deferred.add(source);
+			for (const card of source.existingDeck?.cards ?? []) reserved.add(card.id);
+		}
+	}
+	return deferred;
 }
 
 function findIdentityConflicts(sources: PreparedSource[]): CardIdentityIssue[] {

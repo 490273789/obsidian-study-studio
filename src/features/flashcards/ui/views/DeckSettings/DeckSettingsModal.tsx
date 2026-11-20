@@ -242,11 +242,12 @@ export const DeckSettingsModal = memo(function DeckSettingsModal({
 									</span>
 								</div>
 								<div className={styles.field}>
-									<label>
+									<label htmlFor={`${titleId}-daily-new`}>
 										<span>{t("deckSettings.dailyNewCards")}</span>
-										<strong>{draft.dailyNewCards}</strong>
+										<strong aria-hidden="true">{draft.dailyNewCards}</strong>
 									</label>
 									<FlashcardSlider
+										id={`${titleId}-daily-new`}
 										min={STUDY_SETTINGS_LIMITS.dailyNewCards.min}
 										max={STUDY_SETTINGS_LIMITS.dailyNewCards.max}
 										step={STUDY_SETTINGS_LIMITS.dailyNewCards.step}
@@ -258,9 +259,12 @@ export const DeckSettingsModal = memo(function DeckSettingsModal({
 								</div>
 								{totalCards > 0 && (
 									<div className={cls(styles.field, styles.fieldRow)}>
-										<label>{t("deckSettings.estimatedDaysLabel")}</label>
+										<label htmlFor={`${titleId}-estimated-days`}>
+											{t("deckSettings.estimatedDaysLabel")}
+										</label>
 										<div className={styles.daysInputs}>
 											<FlashcardInput
+												id={`${titleId}-estimated-days`}
 												type="number"
 												min={1}
 												max={totalCards}
@@ -281,11 +285,12 @@ export const DeckSettingsModal = memo(function DeckSettingsModal({
 									</div>
 								)}
 								<div className={styles.field}>
-									<label>
+									<label htmlFor={`${titleId}-daily-review`}>
 										<span>{t("deckSettings.dailyReviewCards")}</span>
-										<strong>{draft.dailyReviewCards}</strong>
+										<strong aria-hidden="true">{draft.dailyReviewCards}</strong>
 									</label>
 									<FlashcardSlider
+										id={`${titleId}-daily-review`}
 										min={STUDY_SETTINGS_LIMITS.dailyReviewCards.min}
 										max={STUDY_SETTINGS_LIMITS.dailyReviewCards.max}
 										step={STUDY_SETTINGS_LIMITS.dailyReviewCards.step}
@@ -299,8 +304,11 @@ export const DeckSettingsModal = memo(function DeckSettingsModal({
 									/>
 								</div>
 								<div className={cls(styles.field, styles.fieldRow)}>
-									<label>{t("deckSettings.studyOrder")}</label>
+									<label htmlFor={`${titleId}-study-order`}>
+										{t("deckSettings.studyOrder")}
+									</label>
 									<FlashcardSelect
+										id={`${titleId}-study-order`}
 										value={draft.studyOrder}
 										onChange={(e) =>
 											onChange({
@@ -314,11 +322,14 @@ export const DeckSettingsModal = memo(function DeckSettingsModal({
 									</FlashcardSelect>
 								</div>
 								<div className={styles.field}>
-									<label>
+									<label htmlFor={`${titleId}-retention`}>
 										<span>{t("deckSettings.targetRetention")}</span>
-										<strong>{draft.requestRetention.toFixed(2)}</strong>
+										<strong aria-hidden="true">
+											{draft.requestRetention.toFixed(2)}
+										</strong>
 									</label>
 									<FlashcardSlider
+										id={`${titleId}-retention`}
 										min={STUDY_SETTINGS_LIMITS.requestRetention.min}
 										max={STUDY_SETTINGS_LIMITS.requestRetention.max}
 										step={STUDY_SETTINGS_LIMITS.requestRetention.step}
@@ -332,8 +343,11 @@ export const DeckSettingsModal = memo(function DeckSettingsModal({
 									/>
 								</div>
 								<div className={cls(styles.field, styles.fieldRow)}>
-									<label>{t("deckSettings.maxReviewInterval")}</label>
+									<label htmlFor={`${titleId}-max-review-interval`}>
+										{t("deckSettings.maxReviewInterval")}
+									</label>
 									<FlashcardInput
+										id={`${titleId}-max-review-interval`}
 										type="number"
 										min={STUDY_SETTINGS_LIMITS.maximumInterval.min}
 										max={STUDY_SETTINGS_LIMITS.maximumInterval.max}

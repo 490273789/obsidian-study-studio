@@ -1,3 +1,4 @@
+import type { MarkdownRendererFn } from "./primitives/Markdown";
 import React from "react";
 import type { WorkbenchFeatureShortcut } from "../../../core/host/workbench";
 import type {
@@ -168,7 +169,7 @@ export interface FlashcardPageContext {
 	readonly spellingFeedback: Readonly<SpellingLifecycleFeedback> | null;
 	readonly isNavigationBusy: boolean;
 	readonly language: Language;
-	readonly markdownRenderer: (content: string, el: HTMLElement) => Promise<void>;
+	readonly markdownRenderer: MarkdownRendererFn;
 	readonly onOpenSettings: () => void;
 	readonly onStartSession: (request: SessionStartRequest) => void;
 	readonly onBackHome: () => void;

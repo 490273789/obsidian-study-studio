@@ -4,7 +4,7 @@ import type {
 	PracticeResultSnapshot,
 	SessionCardSnapshot,
 } from "../../../domain/sessions/sessionLifecycle";
-import { MarkdownContent } from "../../primitives/Markdown";
+import { MarkdownContent, type MarkdownRendererFn } from "../../primitives/Markdown";
 import { SessionSummary } from "../../primitives/SessionSummary/SessionSummary";
 import { cls } from "../../../../../core/shared/classNames";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
@@ -25,7 +25,7 @@ interface PracticeSummaryProps {
 	onRestart: () => void;
 	onPracticeIncorrect: () => void;
 	onHome: () => void;
-	markdownRenderer: (content: string, el: HTMLElement) => Promise<void>;
+	markdownRenderer: MarkdownRendererFn;
 }
 
 export const PracticeSummary = memo(function PracticeSummary({
@@ -123,7 +123,7 @@ interface IncorrectCardItemProps {
 	card: SessionCardSnapshot;
 	index: number;
 	direction: PracticeResultSnapshot["direction"];
-	markdownRenderer: (content: string, el: HTMLElement) => Promise<void>;
+	markdownRenderer: MarkdownRendererFn;
 }
 
 const IncorrectCardItem = memo(function IncorrectCardItem({
@@ -144,6 +144,7 @@ const IncorrectCardItem = memo(function IncorrectCardItem({
 					<MarkdownContent
 						content={displayContent.prompt}
 						className={styles.incorrectText}
+						sourcePath={card.sourceFile}
 						markdownRenderer={markdownRenderer}
 					/>
 				</div>
@@ -152,6 +153,7 @@ const IncorrectCardItem = memo(function IncorrectCardItem({
 					<MarkdownContent
 						content={displayContent.answer}
 						className={styles.incorrectText}
+						sourcePath={card.sourceFile}
 						markdownRenderer={markdownRenderer}
 					/>
 				</div>
@@ -161,6 +163,7 @@ const IncorrectCardItem = memo(function IncorrectCardItem({
 						<MarkdownContent
 							content={displayContent.explanation}
 							className={styles.incorrectText}
+							sourcePath={card.sourceFile}
 							markdownRenderer={markdownRenderer}
 						/>
 					</div>

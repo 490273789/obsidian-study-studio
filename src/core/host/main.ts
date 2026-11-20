@@ -9,7 +9,7 @@ import {
 } from "./featureOpenShortcutSection";
 import { createObsidianAiService } from "./aiAdapter";
 import { normalizeAiSettings } from "../ai/configuration";
-import type { AiService, AiSettings } from "../ai";
+import type { AiService } from "../ai";
 import { FlashcardSettings } from "../shared/types";
 import { DEFAULT_SETTINGS } from "./settingsSlices";
 import { WorkbenchStore } from "../storage/workbenchStore";
@@ -23,7 +23,7 @@ import { createOutboundPort, type OutboundPort } from "../net";
 /**
  * The composition root: it owns the settings document, its write queue, and the
  * shared services every feature may use. Feature behavior lives in
- * `src/obsidian/features/`, reached through the workbench seam.
+ * `src/features/`, reached through the workbench seam.
  */
 export default class StudyStudioPlugin extends Plugin {
 	settings: FlashcardSettings = DEFAULT_SETTINGS;
@@ -31,24 +31,19 @@ export default class StudyStudioPlugin extends Plugin {
 	aiService!: AiService;
 	net!: OutboundPort;
 	workbench!: Workbench;
-	private pluginSettingsTab: FlashcardSettingTab | null = null;
 	private settingsWriteQueue: Promise<void> = Promise.resolve();
 
 	async onload() {
 		this.store = new WorkbenchStore(this);
-		// loadSettings() performs a single disk read: settings + partitions.
-		// load() is a no-op when called right after (data already in memory).
 		this.settings = await this.store.loadSettings();
 		this.net = createOutboundPort({ app: this.app, defaultTimeoutMs: 0 });
-		this.aiService = createObsidianAiService(
-			this.app,
-			this.settings.ai,
-			this.persistAiSettings,
-			this.net,
-			createAiEngineTesters({ net: this.net }),
-		);
-		await this.store.load();
-
+		this.aiService = createObsidianAiService(this.settings.ai, {
+			// AI schedules its entire mutation, including persistence, in this queue.
+			queueWrite: this.enqueueSettingsOperation,
+			persist: (ai) => this.applySettingsPatch({ ai: normalizeAiSettings(ai) }),
+			net: this.net,
+			testers: createAiEngineTesters({ net: this.net }),
+		});
 		this.workbench = createWorkbench({
 			app: this.app,
 			plugin: this,
@@ -84,9 +79,9 @@ export default class StudyStudioPlugin extends Plugin {
 			}),
 		);
 
-		this.pluginSettingsTab = new FlashcardSettingTab(this.app, this);
-		this.workbench.setSettingsTab(this.pluginSettingsTab);
-		this.addSettingTab(this.pluginSettingsTab);
+		const pluginSettingsTab = new FlashcardSettingTab(this.app, this);
+		this.workbench.setSettingsTab(pluginSettingsTab);
+		this.addSettingTab(pluginSettingsTab);
 
 		this.workbench.refresh();
 	}
@@ -99,47 +94,44 @@ export default class StudyStudioPlugin extends Plugin {
 	/** Obsidian Sync changed data.json; reload the authoritative document as one transition. */
 	async onExternalSettingsChange(): Promise<void> {
 		if (!this.store) return;
-		await this.settingsWriteQueue;
-		try {
-			await this.store.reloadExternalSettings();
-			const settings = this.store.getSettings();
-			this.aiService?.replaceSettings(settings.ai);
-			this.publishSettings(settings);
-		} catch (error) {
-			console.error("Failed to reload externally synchronized StudyStudio settings:", error);
-		}
+		await this.enqueueSettingsOperation(async () => {
+			try {
+				await this.store.reloadExternalSettings();
+				const settings = this.store.getSettings();
+				this.aiService?.replaceSettings(settings.ai);
+				this.publishSettings(settings);
+			} catch (error) {
+				console.error(
+					"Failed to reload externally synchronized StudyStudio settings:",
+					error,
+				);
+			}
+		});
 	}
 
 	/**
 	 * Commits a feature-owned settings patch. The patch is applied to the settings
 	 * committed at write time, so a queued write never resurrects a stale slice.
 	 */
-	private commitSettings = async (patch: Partial<FlashcardSettings>): Promise<void> => {
-		await this.enqueueSettingsWrite(() => ({ ...this.settings, ...patch }));
-	};
-
-	private persistAiSettings = async (ai: AiSettings): Promise<void> => {
-		await this.commitSettings({ ai: normalizeAiSettings(ai) });
-	};
-
-	private enqueueSettingsWrite(
-		createNextSettings: () => FlashcardSettings,
-	): Promise<FlashcardSettings> {
-		const write = this.settingsWriteQueue.then(async () => {
-			const nextSettings = createNextSettings();
-			if (JSON.stringify(nextSettings) === JSON.stringify(this.settings)) {
-				return this.settings;
-			}
-			await this.store.saveSettings(nextSettings);
-			this.publishSettings(nextSettings);
-			return nextSettings;
-		});
-		this.settingsWriteQueue = write.then(
-			() => undefined,
-			() => undefined,
+	private commitSettings = (
+		patch: Partial<FlashcardSettings> | (() => Partial<FlashcardSettings>),
+	): Promise<void> =>
+		this.enqueueSettingsOperation(() =>
+			this.applySettingsPatch(typeof patch === "function" ? patch() : patch),
 		);
-		return write;
+
+	private async applySettingsPatch(patch: Partial<FlashcardSettings>): Promise<void> {
+		const nextSettings = { ...this.settings, ...patch };
+		if (JSON.stringify(nextSettings) === JSON.stringify(this.settings)) return;
+		await this.store.saveSettings(nextSettings);
+		this.publishSettings(nextSettings);
 	}
+
+	private enqueueSettingsOperation = (operation: () => Promise<void>): Promise<void> => {
+		const pending = this.settingsWriteQueue.then(operation);
+		this.settingsWriteQueue = pending.catch(() => undefined);
+		return pending;
+	};
 
 	private publishSettings(settings: FlashcardSettings): void {
 		const previous = this.settings;

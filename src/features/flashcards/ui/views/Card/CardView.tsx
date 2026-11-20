@@ -192,7 +192,15 @@ export const CardView = React.memo(function CardView({
 											? `${btn.label} (${t("common.space")} / 3)`
 											: `${btn.label} (${btn.shortcut})`
 									}
-									aria-label={`${btn.label}，${btn.intervalDesc}，${btn.rating === 3 ? `${t("common.space")} / 3` : btn.shortcut}`}
+									aria-label={[
+										btn.label,
+										btn.intervalDesc,
+										btn.rating === 3
+											? `${t("common.space")} / 3`
+											: btn.shortcut,
+									]
+										.filter(Boolean)
+										.join(", ")}
 								>
 									<span
 										className={cls("flashcard-rating-meta", styles.ratingMeta)}
@@ -214,20 +222,21 @@ export const CardView = React.memo(function CardView({
 											{btn.shortcut}
 										</span>
 									</span>
-									<span
-										className={cls(
-											"flashcard-rating-duration",
-											styles.ratingDuration,
-										)}
-									>
-										{btn.intervalDesc}
-										{btn.rating === 3 && (
-											<span className={styles.spaceHint}>
-												{" · "}
-												{t("common.space")}
-											</span>
-										)}
-									</span>
+									{btn.intervalDesc && (
+										<span
+											className={cls(
+												"flashcard-rating-duration",
+												styles.ratingDuration,
+											)}
+										>
+											{btn.intervalDesc}
+										</span>
+									)}
+									{btn.rating === 3 && (
+										<span className={styles.spaceHint}>
+											{t("common.space")}
+										</span>
+									)}
 								</FlashcardButton>
 							))}
 						</div>

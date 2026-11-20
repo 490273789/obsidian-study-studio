@@ -2,8 +2,6 @@ import type { DataAdapter } from "obsidian";
 import type {
 	CompiledDictionarySettings,
 	DictionarySettingsStore,
-	DictionarySourceSettings,
-	LocalDictionaryAdministrationState,
 	LocalDictionarySettings,
 } from "./types";
 import {
@@ -445,31 +443,6 @@ function compiledIdentity(compiled: Readonly<CompiledDictionarySettings>): strin
 	]);
 }
 
-function stateWithCatalog(
-	current: Readonly<LocalDictionaryAdministrationState>,
-	localDictionaries: readonly Readonly<LocalDictionarySettings>[],
-): LocalDictionaryAdministrationState {
-	const localById = new Map(localDictionaries.map((dictionary) => [dictionary.id, dictionary]));
-	const retainedSources = current.sources.filter(
-		(source) => source.kind !== "local" || localById.has(source.id),
-	);
-	const retainedIds = new Set(retainedSources.map((source) => source.id));
-	const appendedSources: DictionarySourceSettings[] = [];
-	for (const dictionary of localDictionaries) {
-		if (retainedIds.has(dictionary.id)) continue;
-		appendedSources.push({
-			enabled: true,
-			id: dictionary.id,
-			kind: "local",
-			label: dictionary.name,
-		});
-	}
-	return {
-		localDictionaries: localDictionaries.map((dictionary) => structuredClone(dictionary)),
-		sources: [...structuredClone(retainedSources), ...appendedSources],
-	};
-}
-
 function failure(
 	code: LocalDictionaryAdministrationFailureCode,
 	recovery: "complete" | "incomplete" = "complete",
@@ -740,11 +713,9 @@ export class LocalDictionaryAdministrationModule implements LocalDictionaryAdmin
 			return this.failure("storage-failed");
 		}
 
-		const next = stateWithCatalog(before, [...before.localDictionaries, ...imported]);
 		const outcome = await commitLocalCatalogTransaction({
 			settings: this.settings,
-			before,
-			next,
+			change: { type: "import", dictionaries: imported },
 			stage: transaction,
 		});
 		if (outcome.kind === "failed") {
@@ -776,14 +747,9 @@ export class LocalDictionaryAdministrationModule implements LocalDictionaryAdmin
 			return this.storageFailureResult(error);
 		}
 
-		const next = stateWithCatalog(
-			before,
-			before.localDictionaries.filter((candidate) => candidate.id !== dictionaryId),
-		);
 		const outcome = await commitLocalCatalogTransaction({
 			settings: this.settings,
-			before,
-			next,
+			change: { type: "remove", dictionaryId },
 			stage: removal,
 		});
 		if (outcome.kind === "failed") {

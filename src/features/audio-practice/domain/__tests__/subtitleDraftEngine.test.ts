@@ -537,6 +537,24 @@ describe("SubtitleDraftEngine - Material Lifecycle Integration", () => {
 		expect(materialId).toBe(sampleMaterial.id);
 		expect(cues).toHaveLength(2);
 		expect(wordTimings.get(cues[0]!.id)).toBeDefined();
+		expect(engine.getSnapshot().status).toBe("review");
+	});
+
+	it("returns to review with its draft intact after a failed subtitle save", async () => {
+		const { engine, sampleMaterial, commitSubtitles } = setupLifecycleEngine();
+		await engine.generateForMaterial(sampleMaterial);
+		const reviewedCues = engine.getSnapshot().cues;
+		commitSubtitles.mockRejectedValueOnce(new MediaFailureError({ kind: "persist-failed" }));
+
+		expect(await engine.commitForMaterial(sampleMaterial)).toBe(false);
+		expect(engine.getSnapshot()).toMatchObject({
+			status: "review",
+			cues: reviewedCues,
+			error: { kind: "persist-failed" },
+		});
+
+		expect(await engine.commitForMaterial(sampleMaterial)).toBe(true);
+		expect(engine.getSnapshot()).toMatchObject({ status: "review", error: null });
 	});
 
 	it("rejects commit when draft validation is invalidated", async () => {

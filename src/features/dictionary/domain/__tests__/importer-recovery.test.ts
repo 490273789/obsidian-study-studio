@@ -11,6 +11,28 @@ import { CompiledPackageError } from "../compiled-package/types";
 import { LocalDictionaryImporter } from "../importer";
 import { DictionaryImportRecovery } from "../import-recovery";
 
+const removalFailure = vi.hoisted(() => ({
+	afterPartialDeletion: false,
+}));
+vi.mock("node:fs/promises", async (importOriginal) => {
+	const fs = await importOriginal<typeof import("node:fs/promises")>();
+	return {
+		...fs,
+		rm: async (...args: Parameters<typeof fs.rm>) => {
+			const path = args[0];
+			if (
+				removalFailure.afterPartialDeletion &&
+				typeof path === "string" &&
+				/\/\.remove[d]?-[^/]+$/.test(path)
+			) {
+				await fs.rm(join(path, "first.dat"), { force: true });
+				throw new Error("Removal stopped after deleting one file");
+			}
+			return fs.rm(...args);
+		},
+	};
+});
+
 vi.mock("obsidian", () => ({
 	Platform: { isDesktopApp: true },
 	FileSystemAdapter: class {
@@ -26,9 +48,54 @@ vi.mock("../compiled-package", async () => ({
 
 const directories: string[] = [];
 afterEach(async () => {
+	removalFailure.afterPartialDeletion = false;
 	await Promise.all(
 		directories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
 	);
+});
+
+describe("dictionary removal", () => {
+	it("restores the complete package when catalog persistence has not committed", async () => {
+		const { importer, root } = await fixture(vi.fn());
+		const directory = join(root, "first");
+		await mkdir(directory, { recursive: true });
+		await writeFile(join(directory, "first.dat"), "definition");
+		await writeFile(join(directory, "second.dat"), "resource");
+
+		const removal = await importer.stageRemoval("first");
+		await removal.rollback();
+		await removal.commit();
+
+		expect(await readdir(root)).toEqual(["first"]);
+		expect(await readdir(directory)).toEqual(["first.dat", "second.dat"]);
+	});
+
+	it("never republishes a partially deleted package and retries retired cleanup later", async () => {
+		const { importer, root } = await fixture(vi.fn());
+		const directory = join(root, "first");
+		await mkdir(directory, { recursive: true });
+		await writeFile(join(directory, "first.dat"), "definition");
+		await writeFile(join(directory, "second.dat"), "resource");
+		const removal = await importer.stageRemoval("first");
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		try {
+			removalFailure.afterPartialDeletion = true;
+			await expect(removal.commit()).resolves.toBeUndefined();
+			await removal.rollback();
+			const [retired] = await readdir(root);
+			expect(retired).toMatch(/^\.removed-first-/);
+			expect(await readdir(join(root, retired!))).toEqual(["second.dat"]);
+			expect(warn).toHaveBeenCalledOnce();
+
+			const uncommitted = join(root, ".remove-uncommitted-1234abcd");
+			await mkdir(uncommitted);
+			removalFailure.afterPartialDeletion = false;
+			await importer.stageRemoval("another");
+			expect(await readdir(root)).toEqual([".remove-uncommitted-1234abcd"]);
+		} finally {
+			warn.mockRestore();
+		}
+	});
 });
 
 function publication() {

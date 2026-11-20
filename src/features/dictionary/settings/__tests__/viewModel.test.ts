@@ -81,6 +81,27 @@ function favoriteSelect(
 	return { presentation, select };
 }
 
+it("dispatches source moves using the IDs and direction shown in the list", async () => {
+	const { state, actions } = setup();
+	const presentation = buildDictionarySettingsViewModel(state, actions, "en");
+	const control = presentation.snapshot.groups
+		.flatMap((group) => group.rows)
+		.flatMap((row) => row.controls)
+		.find((item) => item.kind === "reorderable");
+	if (control?.kind !== "reorderable") throw new Error("Expected reorderable source list");
+	for (const [fromIndex, toIndex] of [
+		[0, 1],
+		[1, 0],
+	] as const) {
+		await presentation.invoke({ action: control.moveAction, value: { fromIndex, toIndex } });
+		expect(actions.moveSource).toHaveBeenLastCalledWith(
+			state.settings.sources[fromIndex]!.id,
+			state.settings.sources[toIndex]!.id,
+			fromIndex < toIndex,
+		);
+	}
+});
+
 describe("favorite open mode settings", () => {
 	it("exposes category create, edit and delete controls", async () => {
 		const { state, actions } = setup();

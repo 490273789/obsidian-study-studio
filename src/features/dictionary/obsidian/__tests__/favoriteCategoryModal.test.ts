@@ -213,11 +213,12 @@ describe("favorite category modal", () => {
 		);
 	});
 
-	it("keeps the form open and shows a specific error on failure", async () => {
+	it.each([
+		["duplicate-path", "已有分类"],
+		["conflict", "分类已在其他位置更改"],
+	] as const)("keeps the form open and explains %s", async (reason, expected) => {
 		const categories = manager();
-		vi.mocked(categories.create).mockRejectedValueOnce(
-			new FavoriteCategoryError("duplicate-path"),
-		);
+		vi.mocked(categories.create).mockRejectedValueOnce(new FavoriteCategoryError(reason));
 		new FavoriteCategoryModal({} as App, categories, dictionaryStrings("zh"), {
 			kind: "create",
 			select: true,
@@ -225,7 +226,7 @@ describe("favorite category modal", () => {
 		ui.texts[0]!.change("new");
 		ui.texts[1]!.change("word.md");
 		ui.buttons[1]!.click();
-		await vi.waitFor(() => expect(ui.errors[0]!.text).toContain("已有分类"));
+		await vi.waitFor(() => expect(ui.errors[0]!.text).toContain(expected));
 		expect(ui.closes).toBe(0);
 	});
 });

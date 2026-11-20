@@ -630,7 +630,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 					onSubmit={() => void editSession.submit()}
 				/>
 			)}
-			{reviewOpen && reviewReady && material && (
+			{reviewOpen && (reviewReady || draft.status === "saving") && material && (
 				<ReviewDialog
 					draft={draft}
 					material={material}

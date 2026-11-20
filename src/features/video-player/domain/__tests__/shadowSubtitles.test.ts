@@ -80,6 +80,27 @@ describe("shadow subtitles", () => {
 		expect(jobs.getCues("video")[0]!.text).toBe("Corrected");
 		jobs.dispose();
 	});
+	it("creates a new document revision when restarting clears a candidate", async () => {
+		const { store, documents } = fixture();
+		const jobs = new VideoSubtitleJobs({
+			store,
+			extract: async () => {
+				throw new Error("offline");
+			},
+			transcribe: async () => [],
+		});
+		const srt = "1\n00:00:00,000 --> 00:00:01,000\nSubtitle";
+		await jobs.importSubtitles(source.id, srt, "srt");
+		await jobs.adoptCandidate(source.id);
+		await jobs.importSubtitles(source.id, srt, "srt");
+		const previous = documents.get(source.id)!;
+		await jobs.start(source, config);
+		expect(documents.get(source.id)).toMatchObject({
+			revision: previous.revision + 1,
+			candidate: [],
+		});
+		jobs.dispose();
+	});
 	it("uses one extraction slot, deduplicates chunk overlap and persists continuation", async () => {
 		const { store } = fixture();
 		const offsets: number[] = [];

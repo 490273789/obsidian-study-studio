@@ -69,4 +69,29 @@ describe("copyTextToClipboard", () => {
 			globalThis.document = originalDocument;
 		}
 	});
+
+	it("removes the fallback element if copying throws", async () => {
+		vi.stubGlobal("navigator", {});
+		const remove = vi.fn();
+		vi.stubGlobal("document", {
+			createElement: () => ({
+				style: {},
+				setAttribute() {},
+				focus() {},
+				select() {},
+				remove,
+			}),
+			body: { appendChild() {} },
+			execCommand() {
+				throw new Error("copy unavailable");
+			},
+		});
+
+		try {
+			await expect(copyTextToClipboard("Fallback text")).resolves.toBe(false);
+			expect(remove).toHaveBeenCalledOnce();
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
 });

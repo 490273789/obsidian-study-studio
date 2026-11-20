@@ -120,6 +120,7 @@ const zh = {
 	favoriteCategoryPathHint: "相对于仓库根目录，填写 Markdown 文件路径；可选择已有文件或文件夹。",
 	favoriteCategorySave: "保存",
 	favoriteCategorySaveFailed: "分类操作失败，请重试。",
+	favoriteCategoryConflict: "分类已在其他位置更改。请重新打开分类设置并核对最新内容。",
 	favoriteCategoryBusy: "分类文件正在更新，请稍后重试。",
 	favoriteCategoryInvalidName: "请输入不超过 120 字的分类名称。",
 	favoriteCategoryDuplicateName: "分类名称已存在。",
@@ -352,6 +353,8 @@ const en: typeof zh = {
 		"A Markdown file path relative to the vault root. Existing files and folders are suggested.",
 	favoriteCategorySave: "Save",
 	favoriteCategorySaveFailed: "Could not update categories. Try again.",
+	favoriteCategoryConflict:
+		"This category changed elsewhere. Reopen the category settings to review it.",
 	favoriteCategoryBusy: "A category file is being updated. Try again shortly.",
 	favoriteCategoryInvalidName: "Enter a category name of at most 120 characters.",
 	favoriteCategoryDuplicateName: "A category with this name already exists.",

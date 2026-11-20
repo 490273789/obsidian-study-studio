@@ -41,7 +41,7 @@ export interface DictionarySettingsEditorActions {
 	setYoudaoDictionary: (dictionary: "ec" | "ee") => SettingsActionResult;
 	setYoudaoSecretId: (secret: "appKey" | "appSecret", secretId: string) => SettingsActionResult;
 	testYoudao: () => SettingsActionResult;
-	moveSource: (fromIndex: number, toIndex: number) => SettingsActionResult;
+	moveSource: (sourceId: string, targetId: string, after: boolean) => SettingsActionResult;
 	toggleSource: (id: string, enabled: boolean) => SettingsActionResult;
 	setAiConfigId: (configId: string | null) => SettingsActionResult;
 	pickLocalDictionaryFiles: () => SettingsActionResult;
@@ -214,7 +214,12 @@ export function buildDictionarySettingsViewModel(
 						kindLabel: sourceKindLabel(source.kind, t),
 						onToggle: (enabled) => actions.toggleSource(source.id, enabled),
 					})),
-					onMove: actions.moveSource,
+					onMove: (fromIndex, toIndex) => {
+						const source = settings.sources[fromIndex];
+						const target = settings.sources[toIndex];
+						if (source && target && source.id !== target.id)
+							return actions.moveSource(source.id, target.id, fromIndex < toIndex);
+					},
 					tooltips: {
 						drag: t.orderDescription,
 						moveUp: t.sourceMoveUp,

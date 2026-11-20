@@ -13,20 +13,11 @@ import {
 	canRequestModalClose,
 	getModalFocusDestination,
 	getModalLayer,
+	getModalTabStops,
 	registerModal,
 	unregisterModal,
 	type ModalId,
 } from "./modalBehavior";
-
-const FOCUSABLE_SELECTOR = [
-	"button:not([disabled])",
-	"[href]",
-	"input:not([disabled])",
-	"select:not([disabled])",
-	"textarea:not([disabled])",
-	'[contenteditable="true"]',
-	'[tabindex]:not([tabindex="-1"])',
-].join(", ");
 
 const INITIAL_FOCUS_SELECTOR = "[data-modal-initial-focus]";
 const INITIAL_FOCUS_PROPS = { "data-modal-initial-focus": "" } as const;
@@ -164,7 +155,7 @@ export function ModalSurface({
 
 			const panel = panelRef.current;
 			if (!panel) return;
-			const focusable = getFocusableElements(panel);
+			const focusable = getModalTabStops(panel);
 			const activeIndex = focusable.indexOf(host.ownerDocument.activeElement as HTMLElement);
 			const destination = getModalFocusDestination(
 				focusable.length,
@@ -224,20 +215,10 @@ export function ModalSurface({
 }
 
 function focusInitialElement(panel: HTMLElement): void {
-	const focusable = getFocusableElements(panel);
+	const focusable = getModalTabStops(panel);
 	const marked = panel.querySelector<HTMLElement>(INITIAL_FOCUS_SELECTOR);
 	const initialFocus = marked && focusable.includes(marked) ? marked : (focusable[0] ?? panel);
 	initialFocus.focus({ preventScroll: true });
-}
-
-function getFocusableElements(container: HTMLElement): HTMLElement[] {
-	return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-		(element) =>
-			!element.hidden &&
-			element.getAttribute("aria-hidden") !== "true" &&
-			element.getAttribute("type") !== "hidden" &&
-			!element.closest("[inert]"),
-	);
 }
 
 function asFocusableElement(element: Element | null): HTMLElement | null {

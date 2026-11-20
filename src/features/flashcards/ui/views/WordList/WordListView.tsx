@@ -150,6 +150,14 @@ const WordRow = memo(function WordRow({
 					</button>
 				);
 			})}
+			<FlashcardButton
+				preset="icon"
+				icon={BookOpenText}
+				onClick={() => onShowExplanation(item)}
+				title={t("wordList.openExplanation")}
+				aria-label={t("wordList.openExplanation")}
+				aria-haspopup="dialog"
+			/>
 		</div>
 	);
 });
@@ -227,17 +235,32 @@ export const WordListView = React.memo(function WordListView({
 		};
 	}, []);
 	const sourceItems = useMemo(() => buildWordListItems(deck.cards), [deck.cards]);
+	const itemsById = useMemo(
+		() => new Map(sourceItems.map((item) => [item.id, item])),
+		[sourceItems],
+	);
 	const [maskedColumns, setMaskedColumns] = useState<Set<VisibleWordColumnKey>>(new Set());
-	const [shuffledItems, setShuffledItems] = useState<WordListItem[] | null>(null);
+	const [shuffledIds, setShuffledIds] = useState<string[] | null>(null);
 	const [revealedIdsByColumn, setRevealedIdsByColumn] = useState<
 		Record<VisibleWordColumnKey, Set<string>>
 	>({
 		front: new Set(),
 		back: new Set(),
 	});
-	const [activeExplanationItem, setActiveExplanationItem] = useState<WordListItem | null>(null);
-	const isShuffled = shuffledItems !== null;
-	const items = shuffledItems ?? sourceItems;
+	const [activeExplanationId, setActiveExplanationId] = useState<string | null>(null);
+	const activeExplanationItem = activeExplanationId && itemsById.get(activeExplanationId);
+	const isShuffled = shuffledIds !== null;
+	const items = useMemo(() => {
+		if (!shuffledIds) return sourceItems;
+		const remaining = new Map(itemsById);
+		const ordered: WordListItem[] = [];
+		for (const id of shuffledIds) {
+			const item = remaining.get(id);
+			if (item) ordered.push(item);
+			remaining.delete(id);
+		}
+		return ordered.concat(Array.from(remaining.values()));
+	}, [shuffledIds, sourceItems, itemsById]);
 	const [viewport] = useState(() => new WordListViewport(items));
 	const bindScroll = useCallback(
 		(element: HTMLDivElement | null) => {
@@ -261,19 +284,10 @@ export const WordListView = React.memo(function WordListView({
 	useLayoutEffect(() => viewport.mount(), [viewport]);
 	const virtualRows = useSyncExternalStore(viewport.subscribe, viewport.getSnapshot);
 
-	useEffect(() => {
-		queueMicrotask(() => {
-			setShuffledItems(null);
-			setRevealedIdsByColumn({
-				front: new Set(),
-				back: new Set(),
-			});
-			setActiveExplanationItem(null);
-		});
-	}, [sourceItems]);
-
 	const handleShuffleToggle = useCallback(() => {
-		setShuffledItems((currentItems) => (currentItems ? null : shuffleArray(sourceItems)));
+		setShuffledIds((currentIds) =>
+			currentIds ? null : shuffleArray(sourceItems.map((item) => item.id)),
+		);
 	}, [sourceItems]);
 
 	const handleReveal = useCallback(
@@ -312,11 +326,11 @@ export const WordListView = React.memo(function WordListView({
 	}, []);
 
 	const handleShowExplanation = useCallback((item: WordListItem) => {
-		setActiveExplanationItem(item);
+		setActiveExplanationId(item.id);
 	}, []);
 
 	const handleCloseExplanation = useCallback(() => {
-		setActiveExplanationItem(null);
+		setActiveExplanationId(null);
 	}, []);
 
 	return (

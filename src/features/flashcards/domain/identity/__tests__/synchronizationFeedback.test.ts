@@ -83,6 +83,28 @@ describe("synchronization feedback", () => {
 		);
 	});
 
+	it("identifies unreadable notes when there is no identity conflict to repair", () => {
+		const outcome: SynchronizeOutcome = {
+			kind: "attention-required",
+			change: {
+				changedDeckIds: [],
+				removedDeckIds: [],
+				tagsChanged: false,
+				unreadablePaths: ["words.md"],
+			},
+			issueIds: [],
+		};
+		expect(
+			describeSynchronizationOutcome(
+				outcome,
+				{ sources: {}, issues: [], journal: null },
+				"en",
+			),
+		).toBe(
+			"Some notes could not be read: words.md. Learning progress was kept. Try refreshing again.",
+		);
+	});
+
 	it("returns the underlying failure and stays silent for a current sync", () => {
 		const snapshot: CardIdentityContinuitySnapshot = {
 			sources: {},

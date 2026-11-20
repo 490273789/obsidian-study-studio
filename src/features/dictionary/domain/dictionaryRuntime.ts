@@ -2,7 +2,6 @@ import type { App, Plugin } from "obsidian";
 import type { AiService } from "../../../core/ai";
 import type { OutboundPort } from "../../../core/net";
 import type { Language } from "../../../core/shared/types";
-import type { CardSourceMutation } from "../../../core/shared/cardSourceMutation";
 import { AiDictionarySource } from "./ai";
 import { CambridgeDictionarySource } from "./cambridge";
 import { CompiledDictionarySource } from "./compiled-source";
@@ -27,7 +26,6 @@ import {
 import { YoudaoDictionarySource } from "./youdao";
 
 interface DictionaryRuntimeOptions {
-	sourceEdits?: CardSourceMutation;
 	ai: AiService;
 	app: App;
 	favoriteStore?: DictionaryFavoriteStore;
@@ -114,13 +112,6 @@ export class DictionaryRuntime {
 		void this.query.send({ type: "settings-changed" });
 	}
 
-	/** Cancels in-flight lookups and resets the query and favorite sessions. */
-	resetSession(): void {
-		this.closeLocalSources();
-		void this.query.send({ type: "clear" });
-		this.favorites.resetSession();
-	}
-
 	/** Creates an isolated, short-lived lookup session for the 工作台's 选区助手. */
 	createSelectionLookupSession(
 		query: string,
@@ -157,9 +148,6 @@ export class DictionaryRuntime {
 			updateDictionarySettings: (mutate) => this.settings.updateDictionarySettings(mutate),
 			getLocalDictionaryAdministrationState: () =>
 				this.settings.getLocalDictionaryAdministrationState(),
-			setLocalDictionaryAdministrationState: (state) =>
-				this.settings.setLocalDictionaryAdministrationState(state),
-			save: () => this.settings.save(),
 		};
 		const session = createDictionaryQuerySession({
 			settings: scopedSettings,

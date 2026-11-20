@@ -15,16 +15,16 @@ if (
 	typeof event.tool_response === "string" &&
 	event.tool_response === readFileSync(resolve(root, source), "utf8")
 ) {
-	const guide = readFileSync(resolve(root, "docs/agents/sessions.md"), "utf8");
-	const section = guide.split(/^## /m).find((part) => /^Session persistence\r?\n/.test(part));
-	if (!section)
-		throw new Error("Session persistence section is missing from docs/agents/sessions.md");
+	const rulePath = ".claude/rules/session-persistence.md";
+	const guide = readFileSync(resolve(root, rulePath), "utf8");
+	const section = guide.match(/^## Session persistence\r?\n[\s\S]+/m)?.[0].trimEnd();
+	if (!section) throw new Error("Missing session persistence rule");
 
 	console.log(
 		JSON.stringify({
 			hookSpecificOutput: {
 				hookEventName: "PostToolUse",
-				additionalContext: `From docs/agents/sessions.md\n\n## ${section.trimEnd()}`,
+				additionalContext: `From ${rulePath}\n\n${section}`,
 			},
 		}),
 	);

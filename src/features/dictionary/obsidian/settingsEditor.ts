@@ -175,9 +175,14 @@ export class DictionarySettingsEditor {
 					else draft.youdao.appSecretSecretId = secretId;
 				}),
 			testYoudao: () => this.testYoudao(),
-			moveSource: (fromIndex, toIndex) =>
+			moveSource: (sourceId, targetId, after) =>
 				this.patch((draft) => {
-					moveItem(draft.sources, fromIndex, toIndex);
+					const from = draft.sources.findIndex((source) => source.id === sourceId);
+					const target = draft.sources.findIndex((source) => source.id === targetId);
+					if (from < 0 || target < 0 || from === target) return;
+					const [source] = draft.sources.splice(from, 1);
+					const anchor = from < target ? target - 1 : target;
+					draft.sources.splice(after ? anchor + 1 : anchor, 0, source!);
 				}),
 			toggleSource: (id, enabled) =>
 				this.patch((draft) => {
@@ -327,19 +332,4 @@ export class DictionarySettingsEditor {
 			this.refresh();
 		}
 	}
-}
-
-/** In-place array move shared by the reorderable source list. */
-function moveItem<T>(items: T[], fromIndex: number, toIndex: number): void {
-	if (
-		fromIndex < 0 ||
-		fromIndex >= items.length ||
-		toIndex < 0 ||
-		toIndex >= items.length ||
-		fromIndex === toIndex
-	) {
-		return;
-	}
-	const [item] = items.splice(fromIndex, 1);
-	if (item !== undefined) items.splice(toIndex, 0, item);
 }

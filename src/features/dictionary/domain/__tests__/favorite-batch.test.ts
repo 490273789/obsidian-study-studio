@@ -20,8 +20,6 @@ function setup(content: string, initialWords: string[] = []) {
 		getDictionarySettings: () => dictionary,
 		updateDictionarySettings: async () => true,
 		getLocalDictionaryAdministrationState: () => dictionary,
-		setLocalDictionaryAdministrationState: () => undefined,
-		save: async () => undefined,
 	};
 	const categories = new FavoriteCategoryManager(
 		settings,

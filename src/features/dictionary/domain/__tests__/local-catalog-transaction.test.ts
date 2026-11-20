@@ -1,17 +1,19 @@
 import { describe, expect, it, vi } from "vite-plus/test";
+import { DEFAULT_DICTIONARY_SETTINGS } from "../configuration";
 import { commitLocalCatalogTransaction } from "../local-catalog-transaction";
-import type {
-	DictionarySettings,
-	DictionarySettingsStore,
-	LocalDictionaryAdministrationState,
-} from "../types";
+import type { DictionarySettingsStore, LocalDictionarySettings } from "../types";
 
-const before: LocalDictionaryAdministrationState = {
-	localDictionaries: [],
-	sources: [{ enabled: true, id: "youdao", kind: "youdao", label: "Youdao" }],
+const before = structuredClone(DEFAULT_DICTIONARY_SETTINGS);
+const dictionary: LocalDictionarySettings = {
+	id: "local",
+	name: "Local",
+	directory: "local",
+	files: [],
 };
-const next: LocalDictionaryAdministrationState = {
+const change = { type: "import", dictionaries: [dictionary] } as const;
+const next = {
 	...before,
+	localDictionaries: [dictionary],
 	sources: [...before.sources, { enabled: true, id: "local", kind: "local", label: "Local" }],
 };
 
@@ -19,13 +21,15 @@ function settingsStore(save: () => Promise<void>) {
 	let state = structuredClone(before);
 	const saveMock = vi.fn(save);
 	const store: DictionarySettingsStore = {
-		getDictionarySettings: () => ({}) as Readonly<DictionarySettings>,
+		getDictionarySettings: () => state,
 		getLocalDictionaryAdministrationState: () => state,
-		setLocalDictionaryAdministrationState: (value) => {
-			state = structuredClone(value);
+		updateDictionarySettings: async (mutate) => {
+			const draft = structuredClone(state);
+			mutate(draft);
+			await saveMock();
+			state = draft;
+			return true;
 		},
-		save: saveMock,
-		updateDictionarySettings: async () => true,
 	};
 	return { state: () => state, store, save: saveMock };
 }
@@ -43,8 +47,7 @@ describe("local catalog transaction", () => {
 		const staged = stage();
 		const outcome = await commitLocalCatalogTransaction({
 			settings: s.store,
-			before,
-			next,
+			change,
 			stage: staged,
 		});
 
@@ -61,8 +64,7 @@ describe("local catalog transaction", () => {
 		const staged = stage();
 		const outcome = await commitLocalCatalogTransaction({
 			settings: s.store,
-			before,
-			next,
+			change,
 			stage: staged,
 		});
 
@@ -87,8 +89,7 @@ describe("local catalog transaction", () => {
 		});
 		const outcome = await commitLocalCatalogTransaction({
 			settings: s.store,
-			before,
-			next,
+			change,
 			stage: staged,
 		});
 
@@ -108,8 +109,7 @@ describe("local catalog transaction", () => {
 		});
 		const outcome = await commitLocalCatalogTransaction({
 			settings: s.store,
-			before,
-			next,
+			change,
 			stage: staged,
 		});
 
@@ -135,8 +135,7 @@ describe("local catalog transaction", () => {
 		});
 		const outcome = await commitLocalCatalogTransaction({
 			settings: s.store,
-			before,
-			next,
+			change,
 			stage: staged,
 		});
 
@@ -160,8 +159,7 @@ describe("local catalog transaction", () => {
 		});
 		const outcome = await commitLocalCatalogTransaction({
 			settings: s.store,
-			before,
-			next,
+			change,
 			stage: staged,
 		});
 

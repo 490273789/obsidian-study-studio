@@ -58,7 +58,6 @@ function initialState(): LocalDictionaryAdministrationState {
 }
 
 class FakeSettingsStore implements DictionarySettingsStore {
-	readonly setStates: LocalDictionaryAdministrationState[] = [];
 	readonly save = vi.fn(async () => this.saveAction());
 	private state: LocalDictionaryAdministrationState;
 
@@ -93,7 +92,7 @@ class FakeSettingsStore implements DictionarySettingsStore {
 		const draft = structuredClone(this.getDictionarySettings()) as DictionarySettings;
 		mutate(draft);
 		try {
-			await this.saveAction();
+			await this.save();
 		} catch {
 			return false;
 		}
@@ -106,11 +105,6 @@ class FakeSettingsStore implements DictionarySettingsStore {
 
 	getLocalDictionaryAdministrationState(): Readonly<LocalDictionaryAdministrationState> {
 		return this.state;
-	}
-
-	setLocalDictionaryAdministrationState(state: LocalDictionaryAdministrationState): void {
-		this.state = structuredClone(state);
-		this.setStates.push(structuredClone(state));
 	}
 }
 
@@ -152,6 +146,62 @@ function expectUnchanged(
 }
 
 describe("LocalDictionaryAdministrationModule import recovery", () => {
+	it("preserves source edits made while import is preparing its files", async () => {
+		const settings = new FakeSettingsStore();
+		const storage = new FakeStorageAdapter(async (imports) => {
+			await settings.updateDictionarySettings((draft) => {
+				draft.sources[0]!.enabled = false;
+				draft.sources.reverse();
+			});
+			return transaction(packageFor(imports));
+		});
+		const administration = new LocalDictionaryAdministrationModule(settings, storage);
+
+		expect(await administration.importFiles([file()])).toMatchObject({ ok: true });
+		expect(settings.getDictionarySettings().sources).toMatchObject([
+			{ id: "old-dictionary" },
+			{ id: "youdao", enabled: false },
+			{ kind: "local", label: "new" },
+		]);
+	});
+
+	it("preserves unrelated source edits when a removal rolls back", async () => {
+		const before = initialState();
+		before.sources.unshift(
+			{ id: "cambridge", kind: "cambridge", enabled: true, label: "Cambridge" },
+			{ id: "hujiang", kind: "hujiang", enabled: true, label: "Hujiang" },
+		);
+		const settings = new FakeSettingsStore(before);
+		const storage = new FakeStorageAdapter(
+			async () => {
+				throw new Error("Unexpected import");
+			},
+			async () => ({
+				commit: async () => {
+					await settings.updateDictionarySettings((draft) => {
+						draft.sources[0]!.enabled = false;
+						draft.sources.reverse();
+					});
+					throw new Error("commit failed");
+				},
+				rollback: async () => undefined,
+			}),
+		);
+		const administration = new LocalDictionaryAdministrationModule(settings, storage);
+
+		expect(await administration.remove("old-dictionary")).toMatchObject({
+			error: { code: "storage-failed", recovery: "complete" },
+		});
+		const committed = settings.getDictionarySettings();
+		expect(committed.localDictionaries).toEqual(before.localDictionaries);
+		expect(committed.sources.filter((source) => source.kind !== "local")).toMatchObject([
+			{ id: "youdao" },
+			{ id: "hujiang" },
+			{ id: "cambridge", enabled: false },
+		]);
+		expect(committed.sources).toContainEqual(before.sources[3]);
+	});
+
 	it("restores the previous catalog and sources, then rolls back when settings persistence fails", async () => {
 		const before = initialState();
 		const rollback = vi.fn(async () => undefined);
@@ -170,8 +220,7 @@ describe("LocalDictionaryAdministrationModule import recovery", () => {
 			ok: false,
 		});
 		expect(rollback).toHaveBeenCalledOnce();
-		expect(settings.setStates).toHaveLength(2);
-		expect(settings.setStates[0]?.localDictionaries).toHaveLength(2);
+		expect(settings.save).toHaveBeenCalledOnce();
 		expectUnchanged(settings, before);
 		expect(administration.list()).toEqual<LocalDictionarySnapshot>([
 			expect.objectContaining({ id: "old-dictionary" }),
@@ -352,7 +401,6 @@ describe("LocalDictionaryAdministrationModule import recovery", () => {
 		});
 		expect(rollback).toHaveBeenCalledOnce();
 		expect(settings.save).not.toHaveBeenCalled();
-		expect(settings.setStates).toHaveLength(0);
 		expectUnchanged(settings, before);
 	});
 });

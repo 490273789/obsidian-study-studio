@@ -4,13 +4,16 @@ import { cls } from "../../../../../core/shared/classNames";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import type { SessionCardSnapshot } from "../../../domain/sessions/sessionLifecycle";
 import { useFlashcardI18n } from "../../../strings/context";
-import { MarkdownContent } from "../../primitives/Markdown/MarkdownContent";
+import {
+	MarkdownContent,
+	type MarkdownRendererFn,
+} from "../../primitives/Markdown/MarkdownContent";
 import styles from "./StudySummary.module.scss";
 
 interface StudyReviewCardProps {
 	card: Readonly<SessionCardSnapshot>;
 	index: number;
-	markdownRenderer?: (content: string, el: HTMLElement) => Promise<void>;
+	markdownRenderer?: MarkdownRendererFn;
 	onOpenSourceFile?: (filePath: string) => void;
 }
 
@@ -31,6 +34,7 @@ export const StudyReviewCard = memo(function StudyReviewCard({
 			<MarkdownContent
 				content={content}
 				className={className}
+				sourcePath={card.sourceFile}
 				markdownRenderer={markdownRenderer}
 			/>
 		) : (

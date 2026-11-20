@@ -12,7 +12,7 @@ import { StudySummary } from "../../../views/Study/StudySummary";
 import { PracticeSummary } from "../../../views/Practice/PracticeSummary";
 import { SpellingSummary } from "../../../views/Spelling/SpellingSummary";
 import { ChallengeSummary } from "../../../views/Challenge/ChallengeSummary";
-import { handleSessionSummaryKeyDown } from "../sessionSummaryKeyboard";
+import { focusSessionSummary, handleSessionSummaryKeyDown } from "../sessionSummaryKeyboard";
 
 const { buttons } = vi.hoisted(() => ({ buttons: [] as FlashcardButtonProps[] }));
 vi.mock("../../../../../../core/ui/primitives/Button", () => ({
@@ -38,6 +38,20 @@ function primaryButton() {
 }
 
 const markdownRenderer = async () => {};
+
+function makeSummaryRoot(focused = true, modal = false): HTMLElement {
+	return {
+		isConnected: true,
+		closest: vi.fn(() => null),
+		contains: vi.fn(() => focused),
+		focus: vi.fn(),
+		ownerDocument: {
+			activeElement: null,
+			body: null,
+			querySelector: vi.fn(() => (modal ? {} : null)),
+		},
+	} as unknown as HTMLElement;
+}
 
 describe("session result actions", () => {
 	beforeEach(() => {
@@ -269,26 +283,42 @@ describe("session result actions", () => {
 
 		// Enter
 		expect(
-			handleSessionSummaryKeyDown({ key: "Enter", preventDefault, target: null }, options),
+			handleSessionSummaryKeyDown(
+				{ key: "Enter", preventDefault, target: null },
+				options,
+				makeSummaryRoot(),
+			),
 		).toBe(true);
 		expect(onHome).toHaveBeenCalledTimes(1);
 		expect(preventDefault).toHaveBeenCalledTimes(1);
 
 		// Space
 		expect(
-			handleSessionSummaryKeyDown({ key: " ", preventDefault, target: null }, options),
+			handleSessionSummaryKeyDown(
+				{ key: " ", preventDefault, target: null },
+				options,
+				makeSummaryRoot(),
+			),
 		).toBe(true);
 		expect(onHome).toHaveBeenCalledTimes(2);
 
 		// Escape
 		expect(
-			handleSessionSummaryKeyDown({ key: "Escape", preventDefault, target: null }, options),
+			handleSessionSummaryKeyDown(
+				{ key: "Escape", preventDefault, target: null },
+				options,
+				makeSummaryRoot(),
+			),
 		).toBe(true);
 		expect(onHome).toHaveBeenCalledTimes(3);
 
 		// Unhandled key
 		expect(
-			handleSessionSummaryKeyDown({ key: "Tab", preventDefault, target: null }, options),
+			handleSessionSummaryKeyDown(
+				{ key: "Tab", preventDefault, target: null },
+				options,
+				makeSummaryRoot(),
+			),
 		).toBe(false);
 
 		// Ignored inside inputs
@@ -297,6 +327,7 @@ describe("session result actions", () => {
 			handleSessionSummaryKeyDown(
 				{ key: "Enter", preventDefault, target: inputTarget },
 				options,
+				makeSummaryRoot(),
 			),
 		).toBe(false);
 		expect(onHome).toHaveBeenCalledTimes(3);
@@ -313,9 +344,13 @@ describe("session result actions", () => {
 				onHome,
 			};
 			for (const key of ["Enter", " "]) {
-				expect(handleSessionSummaryKeyDown({ key, target, preventDefault }, options)).toBe(
-					false,
-				);
+				expect(
+					handleSessionSummaryKeyDown(
+						{ key, target, preventDefault },
+						options,
+						makeSummaryRoot(),
+					),
+				).toBe(false);
 			}
 			expect(onHome).not.toHaveBeenCalled();
 			expect(preventDefault).not.toHaveBeenCalled();
@@ -333,14 +368,50 @@ describe("session result actions", () => {
 			closest: () => ({ tagName: "BUTTON" }),
 		} as unknown as HTMLElement;
 		expect(
-			handleSessionSummaryKeyDown({ key: "Enter", target, preventDefault: vi.fn() }, options),
+			handleSessionSummaryKeyDown(
+				{ key: "Enter", target, preventDefault: vi.fn() },
+				options,
+				makeSummaryRoot(),
+			),
 		).toBe(false);
 		expect(
 			handleSessionSummaryKeyDown(
 				{ key: "Enter", target: null, preventDefault: vi.fn() },
 				options,
+				makeSummaryRoot(),
 			),
 		).toBe(false);
 		expect(onHome).not.toHaveBeenCalled();
+	});
+
+	it("leaves keys from another pane, a modal, and repeated presses alone", () => {
+		const onHome = vi.fn();
+		const preventDefault = vi.fn();
+		const options = { actions: [{ label: "Home", onClick: onHome, primary: true }], onHome };
+		for (const key of ["Enter", " ", "Escape"]) {
+			const event = { key, target: null, preventDefault };
+			expect(handleSessionSummaryKeyDown(event, options, makeSummaryRoot(false))).toBe(false);
+			expect(handleSessionSummaryKeyDown(event, options, makeSummaryRoot(true, true))).toBe(
+				false,
+			);
+			expect(
+				handleSessionSummaryKeyDown({ ...event, repeat: true }, options, makeSummaryRoot()),
+			).toBe(false);
+		}
+		expect(preventDefault).not.toHaveBeenCalled();
+		expect(onHome).not.toHaveBeenCalled();
+	});
+
+	it("takes initial focus only while its own document has unclaimed focus", () => {
+		const root = makeSummaryRoot();
+		const focus = vi.fn();
+		root.focus = focus;
+		focusSessionSummary(root);
+		expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+		focus.mockClear();
+		const modalRoot = makeSummaryRoot(true, true);
+		modalRoot.focus = focus;
+		focusSessionSummary(modalRoot);
+		expect(focus).not.toHaveBeenCalled();
 	});
 });

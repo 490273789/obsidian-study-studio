@@ -1,4 +1,4 @@
-import React, { useState, useSyncExternalStore } from "react";
+import React, { useLayoutEffect, useState, useSyncExternalStore } from "react";
 import {
 	ArrowRight,
 	ArrowRightLeft,
@@ -48,11 +48,14 @@ export interface PracticeSetupProps {
 }
 
 export const PracticeSetup = React.memo(function PracticeSetup(props: PracticeSetupProps) {
-	const { deck, onStartSession, onBack } = props;
+	const { deck, plan, spellingPlan, spellingSnapshot, onStartSession, onBack } = props;
 	const { t } = useFlashcardI18n();
 
 	const [session] = useState(() => props.session ?? new PracticeSetupSession(props));
 	const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot);
+	useLayoutEffect(() => {
+		if (!props.session) session.updateSource({ deck, plan, spellingPlan, spellingSnapshot });
+	}, [session, props.session, deck, plan, spellingPlan, spellingSnapshot]);
 
 	const {
 		practiceKind,

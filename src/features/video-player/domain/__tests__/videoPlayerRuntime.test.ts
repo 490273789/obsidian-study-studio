@@ -19,6 +19,7 @@ class Media implements VideoMediaPort {
 	currentTime = 0;
 	duration = 100;
 	paused = true;
+	seeking = false;
 	playbackRate = 1;
 	src = "";
 	private readonly listeners = new Map<string, Set<EventListener>>();
@@ -62,6 +63,43 @@ describe("VideoPlayerRuntime", () => {
 		]);
 		expect(runtime.getSnapshot().sources.map((item) => item.id)).toEqual(["one", "two"]);
 		expect(runtime.getSnapshot().currentSourceId).toBe("one");
+	});
+
+	it("keeps playback running while editing other queue entries", async () => {
+		const runtime = new VideoPlayerRuntime({
+			store: new MemoryStore(),
+			toMediaUrl: (path) => path,
+		});
+		const media = new Media();
+		runtime.addSources([source("playing"), source("queued")]);
+		runtime.bindMedia(media);
+		await runtime.play();
+		media.currentTime = 17;
+		media.load.mockClear();
+
+		runtime.addSources([source("added")]);
+		runtime.replaceSource("queued", source("replacement"));
+		runtime.removeSource("added");
+
+		expect(runtime.getSnapshot().sources.map(({ path }) => path)).toEqual([
+			"/videos/playing.mp4",
+			"/videos/replacement.mp4",
+		]);
+		expect(media.load).not.toHaveBeenCalled();
+		expect(media.currentTime).toBe(17);
+		expect(media.paused).toBe(false);
+	});
+
+	it("ignores a queue reorder that would duplicate one source and drop another", () => {
+		const store = new MemoryStore();
+		const runtime = new VideoPlayerRuntime({ store, toMediaUrl: (path) => path });
+		runtime.addSources([source("one"), source("two")]);
+		runtime.selectSource("two");
+
+		runtime.reorderSources(["one", "one"]);
+
+		expect(runtime.getSnapshot().sources.map(({ id }) => id)).toEqual(["one", "two"]);
+		expect(store.state.sources.map(({ id }) => id)).toEqual(["one", "two"]);
 	});
 
 	it("seeks within bounds, applies supported rates, and preserves progress", () => {
@@ -231,6 +269,103 @@ describe("VideoPlayerRuntime", () => {
 		media.currentTime = 12;
 		media.emit("timeupdate");
 		expect(await result).toBe("completed");
+	});
+
+	it("rejects a practice range when playback fails after the initial seek", async () => {
+		const runtime = new VideoPlayerRuntime({
+			store: new MemoryStore(),
+			toMediaUrl: (path) => path,
+		});
+		const media = new Media();
+		runtime.addSources([source("one")]);
+		runtime.bindMedia(media);
+		media.seeking = true;
+		const failure = new Error("Playback failed");
+		media.play.mockRejectedValueOnce(failure);
+
+		const practice = runtime.playRange(12, 18);
+		expect(media.play).not.toHaveBeenCalled();
+		media.seeking = false;
+		media.emit("seeked");
+
+		await expect(practice).rejects.toBe(failure);
+		expect(runtime.getSnapshot().error).toBe("playback");
+		runtime.dispose();
+	});
+
+	it("still advances the queue after rejecting an invalid practice range", async () => {
+		const runtime = new VideoPlayerRuntime({
+			store: new MemoryStore(),
+			toMediaUrl: (path) => path,
+		});
+		const media = new Media();
+		runtime.addSources([source("one"), source("two")]);
+		runtime.bindMedia(media);
+		await runtime.play();
+
+		await expect(runtime.playRange(20, 10)).rejects.toThrow("Invalid practice range");
+		media.currentTime = media.duration;
+		media.emit("ended");
+
+		expect(runtime.getSnapshot().currentSourceId).toBe("two");
+		runtime.dispose();
+	});
+
+	it("keeps a practice range alive when its internal pause arrives during the seek", async () => {
+		const runtime = new VideoPlayerRuntime({
+			store: new MemoryStore(),
+			toMediaUrl: (path) => path,
+		});
+		const media = new Media();
+		runtime.addSources([source("one")]);
+		runtime.bindMedia(media);
+		await runtime.play();
+		media.pause.mockImplementationOnce(() => {
+			media.paused = true;
+		});
+		media.seeking = true;
+
+		const practice = runtime.playRange(12, 18);
+		media.emit("pause");
+		media.seeking = false;
+		media.emit("seeked");
+		media.currentTime = 18;
+		media.emit("timeupdate");
+
+		await expect(practice).resolves.toBe("completed");
+		runtime.dispose();
+	});
+
+	it("ignores a late play rejection after starting another practice range", async () => {
+		const runtime = new VideoPlayerRuntime({
+			store: new MemoryStore(),
+			toMediaUrl: (path) => path,
+		});
+		const media = new Media();
+		runtime.addSources([source("one")]);
+		runtime.bindMedia(media);
+		media.seeking = true;
+		let rejectPlay!: (error: Error) => void;
+		media.play.mockImplementationOnce(
+			() =>
+				new Promise((_, reject) => {
+					rejectPlay = reject;
+				}),
+		);
+		const first = runtime.playRange(12, 18);
+		media.seeking = false;
+		media.emit("seeked");
+
+		const second = runtime.playRange(24, 30);
+		await expect(first).resolves.toBe("cancelled");
+		rejectPlay(new Error("Interrupted"));
+		await Promise.resolve();
+		media.currentTime = 30;
+		media.emit("timeupdate");
+
+		await expect(second).resolves.toBe("completed");
+		expect(runtime.getSnapshot().error).toBeNull();
+		runtime.dispose();
 	});
 
 	describe("stable identity and picker seam", () => {

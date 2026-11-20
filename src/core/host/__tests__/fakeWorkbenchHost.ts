@@ -71,7 +71,9 @@ export function createFakeWorkbenchHost<TOwner extends FeatureSettingsOwner>(
 	const scopedSettings = {
 		read: () => projectSettings(owner, document),
 		update: updateSettings.mockImplementation(async (patch) => {
-			document = { ...document, ...authorizeSettingsPatch(owner, patch) };
+			const result =
+				typeof patch === "function" ? patch(projectSettings(owner, document)) : patch;
+			document = { ...document, ...authorizeSettingsPatch(owner, result) };
 		}),
 		...(owner === "flashcards"
 			? {

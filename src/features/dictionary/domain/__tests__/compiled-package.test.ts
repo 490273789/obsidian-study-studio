@@ -146,6 +146,9 @@ describe("normalizeCompiledLookupKey", () => {
 		["CAFÉ", "café"],
 		["TÜRKÇE", "türkçe"],
 		["Straße", "straße"],
+		["ΟΣ", "οσ"],
+		["\u0085term\u0085", "term"],
+		["\ufeffterm", "\ufeffterm"],
 		["well-known", "wellknown"],
 		["don't", "dont"],
 		["a.b,c(d)e", "abcde"],
@@ -165,6 +168,8 @@ describe("normalizeCompiledResourceKey", () => {
 		["/a/b", "a/b"],
 		["A/B", "a/b"],
 		["Ｃ/Ｄ", "c/d"],
+		["\\ΟΣ\\Image.png", "οσ/image.png"],
+		["／Ｃ.png", "/c.png"],
 		["", ""],
 	])("normalizes %j to %j", (value, expected) => {
 		expect(normalizeCompiledResourceKey(value)).toBe(expected);
@@ -237,6 +242,18 @@ describe("isCompiledResourceMime", () => {
 });
 
 describe("parseCompiledPackageManifest", () => {
+	it("accepts a range ordered by Rust UTF-8 with BMP and supplementary CJK", () => {
+		const path = "indexes/terms.fst";
+		const range = { firstKey: "﨎", lastKey: "𠀀", fstFile: path, postingsFile: path };
+		const manifest = parseCompiledPackageManifest(
+			manifestBytes({
+				files: { [path]: { sha256: "a".repeat(64), size: 4 } },
+				indexes: [range],
+			}),
+		);
+		expect(manifest.indexes).toEqual([range]);
+	});
+
 	it("accepts a minimal valid manifest", () => {
 		expect(parseCompiledPackageManifest(manifestBytes())).toMatchObject({
 			engineVersion: DICTIONARY_ENGINE_VERSION,

@@ -102,6 +102,9 @@ export function createReactItemView<
 	TSettings extends { readonly language: Language },
 	TResource = undefined,
 >(options: ReactViewOptions<TSettings, TResource>): (leaf: WorkspaceLeaf) => WorkbenchItemView {
+	const ViewContent = (context: ReactViewContext<TSettings, TResource>) =>
+		options.render(context);
+
 	class ReactWorkbenchView extends ItemView implements WorkbenchItemView {
 		private root: Root | null = null;
 		private rootEl: HTMLElement | null = null;
@@ -220,7 +223,7 @@ export function createReactItemView<
 							viewType={options.type}
 							message={options.renderErrorMessage(context.language)}
 						>
-							{options.render(context)}
+							<ViewContent {...context} />
 						</ReactViewErrorBoundary>
 					</I18nProvider>
 				</React.StrictMode>,

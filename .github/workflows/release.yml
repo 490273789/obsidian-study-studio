@@ -24,9 +24,16 @@ jobs:
             - name: Verify tag and manifest versions
               env:
                   RELEASE_TAG: ${{ github.ref_name }}
-              run: node -e "const fs=require('node:fs');const p=require('./package.json');const m=require('./manifest.json');const v=require('./versions.json');if(p.version!==process.env.RELEASE_TAG||m.version!==process.env.RELEASE_TAG||!v[process.env.RELEASE_TAG])process.exit(1)"
+              run: node -e "const p=require('./package.json');const m=require('./manifest.json');const v=require('./versions.json');if(p.version!==process.env.RELEASE_TAG||m.version!==process.env.RELEASE_TAG||v[process.env.RELEASE_TAG]!==m.minAppVersion)process.exit(1)"
+            - uses: dtolnay/rust-toolchain@1.95.0
+              with:
+                  targets: wasm32-unknown-unknown
+            - run: cargo install --locked wasm-bindgen-cli --version 0.2.127
+            - run: pnpm run dictionary:engine
+            - run: git diff --exit-code -- src/features/dictionary/domain/engine
             - run: pnpm run check:all
             - run: pnpm build
+            - run: pnpm run artifacts:check
             - uses: actions/attest-build-provenance@v4
               if: ${{ !github.event.repository.private }}
               with:
@@ -37,4 +44,5 @@ jobs:
             - name: Create draft GitHub Release
               env:
                   GH_TOKEN: ${{ github.token }}
-              run: gh release create "${{ github.ref_name }}" main.js manifest.json styles.css --draft --generate-notes --title "${{ github.ref_name }}"
+                  RELEASE_TAG: ${{ github.ref_name }}
+              run: gh release create "$RELEASE_TAG" main.js manifest.json styles.css --draft --generate-notes --title "$RELEASE_TAG"

@@ -529,4 +529,13 @@ describe("kind-scoped engine registry", () => {
 			code: "config-not-found",
 		});
 	});
+
+	it("rejects a queued save after another engine kind claims the same id", async () => {
+		const { service } = setup({ engines: [], defaults: { llm: null, asr: null } });
+		const first = service.saveEngine(config);
+		const second = service.saveEngine({ ...asr, id: config.id });
+		await expect(first).resolves.toBe(config.id);
+		await expect(second).rejects.toMatchObject({ code: "config-not-found" });
+		expect(service.getSnapshot().settings.engines).toEqual([config]);
+	});
 });

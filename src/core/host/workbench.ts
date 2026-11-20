@@ -146,7 +146,13 @@ interface BaseWorkbenchSettings<TOwner extends FeatureSettingsOwner> {
 	/** A detached snapshot containing only shared settings and this owner's settings. */
 	read(): ScopedWorkbenchSettings<TOwner>;
 	/** Atomically commits one or more settings keys owned by this module. */
-	update(patch: Readonly<Partial<OwnedSettings<TOwner>>>): Promise<void>;
+	update(
+		patch:
+			| Readonly<Partial<OwnedSettings<TOwner>>>
+			| ((
+					current: ScopedWorkbenchSettings<TOwner>,
+			  ) => Readonly<Partial<OwnedSettings<TOwner>>>),
+	): Promise<void>;
 }
 
 type WorkbenchSettings<TOwner extends FeatureSettingsOwner> = BaseWorkbenchSettings<TOwner> &
@@ -202,7 +208,9 @@ interface WorkbenchOptions {
 	plugin: Plugin;
 	readSettings(): FlashcardSettings;
 	/** Commits a settings patch; must publish the committed settings on success. */
-	commitSettings(patch: Partial<FlashcardSettings>): Promise<void>;
+	commitSettings(
+		patch: Partial<FlashcardSettings> | (() => Partial<FlashcardSettings>),
+	): Promise<void>;
 	createModules(): AnyWorkbenchModule[];
 }
 
@@ -326,6 +334,17 @@ export function createWorkbench(options: WorkbenchOptions): Workbench {
 			read: () => projectSettings(moduleId, options.readSettings()),
 			update: async (patch) => {
 				if (disposed) throw new WorkbenchDisposedError();
+				if (typeof patch === "function") {
+					await options.commitSettings(() => {
+						if (disposed) throw new WorkbenchDisposedError();
+						const current = projectSettings(moduleId, options.readSettings());
+						return authorizeSettingsPatch(
+							moduleId,
+							patch(current),
+						) as Partial<FlashcardSettings>;
+					});
+					return;
+				}
 				const detached = authorizeSettingsPatch(moduleId, patch);
 				await options.commitSettings(detached as Partial<FlashcardSettings>);
 			},

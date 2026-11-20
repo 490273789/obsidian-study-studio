@@ -31,7 +31,9 @@ export interface LocalDictionaryStorageImportTransaction {
 }
 
 export interface LocalDictionaryStorageRemoval {
+	/** Marks the isolated package as deleted. Cleanup after that point is best-effort. */
 	commit(): Promise<void>;
+	/** Restores the isolated package while removal is still staged. */
 	rollback(): Promise<void>;
 }
 

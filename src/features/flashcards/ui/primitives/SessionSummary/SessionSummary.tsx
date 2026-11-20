@@ -1,11 +1,11 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import type { LucideIcon } from "lucide-react";
 import { CircleCheck } from "lucide-react";
 import { cls } from "../../../../../core/shared/classNames";
 import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { Confetti } from "../../../../../core/ui/primitives/Confetti";
-import { handleSessionSummaryKeyDown } from "./sessionSummaryKeyboard";
+import { focusSessionSummary, handleSessionSummaryKeyDown } from "./sessionSummaryKeyboard";
 import styles from "./SessionSummary.module.scss";
 
 interface SummaryMetric {
@@ -51,14 +51,10 @@ export function SessionSummary({
 	overviewExtra,
 	children,
 }: SessionSummaryProps) {
+	const rootRef = useRef<HTMLDivElement>(null);
 	useEffect(() => {
-		const handleKeyDown = (e: KeyboardEvent) => {
-			handleSessionSummaryKeyDown(e, { actions, onHome });
-		};
-
-		window.addEventListener("keydown", handleKeyDown);
-		return () => window.removeEventListener("keydown", handleKeyDown);
-	}, [actions, onHome]);
+		if (rootRef.current) focusSessionSummary(rootRef.current);
+	}, []);
 
 	const actionButtons = actions.map((action) => (
 		<FlashcardButton
@@ -100,7 +96,16 @@ export function SessionSummary({
 	);
 
 	return (
-		<div className={cls("fc-page fc-page--fill", styles.summary)}>
+		// oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- This focused page owns its result shortcuts.
+		<div
+			className={cls("fc-page fc-page--fill", styles.summary)}
+			ref={rootRef}
+			tabIndex={-1}
+			onKeyDown={(event) => {
+				if (event.defaultPrevented) return;
+				handleSessionSummaryKeyDown(event, { actions, onHome }, event.currentTarget);
+			}}
+		>
 			{celebrate && <Confetti />}
 			<FlashcardHeader icon={icon} title={mode} onBack={onHome} />
 			<div className={cls("fc-page__body", styles.scroll)}>

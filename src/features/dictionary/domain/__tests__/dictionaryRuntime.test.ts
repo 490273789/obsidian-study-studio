@@ -46,8 +46,6 @@ describe("dictionary selection settings", () => {
 				return true;
 			},
 			getLocalDictionaryAdministrationState: () => dictionary,
-			setLocalDictionaryAdministrationState: () => {},
-			save: async () => {},
 		};
 		lookup.mockImplementation(async ({ text }: { text: string }) => ({
 			word: text,

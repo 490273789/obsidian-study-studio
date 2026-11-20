@@ -71,6 +71,7 @@ export function createShadowRecorder(ownerWindow: Window): ShadowRecorderPort {
 						if (event.data.size) chunks.push(event.data);
 					});
 					current.addEventListener("error", () => {
+						if (recorder !== current) return;
 						releaseTracks();
 						reject(new Error("麦克风录音失败，请重试"));
 					});
@@ -87,7 +88,7 @@ export function createShadowRecorder(ownerWindow: Window): ShadowRecorderPort {
 					});
 					for (const track of acquired.getAudioTracks())
 						track.addEventListener("ended", () => {
-							if (current.state !== "inactive") {
+							if (recorder === current && current.state !== "inactive") {
 								current.stop();
 								reject(new Error("麦克风已断开，请重试"));
 							}
@@ -116,29 +117,20 @@ export function createShadowRecorder(ownerWindow: Window): ShadowRecorderPort {
 			player = audio;
 			return new Promise<void>((resolve, reject) => {
 				rejectPlayback = reject;
-				audio.addEventListener(
-					"ended",
-					() => {
-						rejectPlayback = null;
-						stopPlayback();
-						resolve();
-					},
-					{ once: true },
-				);
-				audio.addEventListener(
-					"error",
-					() => {
-						rejectPlayback = null;
-						stopPlayback();
-						reject(new Error("录音回听失败"));
-					},
-					{ once: true },
-				);
-				void audio.play().catch((error: unknown) => {
+				const finish = (error?: unknown) => {
+					if (player !== audio) return;
 					rejectPlayback = null;
 					stopPlayback();
-					reject(error);
+					if (error === undefined) resolve();
+					else reject(error);
+				};
+				audio.addEventListener("ended", () => finish(), { once: true });
+				audio.addEventListener("error", () => finish(new Error("录音回听失败")), {
+					once: true,
 				});
+				void audio
+					.play()
+					.catch((error: unknown) => finish(error ?? new Error("录音回听失败")));
 			});
 		},
 		dispose() {

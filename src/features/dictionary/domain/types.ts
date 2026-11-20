@@ -230,8 +230,6 @@ export interface DictionarySettingsStore {
 	/** Mutates a draft and persists it; returns false when persistence failed. */
 	updateDictionarySettings(mutate: (draft: DictionarySettings) => void): Promise<boolean>;
 	getLocalDictionaryAdministrationState(): Readonly<LocalDictionaryAdministrationState>;
-	setLocalDictionaryAdministrationState(state: LocalDictionaryAdministrationState): void;
-	save(): Promise<void>;
 }
 
 /* -------------------------------------------------------------------------- */

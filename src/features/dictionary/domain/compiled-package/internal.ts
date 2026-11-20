@@ -97,15 +97,31 @@ export class DictionaryCompileError extends Error {
 }
 
 export function normalizeCompiledLookupKey(value: string): string {
-	return value
-		.normalize("NFKC")
-		.toLowerCase()
+	return lowercaseCodePoints(value.normalize("NFKC"))
 		.replace(/[().,\-&、 '/\\@_$!]/g, "")
-		.trim();
+		.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, "");
 }
 
 export function normalizeCompiledResourceKey(value: string): string {
-	return value.normalize("NFKC").replaceAll("\\", "/").replace(/^\/+/, "").toLowerCase();
+	return lowercaseCodePoints(value.replaceAll("\\", "/").replace(/^\/+/, "").normalize("NFKC"));
+}
+
+function lowercaseCodePoints(value: string): string {
+	// The Rust compiler applies char::to_lowercase without contextual case rules.
+	return value.replace(/\p{Changes_When_Lowercased}/gu, (character) => character.toLowerCase());
+}
+
+export function compareCompiledIndexKeys(left: string, right: string): number {
+	// Rust orders the index by UTF-8 bytes, which follow Unicode code-point order.
+	let index = 0;
+	const commonLength = Math.min(left.length, right.length);
+	while (index < commonLength) {
+		const leftPoint = left.codePointAt(index)!;
+		const rightPoint = right.codePointAt(index)!;
+		if (leftPoint !== rightPoint) return leftPoint - rightPoint;
+		index += leftPoint > 0xffff ? 2 : 1;
+	}
+	return left.length - right.length;
 }
 
 export async function digestSha256Hex(data: Uint8Array): Promise<string> {

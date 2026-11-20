@@ -166,6 +166,24 @@ describe("outbound port", () => {
 
 		afterEach(() => vi.unstubAllGlobals());
 
+		it("does not fetch when the signal was already aborted", async () => {
+			const fetchMock = replyWith({ contentType: "image/jpeg" });
+			const { port } = createPort();
+			const controller = new AbortController();
+			controller.abort();
+
+			await expect(
+				port.requestHostPinned({
+					label: "test",
+					url: "https://img.example.test/a.jpg",
+					accept: "image/jpeg",
+					maxBytes: 16,
+					signal: controller.signal,
+				}),
+			).rejects.toMatchObject({ code: "cancelled" });
+			expect(fetchMock).not.toHaveBeenCalled();
+		});
+
 		it("refuses redirects and sends no credentials", async () => {
 			const fetchMock = replyWith({
 				status: 200,
@@ -188,8 +206,8 @@ describe("outbound port", () => {
 			);
 		});
 
-		it("rejects a response whose MIME type is not accepted", async () => {
-			replyWith({ status: 200, contentType: "text/html" });
+		it.each(["text/html", "image/jpeg2000"])("rejects MIME type %s", async (contentType) => {
+			replyWith({ status: 200, contentType });
 			const { port } = createPort();
 
 			await expect(

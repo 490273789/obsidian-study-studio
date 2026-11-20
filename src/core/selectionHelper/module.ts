@@ -166,6 +166,7 @@ export function createSelectionHelperModule(
 								const snapshot = helper.getSnapshot();
 								return (
 									snapshot.visible &&
+									helper.ownsSource(owner, snapshot.target?.source) &&
 									(snapshot.mode === "slot" ||
 										(snapshot.mode as string) === "dictionary") &&
 									(snapshot.activeSlotId === "dictionary" ||

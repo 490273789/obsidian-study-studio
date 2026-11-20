@@ -9,6 +9,10 @@ import { WordListView } from "../WordListView";
 const hooks = vi.hoisted(() => ({
 	cursor: 0,
 	slots: [] as Array<{ hasValue: boolean; value: unknown; deps?: readonly unknown[] }>,
+	stores: [] as Array<{
+		subscribe: (listener: () => void) => () => void;
+		read: () => unknown;
+	}>,
 }));
 
 const navigationState = vi.hoisted(() => ({
@@ -65,8 +69,12 @@ vi.mock("react", async (original) => {
 		useLayoutEffect: () => {
 			hooks.cursor++;
 		},
-		useSyncExternalStore: (_subscribe: unknown, read: () => unknown) => {
+		useSyncExternalStore: (
+			subscribe: (listener: () => void) => () => void,
+			read: () => unknown,
+		) => {
 			hooks.cursor++;
+			hooks.stores.push({ subscribe, read });
 			return read();
 		},
 	};
@@ -151,13 +159,23 @@ function snapshot(decks: (typeof DECK_A)[]): DeckHomeSnapshot {
 
 function makeDeckHome(decks: (typeof DECK_A)[]) {
 	const act = vi.fn(async () => ({ kind: "applied" }));
+	const subscribers = new Set<() => void>();
 	const home = {
 		getSnapshot: () => snapshot(decks),
-		subscribe: vi.fn(() => () => {}),
+		subscribe: (listener: () => void) => {
+			subscribers.add(listener);
+			return () => subscribers.delete(listener);
+		},
 		getDeck: (deckId: string) => decks.find((deck) => deck.id === deckId),
 		act,
 	} as unknown as React.ComponentProps<typeof FlashcardApp>["deckHome"];
-	return { home, act };
+	return {
+		home,
+		act,
+		publish: () => {
+			for (const listener of subscribers) listener();
+		},
+	};
 }
 
 function findWordListView(node: React.ReactNode): React.ReactElement<WordListProps> {
@@ -196,6 +214,7 @@ const renderApp = FlashcardApp as unknown as (
 
 function render(props: React.ComponentProps<typeof FlashcardApp>): React.ReactNode {
 	hooks.cursor = 0;
+	hooks.stores = [];
 	return renderApp(props);
 }
 
@@ -221,6 +240,26 @@ describe("FlashcardApp word-list visit recording", () => {
 			startTimeMs: 1_000,
 			endTimeMs: 2_000,
 		});
+	});
+
+	it("subscribes to deck replacements while the word list is open", () => {
+		const decks = [DECK_A];
+		const { home, publish } = makeDeckHome(decks);
+		const props = propsFor(home);
+		const original = findWordListView(render(props));
+		const store = hooks.stores.find(({ read }) => read() === DECK_A);
+		if (!store) throw new Error("Expected a subscription to the word-list deck");
+		const changed = vi.fn();
+		const release = store.subscribe(changed);
+		const updated = { ...DECK_A, name: "Renamed" };
+		decks[0] = updated;
+		publish();
+		expect(changed).toHaveBeenCalledOnce();
+		expect(store.read()).toBe(updated);
+		const next = findWordListView(render(props));
+		expect(next.props.deck).toBe(updated);
+		expect(next.props.onRecordVisit).toBe(original.props.onRecordVisit);
+		release();
 	});
 
 	it("replaces the visit callback when the word-list deck changes", () => {

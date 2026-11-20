@@ -247,11 +247,15 @@ export class FlashcardRepository
 	}
 
 	getAllDecks(): Deck[] {
-		return this.deckIndex.getAllDecks();
+		const decks = this.deckIndex.getAllDecks();
+		return this.deckIndex.hasAvailableTagsSnapshot()
+			? decks.filter((deck) => deck.tag !== "")
+			: decks;
 	}
 
 	getDeck(id: string): Deck | undefined {
-		return this.deckIndex.getDeck(id);
+		const deck = this.deckIndex.getDeck(id);
+		return deck?.tag === "" && this.deckIndex.hasAvailableTagsSnapshot() ? undefined : deck;
 	}
 
 	getAvailableTags(): string[] {
@@ -289,7 +293,11 @@ export class FlashcardRepository
 	}
 
 	getCard(deckId: string, cardId: string): FlashCard | undefined {
-		return this.deckIndex.getCard(deckId, cardId);
+		const card = this.deckIndex.getCard(deckId, cardId);
+		// Cached learning placeholders carry scheduling information without Markdown.
+		return this.deckIndex.hasAvailableTagsSnapshot() && card?.front === "" && card.back === ""
+			? undefined
+			: card;
 	}
 
 	getStudyHistory(): StudyHistoryEntry[] {
@@ -582,40 +590,31 @@ export class FlashcardRepository
 					// A pending journal already changed card states in memory; merge it
 					// first so this full-document build and later replays stay consistent.
 					await this.flushJournalBeforeWrite();
-					const nextDecks = new Map(state.decks);
 					const change = state.change;
-					if (change) {
-						// Continuity reports the truth; fresh-but-equal decks reuse the previous
-						// objects so WeakMap serialization and DeckHome caches stay warm.
-						const touched = new Set([
-							...change.changedDeckIds,
-							...change.removedDeckIds,
-						]);
-						for (const deckId of nextDecks.keys()) {
-							if (touched.has(deckId)) continue;
-							const previous = this.deckIndex.getDeck(deckId);
-							if (previous) nextDecks.set(deckId, previous);
-						}
-					}
 					let cacheDecks: ReadonlyMap<string, Deck> | null = null;
 					let cacheTags: readonly string[] = [];
 					await this.commitAuthority(() => {
+						const previousDecks = this.deckIndex.getDecksMap();
+						const nextDecks = this.rebaseContinuityDecks(state, previousDecks);
+						if (change?.unreadablePaths?.length) {
+							retainUnindexedLearning(
+								nextDecks,
+								previousDecks,
+								state.continuity.sources,
+							);
+						}
 						const nextAvailableTags = [
 							...(state.availableTags ?? this.deckIndex.getAvailableTags()),
 						];
 						const nextSpellingProgress = cloneSpellingProgress(this.spellingProgress);
-						this.pruneSpellingProgress(
-							this.deckIndex.getDecksMap(),
-							nextDecks,
-							nextSpellingProgress,
-						);
+						this.pruneSpellingProgress(previousDecks, nextDecks, nextSpellingProgress);
 						const nextContinuity = cloneContinuityState(state.continuity);
-						const previousDecks = this.deckIndex.getDecksMap();
 						const previousTags = this.deckIndex.getAvailableTags();
 						const hadTagsSnapshot = this.deckIndex.hasAvailableTagsSnapshot();
-						const decksChanged = change
-							? change.changedDeckIds.length > 0 || change.removedDeckIds.length > 0
-							: !sameDeckObjects(previousDecks, nextDecks);
+						const decksChanged =
+							Boolean(
+								change?.changedDeckIds.length || change?.removedDeckIds.length,
+							) || !sameDeckObjects(previousDecks, nextDecks);
 						// Unchanged decks mean the persisted card baseline still applies, so
 						// the learning document does not need a full card-record rebuild.
 						const committedCards = decksChanged
@@ -655,6 +654,69 @@ export class FlashcardRepository
 				});
 			},
 		};
+	}
+
+	/** Source I/O runs outside the learning queue. Rebase each retry on committed learning. */
+	private rebaseContinuityDecks(
+		state: CardIdentityContinuityState,
+		currentDecks: ReadonlyMap<string, Deck>,
+	): Map<string, Deck> {
+		const nextDecks = new Map(state.decks);
+		const pendingJournal = state.continuity.journal;
+		const completedJournal = pendingJournal ? null : this.continuity.journal;
+		if (!state.change && !pendingJournal && !completedJournal) return nextDecks;
+
+		const changedDeckIds = new Set(
+			state.change?.changedDeckIds ?? completedJournal?.sources.map((source) => source.path),
+		);
+		const oldIdsByDeck = new Map<string, Map<string, string>>();
+		if (completedJournal?.type === "migration") {
+			for (const source of completedJournal.sources) {
+				oldIdsByDeck.set(
+					source.path,
+					new Map(
+						Object.entries(source.identityMap).map(([before, after]) => [
+							after,
+							before,
+						]),
+					),
+				);
+			}
+		}
+		const persistedCards = this.documents.getPersistedLearning()?.cards;
+		let schedules: Map<string, Card> | undefined;
+		for (const [deckId, deck] of nextDecks) {
+			const current = currentDecks.get(deckId);
+			if (!changedDeckIds.has(deckId) && current && (current.tag || !deck.tag)) {
+				// An authority retry can restore a tag-less placeholder if the cache is missing.
+				// Reuse complete unchanged decks and their cached serializations.
+				nextDecks.set(deckId, current);
+				continue;
+			}
+			if (!schedules) {
+				schedules = new Map();
+				for (const currentDeck of currentDecks.values()) {
+					for (const card of currentDeck.cards) schedules.set(card.id, card.fsrsCard);
+				}
+			}
+			const latestSchedules = schedules;
+			const oldIds = oldIdsByDeck.get(deckId);
+			const cards = deck.cards.map((card) => {
+				const id = oldIds?.get(card.id) ?? card.id;
+				const persisted = persistedCards?.[id];
+				const latest =
+					latestSchedules.get(id) ??
+					(persisted && this.codec.decodeFsrsCard(persisted.fsrsCard));
+				return latest && latest !== card.fsrsCard ? { ...card, fsrsCard: latest } : card;
+			});
+			nextDecks.set(deckId, {
+				...deck,
+				cards,
+				studyCount: current?.studyCount ?? deck.studyCount,
+				lastStudied: current ? current.lastStudied : deck.lastStudied,
+			});
+		}
+		return nextDecks;
 	}
 
 	dispose(): void {
@@ -920,7 +982,11 @@ export class FlashcardRepository
 			}
 			if (!committedCards) {
 				for (const card of deck.cards) {
-					cards[card.id] = this.getPersistedCardLearningState(card);
+					const cardState = this.getPersistedCardLearningState(card);
+					cards[card.id] =
+						deck.tag === "" && card.sourceFile
+							? { ...cardState, sourceFile: card.sourceFile }
+							: cardState;
 				}
 			}
 		}
@@ -973,6 +1039,44 @@ export class FlashcardRepository
 		this.documents.publishRevision(
 			this.deckIndex.getDeckStructureRevision(),
 			this.challengeProgressRevision,
+		);
+	}
+}
+
+function retainUnindexedLearning(
+	nextDecks: Map<string, Deck>,
+	previousDecks: ReadonlyMap<string, Deck>,
+	sources: PersistedCardIdentityContinuityState["sources"],
+): void {
+	const indexedIds = new Set(
+		Array.from(nextDecks.values()).flatMap((deck) => deck.cards.map((card) => card.id)),
+	);
+	for (const [path, placeholder] of previousDecks) {
+		const condition = sources[path];
+		const keep =
+			path === LEARNING_PLACEHOLDER_DECK_ID ||
+			(condition?.type === "last-known-good" && condition.reason === "source-failure");
+		if (!keep || placeholder.tag || nextDecks.has(path)) continue;
+		const cards = placeholder.cards.filter((card) => {
+			const source = sources[card.sourceFile];
+			const unresolved =
+				!card.sourceFile ||
+				(source?.type === "last-known-good" && source.reason === "source-failure");
+			if (unresolved && indexedIds.has(card.id)) {
+				// The scan already deferred claims to known unresolved identities.
+				// Learning can Sync during the scan and add another one before commit.
+				throw new FlashcardPersistenceError(
+					"invariant-violated",
+					"Learning changed during an incomplete source scan. Refresh to verify card identities.",
+					true,
+				);
+			}
+			return unresolved;
+		});
+		if (path === LEARNING_PLACEHOLDER_DECK_ID && cards.length === 0) continue;
+		nextDecks.set(
+			path,
+			cards.length === placeholder.cards.length ? placeholder : { ...placeholder, cards },
 		);
 	}
 }

@@ -370,6 +370,16 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 			}
 			availableTags = activeRepository().tags.read();
 			hasLoadedTags = true;
+			if (outcome.change.unreadablePaths?.length) {
+				tagScanFailed = true;
+				const message = describeSynchronizationOutcome(
+					outcome,
+					activeServices().cardIdentityContinuity.inspect(),
+					host.settings.read().language,
+				);
+				if (message) new Notice(message, 12000);
+				return;
+			}
 
 			let removedCount = 0;
 			if (options.cleanConfiguredTags) {

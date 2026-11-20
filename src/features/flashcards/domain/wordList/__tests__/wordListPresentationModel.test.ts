@@ -21,19 +21,19 @@ describe("word list presentation model", () => {
 		expect(
 			buildWordListItems([
 				makeCard("second", 1),
-				makeCard("first", 0, { front: " #first #tag ", explanation: undefined }),
+				makeCard("first", 0, { front: " ## C# 与 #tag ", explanation: undefined }),
 			]),
 		).toEqual([
 			{
 				id: "first",
-				front: "first tag",
+				front: "C# 与 #tag",
 				back: "first back",
 				explanation: "",
 				index: 0,
 			},
 			{
 				id: "second",
-				front: "second",
+				front: "#second",
 				back: "second back",
 				explanation: "second explanation",
 				index: 1,

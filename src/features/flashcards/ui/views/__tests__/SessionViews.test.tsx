@@ -350,6 +350,10 @@ describe("study and practice presentation", () => {
 			cardPresentation: { ...cardPresentation, answerVisible: true },
 		});
 		expect(markdown(tree)).toEqual(["front", "back", "explanation"]);
+		const fixedIntervals = elements(tree).filter((element) =>
+			element.props.className?.split(" ").includes("flashcard-rating-duration"),
+		);
+		expect(fixedIntervals.map((element) => element.props.children)).toEqual(["21 d"]);
 		for (const button of buttons(tree)) await click(button);
 		expect(act.mock.calls.map(([action]) => action)).toEqual([
 			{ kind: "study-previous", reference: study.reference },

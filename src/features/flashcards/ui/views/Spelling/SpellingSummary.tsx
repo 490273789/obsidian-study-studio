@@ -4,7 +4,7 @@ import type {
 	SpellingIncorrectCardSnapshot,
 	SpellingResultSnapshot,
 } from "../../../domain/sessions/sessionLifecycle";
-import { MarkdownContent } from "../../primitives/Markdown";
+import { MarkdownContent, type MarkdownRendererFn } from "../../primitives/Markdown";
 import { SessionSummary } from "../../primitives/SessionSummary/SessionSummary";
 import { cls } from "../../../../../core/shared/classNames";
 import { useFlashcardI18n } from "../../../strings/context";
@@ -16,7 +16,7 @@ interface SpellingSummaryProps {
 	onRestart: () => void;
 	onRetryIncorrect: () => void;
 	onHome: () => void;
-	markdownRenderer: (content: string, el: HTMLElement) => Promise<void>;
+	markdownRenderer: MarkdownRendererFn;
 }
 
 export const SpellingSummary = memo(function SpellingSummary({
@@ -103,7 +103,7 @@ const IncorrectSpellingItem = memo(function IncorrectSpellingItem({
 }: {
 	card: SpellingIncorrectCardSnapshot;
 	index: number;
-	markdownRenderer: (content: string, el: HTMLElement) => Promise<void>;
+	markdownRenderer: MarkdownRendererFn;
 }) {
 	const { t } = useFlashcardI18n();
 	return (
@@ -115,6 +115,7 @@ const IncorrectSpellingItem = memo(function IncorrectSpellingItem({
 					<MarkdownContent
 						content={card.back}
 						className={styles.incorrectText}
+						sourcePath={card.sourceFile}
 						markdownRenderer={markdownRenderer}
 					/>
 				</div>

@@ -5,7 +5,7 @@ import { SessionSummary } from "../../primitives/SessionSummary/SessionSummary";
 import type { ChallengeResultSnapshot } from "../../../domain/sessions/sessionLifecycle";
 import { formatCompactDuration } from "../../../strings";
 import { useFlashcardI18n } from "../../../strings/context";
-import { MarkdownContent } from "../../primitives/Markdown";
+import { MarkdownContent, type MarkdownRendererFn } from "../../primitives/Markdown";
 import styles from "../../primitives/SessionSummary/SessionSummary.module.scss";
 
 interface ChallengeSummaryProps {
@@ -13,7 +13,7 @@ interface ChallengeSummaryProps {
 	onNextLevel: () => void;
 	onRestart: () => void;
 	onEnd: () => void;
-	markdownRenderer: (content: string, el: HTMLElement) => Promise<void>;
+	markdownRenderer: MarkdownRendererFn;
 }
 
 export const ChallengeSummary = memo(function ChallengeSummary({
@@ -99,6 +99,7 @@ export const ChallengeSummary = memo(function ChallengeSummary({
 									<MarkdownContent
 										content={card.front}
 										className={styles.incorrectText}
+										sourcePath={card.sourceFile}
 										markdownRenderer={markdownRenderer}
 									/>
 									<span className={styles.source}>
@@ -109,6 +110,7 @@ export const ChallengeSummary = memo(function ChallengeSummary({
 									<MarkdownContent
 										content={card.back}
 										className={styles.incorrectText}
+										sourcePath={card.sourceFile}
 										markdownRenderer={markdownRenderer}
 									/>
 								</div>

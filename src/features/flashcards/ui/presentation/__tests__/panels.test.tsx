@@ -45,7 +45,7 @@ describe("card presentation panels", () => {
 			content: "front",
 			pronunciationWord: null,
 		};
-		const tree = CardQuestionPanel({ block }) as PanelChrome;
+		const tree = CardQuestionPanel({ block, sourcePath: "Deck/source.md" }) as PanelChrome;
 		expect(tree.props.className).toBe("flashcard-question fc-panel");
 		const [label, body] = childrenOf(tree.props.children);
 		expect((label as TextElement).props.children).toBe("common.question");
@@ -59,13 +59,15 @@ describe("card presentation panels", () => {
 			content: "front",
 			pronunciationWord: "front",
 		};
-		const tree = CardQuestionPanel({ block }) as PanelChrome;
+		const tree = CardQuestionPanel({ block, sourcePath: "Deck/source.md" }) as PanelChrome;
 		const body = childrenOf(tree.props.children)[1] as React.ReactElement<{
 			word: string;
+			sourcePath: string;
 			runtime: unknown;
 		}>;
 		expect(body?.type).toBe(PronounceableMarkdown);
 		expect(body?.props.word).toBe("front");
+		expect(body?.props.sourcePath).toBe("Deck/source.md");
 		expect(body?.props.runtime).toBe(deps.pronunciationRuntime);
 	});
 
@@ -80,7 +82,11 @@ describe("card presentation panels", () => {
 			content: "why",
 			pronunciationWord: null,
 		};
-		const tree = CardAnswerSection({ answer, explanation }) as PanelChrome;
+		const tree = CardAnswerSection({
+			answer,
+			explanation,
+			sourcePath: "Deck/source.md",
+		}) as PanelChrome;
 		expect(tree.props.className).toBe("flashcard-answer-section");
 		const [divider, answerPanel, explanationPanel] = childrenOf(tree.props.children);
 		expect((divider as PanelChrome).props.className).toBe("flashcard-divider");
@@ -96,7 +102,7 @@ describe("card presentation panels", () => {
 			content: "why",
 			pronunciationWord: null,
 		};
-		const tree = CardExplanationPanel({ block }) as PanelChrome;
+		const tree = CardExplanationPanel({ block, sourcePath: "Deck/source.md" }) as PanelChrome;
 		expect(tree.props.className).toBe("flashcard-explanation fc-panel");
 		const [label, body] = childrenOf(tree.props.children);
 		expect((label as TextElement).props.children).toBe("common.explanation");

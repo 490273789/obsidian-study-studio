@@ -1,8 +1,9 @@
 import { createEmptyCard } from "ts-fsrs";
 import type { FlashCard } from "../../../../core/shared/types";
 import {
-	FIRST_TAG_LINE_PATTERN,
 	CARD_END_SEPARATOR,
+	cardSourceBodyStart,
+	findSourceTagLine,
 	isMarkerLine,
 	parseCardBlock,
 } from "./cardFormat";
@@ -28,9 +29,12 @@ export function parseFlashcards(
 ): FlashCard[] {
 	const cards: FlashCard[] = [];
 
-	// Remove the tag line from content for parsing
-	const contentWithoutTag = content.replace(FIRST_TAG_LINE_PATTERN, "\n");
-	const lines = contentWithoutTag.split(/\r?\n/);
+	const tag = findSourceTagLine(content);
+	const bodyStart = cardSourceBodyStart(content);
+	const body = tag
+		? content.slice(bodyStart, tag.start) + content.slice(tag.end)
+		: content.slice(bodyStart);
+	const lines = body.split(/\r?\n/);
 	let currentBlock: string[] = [];
 
 	for (const line of lines) {

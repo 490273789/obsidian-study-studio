@@ -1,11 +1,7 @@
 export const FRONT_BACK_SEPARATOR = "??";
 export const EXPLANATION_SEPARATOR = "::";
 export const CARD_END_SEPARATOR = ";;";
-const TAG_NAME = "#[\\w\\u4e00-\\u9fa5]+";
-
-export const FIRST_TAG_LINE_PATTERN = new RegExp(`(?:^|\\n)\\s*${TAG_NAME}\\s*\\n?`);
-const TAG_LINE_PATTERN = new RegExp(`^\\s*${TAG_NAME}\\s*$`);
-const FIRST_TAG_CAPTURE_PATTERN = new RegExp(`(?:^|\\n)\\s*(${TAG_NAME})`);
+const TAG_CANDIDATE = /^[^\S\n]*(#[\w\u4e00-\u9fa5]+)([^\n]*)/m;
 
 /** The physical line ending a card source uses; source edits never normalize it. */
 export type CardSourceNewline = "\n" | "\r\n";
@@ -57,14 +53,45 @@ export function formatCardIdentityMarker(cardIdentity: string): string {
 	return `<!-- wsr-card-id: ${cardIdentity.toLowerCase()} -->`;
 }
 
-/** A source tag line (`#单词`) is the document prefix of a card file, not card content. */
-export function isTagLine(line: string): boolean {
-	return TAG_LINE_PATTERN.test(line);
+/** A BOM and a closed YAML frontmatter block belong to the note, outside editable card text. */
+export function cardSourceBodyStart(content: string): number {
+	const start = content.startsWith("\uFEFF") ? 1 : 0;
+	if (!content.startsWith("---\n", start) && !content.startsWith("---\r\n", start)) return start;
+	const end = /^---[ \t]*\r?(?:\n|$)/gm;
+	end.lastIndex = content.indexOf("\n", start) + 1;
+	return end.exec(content) ? end.lastIndex : start;
+}
+
+/** Locate the standalone tag in the first front, allowing legacy document preambles. */
+export function findSourceTagLine(
+	content: string,
+): { tag: string; start: number; end: number } | null {
+	const bodyStart = cardSourceBodyStart(content);
+	let followsIdentity = false;
+	for (const line of content.slice(bodyStart).matchAll(/[^\n]+/g)) {
+		if (!line[0].trim()) continue;
+		const text = line[0];
+		if (isMarkerLine(text, FRONT_BACK_SEPARATOR) || isMarkerLine(text, CARD_END_SEPARATOR))
+			return null;
+		const candidate = text.match(TAG_CANDIDATE);
+		if (!candidate) {
+			followsIdentity = extractCardIdentityMarker(text) !== null;
+			continue;
+		}
+		if (followsIdentity || candidate[2]!.trim()) return null;
+		const tag = candidate[1]!;
+		const start = bodyStart + line.index;
+		const end = start + line[0].length;
+		return { tag, start, end: content[end] === "\n" ? end + 1 : end };
+	}
+	return null;
 }
 
 /** The first tag line of a Markdown source, or null when the note is not tagged. */
 export function extractFirstTag(content: string): string | null {
-	return content.match(FIRST_TAG_CAPTURE_PATTERN)?.[1] ?? null;
+	// Discovery also accepts the legacy line-leading hashtag form. Only a full
+	// standalone header is removable when reading or editing card contents.
+	return content.slice(cardSourceBodyStart(content)).match(TAG_CANDIDATE)?.[1] ?? null;
 }
 
 /** One parsed card block: the content and identity a source scanner and a reader both need. */

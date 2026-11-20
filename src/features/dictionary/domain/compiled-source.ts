@@ -152,7 +152,10 @@ export class CompiledDictionarySource implements DictionarySource {
 
 	private async open(): Promise<void> {
 		if (this.closed) throw new DictionaryError("request", dictionaryText().errors.request);
-		this.opening ??= this.openNow();
+		this.opening ??= this.openNow().catch((error: unknown) => {
+			this.opening = null;
+			throw error;
+		});
 		return this.opening;
 	}
 
@@ -179,13 +182,18 @@ export class CompiledDictionarySource implements DictionarySource {
 			reader.close();
 			throw new DictionaryError("request", dictionaryText().errors.request);
 		}
+		try {
+			this.workerClient.open(this.id, reader.queryPlan, this.packageCacheBytes);
+		} catch (error) {
+			reader.close();
+			throw error;
+		}
 		this.packageReader = reader;
 		this.script = reader.script;
 		this.stylesheet = reader.stylesheet;
 		this.workerClient.register(this.id, {
 			readPackageFile: (path) => this.readPackageFile(path),
 		});
-		this.workerClient.open(this.id, reader.queryPlan, this.packageCacheBytes);
 	}
 
 	private async readPackageFile(path: string): Promise<Uint8Array> {

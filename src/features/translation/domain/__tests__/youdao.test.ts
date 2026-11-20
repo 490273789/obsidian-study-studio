@@ -26,6 +26,7 @@ describe("translateYoudao", () => {
 			expect.objectContaining({
 				url: connection.baseUrl,
 				method: "POST",
+				timeoutMs: 120_000,
 				headers: { "Content-Type": "application/x-www-form-urlencoded" },
 			}),
 		);

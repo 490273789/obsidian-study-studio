@@ -7,6 +7,7 @@ export const begin_mdict_compile: (a: number, b: number, c: number, d: number, e
 export const compile_eudic_file: (a: number, b: number, c: number, d: number, e: number) => void;
 export const compile_mdict_files: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => void;
 export const compileddictionary_engine_version: (a: number, b: number) => void;
+export const compileddictionary_entry_count: (a: number) => bigint;
 export const compileddictionary_file_count: (a: number) => number;
 export const compileddictionary_file_path: (a: number, b: number, c: number) => void;
 export const compileddictionary_take_file: (a: number, b: number, c: number) => void;
@@ -21,7 +22,6 @@ export const mdictcompilesession_file_count: (a: number) => number;
 export const mdictcompilesession_file_path: (a: number, b: number, c: number) => void;
 export const mdictcompilesession_finish: (a: number, b: number) => void;
 export const mdictcompilesession_take_file: (a: number, b: number, c: number) => void;
-export const compileddictionary_entry_count: (a: number) => bigint;
 export const __wbindgen_add_to_stack_pointer: (a: number) => number;
 export const __wbindgen_export: (a: number, b: number) => number;
 export const __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;

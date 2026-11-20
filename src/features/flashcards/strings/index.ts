@@ -117,22 +117,6 @@ export function formatCompactDuration(language: Language, seconds: number): stri
 		: t("time.hours", { count: hours });
 }
 
-function formatReviewInterval(
-	language: Language,
-	unit: "minute" | "hour" | "day",
-	count: number,
-): string {
-	const t = createTranslator(language);
-	switch (unit) {
-		case "minute":
-			return t("time.minute", { count });
-		case "hour":
-			return t("time.hour", { count });
-		case "day":
-			return t("time.day", { count });
-	}
-}
-
 export function getLocalizedRatingButtons(language: Language): RatingButton[] {
 	const t = createTranslator(language);
 	return [
@@ -140,31 +124,27 @@ export function getLocalizedRatingButtons(language: Language): RatingButton[] {
 			label: t("ratings.again"),
 			shortcut: "1",
 			rating: 1,
-			intervalDesc: formatReviewInterval(language, "minute", 1),
 		},
 		{
 			label: t("ratings.hard"),
 			shortcut: "2",
 			rating: 2,
-			intervalDesc: formatReviewInterval(language, "day", 1),
 		},
 		{
 			label: t("ratings.good"),
 			shortcut: "3",
 			rating: 3,
-			intervalDesc: formatReviewInterval(language, "day", 3),
 		},
 		{
 			label: t("ratings.easy"),
 			shortcut: "4",
 			rating: 4,
-			intervalDesc: formatReviewInterval(language, "day", 10),
 		},
 		{
 			label: t("ratings.trash"),
 			shortcut: "5",
 			rating: 5,
-			intervalDesc: formatReviewInterval(language, "day", 21),
+			intervalDesc: t("time.day", { count: 21 }),
 		},
 	];
 }

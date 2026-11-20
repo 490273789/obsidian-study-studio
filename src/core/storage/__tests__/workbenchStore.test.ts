@@ -55,6 +55,18 @@ describe("WorkbenchStore", () => {
 		expect(store.getPartition("learning")).toEqual({ cards: { c1: { fsrsCard: {} } } });
 	});
 
+	it.each([true, 7, "invalid", ["invalid"]])(
+		"loads defaults for a persisted value that is not a document: %j",
+		async (data) => {
+			const store = new WorkbenchStore(createMockBackend(data));
+			await expect(store.loadSettings()).resolves.toEqual(DEFAULT_SETTINGS);
+			expect(store.getRawDocument()).toEqual({
+				schemaVersion: 2,
+				settings: DEFAULT_SETTINGS,
+			});
+		},
+	);
+
 	it("saves settings and publishes a revision update", async () => {
 		const backend = createMockBackend();
 		const store = new WorkbenchStore(backend);
@@ -104,6 +116,25 @@ describe("WorkbenchStore", () => {
 		expect((backend.data as any).part2).toBe("val2");
 		expect((backend.data as any).settings.language).toBe("en");
 	});
+
+	it.each([true, "unfinished", 42, []].map((invalid) => ({ invalid })))(
+		"preserves committed learning data after a malformed external reload ($invalid)",
+		async ({ invalid }) => {
+			const learning = { cards: { known: true } };
+			const backend = createMockBackend({ settings: { language: "en" }, learning });
+			const store = new WorkbenchStore(backend);
+			await store.loadSettings();
+			const listener = vi.fn();
+			store.subscribe(listener);
+			backend.data = invalid;
+			await expect(store.reloadExternalSettings()).rejects.toThrow();
+			expect(store.getRevision()).toBe(0);
+			expect(listener).not.toHaveBeenCalled();
+			expect(store.getSettings().language).toBe("en");
+			await store.saveSettings({ ...store.getSettings(), language: "zh" });
+			expect(backend.data).toMatchObject({ learning });
+		},
+	);
 
 	it("reloads externally synchronized data and publishes revision", async () => {
 		const backend = createMockBackend({

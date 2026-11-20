@@ -378,78 +378,121 @@ describe("SessionLifecycle", () => {
 		await first;
 	});
 
-	it("reconciles past a deleted next study card after a committed answer without scheduling the previous card twice", async () => {
-		const subject = makeLifecycle([
-			makeCard("one", "one", 0),
-			makeCard("two", "two", 1),
-			makeCard("three", "three", 2),
-		]);
-		await subject.lifecycle.start({
-			mode: "study",
-			deckId: DECK_ID,
-			studyOrder: "sequential",
-			direction: "normal",
-		});
-		const first = subject.lifecycle.getSnapshot();
-		if (first.kind !== "active" || first.mode !== "study") throw new Error("active study");
-		const presentedAfterFirst: string[] = [];
-		subject.lifecycle.subscribe(() => {
-			const snapshot = subject.lifecycle.getSnapshot();
-			if (snapshot.kind === "active") presentedAfterFirst.push(snapshot.currentCard.identity);
-		});
-		let releaseCommit = (): void => undefined;
-		subject.repository.commitBarrier = new Promise<void>((resolve) => {
-			releaseCommit = resolve;
-		});
-		let reportCommitStarted = (): void => undefined;
-		const commitStarted = new Promise<void>((resolve) => {
-			reportCommitStarted = resolve;
-		});
-		const originalCommit = subject.repository.commitSession.bind(subject.repository);
-		vi.spyOn(subject.repository, "commitSession").mockImplementation((commit) => {
-			reportCommitStarted();
-			return originalCommit(commit);
-		});
-		const rate = vi.spyOn(subject.repository, "rateStudyCard");
-		const answer = subject.lifecycle.act(first.reference, { kind: "answer", rating: 3 });
-		await commitStarted;
-		subject.repository.decks.get(DECK_ID)!.cards = subject.repository.decks
-			.get(DECK_ID)!
-			.cards.filter((card) => card.id !== "two");
-		const reconcile = subject.continuitySessions.reconcile({
-			availableIdentities: new Set(["one", "three"]),
-			deletedIdentities: new Set(["two"]),
-		});
-		releaseCommit();
-		expect(await answer).toMatchObject({ kind: "failed" });
-		await reconcile;
-		const next = subject.lifecycle.getSnapshot();
-		expect(next).toMatchObject({
-			kind: "active",
-			mode: "study",
-			currentCard: { identity: "three" },
-			answerEventCount: 1,
-		});
-		expect(presentedAfterFirst).toEqual(["three"]);
-		expect(
-			await subject.lifecycle.act(first.reference, { kind: "answer", rating: 3 }),
-		).toMatchObject({ kind: "rejected", reason: "stale-reference" });
-		expect(rate).toHaveBeenCalledOnce();
-		if (next.kind !== "active" || next.mode !== "study") throw new Error("active study");
-		await subject.lifecycle.act(next.reference, { kind: "answer", rating: 3 });
-		expect(
-			subject.repository.commits.flatMap((commit) => commit.cardSchedules ?? []),
-		).toMatchObject([
-			{ cardId: "one", fsrsCard: { reps: 1 } },
-			{ cardId: "three", fsrsCard: { reps: 1 } },
-		]);
-		expect(subject.lifecycle.getSnapshot()).toMatchObject({
-			kind: "result",
-			mode: "study",
-			cardCount: 2,
-			totalReviews: 2,
-		});
-	});
+	it.each([
+		{ allRemainingRemoved: false, endRecordFails: false },
+		{ allRemainingRemoved: true, endRecordFails: false },
+		{ allRemainingRemoved: true, endRecordFails: true },
+	])(
+		"reports the committed rating with remaining cards removed: $allRemainingRemoved, end record write failure: $endRecordFails",
+		async ({ allRemainingRemoved, endRecordFails }) => {
+			const subject = makeLifecycle([
+				makeCard("one", "one", 0),
+				makeCard("two", "two", 1),
+				makeCard("three", "three", 2),
+			]);
+			await subject.lifecycle.start({
+				mode: "study",
+				deckId: DECK_ID,
+				studyOrder: "sequential",
+				direction: "normal",
+			});
+			const first = subject.lifecycle.getSnapshot();
+			if (first.kind !== "active" || first.mode !== "study") throw new Error("active study");
+			const presentedAfterFirst: string[] = [];
+			subject.lifecycle.subscribe(() => {
+				const snapshot = subject.lifecycle.getSnapshot();
+				if (snapshot.kind === "active")
+					presentedAfterFirst.push(snapshot.currentCard.identity);
+			});
+			let releaseCommit = (): void => undefined;
+			subject.repository.commitBarrier = new Promise<void>((resolve) => {
+				releaseCommit = resolve;
+			});
+			let reportCommitStarted = (): void => undefined;
+			const commitStarted = new Promise<void>((resolve) => {
+				reportCommitStarted = resolve;
+			});
+			let failEndRecord = endRecordFails;
+			const log = vi.spyOn(console, "error").mockImplementation(() => {});
+			const originalCommit = subject.repository.commitSession.bind(subject.repository);
+			vi.spyOn(subject.repository, "commitSession").mockImplementation((commit) => {
+				reportCommitStarted();
+				if (failEndRecord && commit.records?.length) {
+					failEndRecord = false;
+					return Promise.resolve({
+						kind: "failed",
+						message: "disk unavailable",
+						retryable: true,
+					});
+				}
+				return originalCommit(commit);
+			});
+			const rate = vi.spyOn(subject.repository, "rateStudyCard");
+			const answer = subject.lifecycle.act(first.reference, { kind: "answer", rating: 3 });
+			await commitStarted;
+			subject.repository.decks.get(DECK_ID)!.cards = subject.repository.decks
+				.get(DECK_ID)!
+				.cards.filter(
+					(card) => card.id === "one" || (!allRemainingRemoved && card.id === "three"),
+				);
+			const reconcile = subject.continuitySessions.reconcile({
+				availableIdentities: new Set(allRemainingRemoved ? ["one"] : ["one", "three"]),
+				deletedIdentities: new Set(allRemainingRemoved ? ["two", "three"] : ["two"]),
+			});
+			releaseCommit();
+			expect(await answer).toMatchObject({ kind: "applied" });
+			await reconcile;
+			const next = subject.lifecycle.getSnapshot();
+			if (allRemainingRemoved) {
+				expect(next).toMatchObject({
+					kind: "idle",
+					lastEnd: { reason: "source-change", mode: "study", answerEventCount: 1 },
+				});
+				expect(presentedAfterFirst).toEqual([]);
+				if (endRecordFails) {
+					expect(subject.repository.activity).toEqual([]);
+					if (next.kind !== "idle" || !next.lastEnd) throw new Error("source ended");
+					await subject.lifecycle.act(next.reference, {
+						kind: "acknowledge-end",
+						noticeId: next.lastEnd.id,
+					});
+					expect(log).toHaveBeenCalledOnce();
+				}
+				log.mockRestore();
+				expect(subject.repository.activity).toMatchObject([
+					{ kind: "session", mode: "study", completion: "partial", answerCount: 1 },
+				]);
+				expect(rate).toHaveBeenCalledOnce();
+				return;
+			}
+			expect(next).toMatchObject({
+				kind: "active",
+				mode: "study",
+				currentCard: { identity: "three" },
+				answerEventCount: 1,
+			});
+			expect(presentedAfterFirst).toEqual(["three"]);
+			log.mockRestore();
+			expect(
+				await subject.lifecycle.act(first.reference, { kind: "answer", rating: 3 }),
+			).toMatchObject({ kind: "rejected", reason: "stale-reference" });
+			expect(rate).toHaveBeenCalledOnce();
+			if (next.kind !== "active" || next.mode !== "study") throw new Error("active study");
+			await subject.lifecycle.act(next.reference, { kind: "answer", rating: 3 });
+			expect(
+				subject.repository.commits.flatMap((commit) => commit.cardSchedules ?? []),
+			).toMatchObject([
+				{ cardId: "one", fsrsCard: { reps: 1 } },
+				{ cardId: "three", fsrsCard: { reps: 1 } },
+			]);
+			expect(subject.lifecycle.getSnapshot()).toMatchObject({
+				kind: "result",
+				mode: "study",
+				cardCount: 2,
+				totalReviews: 2,
+			});
+		},
+	);
 
 	it("persists study undo through the same lifecycle seam", async () => {
 		const subject = makeLifecycle([makeCard("one", "one", 0), makeCard("two", "two", 1)]);
@@ -491,6 +534,80 @@ describe("SessionLifecycle", () => {
 				occurredAt: 1_000,
 			},
 		]);
+	});
+
+	it("keeps the current study occurrence and remaps undo when source changes shorten the queue", async () => {
+		const subject = makeLifecycle([makeCard("one", "one", 0), makeCard("two", "two", 1)]);
+		vi.spyOn(subject.repository, "rateStudyCard").mockImplementationOnce((card) => ({
+			fsrsCard: { ...card, reps: card.reps + 1, state: State.Review },
+			repeatInSession: true,
+		}));
+		await subject.lifecycle.start({
+			mode: "study",
+			deckId: DECK_ID,
+			studyOrder: "sequential",
+			direction: "normal",
+		});
+		for (const rating of [1, 3] as const) {
+			const active = subject.lifecycle.getSnapshot();
+			if (active.kind !== "active" || active.mode !== "study")
+				throw new Error("active study");
+			await subject.lifecycle.act(active.reference, { kind: "answer", rating });
+		}
+		await subject.continuitySessions.reconcile({
+			availableIdentities: new Set(["one", "two"]),
+			deletedIdentities: new Set(),
+		});
+		expect(subject.lifecycle.getSnapshot()).toMatchObject({
+			currentCard: { identity: "one" },
+			progress: { current: 3, total: 3 },
+		});
+		const repeat = subject.lifecycle.getSnapshot();
+		if (repeat.kind !== "active" || repeat.mode !== "study") throw new Error("active study");
+		await subject.lifecycle.act(repeat.reference, { kind: "previous" });
+		const previous = subject.lifecycle.getSnapshot();
+		if (previous.kind !== "active" || previous.mode !== "study")
+			throw new Error("active study");
+		expect(previous.currentCard.identity).toBe("two");
+
+		subject.repository.decks.get(DECK_ID)!.cards = [makeCard("two", "two", 1)];
+		await subject.continuitySessions.reconcile({
+			availableIdentities: new Set(["two"]),
+			deletedIdentities: new Set(["one"]),
+		});
+		expect(subject.lifecycle.getSnapshot()).toMatchObject({
+			currentCard: { identity: "two" },
+			progress: { current: 1, total: 1 },
+		});
+	});
+
+	it("returns to the previous available study card after an earlier card is deleted", async () => {
+		const subject = makeLifecycle([
+			makeCard("one", "one", 0),
+			makeCard("two", "two", 1),
+			makeCard("three", "three", 2),
+		]);
+		await subject.lifecycle.start({
+			mode: "study",
+			deckId: DECK_ID,
+			studyOrder: "sequential",
+			direction: "normal",
+		});
+		for (let index = 0; index < 2; index++) {
+			const active = subject.lifecycle.getSnapshot();
+			if (active.kind !== "active" || active.mode !== "study")
+				throw new Error("active study");
+			await subject.lifecycle.act(active.reference, { kind: "answer", rating: 3 });
+		}
+		subject.repository.decks.get(DECK_ID)!.cards.shift();
+		await subject.continuitySessions.reconcile({
+			availableIdentities: new Set(["two", "three"]),
+			deletedIdentities: new Set(["one"]),
+		});
+		const active = subject.lifecycle.getSnapshot();
+		if (active.kind !== "active" || active.mode !== "study") throw new Error("active study");
+		await subject.lifecycle.act(active.reference, { kind: "previous" });
+		expect(subject.lifecycle.getSnapshot()).toMatchObject({ currentCard: { identity: "two" } });
 	});
 
 	it("counts only spelling retrievals and freezes incorrect result details", async () => {
@@ -771,6 +888,73 @@ describe("SessionLifecycle", () => {
 			currentCard: { identity: "card-61" },
 		});
 	});
+
+	it("keeps practice totals when a card outside the selection is deleted", async () => {
+		const subject = makeLifecycle([
+			makeCard("one", "one", 0),
+			makeCard("two", "two", 1),
+			makeCard("three", "three", 2),
+		]);
+		await subject.lifecycle.start({
+			mode: "practice",
+			deckId: DECK_ID,
+			direction: "normal",
+			selection: { kind: "range", startIndex: 1, endIndex: 2 },
+		});
+		subject.repository.decks.get(DECK_ID)!.cards.pop();
+		await subject.continuitySessions.reconcile({
+			availableIdentities: new Set(["one", "two"]),
+			deletedIdentities: new Set(["three"]),
+		});
+		for (let index = 0; index < 2; index++) {
+			const active = subject.lifecycle.getSnapshot();
+			if (active.kind !== "active" || active.mode !== "practice")
+				throw new Error("active practice");
+			await subject.lifecycle.act(active.reference, { kind: "answer", correct: true });
+		}
+		expect(subject.lifecycle.getSnapshot()).toMatchObject({
+			kind: "result",
+			mode: "practice",
+			totalQuestions: 2,
+			correctCount: 2,
+			incorrectCount: 0,
+			accuracy: 100,
+		});
+	});
+
+	it.each(["study", "practice", "spelling"] as const)(
+		"ends a %s session when only answered cards survive a source change",
+		async (mode) => {
+			const one = "550e8400-e29b-41d4-a716-446655440000";
+			const two = "7d444840-9dc0-11d1-b245-5ffdce74fad2";
+			const subject = makeLifecycle([makeCard(one, "one", 0), makeCard(two, "two", 1)]);
+			const selection = { kind: "range", startIndex: 1, endIndex: 2 } as const;
+			await subject.lifecycle.start(
+				mode === "study"
+					? { mode, deckId: DECK_ID, studyOrder: "sequential", direction: "normal" }
+					: mode === "practice"
+						? { mode, deckId: DECK_ID, direction: "normal", selection }
+						: { mode, deckId: DECK_ID, selection },
+			);
+			const active = subject.lifecycle.getSnapshot();
+			if (active.kind !== "active") throw new Error("active session");
+			if (active.mode === "study")
+				await subject.lifecycle.act(active.reference, { kind: "answer", rating: 3 });
+			if (active.mode === "practice")
+				await subject.lifecycle.act(active.reference, { kind: "answer", correct: true });
+			if (active.mode === "spelling")
+				await subject.lifecycle.act(active.reference, { kind: "answer", input: "one" });
+			subject.repository.decks.get(DECK_ID)!.cards.pop();
+			await subject.continuitySessions.reconcile({
+				availableIdentities: new Set([one]),
+				deletedIdentities: new Set([two]),
+			});
+			expect(subject.lifecycle.getSnapshot()).toMatchObject({
+				kind: "idle",
+				lastEnd: { reason: "source-change", mode, answerEventCount: 1 },
+			});
+		},
+	);
 
 	it("creates a study result snapshot upon completion with rating counts, rejects retry-incorrect, and dismisses to idle", async () => {
 		const subject = makeLifecycle([makeCard("one"), makeCard("two")]);

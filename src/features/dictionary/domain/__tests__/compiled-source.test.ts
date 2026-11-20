@@ -61,7 +61,10 @@ vi.mock("../sandbox-storage", () => ({
 }));
 
 import { CompiledDictionarySource } from "../compiled-source";
-import { resetSharedDictionaryQueryWorker } from "../sharedQueryWorker";
+import {
+	resetSharedDictionaryQueryWorker,
+	SharedDictionaryQueryWorker,
+} from "../sharedQueryWorker";
 
 const metadata: LocalDictionarySettings = {
 	compiled: {
@@ -92,10 +95,14 @@ function reader(overrides: Partial<CompiledPackageReader> = {}): CompiledPackage
 	};
 }
 
-function source(): CompiledDictionarySource {
-	return new CompiledDictionarySource(metadata, {} as never, "dictionaries/test", {
-		requestHostPinned: vi.fn(),
-	});
+function source(workerClient?: SharedDictionaryQueryWorker): CompiledDictionarySource {
+	return new CompiledDictionarySource(
+		metadata,
+		{} as never,
+		"dictionaries/test",
+		{ requestHostPinned: vi.fn() },
+		workerClient,
+	);
 }
 
 function worker() {
@@ -129,6 +136,72 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("CompiledDictionarySource", () => {
+	it("shares a failed open and retries once the compiled package becomes available", async () => {
+		const pendingOpen = deferred<CompiledPackageReader>();
+		mocks.openCompiledPackage
+			.mockReturnValueOnce(pendingOpen.promise)
+			.mockResolvedValueOnce(reader());
+		const dictionary = source();
+		const lookups = Promise.allSettled([
+			dictionary.lookup({ text: "first" }),
+			dictionary.lookup({ text: "second" }),
+		]);
+
+		expect(mocks.openCompiledPackage).toHaveBeenCalledOnce();
+		pendingOpen.reject(new Error("The manifest is still syncing"));
+		expect(await lookups).toMatchObject([
+			{ status: "rejected", reason: { code: "invalid-response" } },
+			{ status: "rejected", reason: { code: "invalid-response" } },
+		]);
+
+		const retry = dictionary.lookup({ text: "first" });
+		void retry.catch(() => {});
+		expect(mocks.openCompiledPackage).toHaveBeenCalledTimes(2);
+		const query = await waitForPost("lookup");
+		worker().emit({
+			id: query.id,
+			result: { definitions: [], suggestions: ["firstly"] },
+			type: "lookup-result",
+		});
+		await expect(retry).resolves.toMatchObject({ suggestions: ["firstly"] });
+		dictionary.close();
+	});
+
+	it("closes a reader that finishes opening after the source has closed", async () => {
+		const pendingOpen = deferred<CompiledPackageReader>();
+		const close = vi.fn();
+		const packageReader = reader({ close });
+		mocks.openCompiledPackage.mockReturnValueOnce(pendingOpen.promise);
+		const dictionary = source();
+		const lookup = dictionary.lookup({ text: "word" });
+		dictionary.close();
+		pendingOpen.resolve(packageReader);
+
+		await expect(lookup).rejects.toMatchObject({ code: "request" });
+		await expect(dictionary.lookup({ text: "word" })).rejects.toMatchObject({
+			code: "request",
+		});
+		expect(mocks.openCompiledPackage).toHaveBeenCalledOnce();
+		expect(close).toHaveBeenCalledOnce();
+		expect(mocks.workers).toHaveLength(0);
+	});
+
+	it("closes the package reader when posting the worker open message fails", async () => {
+		const close = vi.fn();
+		const packageReader = reader({ close });
+		mocks.openCompiledPackage.mockResolvedValueOnce(packageReader);
+		const client = new SharedDictionaryQueryWorker();
+		vi.spyOn(client, "open").mockImplementationOnce(() => {
+			throw new Error("Worker failed to start");
+		});
+		const dictionary = source(client);
+
+		await expect(dictionary.lookup({ text: "word" })).rejects.toThrow("Worker failed to start");
+		expect(close).toHaveBeenCalledOnce();
+		expect(client.registeredDictionaryCount).toBe(0);
+		dictionary.close();
+	});
+
 	it("coalesces repeated definition resources through its worker and releases their URL on close", async () => {
 		mocks.openCompiledPackage.mockResolvedValue(reader());
 		const resourceUrls: string[] = [];

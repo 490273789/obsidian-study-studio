@@ -265,6 +265,20 @@ describe("translation session", () => {
 		expect(youdao).toHaveBeenCalledTimes(32);
 		runtime.dispose();
 	});
+
+	it("caches translations according to the exact source text", async () => {
+		const { runtime, request } = setup();
+		runtime.setInput("Markdown");
+		await runtime.translate();
+
+		request.mockResolvedValueOnce(response("    Markdown"));
+		runtime.setInput("    Markdown");
+		await runtime.translate();
+
+		expect(request).toHaveBeenCalledTimes(2);
+		expect(runtime.getSnapshot().results[0]?.text).toBe("    Markdown");
+		runtime.dispose();
+	});
 	it("blocks disabled tools and empty input without network requests", async () => {
 		const { runtime, request, youdao, settings } = setup();
 		await runtime.translate();
@@ -345,6 +359,41 @@ describe("translation session", () => {
 		expect(runtime.getSnapshot().settings.direction).toBe("en-zh");
 		expect(runtime.getSnapshot().input).toBe("hello error handling");
 
+		runtime.dispose();
+	});
+
+	it("keeps the most recent selection and its direction across a pending save", async () => {
+		const { runtime, persist, request } = setup();
+		const saving = deferred<void>();
+		persist.mockReturnValueOnce(saving.promise);
+
+		const earlier = runtime.openPrefilled("first selection");
+		await vi.waitFor(() => expect(persist).toHaveBeenCalledTimes(1));
+		const latest = runtime.openPrefilled("最新选区");
+		saving.resolve();
+		await Promise.all([earlier, latest]);
+
+		expect(runtime.getSnapshot()).toMatchObject({
+			input: "最新选区",
+			settings: { direction: "zh-en" },
+		});
+		expect(persist).toHaveBeenLastCalledWith(expect.objectContaining({ direction: "zh-en" }));
+		expect(request).not.toHaveBeenCalled();
+		runtime.dispose();
+	});
+
+	it("preserves manual input entered during selection direction persistence", async () => {
+		const { runtime, persist } = setup();
+		const saving = deferred<void>();
+		persist.mockReturnValueOnce(saving.promise);
+
+		const opening = runtime.openPrefilled("selected text");
+		await vi.waitFor(() => expect(persist).toHaveBeenCalledTimes(1));
+		runtime.setInput("typed text");
+		saving.resolve();
+		await opening;
+
+		expect(runtime.getSnapshot().input).toBe("typed text");
 		runtime.dispose();
 	});
 

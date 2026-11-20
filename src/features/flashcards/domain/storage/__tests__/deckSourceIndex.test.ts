@@ -103,7 +103,7 @@ describe("DeckSourceIndex", () => {
 		expect(placeholder?.cards[0]?.id).toBe("c-2");
 	});
 
-	it("restores from cache and attaches learning states", () => {
+	it("restores cached source content, ignores obsolete placeholders, and attaches learning states", () => {
 		const index = new DeckSourceIndex();
 		const cache: DeckIndexCache<SerializedDeck> = {
 			version: DECK_INDEX_CACHE_VERSION,
@@ -142,6 +142,21 @@ describe("DeckSourceIndex", () => {
 			},
 		};
 
+		cache.decks[LEARNING_PLACEHOLDER_DECK_ID] = {
+			...cache.decks["deck-1"]!,
+			id: LEARNING_PLACEHOLDER_DECK_ID,
+			tag: "",
+			cards: [
+				{
+					...cache.decks["deck-1"]!.cards[0]!,
+					id: "obsolete-id",
+					front: "",
+					back: "",
+					sourceFile: "",
+				},
+			],
+		};
+
 		const learning: LearningStateDocument = {
 			cards: {
 				"c-1": {
@@ -169,6 +184,7 @@ describe("DeckSourceIndex", () => {
 		};
 
 		index.restoreFromCache(cache, learning);
+		expect(index.getCard("deck-1", "obsolete-id")).toBeUndefined();
 
 		expect(index.getAvailableTags()).toEqual(["#flashcards", "#english"]);
 		expect(index.hasAvailableTagsSnapshot()).toBe(true);

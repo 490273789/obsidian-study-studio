@@ -631,6 +631,8 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 	private releaseBusy: (() => void) | null = null;
 	private busyKind: "interactive" | "background" | null = null;
 	private sourceReconcilePending = false;
+	private readonly pendingContinuityChanges = new Set<ContinuitySessionChange>();
+	private readonly pendingSourceEndRecords: SessionCommit[] = [];
 	private unsubscribeSourceChanges: (() => void) | null = null;
 	private disposed = false;
 	private readonly now: () => number;
@@ -675,6 +677,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		if (!(await this.acquireInteractive())) return this.rejected("busy");
 		try {
 			if (this.state.kind !== "idle") return this.rejected("invalid-state");
+			if (this.pendingSourceEndRecords.length > 0) await this.retrySourceEndRecords();
 			if (request.mode === "challenge") return await this.startChallenge(request);
 			const deck = this.repository.getDeck(request.deckId);
 			if (!deck) return this.rejected("deck-not-found");
@@ -699,6 +702,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		if (!(await this.acquireInteractive())) return this.rejected("busy");
 		try {
 			if (!this.matchesReference(reference)) return this.rejected("stale-reference");
+			if (this.pendingSourceEndRecords.length > 0) await this.retrySourceEndRecords();
 			return await this.applyAction(action as AnyLifecycleAction);
 		} catch (error) {
 			if (error instanceof SessionCommitRejection) return this.rejected(error.reason);
@@ -715,53 +719,121 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 	}
 
 	async reconcile(change: ContinuitySessionChange): Promise<void> {
+		this.pendingContinuityChanges.add(change);
 		await this.acquireBackground();
 		try {
-			if (this.state.kind !== "active") return;
-			const current = this.state;
-			// Challenge state is reconciled from the repository source-change channel,
-			// which already observed the continuity commit that produced this change.
-			if (current.mode === "challenge") return;
-			const reconciled = reconcileActiveState(current, change);
-			if (reconciled) {
-				this.publish(reconciled);
-				return;
-			}
-
-			const answerEventCount = getAnswerEventCount(current);
-			const activityAnswerCount = getActivityAnswerCount(current);
-			if (activityAnswerCount > 0) {
-				const occurredAt = this.now();
-				await this.commit({
-					records: [
-						this.buildSessionRecord(current, {
-							completed: false,
-							occurredAt,
-							answerCount: activityAnswerCount,
-							durationSeconds: Math.max(
-								0,
-								Math.floor((occurredAt - current.session.startTime) / 1000),
-							),
-							cardCount: answerEventCount,
-						}),
-					],
-				});
-			}
-			const originDeck = getOriginDeck(current.session);
-			this.publish({
-				kind: "idle",
-				key: this.makeKey("idle"),
-				lastEnd: {
-					id: this.makeKey("source-change"),
-					reason: "source-change",
-					mode: current.mode,
-					originDeck,
-					answerEventCount,
-				},
-			});
+			if (!this.pendingContinuityChanges.delete(change)) return;
+			if (this.pendingSourceEndRecords.length > 0) await this.retrySourceEndRecords();
+			// Challenge sees the same source commit via the repository source-change channel.
+			if (this.state.kind !== "active" || this.state.mode === "challenge") return;
+			await this.applyContinuityChange(this.state, change);
 		} finally {
 			this.unlock();
 		}
+	}
+
+	private async applyContinuityChange(
+		state: Exclude<InternalActiveState, { mode: "challenge" }>,
+		change: ContinuitySessionChange,
+		afterAnswerCommit = false,
+	): Promise<void> {
+		const reconciled = reconcileActiveState(state, change);
+		if (reconciled) {
+			this.publish(reconciled);
+			return;
+		}
+
+		const answerEventCount = getAnswerEventCount(state);
+		const activityAnswerCount = getActivityAnswerCount(state);
+		if (activityAnswerCount > 0) {
+			const occurredAt = this.now();
+			const commit: SessionCommit = {
+				records: [
+					this.buildSessionRecord(state, {
+						completed: false,
+						occurredAt,
+						answerCount: activityAnswerCount,
+						durationSeconds: Math.max(
+							0,
+							Math.floor((occurredAt - state.session.startTime) / 1000),
+						),
+						cardCount: answerEventCount,
+					}),
+				],
+			};
+			try {
+				await this.commit(commit);
+			} catch (error) {
+				if (!afterAnswerCommit) throw error;
+				// The schedule/attempt is durable. Retry only the separate end record.
+				this.pendingSourceEndRecords.push(commit);
+				console.error(
+					"Failed to record source-change session activity after an answer",
+					error,
+				);
+			}
+		}
+		this.publish({
+			kind: "idle",
+			key: this.makeKey("idle"),
+			lastEnd: {
+				id: this.makeKey("source-change"),
+				reason: "source-change",
+				mode: state.mode,
+				originDeck: getOriginDeck(state.session),
+				answerEventCount,
+			},
+		});
+	}
+
+	private async retrySourceEndRecords(): Promise<void> {
+		for (const commit of this.pendingSourceEndRecords.splice(0)) {
+			try {
+				await this.commit(commit);
+			} catch (error) {
+				this.pendingSourceEndRecords.push(commit);
+				console.error("Failed to retry source-change session activity", error);
+			}
+		}
+	}
+
+	private async publishCommittedSession(
+		state: Exclude<InternalActiveState, { mode: "challenge" }>,
+	): Promise<void> {
+		const card = this.readActiveCard(state);
+		if (card && (state.mode !== "spelling" || extractSpellingWord(card.front))) {
+			this.publish(state);
+			return;
+		}
+
+		// A source commit can become visible before its reconciliation callback gets the lock.
+		// Reconcile the post-answer state against the authoritative deck index now.
+		const coveredChanges = [...this.pendingContinuityChanges];
+		const decks = this.repository.getAllDecks();
+		const availableIdentities = new Set<string>();
+		const spellableIdentitiesByDeck = new Map<string, Set<string>>();
+		for (const deck of decks) {
+			const spellable = new Set<string>();
+			for (const nextCard of deck.cards) {
+				availableIdentities.add(nextCard.id);
+				if (state.mode === "spelling" && extractSpellingWord(nextCard.front))
+					spellable.add(nextCard.id);
+			}
+			spellableIdentitiesByDeck.set(deck.id, spellable);
+		}
+		const identities =
+			state.mode === "study"
+				? [...state.session.cardQueue, ...state.session.repeatQueue]
+				: state.session.cardQueue;
+		const deletedIdentities = new Set(
+			identities.filter((identity) => !availableIdentities.has(identity)),
+		);
+		await this.applyContinuityChange(
+			state,
+			{ availableIdentities, deletedIdentities, spellableIdentitiesByDeck },
+			true,
+		);
+		for (const change of coveredChanges) this.pendingContinuityChanges.delete(change);
 	}
 
 	private challengeCards(): ReadonlyMap<string, { card: FlashCard; deck: Deck }> {
@@ -1186,7 +1258,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			const step = undoStudyAnswer(state.session);
 			if (!step) return this.rejected("action-not-available");
 			await this.commit({ cardSchedules: [step.cardUpdate] });
-			this.publish({ ...state, session: step.session });
+			await this.publishCommittedSession({ ...state, session: step.session });
 			return this.applied();
 		}
 		if (action.kind !== "answer" || !("rating" in action)) {
@@ -1246,7 +1318,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 				restartOrigin: state.restartOrigin,
 			});
 		} else {
-			this.publish({ ...state, session: step.session });
+			await this.publishCommittedSession({ ...state, session: step.session });
 		}
 		return this.applied();
 	}
@@ -1353,7 +1425,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 			diff: buildSpellingDiff(action.input, expectedAnswer),
 		};
 		if (step.type === "continue") {
-			this.publish({ ...state, session: step.session });
+			await this.publishCommittedSession({ ...state, session: step.session });
 		} else {
 			this.publish({
 				kind: "result",
@@ -1597,10 +1669,24 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 
 	private publish(state: InternalState, preparedSnapshot?: SessionLifecycleSnapshot): void {
 		if (this.disposed) return;
+		const revision = this.revision + 1;
+		const snapshot = preparedSnapshot ?? this.buildSnapshot(state, revision);
 		this.state = state;
-		this.revision++;
-		this.snapshot = preparedSnapshot ?? this.buildSnapshot(state, this.revision);
+		this.revision = revision;
+		this.snapshot = snapshot;
 		for (const listener of this.listeners) listener();
+	}
+
+	private readActiveCard(
+		state: Exclude<InternalActiveState, { mode: "challenge" }>,
+	): FlashCard | undefined {
+		const cardId =
+			state.mode === "study"
+				? getCurrentStudyCardId(state.session)
+				: state.mode === "spelling"
+					? getCurrentSpellingCardId(state.session)
+					: (state.session.cardQueue[state.session.currentIndex] ?? null);
+		return cardId ? this.repository.getCard(state.session.deckId, cardId) : undefined;
 	}
 
 	private buildSnapshot(state: InternalState, revision: number): SessionLifecycleSnapshot {
@@ -1609,13 +1695,7 @@ class DefaultSessionLifecycle implements SessionLifecycle, ContinuitySessionAdap
 		}
 		if (state.kind === "result") return this.buildResultSnapshot(state, revision);
 		if (state.mode === "challenge") return this.buildChallengeSnapshot(state, revision);
-		const cardId =
-			state.mode === "study"
-				? getCurrentStudyCardId(state.session)
-				: state.mode === "spelling"
-					? getCurrentSpellingCardId(state.session)
-					: (state.session.cardQueue[state.session.currentIndex] ?? null);
-		const card = cardId ? this.repository.getCard(state.session.deckId, cardId) : undefined;
+		const card = this.readActiveCard(state);
 		if (!card) throw new Error("Active session current card is unavailable");
 		const common = {
 			kind: "active" as const,
@@ -1997,17 +2077,36 @@ function reconcileStudySession(
 	session: StudySession,
 	change: ContinuitySessionChange,
 ): StudySession | null {
-	const cardQueue = session.cardQueue.filter((identity) =>
+	const { cardQueue, retainedBefore } = filterSessionQueue(
+		session.cardQueue,
+		change.availableIdentities,
+	);
+	const currentIndex = retainedBefore[session.currentIndex]!;
+	let repeatQueue = session.repeatQueue.filter((identity) =>
 		change.availableIdentities.has(identity),
 	);
-	if (cardQueue.length === 0) return null;
+	if (currentIndex === cardQueue.length) {
+		if (repeatQueue.length === 0) return null;
+		cardQueue.push(...repeatQueue);
+		repeatQueue = [];
+	}
+	const answerEvents =
+		retainedBefore[session.cardQueue.length] === session.cardQueue.length
+			? session.answerEvents
+			: session.answerEvents.map((event) => ({
+					...event,
+					previousCurrentIndex: retainedBefore[event.previousCurrentIndex]!,
+					previousCardQueueLength: retainedBefore[event.previousCardQueueLength]!,
+					previousRepeatQueue: event.previousRepeatQueue.filter((identity) =>
+						change.availableIdentities.has(identity),
+					),
+				}));
 	return {
 		...session,
 		cardQueue,
-		currentIndex: reconcileCurrentIndex(session.cardQueue, session.currentIndex, cardQueue),
-		repeatQueue: session.repeatQueue.filter((identity) =>
-			change.availableIdentities.has(identity),
-		),
+		currentIndex,
+		repeatQueue,
+		answerEvents,
 		unavailableCardIds: mergeUnavailableIdentities(
 			session.unavailableCardIds,
 			change.deletedIdentities,
@@ -2019,17 +2118,20 @@ function reconcilePracticeSession(
 	session: PracticeSession,
 	change: ContinuitySessionChange,
 ): PracticeSession | null {
-	const cardQueue = session.cardQueue.filter((identity) =>
-		change.availableIdentities.has(identity),
+	const { cardQueue, retainedBefore } = filterSessionQueue(
+		session.cardQueue,
+		change.availableIdentities,
 	);
-	if (cardQueue.length === 0) return null;
-	const deletedUnanswered = Array.from(change.deletedIdentities).filter(
-		(identity) => session.answers[identity] === undefined,
+	const currentIndex = retainedBefore[session.currentIndex]!;
+	if (currentIndex === cardQueue.length) return null;
+	const deletedUnanswered = session.cardQueue.filter(
+		(identity) =>
+			!change.availableIdentities.has(identity) && session.answers[identity] === undefined,
 	).length;
 	return {
 		...session,
 		cardQueue,
-		currentIndex: reconcileCurrentIndex(session.cardQueue, session.currentIndex, cardQueue),
+		currentIndex,
 		totalQuestions: Math.max(
 			session.history.length,
 			session.totalQuestions - deletedUnanswered,
@@ -2055,8 +2157,12 @@ function reconcileSpellingSession(
 	const selectedCardIds = session.selectedCardIds.filter((identity) =>
 		spellableIdentities.has(identity),
 	);
-	const cardQueue = session.cardQueue.filter((identity) => spellableIdentities.has(identity));
-	if (selectedCardIds.length === 0 || cardQueue.length === 0) return null;
+	const { cardQueue, retainedBefore } = filterSessionQueue(
+		session.cardQueue,
+		spellableIdentities,
+	);
+	const currentIndex = retainedBefore[session.currentIndex]!;
+	if (currentIndex === cardQueue.length) return null;
 	const previousCurrentIdentity = session.cardQueue[session.currentIndex];
 	const firstAttempts = Object.fromEntries(
 		Object.entries(session.firstAttempts).filter(([identity]) =>
@@ -2071,11 +2177,7 @@ function reconcileSpellingSession(
 		...session,
 		selectedCardIds,
 		cardQueue,
-		currentIndex: reconcileSpellingCurrentIndex(
-			session.cardQueue,
-			session.currentIndex,
-			cardQueue,
-		),
+		currentIndex,
 		phase:
 			previousCurrentIdentity && spellableIdentities.has(previousCurrentIdentity)
 				? session.phase
@@ -2091,45 +2193,15 @@ function reconcileSpellingSession(
 	};
 }
 
-function reconcileCurrentIndex(
-	previousQueue: string[],
-	previousIndex: number,
-	nextQueue: string[],
-): number {
-	const currentIdentity = previousQueue[previousIndex];
-	if (currentIdentity) {
-		const currentNextIndex = nextQueue.indexOf(currentIdentity);
-		if (currentNextIndex !== -1) return currentNextIndex;
+/** Maps queue boundaries into the filtered queue, including separate encounters of one card. */
+function filterSessionQueue(queue: readonly string[], available: ReadonlySet<string>) {
+	const cardQueue: string[] = [];
+	const retainedBefore = [0];
+	for (const identity of queue) {
+		if (available.has(identity)) cardQueue.push(identity);
+		retainedBefore.push(cardQueue.length);
 	}
-	const nextIdentities = new Set(nextQueue);
-	const survivingBefore = previousQueue
-		.slice(0, previousIndex)
-		.filter((identity) => nextIdentities.has(identity)).length;
-	return Math.min(survivingBefore, nextQueue.length - 1);
-}
-
-function reconcileSpellingCurrentIndex(
-	previousQueue: string[],
-	previousIndex: number,
-	nextQueue: string[],
-): number {
-	const currentIdentity = previousQueue[previousIndex];
-	if (currentIdentity) {
-		const occurrence = previousQueue
-			.slice(0, previousIndex + 1)
-			.filter((identity) => identity === currentIdentity).length;
-		let seen = 0;
-		for (let index = 0; index < nextQueue.length; index++) {
-			if (nextQueue[index] !== currentIdentity) continue;
-			seen++;
-			if (seen === occurrence) return index;
-		}
-	}
-	const nextIdentities = new Set(nextQueue);
-	const survivingBefore = previousQueue
-		.slice(0, previousIndex)
-		.filter((identity) => nextIdentities.has(identity)).length;
-	return Math.min(survivingBefore, nextQueue.length - 1);
+	return { cardQueue, retainedBefore };
 }
 
 function mergeUnavailableIdentities(

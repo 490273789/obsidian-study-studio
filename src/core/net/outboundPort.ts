@@ -152,6 +152,7 @@ export function createOutboundPort(options: OutboundPortOptions): OutboundPort {
 	 * credentials omitted and redirects rejected, plus MIME and size validation.
 	 */
 	const requestHostPinned = async (spec: HostPinnedRequest): Promise<HostPinnedResponse> => {
+		if (spec.signal?.aborted) throw new TransportError("cancelled");
 		const timeout = spec.timeoutMs ?? defaultTimeoutMs;
 		const controller = new AbortController();
 		const abort = () => controller.abort();
@@ -168,8 +169,8 @@ export function createOutboundPort(options: OutboundPortOptions): OutboundPort {
 			if (code) {
 				throw new TransportError(code, { httpStatus: response.status });
 			}
-			const contentType = response.headers.get("content-type") ?? "";
-			if (!contentType.toLowerCase().includes(spec.accept.toLowerCase())) {
+			const mediaType = response.headers.get("content-type")?.split(";", 1)[0]?.trim();
+			if (mediaType?.toLowerCase() !== spec.accept.toLowerCase()) {
 				throw new TransportError("invalid-response", { httpStatus: response.status });
 			}
 			const bytes = await readBoundedBody(response, spec.maxBytes);

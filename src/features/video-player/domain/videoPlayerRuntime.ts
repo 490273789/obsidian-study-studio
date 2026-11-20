@@ -30,6 +30,15 @@ export interface VideoPlayerRuntimeOptions {
 
 const PROGRESS_SAVE_INTERVAL_MS = 5_000;
 
+interface BoundedPlayback {
+	start: number;
+	end: number;
+	resolve: (result: "completed" | "cancelled") => void;
+	reject: (error: unknown) => void;
+	timer: ReturnType<typeof setInterval>;
+	seeking: boolean;
+}
+
 /**
  * Plugin-lifetime playback authority. It deliberately has no DOM ownership:
  * the view may move its one bound media element between docked and floating UI.
@@ -43,13 +52,7 @@ export class VideoPlayerRuntime {
 	private loadingMedia = false;
 	private error: VideoPlayerSnapshot["error"] = null;
 	private disposed = false;
-	private bounded: {
-		start: number;
-		end: number;
-		resolve: (result: "completed" | "cancelled") => void;
-		timer: ReturnType<typeof setInterval>;
-		seeking: boolean;
-	} | null = null;
+	private bounded: BoundedPlayback | null = null;
 	private readonly interruptionListeners = new Set<() => void>();
 	private internalMediaChange = false;
 	private suppressEnded = false;
@@ -156,13 +159,14 @@ export class VideoPlayerRuntime {
 			return true;
 		});
 		if (additions.length === 0) return;
+		const needsMedia = this.state.currentSourceId === null;
 		this.state = {
 			...this.state,
 			sources: [...this.state.sources, ...additions],
 			currentSourceId: this.state.currentSourceId ?? additions[0]!.id,
 		};
 		this.persist();
-		this.loadCurrentMedia();
+		if (needsMedia) this.loadCurrentMedia();
 		this.publish();
 	}
 
@@ -176,33 +180,28 @@ export class VideoPlayerRuntime {
 			return;
 		const relinked = relinkVideoSource(this.identityRegistry, sourceId, replacement);
 		this.saveIdentityRegistry();
-		this.pauseAndSave();
+		const wasCurrent = this.state.currentSourceId === sourceId;
+		if (wasCurrent) this.pauseAndSave();
 		this.state = {
 			...this.state,
 			sources: this.state.sources.map((source) =>
 				source.id === sourceId ? relinked : source,
 			),
-			currentSourceId:
-				this.state.currentSourceId === sourceId ? relinked.id : this.state.currentSourceId,
-			progressBySource: renameRecordKey(this.state.progressBySource, sourceId, relinked.id),
-			completedSourceIds: this.state.completedSourceIds.map((id) =>
-				id === sourceId ? relinked.id : id,
-			),
 		};
 		this.persist();
-		this.loadCurrentMedia();
+		if (wasCurrent) this.loadCurrentMedia();
 		this.publish();
 	}
 
 	removeSource(sourceId: string): void {
 		const index = this.state.sources.findIndex((source) => source.id === sourceId);
 		if (this.disposed || index < 0) return;
-		this.pauseAndSave();
+		const wasCurrent = this.state.currentSourceId === sourceId;
+		if (wasCurrent) this.pauseAndSave();
 		const sources = this.state.sources.filter((source) => source.id !== sourceId);
-		const currentSourceId =
-			this.state.currentSourceId === sourceId
-				? (sources[index]?.id ?? sources[index - 1]?.id ?? null)
-				: this.state.currentSourceId;
+		const currentSourceId = wasCurrent
+			? (sources[index]?.id ?? sources[index - 1]?.id ?? null)
+			: this.state.currentSourceId;
 		const { [sourceId]: _removed, ...progressBySource } = this.state.progressBySource;
 		this.state = {
 			...this.state,
@@ -212,12 +211,13 @@ export class VideoPlayerRuntime {
 			completedSourceIds: this.state.completedSourceIds.filter((id) => id !== sourceId),
 		};
 		this.persist();
-		this.loadCurrentMedia();
+		if (wasCurrent) this.loadCurrentMedia();
 		this.publish();
 	}
 
 	reorderSources(sourceIds: readonly string[]): void {
 		if (this.disposed || sourceIds.length !== this.state.sources.length) return;
+		if (new Set(sourceIds).size !== sourceIds.length) return;
 		const byId = new Map(this.state.sources.map((source) => [source.id, source]));
 		const sources = sourceIds
 			.map((id) => byId.get(id))
@@ -260,8 +260,6 @@ export class VideoPlayerRuntime {
 
 	/** Resolves only when media time reaches the boundary; cancellation never advances the queue. */
 	playRange(start: number, end: number): Promise<"completed" | "cancelled"> {
-		this.stopRange();
-		this.suppressEnded = true;
 		const media = this.media;
 		if (
 			!media ||
@@ -274,6 +272,8 @@ export class VideoPlayerRuntime {
 			start >= media.duration
 		)
 			return Promise.reject(new Error("Invalid practice range"));
+		this.stopRange();
+		this.suppressEnded = true;
 		return new Promise((resolve, reject) => {
 			this.internalMediaChange = true;
 			media.pause();
@@ -284,18 +284,22 @@ export class VideoPlayerRuntime {
 				start,
 				end: Math.min(end, media.duration),
 				resolve,
+				reject,
 				timer,
 				seeking: media.seeking ?? false,
 			};
-			const bounded = this.bounded;
-			if (!bounded.seeking)
-				void media.play().catch((error) => {
-					if (this.bounded !== bounded) return;
-					reject(error);
-					this.stopRange();
-					this.setError("playback");
-				});
+			if (!this.bounded.seeking) this.startRangePlayback(media, this.bounded);
 			this.publish();
+		});
+	}
+
+	private startRangePlayback(media: VideoMediaPort, bounded: BoundedPlayback): void {
+		void media.play().catch((error: unknown) => {
+			if (this.bounded !== bounded) return;
+			this.bounded = null;
+			clearInterval(bounded.timer);
+			bounded.reject(error);
+			this.setError("playback");
 		});
 	}
 
@@ -333,10 +337,7 @@ export class VideoPlayerRuntime {
 		const bounded = this.bounded;
 		if (!bounded?.seeking || !this.media) return;
 		bounded.seeking = false;
-		void this.media.play().catch(() => {
-			this.stopRange();
-			this.setError("playback");
-		});
+		this.startRangePlayback(this.media, bounded);
 	};
 	private handleRateChanged = (): void => {
 		if (!this.internalMediaChange) {
@@ -462,9 +463,8 @@ export class VideoPlayerRuntime {
 	};
 	private handleMediaPaused = (): void => {
 		if (this.loadingMedia) return;
-		// HTMLMediaElement queues pause events. An earlier internal pause may arrive
-		// after playRange has already resumed playback; it must not cancel that range.
-		if (this.bounded && this.media && !this.media.paused) return;
+		// The pause before a range's initial seek can arrive during the seek or after playback resumes.
+		if (this.bounded && (this.bounded.seeking || !this.media?.paused)) return;
 		this.checkBoundary();
 		if (!this.internalMediaChange) this.stopRange();
 		this.saveProgress(true);
@@ -601,12 +601,4 @@ export function emptyState(): DeviceVideoPlayerStateV1 {
 
 function clamp(value: number, min: number, max: number): number {
 	return Math.min(max, Math.max(min, value));
-}
-function renameRecordKey(
-	record: Readonly<Record<string, number>>,
-	previous: string,
-	next: string,
-): Record<string, number> {
-	const { [previous]: value, ...rest } = record;
-	return value === undefined ? rest : { ...rest, [next]: value };
 }

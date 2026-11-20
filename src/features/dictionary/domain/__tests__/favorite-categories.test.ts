@@ -15,13 +15,23 @@ function setupCategoryManager(
 	const settings = normalizeDictionarySettings({ favoritePath: "old.md" });
 	const files = createMemoryDictionaryFavoriteStore(initialFiles);
 	let fails = false;
+	let beforeNextWrite: (() => void) | undefined;
 	const changed = vi.fn();
 	const store = {
 		getDictionarySettings: () => settings,
 		updateDictionarySettings: vi.fn(async (mutate: (draft: typeof settings) => void) => {
 			if (fails) return false;
-			mutate(settings);
-			return true;
+			const before = beforeNextWrite;
+			beforeNextWrite = undefined;
+			before?.();
+			const draft = structuredClone(settings);
+			try {
+				mutate(draft);
+				Object.assign(settings, draft);
+				return true;
+			} catch {
+				return false;
+			}
 		}),
 	} as unknown as DictionarySettingsStore;
 	const manager = new FavoriteCategoryManager(store, files, changed);
@@ -30,6 +40,9 @@ function setupCategoryManager(
 		files,
 		settings,
 		changed,
+		beforeWrite: (change: () => void) => {
+			beforeNextWrite = change;
+		},
 		fail: () => {
 			fails = true;
 		},
@@ -118,6 +131,31 @@ describe("FavoriteCategoryManager - administration & file mutex", () => {
 		expect(await files.open("new.md")).toBe(false);
 	});
 
+	it("rechecks names in the queued settings write and rolls back an unclaimed file", async () => {
+		const { manager, files, settings, beforeWrite } = setupCategoryManager();
+		beforeWrite(() =>
+			settings.favoriteCategories.push({ id: "synced", name: "NEW", path: "synced.md" }),
+		);
+		await expect(manager.create("new", "new.md", true)).rejects.toMatchObject({
+			reason: "duplicate-name",
+		});
+		expect(settings.favoriteCategories.map(({ id }) => id)).toEqual(["default", "synced"]);
+		expect(settings.selectedFavoriteCategoryId).toBe("default");
+		expect(await files.open("new.md")).toBe(false);
+	});
+
+	it("keeps a new file that a synchronized category claims before the queued write", async () => {
+		const { manager, files, settings, beforeWrite } = setupCategoryManager();
+		beforeWrite(() =>
+			settings.favoriteCategories.push({ id: "synced", name: "Synced", path: "new.md" }),
+		);
+		await expect(manager.create("new", "new.md", true)).rejects.toMatchObject({
+			reason: "duplicate-path",
+		});
+		expect(settings.favoriteCategories.map(({ id }) => id)).toEqual(["default", "synced"]);
+		expect(await files.open("new.md")).toBe(true);
+	});
+
 	it("edits category name and moves the underlying file", async () => {
 		const { manager, files, settings } = setupCategoryManager();
 		await manager.edit("default", "已改名", "words/renamed");
@@ -137,6 +175,22 @@ describe("FavoriteCategoryManager - administration & file mutex", () => {
 		expect(moveSpy).not.toHaveBeenCalled();
 	});
 
+	it("keeps the committed file move if its notification fails", async () => {
+		const { manager, changed, files } = setupCategoryManager();
+		const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+		try {
+			changed.mockImplementationOnce(() => {
+				throw new Error("notification failed");
+			});
+			await manager.edit("default", "Edited", "renamed.md");
+			expect(manager.path).toBe("renamed.md");
+			expect(await files.open("renamed.md")).toBe(true);
+			expect(logged).toHaveBeenCalledOnce();
+		} finally {
+			logged.mockRestore();
+		}
+	});
+
 	it("rolls back a file move when persisting settings fails", async () => {
 		const { manager, files, fail } = setupCategoryManager();
 		fail();
@@ -145,6 +199,54 @@ describe("FavoriteCategoryManager - administration & file mutex", () => {
 		);
 		expect(await files.open("old.md")).toBe(true);
 		expect(await files.open("rollback.md")).toBe(false);
+	});
+
+	it("rolls back a case-only path edit when its settings write fails", async () => {
+		const { manager, files, fail } = setupCategoryManager();
+		fail();
+		await expect(manager.edit("default", "名", "OLD.md")).rejects.toMatchObject({
+			reason: "save-failed",
+		});
+		expect(await files.open("old.md")).toBe(true);
+		expect(await files.open("OLD.md")).toBe(false);
+	});
+
+	it.each(["deleted", "edited"] as const)(
+		"rolls back a move when a category was %s by sync",
+		async (operation) => {
+			const { manager, files, settings, beforeWrite, changed } = setupCategoryManager();
+			beforeWrite(() => {
+				expect(files.pathSuggestions("renamed")).toEqual(["renamed.md"]);
+				settings.favoriteCategories =
+					operation === "deleted"
+						? [{ id: "other", name: "Other", path: "other.md" }]
+						: [{ ...settings.favoriteCategories[0]!, name: "Synced name" }];
+			});
+			await expect(manager.edit("default", "Local name", "renamed.md")).rejects.toMatchObject(
+				{ reason: "conflict" },
+			);
+			expect(settings.favoriteCategories[0]?.name).toBe(
+				operation === "deleted" ? "Other" : "Synced name",
+			);
+			expect(await files.open("old.md")).toBe(true);
+			expect(await files.open("renamed.md")).toBe(false);
+			expect(changed).not.toHaveBeenCalled();
+		},
+	);
+
+	it("preserves a moved document claimed by sync and reports that recovery is incomplete", async () => {
+		const { manager, files, settings, beforeWrite } = setupCategoryManager();
+		beforeWrite(() =>
+			settings.favoriteCategories.push({ id: "synced", name: "Synced", path: "renamed.md" }),
+		);
+		await expect(manager.edit("default", "Local name", "renamed.md")).rejects.toMatchObject({
+			reason: "recovery-incomplete",
+		});
+		expect(settings.favoriteCategories.map(({ path }) => path)).toEqual([
+			"old.md",
+			"renamed.md",
+		]);
+		expect(await files.find("renamed.md", "apple")).toMatchObject({ word: "apple" });
 	});
 
 	it("deletes a category and preserves its Markdown file", async () => {
@@ -166,6 +268,30 @@ describe("FavoriteCategoryManager - administration & file mutex", () => {
 		);
 	});
 
+	it("refuses to remove a category which became the last one while waiting for the settings write", async () => {
+		const { manager, files, settings, beforeWrite } = setupCategoryManager();
+		const selected = await manager.create("Other", "other.md", true);
+		beforeWrite(() => {
+			settings.favoriteCategories = [selected];
+		});
+		await expect(manager.remove(selected.id)).rejects.toMatchObject({
+			reason: "last-category",
+		});
+		expect(settings.favoriteCategories).toEqual([selected]);
+		expect(settings.selectedFavoriteCategoryId).toBe(selected.id);
+		expect(await files.open("other.md")).toBe(true);
+	});
+
+	it("keeps an updated category when it changes before a queued removal", async () => {
+		const { manager, settings, beforeWrite } = setupCategoryManager();
+		const other = await manager.create("Other", "other.md");
+		beforeWrite(() => {
+			settings.favoriteCategories[1]!.name = "Synced";
+		});
+		await expect(manager.remove(other.id)).rejects.toMatchObject({ reason: "conflict" });
+		expect(settings.favoriteCategories[1]?.name).toBe("Synced");
+	});
+
 	it("selects a category and notifies listeners", async () => {
 		const { manager, settings } = setupCategoryManager();
 		const created = await manager.create("other", "words/other.md", false);
@@ -182,6 +308,16 @@ describe("FavoriteCategoryManager - administration & file mutex", () => {
 		listener.mockClear();
 		await manager.select(created.id);
 		expect(listener).not.toHaveBeenCalled();
+	});
+
+	it("rejects selection when sync removes a category before the queued write", async () => {
+		const { manager, settings, beforeWrite } = setupCategoryManager();
+		const other = await manager.create("Other", "other.md");
+		beforeWrite(() => {
+			settings.favoriteCategories.pop();
+		});
+		await expect(manager.select(other.id)).rejects.toMatchObject({ reason: "conflict" });
+		expect(settings.selectedFavoriteCategoryId).toBe("default");
 	});
 
 	it("serializes concurrent operations and rejects with busy", async () => {

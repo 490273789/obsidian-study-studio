@@ -402,7 +402,7 @@ export class SubtitleDraftEngine {
 			return false;
 		} finally {
 			this.saving = false;
-			this.publish({});
+			if (this.snapshot.status === "saving") this.publish({ status: "review" });
 		}
 	}
 
@@ -649,7 +649,7 @@ export class SubtitleDraftEngine {
 	 * additions, removals, and confirmations in one place.
 	 */
 	act(action: SubtitleDraftAction): void {
-		if (this.disposed || this.controller || !this.draft) return;
+		if (this.disposed || this.controller || this.saving || !this.draft) return;
 		switch (action.type) {
 			case "edit-cue": {
 				this.change(

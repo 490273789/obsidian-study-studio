@@ -195,8 +195,8 @@ export interface RatingButton {
 	shortcut: string;
 	/** Rating value (1-4 for FSRS, 5 for custom "garbage" rating) */
 	rating: 1 | 2 | 3 | 4 | 5;
-	/** Interval description */
-	intervalDesc: string;
+	/** Interval description for a rating with a fixed review delay. */
+	intervalDesc?: string;
 }
 
 export type PracticeSelection =

@@ -32,6 +32,8 @@ export class TranslationRuntime {
 	private listeners = new Set<() => void>();
 	private cache = new Map<string, TranslationOutput>();
 	private generation = 0;
+	private prefillVersion = 0;
+	private configurationSave: Promise<void> | null = null;
 	private cleared: Pick<
 		TranslationSnapshot,
 		"input" | "results" | "translatedInput" | "translatedDirection"
@@ -82,6 +84,7 @@ export class TranslationRuntime {
 	}
 	setInput(text: string): void {
 		if (this.disposed) return;
+		this.prefillVersion++;
 		// Keep the previous results visible; they become stale instead of disappearing.
 		// Any explicit clear undo no longer applies once the user starts a new draft.
 		this.cleared = null;
@@ -94,21 +97,32 @@ export class TranslationRuntime {
 	}
 	async openPrefilled(text: string): Promise<void> {
 		if (this.disposed) return;
+		const version = ++this.prefillVersion;
+		const isCurrent = () => !this.disposed && version === this.prefillVersion;
 		const direction = detectTranslationDirection(text);
+		while (this.configurationSave && isCurrent()) {
+			try {
+				await this.configurationSave;
+			} catch {
+				// A failed save leaves the previous settings available for the selection.
+			}
+		}
+		if (!isCurrent()) return;
 		if (this.settings.direction !== direction) {
 			try {
 				await this.configure({ ...this.settings, direction });
 			} catch {
+				if (!isCurrent()) return;
 				this.settings = { ...this.settings, direction };
 				this.invalidate(true);
-				this.publish();
 			}
 		}
-		this.prefill(text);
+		if (isCurrent()) this.prefill(text);
 	}
 	clear({ undoable = false } = {}): boolean {
 		if (undoable && !this.state.input && !this.state.results.some((r) => r.text || r.error))
 			return false;
+		this.prefillVersion++;
 		const cleared = undoable ? this.snapshot : null;
 		this.invalidate(true);
 		this.state.input = "";
@@ -153,23 +167,31 @@ export class TranslationRuntime {
 		const next = normalizeTranslationSettings(input);
 		this.cleared = null;
 		this.state.saving = true;
-		this.publish();
-		try {
+		const saving = (async () => {
+			// Let selection requests observe the pending save before persistence begins.
+			await Promise.resolve();
 			try {
-				await this.deps.persist(normalizeTranslationSettings(next));
-			} catch {
-				throw new AiError("save-failed");
+				try {
+					await this.deps.persist(normalizeTranslationSettings(next));
+				} catch {
+					throw new AiError("save-failed");
+				}
+				if (this.disposed) return;
+				this.settings = next;
+				if (preserveResults) {
+					this.state.error = undefined;
+				} else {
+					this.invalidate(true);
+				}
+			} finally {
+				this.configurationSave = null;
+				this.state.saving = false;
+				this.publish();
 			}
-			this.settings = next;
-			if (preserveResults) {
-				this.state.error = undefined;
-			} else {
-				this.invalidate(true);
-			}
-		} finally {
-			this.state.saving = false;
-			this.publish();
-		}
+		})();
+		this.configurationSave = saving;
+		this.publish();
+		return saving;
 	}
 	async swapDirection(): Promise<void> {
 		if (this.state.status === "loading" || this.state.saving) return;
@@ -222,7 +244,7 @@ export class TranslationRuntime {
 		this.publish();
 		await Promise.all(
 			translations.map(async ({ profile, signature }) => {
-				const key = JSON.stringify([signature, text.trim()]);
+				const key = JSON.stringify([signature, text]);
 				try {
 					let output = this.cache.get(key);
 					if (output) {
@@ -277,7 +299,7 @@ export class TranslationRuntime {
 		this.publish();
 		try {
 			const signature = this.execution.getSignature(profile.id, direction);
-			const key = JSON.stringify([signature, text.trim()]);
+			const key = JSON.stringify([signature, text]);
 			let output = this.cache.get(key);
 			if (output) {
 				this.cache.delete(key);

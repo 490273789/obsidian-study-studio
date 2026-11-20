@@ -34,6 +34,85 @@ class MemoryStateStore implements ContinuityStateStore {
 }
 
 describe("Obsidian continuity source store", () => {
+	it.each([false, true])(
+		"retains an unreadable deck and indexes unaffected sources (discovery-only read: %s)",
+		async (discoveryOnly) => {
+			const otherId = "123e4567-e89b-42d3-a456-426614174001";
+			const goneId = "123e4567-e89b-42d3-a456-426614174002";
+			const source = (cardId: string, front: string) =>
+				`#单词\n<!-- wsr-card-id: ${cardId} -->\n${front}\n??\nback\n;;`;
+			const contents = new Map([
+				["words.md", source(CARD_ID, "old word")],
+				["other.md", source(otherId, "before")],
+				["gone.md", source(goneId, "removed")],
+			]);
+			let wordsUnreadable = false;
+			const read = async (file: TFile) => {
+				if (wordsUnreadable && file.path === "words.md") throw new Error("Locked file");
+				return contents.get(file.path)!;
+			};
+			const app = {
+				vault: {
+					getMarkdownFiles: () =>
+						[...contents.keys()].map((path) =>
+							Object.assign(new TFile(), { path, basename: path }),
+						),
+					read,
+					cachedRead: read,
+				},
+				metadataCache: {
+					getFileCache: (file: TFile) => ({
+						tags: [
+							{
+								tag:
+									discoveryOnly && wordsUnreadable && file.path === "words.md"
+										? "#其他"
+										: "#单词",
+							},
+						],
+					}),
+				},
+			} as unknown as App;
+			const state = new MemoryStateStore({
+				configuredTags: ["#单词"],
+				decks: new Map(),
+				continuity: { sources: {}, issues: [], journal: null },
+			});
+			const continuity = createCardIdentityContinuity({
+				sources: createObsidianContinuitySourceStore(app),
+				state,
+				createIdentity: () => {
+					throw new Error("Test sources already have stable identities");
+				},
+			});
+
+			expect((await continuity.synchronize()).kind).toBe("current");
+			const oldDeck = state.state.decks.get("words.md");
+			wordsUnreadable = true;
+			contents.delete("gone.md");
+			contents.set("other.md", source(otherId, "after"));
+			contents.set("claim.md", source(CARD_ID, "conflicting claim"));
+			expect(await continuity.synchronize()).toMatchObject({
+				kind: "attention-required",
+				change: { changedDeckIds: ["other.md"], removedDeckIds: ["gone.md"] },
+			});
+			expect(state.state.decks.get("words.md")).toBe(oldDeck);
+			expect(state.state.decks.get("claim.md")).toBeUndefined();
+			expect(state.state.decks.get("other.md")?.cards[0]?.front).toBe("after");
+			expect(state.state.continuity.sources["words.md"]).toEqual({
+				type: "last-known-good",
+				reason: "source-failure",
+			});
+
+			wordsUnreadable = false;
+			contents.delete("claim.md");
+			contents.set("words.md", source(CARD_ID, "recovered"));
+			expect((await continuity.synchronize()).kind).toBe("current");
+			expect(state.state.decks.get("words.md")?.cards[0]?.front).toBe("recovered");
+			expect(state.state.continuity.sources["words.md"]).toEqual({ type: "current" });
+		},
+	);
+
 	it("protects and indexes targeted source edits even when metadata incorrectly reports no tags", async () => {
 		const path = "notes/empty.md";
 		const file = Object.assign(new TFile(), { path, basename: "empty" });

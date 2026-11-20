@@ -95,8 +95,6 @@ async function setup(resultSections?: () => DictionarySection[]) {
 			return true;
 		},
 		getLocalDictionaryAdministrationState: () => dictionary,
-		setLocalDictionaryAdministrationState: () => {},
-		save: async () => {},
 	};
 	const query = createDictionaryQuerySession({
 		settings: store,

@@ -233,6 +233,61 @@ describe("dictionary query session", () => {
 		expect(session.getSnapshot().sources[0]?.result?.word).toBe("second");
 	});
 
+	it("leaves the new lookup loading when a retry of the previous word finishes", async () => {
+		const settings = dictionarySettings([
+			{ enabled: true, id: "youdao", kind: "youdao", label: "有道" },
+		]);
+		const retry = deferred<DictionaryResult>();
+		const second = deferred<DictionaryResult>();
+		const lookup = vi
+			.fn()
+			.mockRejectedValueOnce(new DictionaryError("network", "offline"))
+			.mockReturnValueOnce(retry.promise)
+			.mockReturnValueOnce(second.promise);
+		const session = createDictionaryQuerySession({
+			settings: settings.store,
+			resolveSource: () => dictionarySource("youdao", "youdao", "有道", lookup),
+			notify: vi.fn(),
+			aiEngineInfo: () => ({ configId: null, name: null }),
+		});
+
+		await session.send({ type: "lookup", query: "first" });
+		const oldRetry = session.send({ type: "retry-source", sourceId: "youdao" });
+		const newLookup = session.send({ type: "lookup", query: "second" });
+		await vi.waitFor(() => expect(lookup).toHaveBeenCalledWith("second"));
+		retry.resolve(result("youdao", "有道", "first"));
+		await oldRetry;
+		expect(session.getSnapshot()).toMatchObject({ query: "second", status: "loading" });
+
+		second.resolve(result("youdao", "有道", "second"));
+		await newLookup;
+		expect(session.getSnapshot()).toMatchObject({ query: "second", status: "ready" });
+	});
+
+	it("marks the lookup ready when manual AI generation provides its first result", async () => {
+		const settings = dictionarySettings([
+			{ enabled: true, id: "youdao", kind: "youdao", label: "有道" },
+			{ enabled: true, id: "ai", kind: "ai", label: "AI" },
+		]);
+		const session = createDictionaryQuerySession({
+			settings: settings.store,
+			resolveSource: (source) =>
+				dictionarySource(source.id, source.kind, source.label, async (query) => {
+					if (source.id === "youdao") throw new DictionaryError("network", "offline");
+					return result(source.id, source.label, query);
+				}),
+			notify: vi.fn(),
+			aiEngineInfo: () => ({ configId: "engine", name: "Engine" }),
+		});
+		await session.send({ type: "lookup", query: "pear" });
+		expect(session.getSnapshot().status).toBe("error");
+		await session.send({ type: "generate-ai" });
+		expect(session.getSnapshot()).toMatchObject({
+			status: "ready",
+			sources: [{ status: "error" }, { status: "success" }],
+		});
+	});
+
 	it("publishes immutable snapshots and handles presentation selection through intents", async () => {
 		const settings = dictionarySettings([
 			{ enabled: true, id: "youdao", kind: "youdao", label: "有道" },
@@ -317,10 +372,6 @@ function dictionarySettings(sources: DictionarySettings["sources"]): {
 			return true;
 		},
 		getLocalDictionaryAdministrationState: () => current,
-		setLocalDictionaryAdministrationState: (state) => {
-			current = { ...current, ...state };
-		},
-		save: async () => {},
 	};
 	return { store, current: () => current };
 }

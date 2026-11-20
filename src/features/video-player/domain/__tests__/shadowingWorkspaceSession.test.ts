@@ -403,7 +403,9 @@ describe("ShadowingWorkspaceSession", () => {
 		expect(snap.editor?.cueId).toBe("c1");
 		expect(snap.editor?.text).toBe("first");
 		expect(snap.editor?.translation).toBe("第一");
-		expect(snap.editor?.canSave).toBe(true);
+		expect(snap.editor?.canSave).toBe(false);
+		await state.session.act({ type: "save-cue-edit" });
+		expect(state.saveCueEdit).not.toHaveBeenCalled();
 
 		// Edit text field
 		const initialEditor = snap.editor;
@@ -432,13 +434,13 @@ describe("ShadowingWorkspaceSession", () => {
 		});
 		expect(state.saveCueEdit).toHaveBeenCalledWith(expect.objectContaining({ cueId: "c1" }), {
 			text: "first edit",
-			translation: "第一",
 		});
 		// Editor is closed and draft cleared after successful save
 		expect(state.session.getSnapshot().editor).toBeNull();
 
 		// Open editor again and simulate conflict
 		await state.session.act({ type: "toggle-cue-editor" });
+		await state.session.act({ type: "set-cue-field", field: "translation", value: "" });
 		snap = state.session.getSnapshot();
 		state.saveCueEdit.mockRejectedValueOnce(new ShadowSubtitleEditConflict());
 
@@ -446,6 +448,10 @@ describe("ShadowingWorkspaceSession", () => {
 			type: "save-cue-edit",
 			expectedEditor: snap.editor,
 		});
+		expect(state.saveCueEdit).toHaveBeenLastCalledWith(
+			expect.objectContaining({ cueId: "c1" }),
+			{ translation: "" },
+		);
 		snap = state.session.getSnapshot();
 		expect(snap.editor?.conflict).toBe(true);
 		expect(snap.editor?.canSave).toBe(false);
@@ -488,7 +494,7 @@ describe("ShadowingWorkspaceSession", () => {
 			text: replacement.text,
 			translation: replacement.translation,
 			conflict: false,
-			canSave: true,
+			canSave: false,
 		});
 		state.session.dispose();
 	});
@@ -523,14 +529,18 @@ describe("ShadowingWorkspaceSession", () => {
 			expect(state.session.getSnapshot().editor).toMatchObject({
 				text: "My correction",
 				conflict: externalEdit,
-				canSave: !externalEdit,
+				canSave: false,
 				busy: false,
 			});
 			if (!externalEdit) {
+				await state.session.act({
+					type: "set-cue-field",
+					field: "text",
+					value: "Follow-up correction",
+				});
 				await state.session.act({ type: "save-cue-edit" });
 				expect(state.saveCueEdit).toHaveBeenLastCalledWith(receipt, {
-					text: "My correction",
-					translation: "第一",
+					text: "Follow-up correction",
 				});
 			}
 			state.session.dispose();

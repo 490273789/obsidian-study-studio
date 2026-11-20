@@ -17,10 +17,12 @@ import { answerCommit, mergeCommits, recordCommit, spellingCommit } from "./sess
 const PATH = "notes/words.md";
 const ID = "550e8400-e29b-41d4-a716-446655440000";
 
+function cardIdentity(index: number): string {
+	return index === 0 ? ID : `550e8400-e29b-41d4-a716-${String(index).padStart(12, "0")}`;
+}
+
 function sourceCard(index: number): string {
-	const identity =
-		index === 0 ? ID : `550e8400-e29b-41d4-a716-${String(index).padStart(12, "0")}`;
-	return `<!-- wsr-card-id: ${identity} -->\nword ${index}\n??\n释义 ${index}\n;;`;
+	return `<!-- wsr-card-id: ${cardIdentity(index)} -->\nword ${index}\n??\n释义 ${index}\n;;`;
 }
 
 async function fixture(cardCount = 2) {
@@ -45,7 +47,9 @@ async function fixture(cardCount = 2) {
 		content: `${DEFAULT_SETTINGS.flashcardTags[0]}\n${Array.from({ length: cardCount }, (_, index) => sourceCard(index)).join("\n")}`,
 	};
 	const sources = {
-		list: vi.fn(async () => [{ ...document }]),
+		list: vi.fn(async (_tags?: string[], _onReadFailure?: (path: string) => void) => [
+			{ ...document },
+		]),
 		replaceIfUnchanged: vi.fn().mockResolvedValue("written"),
 	};
 	function openRepository() {
@@ -73,6 +77,7 @@ async function fixture(cardCount = 2) {
 		store,
 		cache,
 		document,
+		sources,
 		repo,
 		identity,
 		openRepository,
@@ -83,6 +88,292 @@ async function fixture(cardCount = 2) {
 }
 
 describe("continuity learning persistence", () => {
+	it("preserves hidden learning placeholders through a partial scan on a second device", async () => {
+		const f = await fixture(2);
+		const learned = f.repo.getCard(PATH, ID)!;
+		expect(
+			await f.repo.commitSession(
+				answerCommit({
+					deckId: PATH,
+					cardId: ID,
+					fsrsCard: { ...learned.fsrsCard, reps: 3 },
+				}),
+			),
+		).toMatchObject({ kind: "applied" });
+		f.repo.dispose();
+
+		f.cache.load.mockResolvedValue(null);
+		const { repo, identity } = f.openRepository();
+		const readablePath = "notes/readable.md";
+		const readable = {
+			path: readablePath,
+			basename: "readable",
+			content: `${DEFAULT_SETTINGS.flashcardTags[0]}\n${sourceCard(2)}`,
+		};
+		f.sources.list.mockImplementationOnce(async (_tags, onReadFailure) => {
+			onReadFailure!(PATH);
+			return [
+				readable,
+				{
+					path: "notes/claim.md",
+					basename: "claim",
+					content: `${DEFAULT_SETTINGS.flashcardTags[0]}\n${sourceCard(1)}`,
+				},
+			];
+		});
+		expect(await identity.synchronize()).toMatchObject({
+			kind: "attention-required",
+			change: { unreadablePaths: [PATH] },
+		});
+		expect(repo.getAllDecks().map((deck) => deck.filePath)).toEqual([readablePath]);
+		expect(repo.getCard(PATH, ID)).toBeUndefined();
+		await repo.recordWordListVisit(readablePath, "readable", 1000, 11000);
+		expect(
+			decodePersistedLearning(f.store.getPartition("learning"))?.cards[ID]?.fsrsCard.reps,
+		).toBe(3);
+
+		f.sources.list.mockResolvedValueOnce([f.document, readable]);
+		expect((await identity.synchronize()).kind).toBe("current");
+		expect(repo.getCard(PATH, ID)).toMatchObject({ front: "word 0", fsrsCard: { reps: 3 } });
+		expect(repo.getAllDecks()).toHaveLength(2);
+		repo.dispose();
+	});
+
+	it.each([false, true])(
+		"keeps learning outside a stale local cache during a partial scan (legacy source attribution: %s)",
+		async (knownSource) => {
+			const f = await fixture(2);
+			const tag = DEFAULT_SETTINGS.flashcardTags[0];
+			const readablePath = "notes/readable.md";
+			const unreadablePath = "notes/added-on-other-device.md";
+			const readable = {
+				path: readablePath,
+				basename: "readable",
+				content: `${tag}\n${sourceCard(3)}`,
+			};
+			f.sources.list.mockResolvedValueOnce([f.document, readable]);
+			expect((await f.identity.synchronize()).kind).toBe("current");
+			await vi.waitFor(() => expect(f.cache.save).toHaveBeenCalledOnce());
+
+			// Sync can update data.json before the associated Markdown is readable.
+			const original = decodePersistedLearning(f.store.getPartition("learning"));
+			const learning = structuredClone(original);
+			const addedIds = [
+				{ id: cardIdentity(2), path: PATH, reps: 8 },
+				{ id: cardIdentity(4), path: unreadablePath, reps: 11 },
+			];
+			for (const { id, path, reps } of addedIds) {
+				learning.cards[id] = {
+					fsrsCard: { ...learning.cards[ID]!.fsrsCard, reps },
+					...(knownSource ? { sourceFile: path } : {}),
+				};
+			}
+			learning.decks[PATH]!.studyCount = 17;
+			learning.decks[unreadablePath] = { studyCount: 9, lastStudied: null };
+			f.replaceExternalData({ ...f.store.getRawDocument(), learning });
+			await f.store.reloadExternalSettings();
+			await vi.waitFor(() => expect(f.repo.getDeck(PATH)?.studyCount).toBe(17));
+
+			readable.content = readable.content.replace("word 3", "edited cached card");
+			f.sources.list.mockImplementationOnce(async (_tags, onReadFailure) => {
+				onReadFailure!(PATH);
+				onReadFailure!(unreadablePath);
+				return [readable];
+			});
+			expect(await f.identity.synchronize()).toMatchObject({
+				kind: "attention-required",
+				change: { changedDeckIds: [readablePath] },
+			});
+			expect(f.repo.getCard(readablePath, cardIdentity(3))?.front).toBe("edited cached card");
+			expect(f.repo.getDeck(PATH)?.cards).toHaveLength(2);
+			expect(f.repo.getDeck(unreadablePath)).toBeUndefined();
+			await vi.waitFor(() => expect(f.cache.save).toHaveBeenCalledTimes(2));
+			expect(Object.keys(f.cache.save.mock.calls[1]![0].decks).sort()).toEqual([
+				readablePath,
+				PATH,
+			]);
+			await f.repo.recordWordListVisit(readablePath, "readable", 1000, 11000);
+			const afterPartial = decodePersistedLearning(f.store.getPartition("learning"));
+			for (const { id, reps } of addedIds) {
+				expect(afterPartial.cards[id]?.fsrsCard.reps).toBe(reps);
+			}
+			expect(afterPartial.decks[unreadablePath]?.studyCount).toBe(9);
+
+			f.sources.list.mockResolvedValueOnce([
+				{ ...f.document, content: `${f.document.content}\n${sourceCard(2)}` },
+				readable,
+				{
+					path: unreadablePath,
+					basename: "added-on-other-device",
+					content: `${tag}\n${sourceCard(4)}`,
+				},
+			]);
+			expect((await f.identity.synchronize()).kind).toBe("current");
+			for (const { id, path, reps } of addedIds) {
+				expect(f.repo.getCard(path, id)?.fsrsCard.reps).toBe(reps);
+			}
+			expect(f.repo.getDeck(unreadablePath)?.studyCount).toBe(9);
+			f.repo.dispose();
+		},
+	);
+
+	it("retries a partial scan if external learning introduces an unresolved identity during the read", async () => {
+		const f = await fixture(1);
+		const claim = {
+			path: "notes/claim.md",
+			basename: "claim",
+			content: `${DEFAULT_SETTINGS.flashcardTags[0]}\n${sourceCard(1)}`,
+		};
+		let finishScan!: () => void;
+		f.sources.list.mockImplementationOnce(
+			(_tags, onReadFailure) =>
+				new Promise((resolve) => {
+					finishScan = () => {
+						onReadFailure!(PATH);
+						resolve([claim]);
+					};
+				}),
+		);
+		const scan = f.identity.synchronize();
+		await vi.waitFor(() => expect(finishScan).toBeTypeOf("function"));
+		const learning = decodePersistedLearning(f.store.getPartition("learning"));
+		const claimedId = cardIdentity(1);
+		learning.cards[claimedId] = { fsrsCard: { ...learning.cards[ID]!.fsrsCard, reps: 4 } };
+		learning.decks[PATH]!.studyCount = 7;
+		f.replaceExternalData({ ...f.store.getRawDocument(), learning });
+		await f.store.reloadExternalSettings();
+		await vi.waitFor(() => expect(f.repo.getDeck(PATH)?.studyCount).toBe(7));
+
+		finishScan();
+		expect(await scan).toMatchObject({ kind: "failed", retryable: true });
+		expect(f.repo.getDeck(claim.path)).toBeUndefined();
+		f.sources.list.mockImplementationOnce(async (_tags, onReadFailure) => {
+			onReadFailure!(PATH);
+			return [claim];
+		});
+		expect((await f.identity.synchronize()).kind).toBe("attention-required");
+		expect(f.repo.getDeck(claim.path)).toBeUndefined();
+		expect(
+			decodePersistedLearning(f.store.getPartition("learning")).cards[claimedId]?.fsrsCard
+				.reps,
+		).toBe(4);
+		f.sources.list.mockResolvedValueOnce([
+			{ ...f.document, content: `${f.document.content}\n${sourceCard(1)}` },
+		]);
+		expect((await f.identity.synchronize()).kind).toBe("current");
+		expect(f.repo.getCard(PATH, claimedId)?.fsrsCard.reps).toBe(4);
+		f.repo.dispose();
+	});
+
+	it.each([false, true])(
+		"preserves a rating committed while scanning an edited source (moved: %s)",
+		async (moved) => {
+			const f = await fixture(2);
+			const targetPath = moved ? "notes/moved.md" : PATH;
+			const editedCard = sourceCard(0).replace("word 0", "edited word");
+			const tag = DEFAULT_SETTINGS.flashcardTags[0];
+			const documents = moved
+				? [
+						{ ...f.document, content: `${tag}\n${sourceCard(1)}` },
+						{ path: targetPath, basename: "moved", content: `${tag}\n${editedCard}` },
+					]
+				: [{ ...f.document, content: `${tag}\n${editedCard}\n${sourceCard(1)}` }];
+			let finishScan!: () => void;
+			f.sources.list.mockImplementationOnce(
+				() =>
+					new Promise((resolve) => {
+						finishScan = () => resolve(documents);
+					}),
+			);
+			const scan = f.identity.synchronize();
+			await vi.waitFor(() => expect(finishScan).toBeTypeOf("function"));
+			const card = f.repo.getCard(PATH, ID)!;
+			expect(
+				await f.repo.commitSession(
+					mergeCommits(
+						answerCommit({
+							deckId: PATH,
+							cardId: ID,
+							fsrsCard: { ...card.fsrsCard, reps: 3 },
+						}),
+						recordCommit({
+							mode: "study",
+							deckId: PATH,
+							deckName: "words",
+							occurredAt: Date.now(),
+							activity: {
+								completion: "completed",
+								answerCount: 1,
+								durationSeconds: 0,
+							},
+						}),
+					),
+				),
+			).toMatchObject({ kind: "applied" });
+			finishScan();
+			expect((await scan).kind).toBe("current");
+			expect(
+				f.repo.getDeck(targetPath)?.cards.find((entry) => entry.id === ID),
+			).toMatchObject({ front: "edited word", fsrsCard: { reps: 3 } });
+			expect(f.repo.getDeck(PATH)?.studyCount).toBe(1);
+			expect(
+				decodePersistedLearning(f.store.getPartition("learning"))?.cards[ID]?.fsrsCard.reps,
+			).toBe(3);
+			f.repo.dispose();
+		},
+	);
+
+	it("carries a rating committed during migration to the newly assigned identity", async () => {
+		const f = await fixture(1);
+		const legacyId = `${PATH}::0`;
+		const stateStore = f.repo.createContinuityStateStore();
+		const legacyState = await stateStore.load();
+		const deck = legacyState.decks.get(PATH)!;
+		legacyState.decks.set(PATH, {
+			...deck,
+			cards: [{ ...deck.cards[0]!, id: legacyId }],
+		});
+		await stateStore.commit(legacyState);
+		f.document.content = f.document.content.replace(`<!-- wsr-card-id: ${ID} -->\n`, "");
+		const identity = createCardIdentityContinuity({
+			sources: f.sources,
+			state: stateStore,
+			createIdentity: () => ID,
+		});
+		await identity.synchronize();
+		const preview = identity.inspect().migration!;
+		let finishWrite!: () => void;
+		f.sources.replaceIfUnchanged.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					finishWrite = () => resolve("written");
+				}),
+		);
+		const migration = identity.resolve({
+			kind: "migrate",
+			ticket: preview.ticket,
+			deckIds: [PATH],
+		});
+		await vi.waitFor(() => expect(finishWrite).toBeTypeOf("function"));
+		const card = f.repo.getCard(PATH, legacyId)!;
+		const rating = await f.repo.commitSession(
+			answerCommit({
+				deckId: PATH,
+				cardId: legacyId,
+				fsrsCard: { ...card.fsrsCard, reps: 4 },
+			}),
+		);
+		finishWrite();
+		expect(rating.kind).toBe("applied");
+		expect((await migration).kind).toBe("applied");
+		expect(f.repo.getCard(PATH, legacyId)).toBeUndefined();
+		expect(f.repo.getCard(PATH, ID)?.fsrsCard.reps).toBe(4);
+		const persisted = decodePersistedLearning(f.store.getPartition("learning"));
+		expect(persisted?.cards[legacyId]).toBeUndefined();
+		expect(persisted?.cards[ID]?.fsrsCard.reps).toBe(4);
+		f.repo.dispose();
+	});
+
 	it("rebuilds a missing deferred cache without losing FSRS or deck study metadata", async () => {
 		const f = await fixture();
 		const card = f.repo.getCard(PATH, ID)!;
@@ -270,6 +561,32 @@ describe("continuity learning persistence", () => {
 		expect((await authority.read()).content).toMatchObject({
 			kind: "current",
 			learning: { continuity: state.continuity },
+		});
+		repo.dispose();
+		f.repo.dispose();
+	});
+
+	it("keeps scanned cards if a conflict retry restores without the deck cache", async () => {
+		const f = await fixture(1);
+		const learning = decodePersistedLearning(f.store.getPartition("learning"))!;
+		learning.cards[ID]!.fsrsCard.reps = 7;
+		learning.continuity.sources[PATH] = { type: "last-known-good", reason: "source-failure" };
+		const authority = new MemoryFlashcardAuthority(DEFAULT_SETTINGS, learning);
+		const repo = new FlashcardRepository({ authority, deckIndexCache: f.cache });
+		await repo.loadDeckIndex();
+		const identity = createCardIdentityContinuity({
+			sources: f.sources,
+			state: repo.createContinuityStateStore(),
+			createIdentity: () => ID,
+		});
+		authority.conflictNextCommit = true;
+		f.cache.load.mockResolvedValueOnce(null);
+
+		expect((await identity.synchronize()).kind).toBe("current");
+		expect(repo.getCard(PATH, ID)).toMatchObject({ front: "word 0", fsrsCard: { reps: 7 } });
+		expect((await authority.read()).content).toMatchObject({
+			kind: "current",
+			learning: { cards: { [ID]: { fsrsCard: { reps: 7 } } } },
 		});
 		repo.dispose();
 		f.repo.dispose();
