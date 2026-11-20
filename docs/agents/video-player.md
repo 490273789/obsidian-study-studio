@@ -16,7 +16,7 @@
 
 ## 影子跟读
 
-`VideoSubtitleJobs` 是插件生命周期的字幕任务 owner，字幕文档存在资料库，外部视频路径与任务检查点存在设备本地。`ShadowStorageRouter` 将 source ID 固定到第一次选定的资料库目录；`ShadowPracticeRecords` 管理难段和用户保留的录音。字幕冲突后通过 `reloadSource` 丢弃当前未保存草稿并重新读取资料库版本，不要让视图直接改 store。
+`VideoSubtitleJobs` 是插件生命周期的字幕任务 owner，字幕文档存在资料库，外部视频路径与任务检查点存在设备本地。`ObsidianShadowVaultStore`（`obsidian/shadowVaultStore.ts`）统一实现 `ShadowSubtitleStore` 与 `ShadowPracticeRecordsPort`，将每个 source ID 固定到第一次选定的资料库目录，并管理字幕文档历史/冲突保护、任务检查点以及难段与用户保留的录音。字幕冲突后通过 `reloadSource` 丢弃当前未保存草稿并重新读取资料库版本，不要让视图直接改 store。
 
 `src/features/video-player/obsidian/videoShadowingDesktopAdapter.ts`（`VideoShadowingDesktopAdapter`）是桌面环境的宿主适配器：
 

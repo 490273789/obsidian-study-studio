@@ -4,10 +4,15 @@ import {
 	type ShadowSubtitleEditTarget,
 	type VideoSubtitleJobs,
 } from "../shadowSubtitlesJobs";
-import type { ShadowPracticeRecords } from "../../obsidian/shadowPracticeRecords";
 import { ShadowingWorkspaceSession } from "../shadowingWorkspaceSession";
 import { VideoPlayerRuntime, emptyState } from "../videoPlayerRuntime";
-import type { ShadowRecorderPort, TakeAudioPlayerPort, VideoMediaPort } from "../types";
+import type {
+	ShadowPracticeRecord,
+	ShadowPracticeRecordsPort,
+	ShadowRecorderPort,
+	TakeAudioPlayerPort,
+	VideoMediaPort,
+} from "../types";
 
 class FakeMedia extends EventTarget implements VideoMediaPort {
 	currentTime = 0;
@@ -61,14 +66,10 @@ function setup(initialEnabled: readonly string[] = ["one", "two"]) {
 	const translateSubtitles = vi.fn(async () => undefined);
 	const reloadSource = vi.fn(async (): Promise<void> => undefined);
 	const restore = vi.fn(async () => undefined);
-	const saveTake = vi.fn(async () => undefined);
-	const markDifficult = vi.fn(async () => undefined);
-	const removeRecord = vi.fn(async () => undefined);
-
-	const record = {
+	const record: ShadowPracticeRecord = {
 		id: "take-1",
 		sourceId: "one",
-		kind: "recording" as const,
+		kind: "recording",
 		start: 4,
 		end: 6,
 		text: "hello",
@@ -76,6 +77,9 @@ function setup(initialEnabled: readonly string[] = ["one", "two"]) {
 		mimeType: "audio/webm",
 		audioPath: "Study Studio/one/take-take-1.webm",
 	};
+	const saveTake = vi.fn<ShadowPracticeRecordsPort["saveTake"]>(async () => record);
+	const markDifficult = vi.fn<ShadowPracticeRecordsPort["markDifficult"]>(async () => record);
+	const removeRecord = vi.fn(async () => undefined);
 	const cues = [
 		{ id: "c1", start: 1, end: 3, text: "first", translation: "第一" },
 		{ id: "c2", start: 4, end: 6, text: "second", translation: "第二" },
@@ -126,14 +130,14 @@ function setup(initialEnabled: readonly string[] = ["one", "two"]) {
 	} as unknown as VideoSubtitleJobs;
 
 	const reloadRecords = vi.fn(async () => [record]);
-	const records = {
+	const records: ShadowPracticeRecordsPort = {
 		list: vi.fn(async () => [record]),
 		reload: reloadRecords,
 		readTake,
 		saveTake,
 		markDifficult,
 		remove: removeRecord,
-	} as unknown as ShadowPracticeRecords;
+	};
 
 	const recorder: ShadowRecorderPort = {
 		start: vi.fn(async () => undefined),
@@ -741,8 +745,8 @@ describe("shadowing playback and recordings", () => {
 	});
 
 	it("keeps an accepted failed save after leaving and retries the captured take", async () => {
-		const { session, media, saveTake, reloadRecords } = setupPractice();
-		saveTake.mockRejectedValueOnce(new Error("disk full")).mockResolvedValueOnce(undefined);
+		const { session, media, saveTake, reloadRecords, record } = setupPractice();
+		saveTake.mockRejectedValueOnce(new Error("disk full")).mockResolvedValueOnce(record);
 		await session.act({ type: "record-once" });
 		await vi.advanceTimersByTimeAsync(3000);
 		media.end(14);

@@ -11,8 +11,7 @@ import type {
 	WorkbenchModule,
 	WorkbenchSettingsSection,
 } from "../../core/host/workbench";
-import { VideoPlayerRuntime } from "./domain";
-import { validShadowVaultFolder } from "./domain/shadowVaultFolder";
+import { validShadowVaultFolder, VideoPlayerRuntime } from "./domain";
 import {
 	createDesktopVideoFilePicker,
 	localVideoMediaUrl,

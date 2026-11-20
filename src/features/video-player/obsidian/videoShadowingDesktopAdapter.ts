@@ -9,8 +9,7 @@ import {
 	createDesktopShadowAudioExtractor,
 	shadowVideoSourceSignature,
 } from "./shadowSubtitleAudio";
-import { ShadowStorageRouter } from "./shadowStorageRouter";
-import { ShadowPracticeRecords } from "./shadowPracticeRecords";
+import { ObsidianShadowVaultStore } from "./shadowVaultStore";
 import { createShadowRecorder } from "./shadowRecorder";
 import type { VideoPlayerSettings } from "../settings/slice";
 import { ShadowingWorkspaceSession } from "../domain/shadowingWorkspaceSession";
@@ -95,16 +94,13 @@ export class VideoShadowingDesktopAdapter {
 				},
 			};
 
-			const store = new ShadowStorageRouter(
+			const vaultStore = new ObsidianShadowVaultStore(
 				this.app,
 				() => this.readSettings().shadowVaultFolder,
 			);
-			const records = new ShadowPracticeRecords(this.app.vault.adapter, (sourceId) =>
-				store.rootFor(sourceId),
-			);
 
 			this.jobs = new VideoSubtitleJobs({
-				store,
+				store: vaultStore,
 				reportError: options.reportError,
 				extract: (source, offset, signal) =>
 					createDesktopShadowAudioExtractor({
@@ -124,7 +120,7 @@ export class VideoShadowingDesktopAdapter {
 				runtime: this.runtime,
 				jobs: this.jobs,
 				recorder,
-				records,
+				records: vaultStore,
 				audioPlayer: createBrowserTakeAudioPlayer(),
 				readEnabled: (sourceId) => this.enabledSources.has(sourceId),
 				writeEnabled: (sourceId, enabled) => {

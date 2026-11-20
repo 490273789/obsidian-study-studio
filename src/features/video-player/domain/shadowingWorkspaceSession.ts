@@ -2,10 +2,6 @@ import type { VideoPlayerRuntime } from "./videoPlayerRuntime";
 import type { ShadowVideoSource, VideoSubtitleJobs } from "./shadowSubtitlesJobs";
 import { VideoSubtitleDrafts } from "./videoSubtitleDrafts";
 import type {
-	ShadowPracticeRecord,
-	ShadowPracticeRecords,
-} from "../obsidian/shadowPracticeRecords";
-import type {
 	ShadowingCueRow,
 	ShadowingMode,
 	ShadowingRange,
@@ -13,6 +9,8 @@ import type {
 	ShadowingTake,
 	ShadowingWorkspaceViewAction,
 	ShadowingWorkspaceState,
+	ShadowPracticeRecord,
+	ShadowPracticeRecordsPort,
 	ShadowRecorderPort,
 	TakeAudioPlayerPort,
 	VideoPlaybackRate,
@@ -21,7 +19,7 @@ import type {
 export interface ShadowingWorkspaceSessionOptions {
 	readonly runtime: VideoPlayerRuntime;
 	readonly jobs: VideoSubtitleJobs;
-	readonly records: ShadowPracticeRecords;
+	readonly records: ShadowPracticeRecordsPort;
 	readonly recorder: ShadowRecorderPort;
 	readonly audioPlayer?: TakeAudioPlayerPort;
 	readonly now?: () => number;

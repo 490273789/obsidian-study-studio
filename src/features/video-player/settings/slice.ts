@@ -4,7 +4,7 @@ import {
 	readLegacyVideoTranscriptionProvider,
 } from "../../../core/ai/legacy";
 import { settingsRecord, type SettingsSlice } from "../../../core/settings/slice";
-import { validShadowVaultFolder } from "../domain/shadowVaultFolder";
+import { validShadowVaultFolder } from "../domain/types";
 import {
 	DEFAULT_VIDEO_PLAYER_SHORTCUTS,
 	normalizeKeyboardShortcut,

@@ -44,9 +44,12 @@ import {
 
 function createMemoryVaultAdapter() {
 	const files = new Map<string, string>();
+	const binaries = new Map<string, ArrayBuffer>();
 	const directories = new Set<string>();
 	return {
-		exists: vi.fn(async (path: string) => files.has(path) || directories.has(path)),
+		exists: vi.fn(
+			async (path: string) => files.has(path) || binaries.has(path) || directories.has(path),
+		),
 		read: vi.fn(async (path: string) => {
 			const content = files.get(path);
 			if (content === undefined) throw new Error(`Missing file: ${path}`);
@@ -66,6 +69,14 @@ function createMemoryVaultAdapter() {
 				(dir) => dir.startsWith(`${path}/`) && !dir.slice(path.length + 1).includes("/"),
 			),
 		})),
+		readBinary: vi.fn(async (path: string) => binaries.get(path)!),
+		writeBinary: vi.fn(async (path: string, data: ArrayBuffer) => {
+			binaries.set(path, data);
+		}),
+		remove: vi.fn(async (path: string) => {
+			binaries.delete(path);
+			files.delete(path);
+		}),
 	};
 }
 

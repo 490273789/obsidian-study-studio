@@ -119,6 +119,43 @@ export interface ShadowRecorderPort {
 	dispose: () => void;
 }
 
+export interface ShadowPracticeRecord {
+	readonly id: string;
+	readonly sourceId: string;
+	readonly kind: "difficult" | "recording";
+	readonly start: number;
+	readonly end: number;
+	readonly text: string;
+	readonly createdAt: number;
+	readonly playbackRate?: number;
+	readonly mimeType?: string;
+	readonly audioPath?: string;
+}
+
+export interface ShadowPracticeRecordsPort {
+	list(sourceId: string): Promise<ShadowPracticeRecord[]>;
+	reload(sourceId: string): Promise<ShadowPracticeRecord[]>;
+	markDifficult(
+		sourceId: string,
+		start: number,
+		end: number,
+		text: string,
+	): Promise<ShadowPracticeRecord>;
+	saveTake(take: ShadowingTake): Promise<ShadowPracticeRecord>;
+	remove(sourceId: string, recordId: string): Promise<void>;
+	readTake(record: ShadowPracticeRecord): Promise<ArrayBuffer>;
+}
+
+/** Only normalized vault-relative directories may contain study artifacts. */
+export function validShadowVaultFolder(value: unknown): value is string {
+	if (typeof value !== "string" || !value.trim() || value !== value.trim()) return false;
+	if (value.includes("\\") || value.includes(":") || value.startsWith("/")) return false;
+	for (let index = 0; index < value.length; index++) {
+		if (value.charCodeAt(index) < 32) return false;
+	}
+	return value.split("/").every((part) => !!part && part !== "." && part !== "..");
+}
+
 export interface ShadowingCueRow {
 	readonly id: string;
 	readonly start: number;
