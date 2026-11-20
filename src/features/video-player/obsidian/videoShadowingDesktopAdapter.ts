@@ -1,8 +1,5 @@
 import type { App } from "obsidian";
-import type {
-	VideoShadowingCue,
-	SubtitlePipelineSignatureOptions,
-} from "../../../core/media/subtitles/mediaSubtitlePipeline";
+import type { ShadowTranscriptionCue } from "../domain/shadowSubtitles";
 import { VideoSubtitleJobs } from "../domain/shadowSubtitlesJobs";
 import type { ShadowRecorderPort } from "../domain/types";
 import {
@@ -19,7 +16,13 @@ import type { VideoPlayerRuntime } from "../domain/videoPlayerRuntime";
 const SHADOW_ENABLED_KEY = "study-studio.shadowing.enabled-sources.v1";
 const FFMPEG_PATH_KEY = "study-studio.shadowing.ffmpeg-path.v1";
 
-export type { VideoShadowingCue };
+export type VideoShadowingCue = Readonly<ShadowTranscriptionCue>;
+
+export interface VideoShadowingSignatureOptions {
+	/** Selected ASR engine id; an empty id means the default ASR engine. */
+	readonly transcriptionEngineId: string;
+	readonly translationProfileId?: string;
+}
 
 export interface VideoShadowingServices {
 	transcribe(
@@ -28,7 +31,7 @@ export interface VideoShadowingServices {
 		signal?: AbortSignal,
 	): Promise<readonly VideoShadowingCue[]>;
 	translate(text: string, signature: string, signal?: AbortSignal): Promise<string>;
-	getSignature(options: SubtitlePipelineSignatureOptions): Promise<string>;
+	getSignature(options: VideoShadowingSignatureOptions): Promise<string>;
 	listTranslationProfiles(): { id: string; name: string }[];
 }
 

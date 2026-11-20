@@ -4,9 +4,9 @@ import {
 	alignTimedWords,
 	mergeTranscripts,
 	SubtitleDraftEngine,
+	type SubtitleTranscriptionEngine,
 	tokenizeUnicodeWords,
 } from "../subtitleDraftEngine";
-import type { SubtitleTranscriptionPort } from "../types";
 import { MediaFailureError } from "../../../../core/media/failures";
 import type {
 	AudioChunk,
@@ -229,9 +229,13 @@ describe("SubtitleDraftEngine - Deep Module Lifecycle & Actions", () => {
 			],
 		}));
 
-		const transcription: SubtitleTranscriptionPort = {
+		const transcription: SubtitleTranscriptionEngine = {
 			getSignature: vi.fn(async () => "sig-test"),
-			transcribe: async (chunk: AudioChunk) => transcribe(chunk),
+			transcribe: async ({ audio }) => ({
+				...(await transcribe(audio as AudioChunk)),
+				duration: 5,
+				signature: "sig-test",
+			}),
 		};
 
 		const engine = new SubtitleDraftEngine({
@@ -429,12 +433,16 @@ describe("SubtitleDraftEngine - Material Lifecycle Integration", () => {
 			readBinary: vi.fn(async () => options.audioBuffer ?? createMockAudio(100)),
 		};
 
-		const transcription: SubtitleTranscriptionPort = {
+		const transcription: SubtitleTranscriptionEngine = {
 			getSignature: vi.fn(async () => {
 				if (options.prepareConfigError) throw options.prepareConfigError;
 				return "lifecycle-sig";
 			}),
-			transcribe: async (chunk: AudioChunk) => transcribe(chunk),
+			transcribe: async ({ audio }) => ({
+				...(await transcribe(audio as AudioChunk)),
+				duration: 5,
+				signature: "lifecycle-sig",
+			}),
 		};
 
 		const commitSubtitles = vi.fn(
@@ -483,7 +491,7 @@ describe("SubtitleDraftEngine - Material Lifecycle Integration", () => {
 			duration: 5,
 			chunks: [{ index: 0, start: 0, end: 5, wav: createMockAudio() }],
 		}));
-		const transcription: SubtitleTranscriptionPort = {
+		const transcription: SubtitleTranscriptionEngine = {
 			getSignature: vi.fn(async () => "sig-1"),
 			transcribe: vi.fn(async () => {
 				throw new MediaFailureError({ kind: "config-drift" });

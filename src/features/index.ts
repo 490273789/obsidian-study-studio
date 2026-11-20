@@ -13,9 +13,12 @@ import {
 	type VideoShadowingServices,
 } from "./video-player/feature";
 import { createAudioPracticeFeature } from "./audio-practice/feature";
+import { MediaFailureError } from "../core/media/failures";
 import { MediaTranscriptionEngine } from "../core/media/transcription/mediaTranscriptionEngine";
-import { MediaSubtitlePipeline } from "../core/media/subtitles/mediaSubtitlePipeline";
-import { TranslationExecution } from "./translation/domain/translationExecution";
+import {
+	TranslationConfigurationChangedError,
+	TranslationExecution,
+} from "./translation/domain/translationExecution";
 import { translateYoudao } from "./translation/domain/youdao";
 
 export type { VideoShadowingCue, VideoShadowingServices };
@@ -26,9 +29,143 @@ export interface VideoShadowingServicesDeps {
 	net: OutboundPort;
 }
 
+export interface VideoShadowingServiceComponents {
+	readonly transcription: Pick<MediaTranscriptionEngine, "transcribe" | "getSignature">;
+	readonly translation: Pick<
+		TranslationExecution,
+		"getProfileId" | "getSignature" | "listProfiles" | "translate"
+	>;
+}
+
+interface SerializedShadowingSignature {
+	v: 2;
+	e: string;
+	ts: string;
+	tp: string;
+	tls: string;
+}
+
+function decodeShadowingSignature(signature: string): SerializedShadowingSignature | null {
+	try {
+		const parsed = JSON.parse(signature) as Partial<SerializedShadowingSignature> | null;
+		if (
+			parsed &&
+			typeof parsed === "object" &&
+			parsed.v === 2 &&
+			typeof parsed.e === "string" &&
+			typeof parsed.ts === "string"
+		) {
+			return {
+				v: 2,
+				e: parsed.e,
+				ts: parsed.ts,
+				tp: typeof parsed.tp === "string" ? parsed.tp : "",
+				tls: typeof parsed.tls === "string" ? parsed.tls : "",
+			};
+		}
+		return null;
+	} catch {
+		return null;
+	}
+}
+
 /**
- * Creates the video shadowing adapter combining the deep core media subtitle
- * pipeline and translation execution without borrowing feature-internal runtimes (ADR-0012).
+ * Composes video shadowing transcription and translation from `MediaTranscriptionEngine`
+ * and `TranslationExecution` directly inside the cross-feature composition module.
+ */
+export function assembleVideoShadowingServices(
+	components: VideoShadowingServiceComponents,
+): VideoShadowingServices {
+	return {
+		async getSignature(options): Promise<string> {
+			const engineId = options.transcriptionEngineId;
+			const transcriptionSig = await components.transcription.getSignature(engineId);
+			const profileId = components.translation.getProfileId(
+				options.translationProfileId ?? "",
+			);
+			const translationSig = profileId ? components.translation.getSignature(profileId) : "";
+			const signature: SerializedShadowingSignature = {
+				v: 2,
+				e: engineId,
+				ts: transcriptionSig,
+				tp: profileId,
+				tls: translationSig,
+			};
+			return JSON.stringify(signature);
+		},
+
+		async transcribe(
+			audio: ArrayBuffer,
+			signature: string,
+			signal?: AbortSignal,
+		): Promise<readonly VideoShadowingCue[]> {
+			const parsed = decodeShadowingSignature(signature);
+			if (!parsed) {
+				throw new Error("转写配置已变化，请重新生成字幕。");
+			}
+			const currentTransSig = await components.transcription.getSignature(parsed.e);
+			if (currentTransSig !== parsed.ts) {
+				throw new Error("转写配置已变化，请重新生成字幕。");
+			}
+			try {
+				const result = await components.transcription.transcribe({
+					audio,
+					engineId: parsed.e,
+					expectedSignature: parsed.ts,
+					signal,
+				});
+				return result.cues.flatMap((cue) =>
+					cue.start !== null && cue.end !== null
+						? [{ start: cue.start, end: cue.end, text: cue.text }]
+						: [],
+				);
+			} catch (error) {
+				if (error instanceof MediaFailureError && error.failure.kind === "config-drift") {
+					throw new Error("转写配置已变化，请重新生成字幕。");
+				}
+				throw error;
+			}
+		},
+
+		async translate(text: string, signature: string, signal?: AbortSignal): Promise<string> {
+			const parsed = decodeShadowingSignature(signature);
+			if (!parsed) {
+				throw new Error("翻译配置已变化，请重新生成字幕。");
+			}
+			if (!parsed.tp) {
+				throw new Error("请在影子跟读设置中启用翻译配置。");
+			}
+			const currentTransSig = components.translation.getSignature(parsed.tp);
+			if (currentTransSig !== parsed.tls) {
+				throw new Error("翻译配置已变化，请重新生成字幕。");
+			}
+			try {
+				const output = await components.translation.translate(text, {
+					profileId: parsed.tp,
+					expectedSignature: parsed.tls,
+					signal,
+				});
+				return output.text;
+			} catch (error) {
+				if (
+					error instanceof TranslationConfigurationChangedError ||
+					(error instanceof MediaFailureError && error.failure.kind === "config-drift")
+				) {
+					throw new Error("翻译配置已变化，请重新生成字幕。");
+				}
+				throw error;
+			}
+		},
+
+		listTranslationProfiles(): { id: string; name: string }[] {
+			return components.translation.listProfiles();
+		},
+	};
+}
+
+/**
+ * Creates the video shadowing adapter combining `MediaTranscriptionEngine` and
+ * `TranslationExecution` without borrowing feature-internal runtimes (ADR-0012).
  * Both halves read the shared AI engine registry (ADR-0016): ASR engines for
  * transcription, LLM/translation engines for translation.
  */
@@ -59,10 +196,7 @@ export function createVideoShadowingServices(
 			),
 	});
 
-	return new MediaSubtitlePipeline({
-		transcription,
-		translation,
-	});
+	return assembleVideoShadowingServices({ transcription, translation });
 }
 
 /**

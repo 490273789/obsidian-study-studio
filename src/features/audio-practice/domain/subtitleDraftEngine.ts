@@ -1,5 +1,6 @@
 import { audioFailure, toAudioFailure, type AudioFailure, type SubtitleProblem } from "./failures";
-import type { AudioMaterial, SubtitleCue, SubtitleTranscriptionPort } from "./types";
+import type { AudioMaterial, SubtitleCue } from "./types";
+import type { MediaTranscriptionEngine } from "../../../core/media/transcription/mediaTranscriptionEngine";
 import {
 	MAX_AUDIO_BYTES,
 	MAX_AUDIO_DURATION_SECONDS,
@@ -153,9 +154,14 @@ export type SubtitleDraftCommitHandler = (
 	wordTimings: ReadonlyMap<string, readonly TimedTextWord[]>,
 ) => Promise<unknown>;
 
+export type SubtitleTranscriptionEngine = Pick<
+	MediaTranscriptionEngine,
+	"getSignature" | "transcribe"
+>;
+
 export interface SubtitleDraftEngineOptions {
 	readonly prepare: PrepareAudio;
-	readonly transcription: SubtitleTranscriptionPort;
+	readonly transcription: SubtitleTranscriptionEngine;
 	readonly drafts?: GenerationDraftStore;
 	readonly source?: AudioSourceFiles;
 	readonly commitSubtitles?: SubtitleDraftCommitHandler;
@@ -201,7 +207,7 @@ export class SubtitleDraftEngine {
 		return this.options.source;
 	}
 
-	private get transcription(): SubtitleTranscriptionPort {
+	private get transcription(): SubtitleTranscriptionEngine {
 		return this.options.transcription;
 	}
 
@@ -547,13 +553,13 @@ export class SubtitleDraftEngine {
 			for (let index = results.length; index < prepared.chunks.length; index++) {
 				const chunk = prepared.chunks[index];
 				if (!chunk) continue;
-				const result = await this.options.transcription.transcribe(
-					chunk,
+				const result = await this.options.transcription.transcribe({
+					audio: chunk,
 					signal,
-					configFingerprint,
-				);
+					expectedSignature: configFingerprint,
+				});
 				signal.throwIfAborted();
-				results.push(result);
+				results.push({ cues: [...result.cues], words: [...result.words] });
 				this.draft.cues = mergeTranscripts(results, prepared.chunks).cues;
 				await this.persist();
 				signal.throwIfAborted();

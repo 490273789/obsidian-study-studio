@@ -10,7 +10,6 @@ import { FlashcardButton } from "../../core/ui/primitives/Button";
 import { ModalProvider } from "../../core/ui/primitives/Modal";
 import { AudioPracticeRuntime } from "./domain/audioPracticeRuntime";
 import { SubtitleDraftEngine, normalizeGenerationDraft } from "./domain/subtitleDraftEngine";
-import type { SubtitleTranscriptionPort } from "./domain/types";
 import { createBrowserAudioPreparation } from "./domain/transcription/browserAudio";
 import { MediaTranscriptionEngine } from "../../core/media/transcription/mediaTranscriptionEngine";
 import { createAudioSourceFiles } from "./obsidian/audioSourceFiles";
@@ -59,26 +58,12 @@ export function createAudioPracticeFeature(deps: {
 				readSecret: (id) => deps.net.readSecret(id),
 				outbound: deps.net,
 			});
-			const transcription: SubtitleTranscriptionPort = {
-				getSignature: () => transcriptionEngine.getSignature(),
-				transcribe: async (chunk, signal, expectedSignature) => {
-					const result = await transcriptionEngine.transcribe({
-						audio: chunk,
-						signal,
-						expectedSignature,
-					});
-					return {
-						cues: [...result.cues],
-						words: [...result.words],
-					};
-				},
-			};
 
 			let runtime!: AudioPracticeRuntime;
 			const generation = lifetime.own(
 				new SubtitleDraftEngine({
 					prepare: createBrowserAudioPreparation(() => mediaWindow),
-					transcription,
+					transcription: transcriptionEngine,
 					source,
 					commitSubtitles: (id, cues, timings) =>
 						runtime.saveSubtitles(id, cues, timings),
