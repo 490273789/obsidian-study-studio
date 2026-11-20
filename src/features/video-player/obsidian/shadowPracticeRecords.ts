@@ -1,5 +1,5 @@
 import type { App } from "obsidian";
-import type { ShadowingTake } from "../domain/shadowingSession";
+import type { ShadowingTake } from "../domain/types";
 import { validShadowVaultFolder } from "../domain/shadowVaultFolder";
 
 export interface ShadowPracticeRecord {

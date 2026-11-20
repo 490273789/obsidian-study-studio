@@ -233,4 +233,36 @@ describe("shadow subtitles", () => {
 		expect(jobs.getSnapshot().translationFailures.video).toContain("空内容");
 		jobs.dispose();
 	});
+	it("resolves source and service signatures from ports when config is omitted", async () => {
+		const { store } = fixture();
+		const sourceSignature = vi.fn(async () => "port-src-sig");
+		const serviceSignature = vi.fn(async () => "port-svc-sig");
+		const jobs = new VideoSubtitleJobs({
+			store,
+			sourceSignature,
+			serviceSignature,
+			extract: async () => ({
+				audio: new ArrayBuffer(0),
+				duration: 10,
+				totalDuration: 10,
+				sourceSignature: "port-src-sig",
+			}),
+			transcribe: async () => [{ start: 0, end: 1, text: "Hello" }],
+			translate: async (text, task) => `${task.config.serviceSignature}:${text}`,
+		});
+		await jobs.start(source);
+		await until(() => jobs.getSnapshot().tasks[0]?.status === "complete");
+		expect(sourceSignature).toHaveBeenCalledWith(source);
+		expect(serviceSignature).toHaveBeenCalledWith(source);
+		expect(jobs.getCues("video")[0]?.translation).toBe("port-svc-sig:Hello");
+
+		await jobs.importSubtitles("other", "1\n00:00:00,000 --> 00:00:01,000\nHi", "srt");
+		await jobs.adoptCandidate("other");
+		const other = { id: "other", path: "/other.mp4" };
+		await jobs.translateSubtitles(other);
+		expect(sourceSignature).toHaveBeenCalledWith(other);
+		expect(serviceSignature).toHaveBeenCalledWith(other);
+		expect(jobs.getCues("other")[0]?.translation).toBe("port-svc-sig:Hi");
+		jobs.dispose();
+	});
 });

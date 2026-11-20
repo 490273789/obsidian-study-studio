@@ -1,25 +1,54 @@
-import { describe, expect, it, vi } from "vite-plus/test";
-import type { VideoPlayerRuntime } from "../videoPlayerRuntime";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
 	ShadowSubtitleEditConflict,
 	type ShadowSubtitleEditTarget,
 	type VideoSubtitleJobs,
 } from "../shadowSubtitlesJobs";
-import type { ShadowingSession } from "../shadowingSession";
 import type { ShadowPracticeRecords } from "../../obsidian/shadowPracticeRecords";
 import { ShadowingWorkspaceSession } from "../shadowingWorkspaceSession";
-import type { TakeAudioPlayerPort } from "../types";
+import { VideoPlayerRuntime, emptyState } from "../videoPlayerRuntime";
+import type { ShadowRecorderPort, TakeAudioPlayerPort, VideoMediaPort } from "../types";
+
+class FakeMedia extends EventTarget implements VideoMediaPort {
+	currentTime = 0;
+	duration = 100;
+	paused = true;
+	seeking = false;
+	playbackRate = 1;
+	src = "";
+	play = vi.fn(async () => {
+		this.paused = false;
+		this.dispatchEvent(new Event("play"));
+	});
+	pause = vi.fn(() => {
+		this.paused = true;
+		this.dispatchEvent(new Event("pause"));
+	});
+	load = () => undefined;
+	end(time: number) {
+		this.currentTime = time;
+		this.dispatchEvent(new Event("timeupdate"));
+	}
+}
 
 function setup(initialEnabled: readonly string[] = ["one", "two"]) {
-	let sourceId = "one";
-	let playing = false;
-	let practiceRange: { sourceId: string; start: number; end: number } | null = null;
+	const runtime = new VideoPlayerRuntime({
+		store: { load: emptyState, save: () => undefined, clear: () => undefined },
+		toMediaUrl: (path) => path,
+	});
+	runtime.addSources([
+		{ id: "one", path: "one.mp4", name: "one" },
+		{ id: "two", path: "two.mp4", name: "two" },
+	]);
+	const media = new FakeMedia();
+	runtime.bindMedia(media);
+
 	const enabled = new Set(initialEnabled);
 	const writeEnabled = vi.fn((id: string, value: boolean) => {
 		if (value) enabled.add(id);
 		else enabled.delete(id);
 	});
-	let runtimeListener: (() => void) | null = null;
+
 	let jobsListener: (() => void) | null = null;
 	let resolveRead!: (data: ArrayBuffer) => void;
 	const readTake = vi.fn(
@@ -28,13 +57,14 @@ function setup(initialEnabled: readonly string[] = ["one", "two"]) {
 				resolveRead = resolve;
 			}),
 	);
+	const startJob = vi.fn(async () => undefined);
+	const translateSubtitles = vi.fn(async () => undefined);
 	const reloadSource = vi.fn(async (): Promise<void> => undefined);
 	const restore = vi.fn(async () => undefined);
-	const play = vi.fn(async (): Promise<void> => undefined);
-	const leave = vi.fn();
-	const retrySave = vi.fn(async () => undefined);
-	const seekTo = vi.fn();
-	const selectRange = vi.fn();
+	const saveTake = vi.fn(async () => undefined);
+	const markDifficult = vi.fn(async () => undefined);
+	const removeRecord = vi.fn(async () => undefined);
+
 	const record = {
 		id: "take-1",
 		sourceId: "one",
@@ -79,17 +109,6 @@ function setup(initialEnabled: readonly string[] = ["one", "two"]) {
 		return saved;
 	});
 
-	const runtime = {
-		getSnapshot: () => ({ currentSourceId: sourceId, playing, duration: 30 }),
-		subscribe: (listener: () => void) => {
-			runtimeListener = listener;
-			return () => {
-				runtimeListener = null;
-			};
-		},
-		seekTo,
-		play,
-	} as unknown as VideoPlayerRuntime;
 	const jobs = {
 		getSnapshot: () => ({ documents, tasks: [], translationFailures: {} }),
 		subscribe: (listener: () => void) => {
@@ -98,38 +117,31 @@ function setup(initialEnabled: readonly string[] = ["one", "two"]) {
 				jobsListener = null;
 			};
 		},
+		start: startJob,
+		translateSubtitles,
 		restore,
 		reloadSource,
 		getCueEditTarget,
 		saveCueEdit,
 	} as unknown as VideoSubtitleJobs;
-	const session = {
-		getSnapshot: () => ({
-			phase: "idle",
-			range: practiceRange,
-			mode: "shadow",
-			countdown: 0,
-			restSeconds: 2,
-			responseMultiplier: 1,
-			take: null,
-			error: null,
-			saving: false,
-			failedSaves: [
-				{ id: "failed", range: { sourceId: "one", start: 1, end: 2, text: "retry" } },
-			],
-		}),
-		subscribe: () => () => undefined,
-		selectRange,
-		stop: vi.fn(),
-		leave,
-		retrySave,
-		dispose: vi.fn(),
-	} as unknown as ShadowingSession;
+
+	const reloadRecords = vi.fn(async () => [record]);
 	const records = {
 		list: vi.fn(async () => [record]),
-		reload: vi.fn(async () => [record]),
+		reload: reloadRecords,
 		readTake,
+		saveTake,
+		markDifficult,
+		remove: removeRecord,
 	} as unknown as ShadowPracticeRecords;
+
+	const recorder: ShadowRecorderPort = {
+		start: vi.fn(async () => undefined),
+		stop: vi.fn(async () => new Blob(["voice"], { type: "audio/webm" })),
+		cancel: vi.fn(),
+		play: vi.fn(async () => undefined),
+		dispose: vi.fn(),
+	};
 
 	const playAudio = vi.fn(async () => undefined);
 	const stopAudio = vi.fn();
@@ -142,31 +154,30 @@ function setup(initialEnabled: readonly string[] = ["one", "two"]) {
 	const workspaceSession = new ShadowingWorkspaceSession({
 		runtime,
 		jobs,
-		session,
+		recorder,
 		records,
 		audioPlayer,
 		readEnabled: (id) => enabled.has(id),
 		writeEnabled,
-		startGeneration: async () => undefined,
-		translateImported: async () => undefined,
 	});
 
 	return {
 		session: workspaceSession,
+		runtime,
+		media,
+		recorder,
 		restore,
-		play,
-		leave,
+		startJob,
+		translateSubtitles,
 		writeEnabled,
 		jobs,
-		innerSession: session,
+		saveTake,
+		reloadRecords,
 		readTake,
 		reloadSource,
-		retrySave,
 		audioPlayer,
 		playAudio,
 		stopAudio,
-		seekTo,
-		selectRange,
 		saveCueEdit,
 		getCueEditTarget,
 		editTargets,
@@ -176,16 +187,8 @@ function setup(initialEnabled: readonly string[] = ["one", "two"]) {
 		finishRead(data: ArrayBuffer) {
 			resolveRead(data);
 		},
-		setSource(id: string) {
-			sourceId = id;
-			runtimeListener?.();
-		},
 		notifyJobsChanged() {
 			jobsListener?.();
-		},
-		setPracticeActive() {
-			playing = true;
-			practiceRange = { sourceId, start: 4, end: 6 };
 		},
 	};
 }
@@ -215,13 +218,13 @@ describe("ShadowingWorkspaceSession", () => {
 		await state.session.setEnabled(true);
 		expect(state.writeEnabled).toHaveBeenCalledWith("one", true);
 		await vi.waitFor(() => expect(state.restore).toHaveBeenCalledWith("one"));
-		state.setSource("two");
+		state.runtime.selectSource("two");
 		expect(state.session.getSnapshot().enabled).toBe(false);
 		expect(state.restore).not.toHaveBeenCalledWith("two");
 
 		await state.session.setEnabled(true);
 		await vi.waitFor(() => expect(state.restore).toHaveBeenCalledWith("two"));
-		state.setSource("one");
+		state.runtime.selectSource("one");
 		expect(state.session.getSnapshot().enabled).toBe(true);
 
 		await state.session.setEnabled(false);
@@ -232,10 +235,14 @@ describe("ShadowingWorkspaceSession", () => {
 
 	it("turning shadowing off keeps the current video time and resumes playback", async () => {
 		const state = setup();
-		state.setPracticeActive();
+		await state.session.act({ type: "select-range", start: 4, end: 6, text: "hello" });
+		await state.session.act({ type: "start-loop" });
+		state.media.currentTime = 5;
 		await state.session.setEnabled(false);
-		expect(state.leave).toHaveBeenCalledWith({ seekToEnd: false });
-		expect(state.play).toHaveBeenCalledOnce();
+		expect(state.media.currentTime).toBe(5);
+		expect(state.session.getSnapshot().practiceStart).toBeNull();
+		expect(state.session.getSnapshot().practicePhase).toBe("idle");
+		expect(state.runtime.getSnapshot().playing).toBe(true);
 		state.session.dispose();
 	});
 
@@ -262,18 +269,11 @@ describe("ShadowingWorkspaceSession", () => {
 			type: "open-record",
 			record: state.session.getSnapshot().records[0]!,
 		});
-		state.setSource("two");
+		state.runtime.selectSource("two");
 		state.finishRead(new ArrayBuffer(8));
 		await openPromise;
 
 		expect(state.playAudio).not.toHaveBeenCalled();
-		state.session.dispose();
-	});
-
-	it("stops active practice and audio on presenter relinquishment", async () => {
-		const state = setup();
-		await state.session.stopForPresenterLoss();
-		expect(state.stopAudio).toHaveBeenCalled();
 		state.session.dispose();
 	});
 
@@ -288,7 +288,7 @@ describe("ShadowingWorkspaceSession", () => {
 	it("waits for continue-watching playback before publishing its failure", async () => {
 		const state = setup();
 		let rejectPlay!: (error: Error) => void;
-		state.play.mockImplementationOnce(
+		state.media.play.mockImplementationOnce(
 			() =>
 				new Promise<void>((_resolve, reject) => {
 					rejectPlay = reject;
@@ -308,53 +308,15 @@ describe("ShadowingWorkspaceSession", () => {
 		state.session.dispose();
 	});
 
-	it("creates and manages ShadowingSession internally when recorder is provided", async () => {
-		const recorder = {
-			start: vi.fn(async () => undefined),
-			stop: vi.fn(async () => new Blob()),
-			cancel: vi.fn(),
-			play: vi.fn(async () => undefined),
-			dispose: vi.fn(),
-		};
-		const runtime = {
-			getSnapshot: () => ({
-				currentSourceId: "one",
-				playbackRate: 1,
-				playing: false,
-				duration: 30,
-			}),
-			subscribe: () => () => undefined,
-			subscribeInterruptions: () => () => undefined,
-			seekTo: vi.fn(),
-			stopRange: vi.fn(),
-			pause: vi.fn(),
-		} as unknown as VideoPlayerRuntime;
-		const jobs = {
-			getSnapshot: () => ({ documents: {}, tasks: [], translationFailures: {} }),
-			subscribe: () => () => undefined,
-		} as unknown as VideoSubtitleJobs;
-		const records = {
-			list: vi.fn(async () => []),
-			saveTake: vi.fn(async () => undefined),
-			reload: vi.fn(async () => []),
-		} as unknown as ShadowPracticeRecords;
-
-		const session = new ShadowingWorkspaceSession({
-			runtime,
-			jobs,
-			records,
-			recorder,
-			readEnabled: () => true,
-			writeEnabled: () => undefined,
-			startGeneration: async () => undefined,
-			translateImported: async () => undefined,
-		});
-
-		expect(session.getSnapshot().practicePhase).toBe("idle");
-		await session.act({ type: "set-mode", mode: "repeat-after" });
-		expect(session.getSnapshot().practiceMode).toBe("repeat-after");
-		session.dispose();
-		expect(recorder.dispose).toHaveBeenCalled();
+	it("starts generation and imported translation directly on jobs without host callbacks", async () => {
+		const state = setup();
+		const expectedSource = state.runtime.getSnapshot().sources[0]!;
+		await state.session.act({ type: "generate" });
+		await state.session.act({ type: "translate-imported" });
+		expect(state.startJob).toHaveBeenCalledWith(expectedSource);
+		expect(state.translateSubtitles).toHaveBeenCalledWith(expectedSource);
+		state.session.dispose();
+		expect(state.recorder.dispose).toHaveBeenCalledOnce();
 	});
 
 	it("manages cue selection, range editing, and triggers practice via act()", async () => {
@@ -369,7 +331,7 @@ describe("ShadowingWorkspaceSession", () => {
 		expect(snap.rangeStart).toBe(1);
 		expect(snap.rangeEnd).toBe(3);
 		expect(snap.canPractice).toBe(true);
-		expect(state.seekTo).toHaveBeenCalledWith(1);
+		expect(state.media.currentTime).toBe(1);
 
 		// Extend selection to second cue
 		await state.session.act({ type: "choose-cue", cueId: "c2", extend: true });
@@ -387,7 +349,10 @@ describe("ShadowingWorkspaceSession", () => {
 
 		// Start practice with selected cues
 		await state.session.act({ type: "start-practice-selected" });
-		expect(state.selectRange).toHaveBeenCalledWith("one", 0.5, 6.5, "first second");
+		snap = state.session.getSnapshot();
+		expect(snap.practiceStart).toBe(0.5);
+		expect(snap.practiceEnd).toBe(6.5);
+		expect(snap.practicePhase).toBe("paused");
 		state.session.dispose();
 	});
 
@@ -589,13 +554,13 @@ describe("ShadowingWorkspaceSession", () => {
 		expect(snapshot.deletedDrafts).toMatchObject([
 			{ sourceId: "one", cueId: "c1", text: "My correction", translation: "第一" },
 		]);
-		state.setSource("two");
+		state.runtime.selectSource("two");
 		expect(state.session.getSnapshot().deletedDrafts).toEqual([]);
 		await state.session.act({
 			type: "discard-deleted-draft",
 			draft: snapshot.deletedDrafts[0]!,
 		});
-		state.setSource("one");
+		state.runtime.selectSource("one");
 		const draft = state.session.getSnapshot().deletedDrafts[0]!;
 		expect(draft.text).toBe("My correction");
 		await state.session.act({ type: "discard-deleted-draft", draft });
@@ -639,15 +604,192 @@ describe("ShadowingWorkspaceSession", () => {
 		expect(state.session.getSnapshot().editor?.text).toBe("uncommitted work");
 
 		// Switch to source two
-		state.setSource("two");
+		state.runtime.selectSource("two");
 		expect(state.session.getSnapshot().selectedCueIds).toEqual([]);
 		expect(state.session.getSnapshot().editor).toBeNull();
 
 		// Switch back to source one: draft and selection are preserved!
-		state.setSource("one");
+		state.runtime.selectSource("one");
 		const snap = state.session.getSnapshot();
 		expect(snap.selectedCueIds).toEqual(["c1"]);
 		expect(snap.editor?.text).toBe("uncommitted work");
 		state.session.dispose();
+	});
+});
+
+describe("shadowing playback and recordings", () => {
+	function setupPractice() {
+		vi.useFakeTimers();
+		const state = setup();
+		void state.session.act({ type: "select-range", start: 10, end: 14, text: "Hello" });
+		return state;
+	}
+
+	afterEach(() => {
+		vi.clearAllTimers();
+		vi.useRealTimers();
+	});
+
+	it("loops by media boundary and waits two seconds, with buffering consuming no rest time", async () => {
+		const { session, media } = setupPractice();
+		await session.act({ type: "start-loop" });
+		await vi.advanceTimersByTimeAsync(6000);
+		expect(session.getSnapshot().practicePhase).toBe("playing");
+		media.end(14);
+		await Promise.resolve();
+		expect(session.getSnapshot().practicePhase).toBe("resting");
+		await vi.advanceTimersByTimeAsync(1999);
+		expect(media.currentTime).toBe(14);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(media.currentTime).toBe(10);
+		expect(session.getSnapshot().practicePhase).toBe("playing");
+		session.dispose();
+	});
+
+	it("manual pause during rest cancels automatic continuation", async () => {
+		const { runtime, session, media } = setupPractice();
+		await session.act({ type: "start-loop" });
+		media.end(14);
+		await Promise.resolve();
+		runtime.pause();
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(session.getSnapshot().practicePhase).toBe("paused");
+		expect(media.play).toHaveBeenCalledTimes(1);
+		session.dispose();
+	});
+
+	it("finishes the rest window early when continue-early is dispatched", async () => {
+		const { session, media } = setupPractice();
+		await session.act({ type: "start-loop" });
+		media.end(14);
+		await Promise.resolve();
+		expect(session.getSnapshot().practicePhase).toBe("resting");
+		await session.act({ type: "continue-early" });
+		await Promise.resolve();
+		expect(media.currentTime).toBe(10);
+		expect(session.getSnapshot().practicePhase).toBe("playing");
+		session.dispose();
+	});
+
+	it("uses rate-adjusted duration plus one second for repeat-after", async () => {
+		const { runtime, session, media } = setupPractice();
+		runtime.setPlaybackRate(0.5);
+		await session.act({ type: "set-mode", mode: "repeat-after" });
+		await session.act({ type: "start-loop" });
+		media.end(14);
+		await Promise.resolve();
+		await vi.advanceTimersByTimeAsync(8999);
+		expect(session.getSnapshot().practicePhase).toBe("resting");
+		await vi.advanceTimersByTimeAsync(1);
+		expect(session.getSnapshot().practicePhase).toBe("playing");
+		session.dispose();
+	});
+
+	it("records one pass after countdown, retains the Blob, and supports replay review", async () => {
+		const { session, media, recorder } = setupPractice();
+		await session.act({ type: "record-once" });
+		expect(session.getSnapshot().countdown).toBe(3);
+		await vi.advanceTimersByTimeAsync(3000);
+		expect(recorder.start).toHaveBeenCalledOnce();
+		expect(session.getSnapshot().practicePhase).toBe("recording");
+		media.end(14);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(recorder.stop).toHaveBeenCalledOnce();
+		expect(session.getSnapshot().practicePhase).toBe("review");
+		expect(session.getSnapshot().hasTemporaryTake).toBe(true);
+		await session.act({ type: "replay-take" });
+		expect(recorder.play).toHaveBeenCalledWith(expect.objectContaining({ size: 5 }));
+		await session.act({ type: "replay-original" });
+		expect(session.getSnapshot().practicePhase).toBe("playing");
+		media.end(14);
+		await Promise.resolve();
+		expect(session.getSnapshot().practicePhase).toBe("review");
+		session.dispose();
+	});
+
+	it("records only the response window in repeat-after mode and saves the take metadata", async () => {
+		const { session, media, recorder, saveTake } = setupPractice();
+		await session.act({ type: "set-mode", mode: "repeat-after" });
+		await session.act({ type: "record-once" });
+		await vi.advanceTimersByTimeAsync(3000);
+		expect(recorder.start).not.toHaveBeenCalled();
+		media.end(14);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(recorder.start).toHaveBeenCalledOnce();
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(session.getSnapshot().hasTemporaryTake).toBe(true);
+		await session.act({ type: "save-take" });
+		expect(saveTake).toHaveBeenCalledWith(
+			expect.objectContaining({
+				mode: "repeat-after",
+				range: expect.objectContaining({ start: 10, end: 14 }),
+			}),
+		);
+		session.dispose();
+	});
+
+	it("cancels countdown on rate changes and clears temporary recordings on source switch", async () => {
+		const { runtime, session, recorder } = setupPractice();
+		await session.act({ type: "record-once" });
+		runtime.setPlaybackRate(1.5);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(recorder.start).not.toHaveBeenCalled();
+		runtime.selectSource("two");
+		expect(session.getSnapshot().practiceStart).toBeNull();
+		expect(session.getSnapshot().hasTemporaryTake).toBe(false);
+		session.dispose();
+	});
+
+	it("keeps an accepted failed save after leaving and retries the captured take", async () => {
+		const { session, media, saveTake, reloadRecords } = setupPractice();
+		saveTake.mockRejectedValueOnce(new Error("disk full")).mockResolvedValueOnce(undefined);
+		await session.act({ type: "record-once" });
+		await vi.advanceTimersByTimeAsync(3000);
+		media.end(14);
+		await vi.advanceTimersByTimeAsync(0);
+		const saving = session.act({ type: "save-take" });
+		await session.act({ type: "continue-watching" });
+		await saving;
+		expect(session.getSnapshot().hasTemporaryTake).toBe(false);
+		const failed = session.getSnapshot().failedSaves;
+		expect(failed).toHaveLength(1);
+		expect(session.getSnapshot().practiceError).toBe("disk full");
+		await session.act({ type: "retry-save", takeId: failed[0]!.id });
+		expect(saveTake).toHaveBeenCalledTimes(2);
+		expect(reloadRecords).toHaveBeenCalled();
+		expect(session.getSnapshot().failedSaves).toEqual([]);
+		session.dispose();
+	});
+
+	it("dismisses practice without jumping ahead when shadowing is disabled", async () => {
+		const { session, media } = setupPractice();
+		media.currentTime = 11;
+		await session.setEnabled(false);
+		expect(media.currentTime).toBe(11);
+		expect(session.getSnapshot().practiceStart).toBeNull();
+		expect(session.getSnapshot().practicePhase).toBe("idle");
+		session.dispose();
+	});
+
+	it("never advances the queue when a practice range ends at the video end", async () => {
+		const { runtime, session, media } = setupPractice();
+		await session.act({ type: "select-range", start: 95, end: 100 });
+		await session.act({ type: "start-loop" });
+		media.end(100);
+		media.dispatchEvent(new Event("ended"));
+		await Promise.resolve();
+		expect(runtime.getSnapshot().currentSourceId).toBe("one");
+		expect(runtime.getSnapshot().completedSourceIds).toEqual([]);
+		session.dispose();
+	});
+
+	it("stops active practice and audio on presenter relinquishment", async () => {
+		const { session, stopAudio } = setupPractice();
+		await session.act({ type: "start-loop" });
+		expect(session.getSnapshot().practicePhase).toBe("playing");
+		await session.stopForPresenterLoss();
+		expect(session.getSnapshot().practicePhase).toBe("paused");
+		expect(stopAudio).toHaveBeenCalledOnce();
+		session.dispose();
 	});
 });

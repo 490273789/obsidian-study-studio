@@ -49,6 +49,7 @@ export interface VideoSubtitleJobsPorts {
 	): Promise<readonly ShadowTranscriptionCue[]>;
 	translate?(text: string, task: ShadowSubtitleCheckpoint, signal: AbortSignal): Promise<string>;
 	store: ShadowSubtitleStore;
+	sourceSignature?(source: ShadowVideoSource): string | Promise<string>;
 	serviceSignature?(source: ShadowVideoSource): string | Promise<string>;
 	reportError?(error: unknown): void;
 }
@@ -146,7 +147,8 @@ export class VideoSubtitleJobs {
 			this.publish();
 		});
 	}
-	async start(source: ShadowVideoSource, config: ShadowSubtitleJobConfig): Promise<void> {
+	async start(source: ShadowVideoSource, config?: ShadowSubtitleJobConfig): Promise<void> {
+		const resolvedConfig = await this.resolveConfig(source, config);
 		await this.restore(source.id);
 		await this.documentTransaction(source.id, async () => {
 			if (this.disposed) return;
@@ -161,7 +163,7 @@ export class VideoSubtitleJobs {
 			if (existing) this.tasks = this.tasks.filter((task) => task !== existing);
 			this.tasks.push({
 				source: { ...source },
-				config: { ...config },
+				config: resolvedConfig,
 				nextOffset: 0,
 				totalDuration: 0,
 				status: this.disposed ? "paused" : "queued",
@@ -315,19 +317,20 @@ export class VideoSubtitleJobs {
 	}
 	async translateSubtitles(
 		source: ShadowVideoSource,
-		config: ShadowSubtitleJobConfig,
+		config?: ShadowSubtitleJobConfig,
 	): Promise<void> {
+		const resolvedConfig = await this.resolveConfig(source, config);
 		await this.restore(source.id);
 		const existing = this.tasks.find((task) => task.source.id === source.id);
-		if (existing && existing.config.serviceSignature !== config.serviceSignature) {
+		if (existing && existing.config.serviceSignature !== resolvedConfig.serviceSignature) {
 			if (existing.status !== "complete")
 				throw new Error("服务配置已变化，请完成或重新生成字幕任务。");
-			existing.config = { ...config };
+			existing.config = { ...resolvedConfig };
 		}
 		if (!existing)
 			this.tasks.push({
 				source: { ...source },
-				config: { ...config },
+				config: resolvedConfig,
 				nextOffset: 0,
 				totalDuration: 0,
 				status: "complete",
@@ -386,6 +389,20 @@ export class VideoSubtitleJobs {
 		} catch (reportError) {
 			console.error("Video subtitle error reporting failed", reportError, error);
 		}
+	}
+	private async resolveConfig(
+		source: ShadowVideoSource,
+		config?: ShadowSubtitleJobConfig,
+	): Promise<ShadowSubtitleJobConfig> {
+		if (config) return { ...config };
+		return {
+			sourceSignature: this.ports.sourceSignature
+				? await this.ports.sourceSignature(source)
+				: "",
+			serviceSignature: this.ports.serviceSignature
+				? await this.ports.serviceSignature(source)
+				: "",
+		};
 	}
 	/** Holds the source's committed document stable through disk I/O, including failed writes. */
 	private documentTransaction<T>(id: string, operation: () => Promise<T>): Promise<T> {

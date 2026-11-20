@@ -1,4 +1,4 @@
-import type { ShadowRecorderPort } from "../domain/shadowingSession";
+import type { ShadowRecorderPort } from "../domain/types";
 
 /** Owns microphone tracks and object URLs. Cancellation also handles a late permission grant. */
 export function createShadowRecorder(ownerWindow: Window): ShadowRecorderPort {

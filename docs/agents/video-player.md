@@ -23,9 +23,9 @@
 - 拥有桌面状态持久化：`SHADOW_ENABLED_KEY` 启用列表与 `FFMPEG_PATH_KEY`；稳定视频源身份映射收敛在 `VideoPlayerRuntime` 与 `ObsidianVideoSourceIdentityStore`；
 - 拥有桌面环境生命周期：通过 `bindPresenterWindow` 接管活动 presenter 窗口引用，平滑维护 Electron `require` 探测与麦克风录音器单例；
 - 文件选取与稳定身份分配收敛为运行时的单一原子意图（`pickAndAddSources` / `pickAndReplaceSource`），经由平台 `VideoFilePickerPort` 完成，视图只渲染快照；
-- 装配并管理 `VideoSubtitleJobs` 与 `ShadowingWorkspaceSession`，向 `feature.tsx` 暴露紧凑高杠杆接口。
+- 装配桌面端 `VideoSubtitleJobs`（注入 `sourceSignature` / `serviceSignature` 等 ports，避免宿主回绕）与 `ShadowingWorkspaceSession`，对外收敛为 `shadowingSession`、`bindPresenterWindow`、`getFfmpegPath`、`setFfmpegPath` 与 `dispose`。
 
-`ShadowingSession` 拥有范围播放、停顿、录音、回听和失败保存队列；`VideoPlayerRuntime.playRange` 只实现有界播放。`ShadowingWorkspaceSession` 发布视图所需的快照和意图，主视图与浮动视图共用同一实例。Presenter 交接时停止活动会话，关闭 view 不销毁插件生命周期的字幕任务。配置的跨功能借用只在 `src/features/index.ts`；`video-player` 不导入听说练习或翻译功能的内部模块。
+`ShadowingWorkspaceSession` 是跟读与字幕域的唯一深 module（deep module），同时拥有范围播放、休整计时、倒计时、录音、回听与失败保存队列，以及字幕选区、微调范围、与内部私有 `VideoSubtitleDrafts` 配合的修正草稿状态；`VideoPlayerRuntime.playRange` 只实现有界播放。`ShadowingWorkspaceSession` 发布视图所需的单一快照与 `act(action)` 意图，主视图与浮动视图共用同一实例。Presenter 交接时停止活动会话，关闭 view 不销毁插件生命周期的字幕任务。配置的跨功能借用只在 `src/features/index.ts`；`video-player` 不导入听说练习或翻译功能的内部模块。
 
 字幕和跟读按当前视频单独启用，默认关闭；启用列表只保存在设备本地。关闭时隐藏主视图的字幕侧栏及浮动字幕控件，并取消当前跟读会话。队列是顶部紧凑栏，展开列表浮在内容上方，不改变视频宽度。
 
@@ -44,7 +44,7 @@ video-player 只传递已接受的签名。每条排队字幕在发请求前重�
 
 ### 视频字幕修正与跟读选区
 
-`domain/shadowingWorkspaceSession.ts` 的 `ShadowingWorkspaceSession` 是跟读与字幕域的深 module（deep module），拥有字幕选区、微调范围、修正草稿、提交、冲突恢复及跟读练习启动状态。UI view 通过单一快照读取状态并经单一 `act(action)` 接缝发送语义动作。
+`domain/shadowingWorkspaceSession.ts` 的 `ShadowingWorkspaceSession` 拥有字幕选区、微调范围、修正草稿、提交、冲突恢复以及跟读练习/录音/失败重试状态机。UI view 通过单一快照读取状态并经单一 `act(action)` 接缝发送语义动作。
 
 - 草稿与选区按视频保存在 session 内部的 `sources` 映射中；切换视频后再切回仍可恢复。关闭或释放 session 时统一清理。
 - 编辑时从 `VideoSubtitleJobs.getCueEditTarget` 捕获目标；提交通过 `saveCueEdit` 绑定原视频和字幕。仅成功保存才退出编辑，失败保留输入，忙碌时阻止重复提交和修改字段。

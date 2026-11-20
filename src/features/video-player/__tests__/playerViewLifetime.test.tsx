@@ -28,11 +28,6 @@ vi.mock("../ui/playerViewInteraction", () => ({
 }));
 vi.mock("../obsidian/videoShadowingDesktopAdapter", () => ({
 	VideoShadowingDesktopAdapter: class {
-		readonly jobs = {
-			getCueEditTarget: vi.fn(),
-			saveCueEdit: vi.fn(),
-			reloadSource: vi.fn(),
-		};
 		readonly shadowingSession = {
 			getSnapshot: () => ({ enabled: false, cues: [] }),
 			subscribe: () => () => undefined,

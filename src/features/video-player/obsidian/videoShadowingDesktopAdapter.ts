@@ -3,8 +3,8 @@ import type {
 	VideoShadowingCue,
 	SubtitlePipelineSignatureOptions,
 } from "../../../core/media/subtitles/mediaSubtitlePipeline";
-import { VideoSubtitleJobs, type ShadowVideoSource } from "../domain/shadowSubtitlesJobs";
-import type { ShadowRecorderPort } from "../domain/shadowingSession";
+import { VideoSubtitleJobs } from "../domain/shadowSubtitlesJobs";
+import type { ShadowRecorderPort } from "../domain/types";
 import {
 	createDesktopShadowAudioExtractor,
 	shadowVideoSourceSignature,
@@ -56,7 +56,7 @@ export class VideoShadowingDesktopAdapter {
 	private recorderWindow: Window | null = null;
 	private activeRecorder: ShadowRecorderPort | null = null;
 
-	readonly jobs?: VideoSubtitleJobs;
+	private readonly jobs?: VideoSubtitleJobs;
 	readonly shadowingSession?: ShadowingWorkspaceSession;
 
 	constructor(options: VideoShadowingDesktopAdapterOptions) {
@@ -111,6 +111,8 @@ export class VideoShadowingDesktopAdapter {
 						requireModule: this.requireModule.bind(this),
 						ffmpegPath: this.ffmpegPath || undefined,
 					})(source, offset, signal),
+				sourceSignature: (source) =>
+					shadowVideoSourceSignature(source.path, this.requireModule.bind(this)),
 				serviceSignature: this.serviceSignature.bind(this),
 				transcribe: (audio, task, signal) =>
 					shadowing.transcribe(audio, task.config.serviceSignature, signal),
@@ -132,14 +134,6 @@ export class VideoShadowingDesktopAdapter {
 						this.enabledSources.delete(sourceId);
 					}
 					this.app.saveLocalStorage(SHADOW_ENABLED_KEY, [...this.enabledSources]);
-				},
-				startGeneration: async (sourceId) => {
-					const source = this.sourceFor(sourceId);
-					await this.jobs!.start(source, await this.taskConfig(source));
-				},
-				translateImported: async (sourceId) => {
-					const source = this.sourceFor(sourceId);
-					await this.jobs!.translateSubtitles(source, await this.taskConfig(source));
 				},
 				reportDetachedFailure: (error) => {
 					if (this.reportError) {
@@ -192,14 +186,6 @@ export class VideoShadowingDesktopAdapter {
 		return this.activeRecorder;
 	}
 
-	private sourceFor(sourceId: string): ShadowVideoSource {
-		const source = this.runtime.getSnapshot().sources.find((item) => item.id === sourceId);
-		if (!source) {
-			throw new Error("请先选择视频。");
-		}
-		return source;
-	}
-
 	private async serviceSignature(): Promise<string> {
 		if (!this.services) return "";
 		const settings = this.readSettings();
@@ -207,16 +193,6 @@ export class VideoShadowingDesktopAdapter {
 			transcriptionEngineId: settings.shadowTranscriptionEngineId,
 			translationProfileId: settings.shadowTranslationProfileId,
 		});
-	}
-
-	private async taskConfig(source: ShadowVideoSource) {
-		return {
-			sourceSignature: await shadowVideoSourceSignature(
-				source.path,
-				this.requireModule.bind(this),
-			),
-			serviceSignature: await this.serviceSignature(),
-		};
 	}
 
 	dispose(): void {

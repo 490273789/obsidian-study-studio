@@ -1,6 +1,6 @@
 import type { App } from "obsidian";
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { ShadowingTake } from "../../domain/shadowingSession";
+import type { ShadowingTake } from "../../domain/types";
 import { ShadowPracticeRecords, type ShadowPracticeRecord } from "../shadowPracticeRecords";
 
 const directory = "Study Studio/影子跟读/video";

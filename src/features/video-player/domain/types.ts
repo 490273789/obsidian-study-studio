@@ -1,5 +1,3 @@
-import type { ShadowingMode } from "./shadowingSession";
-
 export const VIDEO_PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as const;
 
 export type VideoPlaybackRate = (typeof VIDEO_PLAYBACK_RATES)[number];
@@ -92,6 +90,33 @@ export interface TakeAudioPlayerPort {
 	play(data: ArrayBuffer, mimeType: string): Promise<void>;
 	stop(): void;
 	dispose(): void;
+}
+
+export type ShadowingMode = "shadow" | "repeat-after";
+
+export interface ShadowingRange {
+	readonly sourceId: string;
+	readonly start: number;
+	readonly end: number;
+	readonly text?: string;
+}
+
+export interface ShadowingTake {
+	readonly id: string;
+	readonly range: ShadowingRange;
+	readonly mode: ShadowingMode;
+	readonly playbackRate: VideoPlaybackRate;
+	readonly createdAt: number;
+	readonly blob: Blob;
+	readonly mimeType: string;
+}
+
+export interface ShadowRecorderPort {
+	start: () => Promise<void>;
+	stop: () => Promise<Blob>;
+	cancel: () => void;
+	play: (blob: Blob) => Promise<void>;
+	dispose: () => void;
 }
 
 export interface ShadowingCueRow {
