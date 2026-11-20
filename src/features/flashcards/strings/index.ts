@@ -124,27 +124,31 @@ export function getLocalizedRatingButtons(language: Language): RatingButton[] {
 			label: t("ratings.again"),
 			shortcut: "1",
 			rating: 1,
+			intervalDesc: t("ratings.repeatThisSession"),
 		},
 		{
 			label: t("ratings.hard"),
 			shortcut: "2",
 			rating: 2,
+			intervalDesc: t("time.day", { count: 1 }),
 		},
 		{
 			label: t("ratings.good"),
 			shortcut: "3",
 			rating: 3,
+			intervalDesc: t("time.day", { count: 3 }),
 		},
 		{
 			label: t("ratings.easy"),
 			shortcut: "4",
 			rating: 4,
+			intervalDesc: t("time.day", { count: 12 }),
 		},
 		{
 			label: t("ratings.trash"),
 			shortcut: "5",
 			rating: 5,
-			intervalDesc: t("time.day", { count: 21 }),
+			intervalDesc: t("time.day", { count: 36 }),
 		},
 	];
 }

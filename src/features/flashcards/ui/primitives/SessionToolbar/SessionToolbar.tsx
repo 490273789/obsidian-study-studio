@@ -105,16 +105,29 @@ export function SessionToolbar({
 						<div className="flashcard-session-actions">
 							{autoPronunciation && (
 								<FlashcardButton
-									preset="icon"
+									variant="ghost"
+									size="sm"
 									icon={autoPronunciation.enabled ? Volume2 : VolumeX}
-									onClick={autoPronunciation.onToggle}
+									iconSize={15}
+									onClick={(event) => {
+										if (event.detail > 0) {
+											event.currentTarget
+												.closest<HTMLElement>(".flashcard-study")
+												?.focus({ preventScroll: true });
+										}
+										autoPronunciation.onToggle();
+									}}
 									disabled={busy}
 									className="flashcard-session-auto-pronunciation"
 									title={autoTitle}
 									aria-label={autoTitle}
 									aria-pressed={autoPronunciation.enabled}
 									active={autoPronunciation.enabled}
-								/>
+								>
+									<span className="flashcard-session-auto-label">
+										{t("pronunciation.autoShort")}
+									</span>
+								</FlashcardButton>
 							)}
 							{items.length > 0 && (
 								<FlashcardMenu

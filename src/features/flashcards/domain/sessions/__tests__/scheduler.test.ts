@@ -61,7 +61,7 @@ describe("FSRSScheduler", () => {
 		},
 	);
 
-	it("schedules custom garbage ratings exactly 21 days later", () => {
+	it("schedules custom garbage ratings exactly 36 days later", () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2026-07-03T00:00:00.000Z"));
 		const scheduler = makeScheduler();
@@ -71,12 +71,40 @@ describe("FSRSScheduler", () => {
 
 		expect(rated.difficulty).toBeGreaterThanOrEqual(1);
 		expect(rated.difficulty).toBeLessThanOrEqual(10);
-		expect(rated.scheduled_days).toBe(21);
-		expect(rated.due.toISOString()).toBe("2026-07-24T00:00:00.000Z");
+		expect(rated.scheduled_days).toBe(36);
+		expect(rated.due.toISOString()).toBe("2026-08-08T00:00:00.000Z");
 		expect(rated.last_review?.toISOString()).toBe("2026-07-03T00:00:00.000Z");
 		expect(rated.reps).toBe(card.reps + 1);
 		expect(rated.state).toBe(State.Review);
 		expect(rated.learning_steps).toBe(0);
+	});
+
+	it("schedules fixed intervals for all five ratings (repeat / 1d / 3d / 12d / 36d)", () => {
+		vi.useFakeTimers();
+		const now = new Date("2026-07-03T00:00:00.000Z");
+		vi.setSystemTime(now);
+		const scheduler = makeScheduler();
+		const card = createEmptyCard(now);
+
+		const again = scheduler.rateCard(card, Rating.Again);
+		const hard = scheduler.rateCard(card, Rating.Hard);
+		const good = scheduler.rateCard(card, Rating.Good);
+		const easy = scheduler.rateCard(card, Rating.Easy);
+		const relaxed = scheduler.rateAsGarbage(card);
+
+		expect(again.repeatInSession).toBe(true);
+		expect(again.card.scheduled_days).toBe(0);
+		expect(hard.repeatInSession).toBe(false);
+		expect(hard.card.scheduled_days).toBe(1);
+		expect(hard.card.due.toISOString()).toBe("2026-07-04T00:00:00.000Z");
+		expect(good.repeatInSession).toBe(false);
+		expect(good.card.scheduled_days).toBe(3);
+		expect(good.card.due.toISOString()).toBe("2026-07-06T00:00:00.000Z");
+		expect(easy.repeatInSession).toBe(false);
+		expect(easy.card.scheduled_days).toBe(12);
+		expect(easy.card.due.toISOString()).toBe("2026-07-15T00:00:00.000Z");
+		expect(relaxed.scheduled_days).toBe(36);
+		expect(relaxed.due.toISOString()).toBe("2026-08-08T00:00:00.000Z");
 	});
 
 	it.each([Rating.Again, Rating.Hard, Rating.Good, Rating.Easy])(

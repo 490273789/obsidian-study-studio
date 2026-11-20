@@ -85,10 +85,20 @@ export const CardAnswerSection: React.FC<{
 	answer: CardPresentationBlock;
 	explanation: CardPresentationBlock | null;
 	sourcePath: string;
-}> = ({ answer, explanation, sourcePath }) => (
-	<div className="flashcard-answer-section">
-		<div className="flashcard-divider" />
-		<CardAnswerPanel block={answer} sourcePath={sourcePath} />
-		{explanation ? <CardExplanationPanel block={explanation} sourcePath={sourcePath} /> : null}
-	</div>
-);
+}> = ({ answer, explanation, sourcePath }) => {
+	const sourceName = sourcePath.split("/").pop()?.replace(/\.md$/i, "") ?? "";
+	return (
+		<div className="flashcard-answer-section" aria-live="polite">
+			<div className="flashcard-divider" />
+			<CardAnswerPanel block={answer} sourcePath={sourcePath} />
+			{explanation ? (
+				<CardExplanationPanel block={explanation} sourcePath={sourcePath} />
+			) : null}
+			{sourceName ? (
+				<div className="flashcard-source-anchor" title={sourcePath}>
+					{sourceName}
+				</div>
+			) : null}
+		</div>
+	);
+};

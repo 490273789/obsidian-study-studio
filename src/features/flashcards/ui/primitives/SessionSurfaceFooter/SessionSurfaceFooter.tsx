@@ -7,6 +7,8 @@ interface SessionSurfaceFooterProps {
 	onReveal: () => void;
 	revealLabel: string;
 	shortcutLabel: string;
+	/** Optional leading action (such as Undo) kept accessible on the question side. */
+	leadingAction?: React.ReactNode;
 	/** The answered-state controls; the reveal state is shared, its content is not. */
 	children?: React.ReactNode;
 }
@@ -21,10 +23,11 @@ export function sessionSurfaceFooter({
 	onReveal,
 	revealLabel,
 	shortcutLabel,
+	leadingAction,
 	children,
 }: SessionSurfaceFooterProps): React.ReactNode {
 	if (answerVisible) return children;
-	return (
+	const revealButton = (
 		<FlashcardButton
 			preset="show"
 			variant="primary"
@@ -35,5 +38,12 @@ export function sessionSurfaceFooter({
 			{revealLabel}
 			<span className="flashcard-shortcut">({shortcutLabel})</span>
 		</FlashcardButton>
+	);
+	if (!leadingAction) return revealButton;
+	return (
+		<div className="flashcard-reveal-controls">
+			{leadingAction}
+			{revealButton}
+		</div>
 	);
 }

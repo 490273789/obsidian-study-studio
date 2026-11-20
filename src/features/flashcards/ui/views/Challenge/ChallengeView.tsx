@@ -105,6 +105,9 @@ const ChallengeQuestion = memo(function ChallengeQuestion({
 				case "continue":
 					void continueAfterFeedback();
 					break;
+				case "close":
+					onClose();
+					break;
 			}
 		},
 	);

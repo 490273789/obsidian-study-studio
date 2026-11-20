@@ -83,9 +83,14 @@ export const PronunciationButton: React.FC<PronunciationButtonRuntimeProps> = ({
 			iconSize={15}
 			className={`flashcard-pronunciation-button ${isSpeaking ? "is-speaking" : ""}`}
 			aria-label={label}
-			title={label}
+			title={`${label} (R)`}
 			aria-pressed={isSpeaking}
-			onClick={() => {
+			onClick={(event) => {
+				if (event.detail > 0) {
+					event.currentTarget
+						.closest<HTMLElement>(".flashcard-study")
+						?.focus({ preventScroll: true });
+				}
 				void runtime
 					.speak(normalizedText, "manual")
 					.then((outcome) => {

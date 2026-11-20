@@ -255,9 +255,25 @@ for (const state of [
 	] as const)
 		mappings.push([`${state.mode} ${code}`, state, value, code, { kind: "answer", correct }]);
 }
-for (const state of [study(true), practice(true)]) {
-	for (const code of ["Digit6", "Numpad6"])
-		mappings.push([`${state.mode} previous`, state, "6", code, { kind: "previous" }]);
+for (const state of [study(), study(true), practice(), practice(true)]) {
+	for (const [value, code] of [
+		["z", "KeyZ"],
+		["Backspace", "Backspace"],
+		["6", "Digit6"],
+		["6", "Numpad6"],
+	] as const)
+		mappings.push([`${state.mode} previous ${code}`, state, value, code, { kind: "previous" }]);
+	mappings.push([`${state.mode} pronounce`, state, "r", "KeyR", { kind: "pronounce" }]);
+}
+for (const state of [
+	study(),
+	study(true),
+	practice(),
+	practice(true),
+	challenge("normal", "question", false),
+	challenge("normal", "question", true),
+]) {
+	mappings.push([`${state.mode} close`, state, "Escape", "Escape", { kind: "close" }]);
 }
 for (const mode of ["normal", "reversed", "spelling"] as const) {
 	for (const value of [" ", "Enter"])
@@ -315,7 +331,7 @@ describe("card presentation shortcuts", () => {
 		[challenge("normal", "question", true), "6", "Digit6"],
 		[challenge("normal", "feedback"), "1", "Digit1"],
 		[study(true), "Enter", "Enter"],
-		[study(true), "z", "KeyZ"],
+		[study(true), "q", "KeyQ"],
 	] as const)("passes unmapped keys through: %j %s", (state, value, code) => {
 		const test = setup(state);
 		test.root.focus();
@@ -333,8 +349,8 @@ describe("card presentation shortcuts", () => {
 		test.setState(study());
 		expect(test.root.emit("keydown", { repeat: true }).defaultPrevented).toBe(true);
 		test.setState({ ...study(true), canPrevious: false });
-		expect(key(test.root, "6", "Digit6").defaultPrevented).toBe(true);
-		expect(key(test.root, "z", "KeyZ").defaultPrevented).toBe(false);
+		expect(key(test.root, "z", "KeyZ").defaultPrevented).toBe(true);
+		expect(key(test.root, "q", "KeyQ").defaultPrevented).toBe(false);
 		expect(test.intents).toEqual([]);
 		expect(bubbled).toBe(4);
 	});

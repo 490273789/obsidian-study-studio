@@ -103,7 +103,10 @@
 }
 .flashcard-session-auto-pronunciation {
 	color: var(--fc-muted);
-	border-radius: var(--fc-radius-sm);
+	border-radius: var(--fc-radius-pill);
+	padding-inline: var(--fc-space-2);
+	gap: var(--fc-space-1);
+	border: 1px solid var(--fc-line-soft);
 	transition:
 		color var(--fc-motion-quick) ease,
 		border-color var(--fc-motion-quick) ease,
@@ -113,10 +116,23 @@
 		color: var(--fc-primary);
 		background: color-mix(in srgb, var(--fc-primary) 10%, var(--fc-surface-card));
 		border-color: color-mix(in srgb, var(--fc-primary) 30%, var(--fc-line-soft));
+
+		.theme-light & {
+			color: var(--fc-primary-text-light);
+		}
 	}
 }
 
+.flashcard-session-auto-label {
+	font-size: var(--fc-font-xs);
+	font-weight: var(--fc-weight-medium);
+	white-space: nowrap;
+}
+
 @container session (max-width: #{breakpoints.$phone}) {
+	.flashcard-session-auto-label {
+		display: none;
+	}
 	.flashcard-session-header {
 		gap: var(--fc-space-2);
 		padding: var(--fc-space-2);

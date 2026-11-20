@@ -1,8 +1,18 @@
-import { fsrs, generatorParameters, Rating, Card, State, RecordLogItem } from "ts-fsrs";
-import { StudySettings } from "../../../../core/shared/types";
+import { fsrs, generatorParameters, Rating, Card, State } from "ts-fsrs";
+import { StudyRating, StudySettings } from "../../../../core/shared/types";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const FIXED_INTERVAL_DAYS: Record<StudyRating, number> = {
+	1: 0,
+	2: 1,
+	3: 3,
+	4: 12,
+	5: 36,
+};
 
 /**
- * FSRS Scheduler - handles spaced repetition scheduling using FSRS algorithm
+ * Study Scheduler - schedules study ratings onto fixed spaced-repetition tiers
+ * (repeat in session / 1d / 3d / 12d / 36d) while preserving valid serialized ts-fsrs card fields.
  */
 export class FSRSScheduler {
 	private f: ReturnType<typeof fsrs>;
@@ -16,63 +26,62 @@ export class FSRSScheduler {
 	}
 
 	/**
-	 * Rate a card and get the updated card state
-	 * @param card The current card
-	 * @param rating The user's rating (1-4)
-	 * @returns Updated card and whether it should repeat in this session
+	 * Rate a card (1-4) and return the updated card state.
 	 */
 	rateCard(card: Card, rating: Rating): { card: Card; repeatInSession: boolean } {
 		const now = new Date();
-		// Older custom mastered ratings set stability but left new-card difficulty at zero.
-		const schedulableCard =
-			card.difficulty === 0 && card.stability > 0
-				? { ...card, difficulty: this.initialMasteredDifficulty() }
-				: card;
-		const result = this.f.repeat(schedulableCard, now);
-
-		let ratingResult: RecordLogItem | undefined;
-		switch (rating) {
-			case Rating.Again:
-				ratingResult = result[Rating.Again];
-				break;
-			case Rating.Hard:
-				ratingResult = result[Rating.Hard];
-				break;
-			case Rating.Good:
-				ratingResult = result[Rating.Good];
-				break;
-			case Rating.Easy:
-				ratingResult = result[Rating.Easy];
-				break;
-			default:
-				ratingResult = undefined;
-		}
-
-		if (!ratingResult) {
+		const normalized = this.normalizeSchedulableCard(card);
+		const studyRating = fromFSRSRating(rating);
+		if (!studyRating) {
 			return { card, repeatInSession: false };
 		}
-
-		const updatedCard = ratingResult.card;
-
-		// If rating is "Again" (1), card should repeat in this session
-		const repeatInSession = rating === Rating.Again;
-
-		return { card: updatedCard, repeatInSession };
+		if (studyRating === 1) {
+			return {
+				card: {
+					...normalized,
+					due: now,
+					stability: normalized.stability || 1,
+					difficulty:
+						normalized.difficulty === 0
+							? this.initialMasteredDifficulty()
+							: normalized.difficulty,
+					scheduled_days: 0,
+					reps: normalized.reps + 1,
+					lapses:
+						normalized.state === State.New ? normalized.lapses : normalized.lapses + 1,
+					state: normalized.state === State.New ? State.Learning : State.Relearning,
+					last_review: now,
+					learning_steps: 0,
+				},
+				repeatInSession: true,
+			};
+		}
+		return {
+			card: this.scheduleFixedDays(normalized, FIXED_INTERVAL_DAYS[studyRating], now),
+			repeatInSession: false,
+		};
 	}
 
 	/**
-	 * Custom rating for "garbage" - sets card to 21 days later
+	 * Rating 5 ("轻松") - schedules card 36 days later.
 	 */
 	rateAsGarbage(card: Card): Card {
 		const now = new Date();
-		const dueDate = new Date(now.getTime() + 21 * 24 * 60 * 60 * 1000);
+		return this.scheduleFixedDays(
+			this.normalizeSchedulableCard(card),
+			FIXED_INTERVAL_DAYS[5],
+			now,
+		);
+	}
 
+	private scheduleFixedDays(card: Card, days: number, now: Date): Card {
+		const dueDate = new Date(now.getTime() + days * DAY_MS);
 		return {
 			...card,
 			due: dueDate,
-			stability: card.stability || 21,
+			stability: card.stability || days,
 			difficulty: card.difficulty === 0 ? this.initialMasteredDifficulty() : card.difficulty,
-			scheduled_days: 21,
+			scheduled_days: days,
 			reps: card.reps + 1,
 			lapses: card.lapses,
 			state: State.Review,
@@ -81,10 +90,32 @@ export class FSRSScheduler {
 		};
 	}
 
+	private normalizeSchedulableCard(card: Card): Card {
+		// Older custom mastered ratings set stability but left new-card difficulty at zero.
+		return card.difficulty === 0 && card.stability > 0
+			? { ...card, difficulty: this.initialMasteredDifficulty() }
+			: card;
+	}
+
 	private initialMasteredDifficulty(): number {
-		// Easy is the closest FSRS grade to the custom “熟练” rating.
+		// Easy is the closest FSRS grade for initializing valid difficulty bounds.
 		return this.f.model.step({ memoryState: null, rating: Rating.Easy, elapsedDays: 0 })
 			.difficulty;
+	}
+}
+
+function fromFSRSRating(rating: Rating): 1 | 2 | 3 | 4 | null {
+	switch (rating) {
+		case Rating.Again:
+			return 1;
+		case Rating.Hard:
+			return 2;
+		case Rating.Good:
+			return 3;
+		case Rating.Easy:
+			return 4;
+		default:
+			return null;
 	}
 }
 

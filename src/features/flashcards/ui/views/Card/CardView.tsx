@@ -3,9 +3,10 @@ import React, { useMemo } from "react";
 import { PartyPopper, RotateCcw } from "lucide-react";
 import { Notice } from "obsidian";
 import { cls } from "../../../../../core/shared/classNames";
-import type { StudyRating } from "../../../../../core/shared/types";
+import type { RatingButton, StudyRating } from "../../../../../core/shared/types";
 import { getLocalizedRatingButtons } from "../../../strings";
 import type { ActiveStudySnapshot } from "../../../domain/sessions/sessionLifecycle";
+import { normalizePronunciationText } from "../../../domain/pronunciation";
 import type {
 	AnswerPresentationTransition,
 	CardPresentationSnapshot,
@@ -19,6 +20,7 @@ import { SessionTimer } from "../../../../../core/ui/primitives/SessionTimer";
 import { useCardPresentationShortcuts } from "../../hooks/useCardPresentationShortcuts";
 import { useFlashcardI18n } from "../../../strings/context";
 import { autoPronunciationControl } from "../../presentation/cardPresentation";
+import { useCardPresentationDependencies } from "../../presentation/context";
 import { CardSurface } from "../../presentation/CardSurface";
 import styles from "./CardView.module.scss";
 
@@ -56,6 +58,7 @@ export const CardView = React.memo(function CardView({
 	presentedCard,
 }: CardViewProps) {
 	const { t, language } = useFlashcardI18n();
+	const { pronunciationRuntime } = useCardPresentationDependencies();
 	const { answerVisible: showAnswer, pronunciationWord } = cardPresentation;
 
 	const handleRate = async (rating: StudyRating) => {
@@ -76,6 +79,13 @@ export const CardView = React.memo(function CardView({
 			kind: "card-toggle-auto-pronunciation",
 			reference: session.reference,
 		});
+	};
+
+	const handlePronounce = () => {
+		if (!pronunciationWord) return;
+		const normalized = normalizePronunciationText(pronunciationWord);
+		if (!normalized) return;
+		void pronunciationRuntime.speak(normalized, "manual");
 	};
 
 	const handlePrevious = async () => {
@@ -109,6 +119,12 @@ export const CardView = React.memo(function CardView({
 				case "previous":
 					void handlePrevious();
 					break;
+				case "pronounce":
+					handlePronounce();
+					break;
+				case "close":
+					onClose();
+					break;
 			}
 		},
 	);
@@ -132,6 +148,62 @@ export const CardView = React.memo(function CardView({
 		);
 	}
 
+	const renderRatingButton = (btn: RatingButton) => (
+		<FlashcardButton
+			key={btn.rating}
+			size="lg"
+			preset="rating"
+			rating={btn.rating}
+			className={cls(styles.ratingBtn, RATING_CLASSES[btn.rating])}
+			disabled={isTransitioning}
+			onClick={() => void handleRate(btn.rating)}
+			title={
+				btn.rating === 3
+					? `${btn.label} (${t("common.space")} / 3)`
+					: `${btn.label} (${btn.shortcut})`
+			}
+			aria-label={[
+				btn.label,
+				btn.intervalDesc,
+				btn.rating === 3 ? `${t("common.space")} / 3` : btn.shortcut,
+			]
+				.filter(Boolean)
+				.join(", ")}
+		>
+			<span className={cls("flashcard-rating-meta", styles.ratingMeta)}>
+				<span className={styles.ratingDot} aria-hidden="true" />
+				<span className={cls("flashcard-rating-label", styles.ratingLabel)}>
+					{btn.label}
+				</span>
+				<span className={cls("flashcard-rating-interval", styles.ratingInterval)}>
+					{btn.rating === 3 ? t("common.space") : btn.shortcut}
+				</span>
+			</span>
+			{btn.intervalDesc && (
+				<span className={cls("flashcard-rating-duration", styles.ratingDuration)}>
+					{btn.intervalDesc}
+				</span>
+			)}
+		</FlashcardButton>
+	);
+
+	const undoButton = (
+		<FlashcardButton
+			preset="prev"
+			icon={RotateCcw}
+			iconSize={18}
+			className={styles.undoBtn}
+			onClick={handlePrevious}
+			disabled={!session.canPrevious || isTransitioning}
+			title={`${t("common.undo")} (Z / Backspace)`}
+			aria-label={`${t("common.undo")} (Z / Backspace)`}
+		>
+			<span className={styles.undoShortcut} aria-hidden="true">
+				Z
+			</span>
+		</FlashcardButton>
+	);
+
 	const progress = session.progress;
 	return (
 		<SessionLayout
@@ -151,7 +223,7 @@ export const CardView = React.memo(function CardView({
 					onClose={onClose}
 					editTitle={t("cardEditor.editCurrentTitle")}
 					deleteTitle={t("cardEditor.deleteCurrentTitle")}
-					closeTitle={t("common.close")}
+					closeTitle={`${t("common.close")} (Esc)`}
 					autoPronunciation={autoPronunciationControl(
 						cardPresentation,
 						handleToggleAutoPronunciation,
@@ -166,79 +238,12 @@ export const CardView = React.memo(function CardView({
 				onReveal: handleReveal,
 				revealLabel: t("common.showAnswer"),
 				shortcutLabel: t("common.space"),
+				leadingAction: session.canPrevious ? undoButton : undefined,
 				children: (
 					<div className={cls(styles.responseControls)}>
-						<FlashcardButton
-							preset="prev"
-							icon={RotateCcw}
-							iconSize={24}
-							onClick={handlePrevious}
-							disabled={!session.canPrevious || isTransitioning}
-							title={`${t("common.undo")} (6)`}
-							aria-label={`${t("common.undo")} (6)`}
-						/>
+						{undoButton}
 						<div className={cls(styles.ratingGrid)}>
-							{ratingButtons.map((btn) => (
-								<FlashcardButton
-									key={btn.rating}
-									size="lg"
-									preset="rating"
-									rating={btn.rating}
-									className={cls(styles.ratingBtn, RATING_CLASSES[btn.rating])}
-									disabled={isTransitioning}
-									onClick={() => void handleRate(btn.rating)}
-									title={
-										btn.rating === 3
-											? `${btn.label} (${t("common.space")} / 3)`
-											: `${btn.label} (${btn.shortcut})`
-									}
-									aria-label={[
-										btn.label,
-										btn.intervalDesc,
-										btn.rating === 3
-											? `${t("common.space")} / 3`
-											: btn.shortcut,
-									]
-										.filter(Boolean)
-										.join(", ")}
-								>
-									<span
-										className={cls("flashcard-rating-meta", styles.ratingMeta)}
-									>
-										<span
-											className={cls(
-												"flashcard-rating-label",
-												styles.ratingLabel,
-											)}
-										>
-											{btn.label}
-										</span>
-										<span
-											className={cls(
-												"flashcard-rating-interval",
-												styles.ratingInterval,
-											)}
-										>
-											{btn.shortcut}
-										</span>
-									</span>
-									{btn.intervalDesc && (
-										<span
-											className={cls(
-												"flashcard-rating-duration",
-												styles.ratingDuration,
-											)}
-										>
-											{btn.intervalDesc}
-										</span>
-									)}
-									{btn.rating === 3 && (
-										<span className={styles.spaceHint}>
-											{t("common.space")}
-										</span>
-									)}
-								</FlashcardButton>
-							))}
+							{ratingButtons.map(renderRatingButton)}
 						</div>
 					</div>
 				),

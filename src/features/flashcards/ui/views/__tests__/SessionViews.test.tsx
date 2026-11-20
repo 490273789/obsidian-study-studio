@@ -331,8 +331,19 @@ describe("study and practice presentation", () => {
 								session: { ...practice, direction },
 							});
 				expect(markdown(tree)).toEqual([direction === "normal" ? "front" : "back"]);
-				expect(buttons(tree)).toHaveLength(1);
-				await click(buttons(tree)[0]!);
+				const footerButtons = buttons(tree);
+				if (mode === "study") {
+					expect(footerButtons).toHaveLength(2);
+					await click(footerButtons[0]!);
+					expect(act).toHaveBeenLastCalledWith({
+						kind: "study-previous",
+						reference: study.reference,
+					});
+					await click(footerButtons[1]!);
+				} else {
+					expect(footerButtons).toHaveLength(1);
+					await click(footerButtons[0]!);
+				}
 				expect(act).toHaveBeenLastCalledWith({
 					kind: "card-reveal",
 					reference: mode === "study" ? study.reference : practice.reference,
@@ -353,7 +364,13 @@ describe("study and practice presentation", () => {
 		const fixedIntervals = elements(tree).filter((element) =>
 			element.props.className?.split(" ").includes("flashcard-rating-duration"),
 		);
-		expect(fixedIntervals.map((element) => element.props.children)).toEqual(["21 d"]);
+		expect(fixedIntervals.map((element) => element.props.children)).toEqual([
+			"This session",
+			"1 d",
+			"3 d",
+			"12 d",
+			"36 d",
+		]);
 		for (const button of buttons(tree)) await click(button);
 		expect(act.mock.calls.map(([action]) => action)).toEqual([
 			{ kind: "study-previous", reference: study.reference },

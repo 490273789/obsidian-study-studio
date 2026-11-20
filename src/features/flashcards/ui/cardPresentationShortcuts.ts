@@ -19,6 +19,8 @@ export type CardShortcutIntent =
 	| { readonly kind: "rate"; readonly rating: StudyRating }
 	| { readonly kind: "answer"; readonly correct: boolean }
 	| { readonly kind: "previous" }
+	| { readonly kind: "pronounce" }
+	| { readonly kind: "close" }
 	| { readonly kind: "continue" };
 
 const CONTROLS = [
@@ -168,9 +170,13 @@ function interpret(state: CardShortcutState, code: string): CardShortcutIntent |
 			return code === "Space" || code === "Enter" ? { kind: "continue" } : null;
 		if (isSpellingQuestion(state)) return null;
 	}
+	if (code === "Escape") return { kind: "close" };
+	if (state.mode !== "challenge") {
+		if (code === "KeyR") return { kind: "pronounce" };
+		if (code === "KeyZ" || code === "Backspace" || code === "Digit6" || code === "Numpad6")
+			return { kind: "previous" };
+	}
 	if (!state.answerVisible) return code === "Space" ? { kind: "reveal" } : null;
-	if (state.mode !== "challenge" && (code === "Digit6" || code === "Numpad6"))
-		return { kind: "previous" };
 	if (state.mode === "study") {
 		if (code === "Space") return { kind: "rate", rating: 3 };
 		const digit = /^(?:Digit|Numpad)([1-5])$/.exec(code)?.[1];

@@ -10,7 +10,9 @@ import type {
 } from "../../answerPresentationTransition";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { autoPronunciationControl } from "../../presentation/cardPresentation";
+import { useCardPresentationDependencies } from "../../presentation/context";
 import { CardSurface } from "../../presentation/CardSurface";
+import { normalizePronunciationText } from "../../../domain/pronunciation";
 import styles from "./Practice.module.scss";
 import { SessionLayout } from "../../primitives/SessionLayout/SessionLayout";
 import { SessionToolbar } from "../../primitives/SessionToolbar";
@@ -42,6 +44,7 @@ export const PracticeView = React.memo(function PracticeView({
 	presentedCard,
 }: PracticeViewProps) {
 	const { t } = useFlashcardI18n();
+	const { pronunciationRuntime } = useCardPresentationDependencies();
 	const { answerVisible: showAnswer, pronunciationWord } = cardPresentation;
 
 	const handleReveal = () => {
@@ -58,6 +61,13 @@ export const PracticeView = React.memo(function PracticeView({
 
 	const handlePrevious = () => {
 		void transition.act({ kind: "practice-previous", reference: session.reference });
+	};
+
+	const handlePronounce = () => {
+		if (!pronunciationWord) return;
+		const normalized = normalizePronunciationText(pronunciationWord);
+		if (!normalized) return;
+		void pronunciationRuntime.speak(normalized, "manual");
 	};
 
 	const handleToggleAutoPronunciation = () => {
@@ -86,6 +96,12 @@ export const PracticeView = React.memo(function PracticeView({
 					break;
 				case "previous":
 					handlePrevious();
+					break;
+				case "pronounce":
+					handlePronounce();
+					break;
+				case "close":
+					onClose();
 					break;
 			}
 		},
@@ -148,7 +164,7 @@ export const PracticeView = React.memo(function PracticeView({
 							iconSize={24}
 							onClick={handlePrevious}
 							disabled={!session.canPrevious || isTransitioning}
-							title={`${t("common.undo")} (6)`}
+							title={`${t("common.undo")} (Z / Backspace)`}
 						/>
 						<div
 							className={cls(
