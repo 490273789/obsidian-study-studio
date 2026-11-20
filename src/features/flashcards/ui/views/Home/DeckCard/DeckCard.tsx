@@ -230,8 +230,14 @@ export const DeckCard = memo(function DeckCard({
 
 			<div className="flashcard-deck-count fc-rail-row__count">
 				{dueCards > 0 && (
-					<span className={styles.dueCount}>
-						{t("home.dueReviewCount", { count: formatDeckCount(language, dueCards) })}
+					<span
+						className={styles.dueCount}
+						title={t("home.dueReviewCount", {
+							count: formatDeckCount(language, dueCards),
+						})}
+					>
+						<b className={styles.metricValue}>{formatDeckCount(language, dueCards)}</b>
+						<span className={styles.metricLabel}>{t("home.dueShortLabel")}</span>
 					</span>
 				)}
 				{isDone ? (
@@ -240,10 +246,14 @@ export const DeckCard = memo(function DeckCard({
 						{t("home.deckCompleted")}
 					</span>
 				) : (
-					<span className={styles.newCount}>
-						{t("home.remainingNewCount", {
+					<span
+						className={styles.newCount}
+						title={t("home.remainingNewCount", {
 							count: formatDeckCount(language, newCards),
 						})}
+					>
+						<b className={styles.metricValue}>{formatDeckCount(language, newCards)}</b>
+						<span className={styles.metricLabel}>{t("home.newShortLabel")}</span>
 					</span>
 				)}
 			</div>
@@ -258,7 +268,9 @@ export const DeckCard = memo(function DeckCard({
 					{!showInlineActions && (
 						<>
 							<FlashcardButton
-								variant="secondary"
+								variant={
+									state === "fresh" && dueCards === 0 ? "outline" : "secondary"
+								}
 								size="md"
 								className="flashcard-deck-action-study"
 								icon={isDone ? RefreshCcw : Brain}
@@ -268,7 +280,7 @@ export const DeckCard = memo(function DeckCard({
 								<span>{isDone ? t("home.review") : t("home.study")}</span>
 							</FlashcardButton>
 							<FlashcardButton
-								variant="outline"
+								variant={state === "fresh" ? "ghost" : "outline"}
 								size="md"
 								className="flashcard-deck-action-practice"
 								icon={Target}

@@ -33,11 +33,24 @@
 
 .todayStatus {
 	display: flex;
-	align-items: baseline;
+	align-items: center;
 	flex-wrap: wrap;
-	gap: var(--fc-space-1) var(--fc-space-4);
+	gap: var(--fc-space-1) var(--fc-space-3);
 	color: var(--fc-muted);
-	font-size: var(--fc-font-sm);
+	font-size: var(--fc-font-xs);
+}
+
+.headerStreak {
+	display: inline-flex;
+	align-items: center;
+	padding: 1px var(--fc-space-2);
+	border-radius: var(--fc-radius-pill);
+	border: 1px solid color-mix(in srgb, var(--fc-lime) 30%, transparent);
+	background: color-mix(in srgb, var(--fc-lime) 10%, var(--fc-surface-card));
+	color: color-mix(in srgb, var(--fc-lime) 72%, var(--fc-text));
+	font-size: var(--fc-font-xs);
+	font-weight: var(--fc-weight-medium);
+	font-variant-numeric: tabular-nums;
 }
 
 .todayDetails {

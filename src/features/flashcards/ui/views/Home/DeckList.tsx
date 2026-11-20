@@ -308,9 +308,20 @@ export const DeckList = React.memo(function DeckList({
 														: "home.noPlanHeading",
 												)}
 									</h2>
-									<p className={styles.resumeDetail}>
-										{todayPlan
-											? t("home.todayPlan", {
+									{todayPlan ? (
+										<div className={styles.heroPlanMetrics}>
+											<div className={cls("fc-hero__num", styles.heroNum)}>
+												<b>
+													{formatDeckCount(
+														language,
+														todayPlan.todayTotal,
+													)}
+												</b>
+												<span>{t("home.heroUnit")}</span>
+											</div>
+											<p
+												className={styles.resumeDetail}
+												title={t("home.todayPlan", {
 													total: formatDeckCount(
 														language,
 														todayPlan.todayTotal,
@@ -323,9 +334,37 @@ export const DeckList = React.memo(function DeckList({
 														language,
 														todayPlan.todayReviewCount,
 													),
-												})
-											: t("home.noPlanHint")}
-									</p>
+												})}
+											>
+												{todayPlan.todayReviewCount > 0 && (
+													<span className={styles.heroChipReview}>
+														<b>
+															{formatDeckCount(
+																language,
+																todayPlan.todayReviewCount,
+															)}
+														</b>{" "}
+														{t("home.dueShortLabel")}
+													</span>
+												)}
+												{todayPlan.todayNewCount > 0 && (
+													<span className={styles.heroChipNew}>
+														<b>
+															{formatDeckCount(
+																language,
+																todayPlan.todayNewCount,
+															)}
+														</b>{" "}
+														{t("home.newShortLabel")}
+													</span>
+												)}
+											</p>
+										</div>
+									) : (
+										<p className={styles.resumeDetail}>
+											{t("home.noPlanHint")}
+										</p>
+									)}
 								</div>
 								{nextDeck && (
 									<div className="fc-hero__side">
@@ -333,7 +372,7 @@ export const DeckList = React.memo(function DeckList({
 											variant="primary"
 											size="md"
 											className={styles.resumeButton}
-											icon={shouldReview ? RefreshCcw : Brain}
+											icon={Brain}
 											onClick={() => onNavigate("study", nextDeck.id)}
 										>
 											{t(
@@ -398,17 +437,32 @@ export const DeckList = React.memo(function DeckList({
 									<h2>{t("home.deckSectionTitle")}</h2>
 									<span className={styles.deckIndexCount}>
 										{t("home.deckCountValue", {
-											count: snapshot.totals.deckCount,
-										})}
-									</span>
-									<span className={styles.deckIndexPending}>
-										{t("home.deckPendingSummary", {
 											count: formatDeckCount(
 												language,
-												snapshot.totals.newCards,
+												snapshot.totals.deckCount,
 											),
 										})}
 									</span>
+									<div className={styles.deckIndexMetrics}>
+										{snapshot.totals.dueCards > 0 && (
+											<span className={styles.deckIndexDue}>
+												{t("home.dueTotalSummary", {
+													count: formatDeckCount(
+														language,
+														snapshot.totals.dueCards,
+													),
+												})}
+											</span>
+										)}
+										<span className={styles.deckIndexPending}>
+											{t("home.deckPendingSummary", {
+												count: formatDeckCount(
+													language,
+													snapshot.totals.newCards,
+												),
+											})}
+										</span>
+									</div>
 								</div>
 								<div className={styles.modeGuide}>
 									<span>{t("home.studyGuide")}</span>
