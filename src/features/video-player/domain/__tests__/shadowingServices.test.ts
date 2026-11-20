@@ -1,25 +1,11 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-
-vi.mock("obsidian", () => ({
-	AbstractInputSuggest: class {},
-	Component: class {},
-	ItemView: class {},
-	MarkdownView: class {},
-	Modal: class {},
-	Notice: vi.fn(),
-	Platform: { isDesktopApp: false, resourcePathPrefix: "app://vault/" },
-	Plugin: class {},
-	TFile: class {},
-	normalizePath: (value: string) => value,
-	requestUrl: vi.fn(),
-}));
-
+import { mediaFailure } from "../../../../core/media/failures";
 import {
 	assembleVideoShadowingServices,
 	type VideoShadowingServiceComponents,
-} from "../../../features/index";
-import { TranslationConfigurationChangedError } from "../../../features/translation/domain/translationExecution";
-import { mediaFailure } from "../../media/failures";
+} from "../shadowingServices";
+
+class DriftChangedError extends Error {}
 
 describe("assembleVideoShadowingServices", () => {
 	function setup(
@@ -43,15 +29,12 @@ describe("assembleVideoShadowingServices", () => {
 						{ id: "c2", start: 2.5, end: 5.0, text: "How are you", needsReview: false },
 						{ id: "c3", start: null, end: null, text: "unaligned", needsReview: true },
 					],
-					words: [],
-					duration: 5.0,
-					signature: transcriptionSig,
 				};
 			}),
 		};
 
 		const translation = {
-			getProfileId: vi.fn((sel: string) => sel || "default-profile"),
+			getProfileId: vi.fn((sel?: string) => sel || "default-profile"),
 			getSignature: vi.fn(() => translationSig),
 			listProfiles: vi.fn(() => [{ id: "default-profile", name: "Default" }]),
 			translate: vi.fn(async () => {
@@ -60,7 +43,11 @@ describe("assembleVideoShadowingServices", () => {
 			}),
 		} satisfies VideoShadowingServiceComponents["translation"];
 
-		const services = assembleVideoShadowingServices({ transcription, translation });
+		const services = assembleVideoShadowingServices({
+			transcription,
+			translation,
+			isTranslationConfigChanged: (error) => error instanceof DriftChangedError,
+		});
 		return { services, transcription, translation };
 	}
 
@@ -90,11 +77,14 @@ describe("assembleVideoShadowingServices", () => {
 		expect(JSON.parse(signature)).toMatchObject({ v: 2, e: "" });
 	});
 
-	it("transcribes audio through the signed engine id and filters unaligned cues", async () => {
+	it("transcribes through downstream expectedSignature without pre-calling getSignature", async () => {
 		const { services, transcription } = setup();
 		const sig = await services.getSignature({ transcriptionEngineId: "engine-a" });
+		expect(transcription.getSignature).toHaveBeenCalledTimes(1);
+
 		const audio = new ArrayBuffer(16);
 		const cues = await services.transcribe(audio, sig);
+		expect(transcription.getSignature).toHaveBeenCalledTimes(1);
 		expect(transcription.transcribe).toHaveBeenCalledWith({
 			audio,
 			engineId: "engine-a",
@@ -107,19 +97,8 @@ describe("assembleVideoShadowingServices", () => {
 		]);
 	});
 
-	it("detects transcription configuration drift and throws standardized message", async () => {
-		const { services, transcription } = setup();
-		const sig = await services.getSignature({ transcriptionEngineId: "engine-a" });
-
-		transcription.getSignature.mockResolvedValue("new-drifted-signature");
-
-		await expect(services.transcribe(new ArrayBuffer(16), sig)).rejects.toThrow(
-			"转写配置已变化，请重新生成字幕。",
-		);
-	});
-
-	it("catches config-drift media failure from engine and throws user friendly error", async () => {
-		const { services } = setup({
+	it("maps downstream transcription config-drift errors without extra preflight", async () => {
+		const { services, transcription } = setup({
 			transcriptionError: mediaFailure({ kind: "config-drift" }),
 		});
 		const sig = await services.getSignature({ transcriptionEngineId: "engine-a" });
@@ -127,9 +106,11 @@ describe("assembleVideoShadowingServices", () => {
 		await expect(services.transcribe(new ArrayBuffer(16), sig)).rejects.toThrow(
 			"转写配置已变化，请重新生成字幕。",
 		);
+		expect(transcription.getSignature).toHaveBeenCalledTimes(1);
+		expect(transcription.transcribe).toHaveBeenCalledTimes(1);
 	});
 
-	it("translates text using valid signature and lists translation profiles", async () => {
+	it("translates through downstream expectedSignature without pre-calling getSignature", async () => {
 		const { services, translation } = setup();
 		expect(services.listTranslationProfiles()).toEqual([
 			{ id: "default-profile", name: "Default" },
@@ -138,7 +119,10 @@ describe("assembleVideoShadowingServices", () => {
 			transcriptionEngineId: "engine-a",
 			translationProfileId: "prof-1",
 		});
+		expect(translation.getSignature).toHaveBeenCalledTimes(1);
+
 		const result = await services.translate("Hello world", sig);
+		expect(translation.getSignature).toHaveBeenCalledTimes(1);
 		expect(result).toBe("你好世界");
 		expect(translation.translate).toHaveBeenCalledWith("Hello world", {
 			profileId: "prof-1",
@@ -147,23 +131,25 @@ describe("assembleVideoShadowingServices", () => {
 		});
 	});
 
-	it("detects translation configuration drift and TranslationConfigurationChangedError", async () => {
-		const drifted = setup();
-		const sig = await drifted.services.getSignature({
+	it("maps downstream translation configuration-change errors", async () => {
+		const changed = setup({ translationError: new DriftChangedError() });
+		const changedSig = await changed.services.getSignature({
 			transcriptionEngineId: "engine-a",
 			translationProfileId: "prof-1",
 		});
-		drifted.translation.getSignature = vi.fn(() => "new-translation-sig");
-		await expect(drifted.services.translate("Hello world", sig)).rejects.toThrow(
+		await expect(changed.services.translate("Hello world", changedSig)).rejects.toThrow(
 			"翻译配置已变化，请重新生成字幕。",
 		);
+		expect(changed.translation.getSignature).toHaveBeenCalledTimes(1);
 
-		const race = setup({ translationError: new TranslationConfigurationChangedError() });
-		const raceSig = await race.services.getSignature({
+		const mediaDrift = setup({
+			translationError: mediaFailure({ kind: "config-drift" }),
+		});
+		const driftSig = await mediaDrift.services.getSignature({
 			transcriptionEngineId: "engine-a",
 			translationProfileId: "prof-1",
 		});
-		await expect(race.services.translate("Hello world", raceSig)).rejects.toThrow(
+		await expect(mediaDrift.services.translate("Hello world", driftSig)).rejects.toThrow(
 			"翻译配置已变化，请重新生成字幕。",
 		);
 	});
@@ -177,7 +163,7 @@ describe("assembleVideoShadowingServices", () => {
 		);
 	});
 
-	it("rejects pre-v2 signatures that carry a transcription provider instead of an engine id", async () => {
+	it("rejects pre-v2, empty transcription signature, and malformed signatures", async () => {
 		const { services } = setup();
 		const legacySignature = JSON.stringify({
 			provider: "bailian",
@@ -185,17 +171,23 @@ describe("assembleVideoShadowingServices", () => {
 			translationProfileId: "profile-1",
 			translation: "trans-2",
 		});
+		const emptyTsSignature = JSON.stringify({
+			v: 2,
+			e: "engine-a",
+			ts: "",
+			tp: "prof-1",
+			tls: "tr-sig",
+		});
 
 		await expect(services.transcribe(new ArrayBuffer(8), legacySignature)).rejects.toThrow(
+			"转写配置已变化，请重新生成字幕。",
+		);
+		await expect(services.transcribe(new ArrayBuffer(8), emptyTsSignature)).rejects.toThrow(
 			"转写配置已变化，请重新生成字幕。",
 		);
 		await expect(services.translate("test", legacySignature)).rejects.toThrow(
 			"翻译配置已变化，请重新生成字幕。",
 		);
-	});
-
-	it("rejects malformed signatures", async () => {
-		const { services } = setup();
 		await expect(services.transcribe(new ArrayBuffer(8), "not-json")).rejects.toThrow(
 			"转写配置已变化，请重新生成字幕。",
 		);

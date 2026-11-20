@@ -70,9 +70,18 @@ function normalizeBody(value: string, limit: number): string {
 	return value.replaceAll("\r\n", "\n").replaceAll("\r", "\n").trim().slice(0, limit);
 }
 
-function isWordListPath(path: string): boolean {
+export function isFavoriteWordListPath(path: string): boolean {
 	const lower = path.toLocaleLowerCase();
 	return lower.endsWith(".txt") || lower.endsWith(".md");
+}
+
+/** Suggests vault `.txt`/`.md` word-list paths matching `query` without reading contents. */
+export function favoriteWordListPathSuggestions(paths: readonly string[], query: string): string[] {
+	const needle = query.trim().toLocaleLowerCase();
+	return paths
+		.filter((path) => isFavoriteWordListPath(path) && path.toLocaleLowerCase().includes(needle))
+		.sort((a, b) => a.localeCompare(b))
+		.slice(0, 300);
 }
 
 /** Serializes one favorite block; throws when the word normalizes to nothing. */
@@ -268,16 +277,12 @@ export function createMemoryDictionaryFavoriteStore(
 			return "saved";
 		},
 		wordListSuggestions(query: string): string[] {
-			const needle = query.trim().toLocaleLowerCase();
-			return [...files.keys()]
-				.filter((path) => isWordListPath(path) && path.toLocaleLowerCase().includes(needle))
-				.sort((a, b) => a.localeCompare(b))
-				.slice(0, 300);
+			return favoriteWordListPathSuggestions([...files.keys()], query);
 		},
 		async readWordList(path: string): Promise<string> {
 			const content = files.get(path);
 			if (content === undefined) throw new FavoriteBatchError("source-missing");
-			if (!isWordListPath(path)) throw new FavoriteBatchError("source-invalid");
+			if (!isFavoriteWordListPath(path)) throw new FavoriteBatchError("source-invalid");
 			return content;
 		},
 	};

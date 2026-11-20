@@ -1,11 +1,16 @@
 import type { App } from "obsidian";
-import type { ShadowTranscriptionCue } from "../domain/shadowSubtitles";
+import type {
+	VideoShadowingCue,
+	VideoShadowingServices,
+	VideoShadowingSignatureOptions,
+} from "../domain/shadowingServices";
 import { VideoSubtitleJobs } from "../domain/shadowSubtitlesJobs";
 import type { ShadowRecorderPort } from "../domain/types";
 import {
 	createDesktopShadowAudioExtractor,
 	shadowVideoSourceSignature,
 } from "./shadowSubtitleAudio";
+import { ObsidianShadowCheckpointStore } from "./localVideoPlayerStorage";
 import { ObsidianShadowVaultStore } from "./shadowVaultStore";
 import { createShadowRecorder } from "./shadowRecorder";
 import type { VideoPlayerSettings } from "../settings/slice";
@@ -16,24 +21,7 @@ import type { VideoPlayerRuntime } from "../domain/videoPlayerRuntime";
 const SHADOW_ENABLED_KEY = "study-studio.shadowing.enabled-sources.v1";
 const FFMPEG_PATH_KEY = "study-studio.shadowing.ffmpeg-path.v1";
 
-export type VideoShadowingCue = Readonly<ShadowTranscriptionCue>;
-
-export interface VideoShadowingSignatureOptions {
-	/** Selected ASR engine id; an empty id means the default ASR engine. */
-	readonly transcriptionEngineId: string;
-	readonly translationProfileId?: string;
-}
-
-export interface VideoShadowingServices {
-	transcribe(
-		audio: ArrayBuffer,
-		signature: string,
-		signal?: AbortSignal,
-	): Promise<readonly VideoShadowingCue[]>;
-	translate(text: string, signature: string, signal?: AbortSignal): Promise<string>;
-	getSignature(options: VideoShadowingSignatureOptions): Promise<string>;
-	listTranslationProfiles(): { id: string; name: string }[];
-}
+export type { VideoShadowingCue, VideoShadowingServices, VideoShadowingSignatureOptions };
 
 export interface VideoShadowingDesktopAdapterOptions {
 	readonly app: App;
@@ -104,6 +92,7 @@ export class VideoShadowingDesktopAdapter {
 
 			this.jobs = new VideoSubtitleJobs({
 				store: vaultStore,
+				checkpoints: new ObsidianShadowCheckpointStore(this.app),
 				reportError: options.reportError,
 				extract: (source, offset, signal) =>
 					createDesktopShadowAudioExtractor({

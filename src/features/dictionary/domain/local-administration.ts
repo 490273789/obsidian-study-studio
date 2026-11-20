@@ -6,6 +6,7 @@ import type {
 	LocalDictionarySettings,
 } from "./types";
 import {
+	CompiledPackageError,
 	inspectCompiledPackage,
 	isCompiledPackageCompatible,
 	type CompiledPackageProgressPhase,
@@ -13,62 +14,19 @@ import {
 	type CompiledPackageStatus,
 } from "./compiled-package";
 import { MAX_EUDIC_DICTIONARY_BYTES } from "./eudic-image";
+import {
+	LocalDictionaryUnsupportedError,
+	type LocalDictionaryImportPlan,
+	type LocalDictionaryImportTransaction,
+	type LocalDictionaryImporter,
+	type LocalDictionaryRemoval,
+	type LocalDictionaryStagedPackage,
+} from "./importer";
 
-export interface LocalDictionaryStorageImport {
-	readonly files: readonly File[];
-	readonly format: CompiledPackageSourceFormat;
-	readonly id: string;
-}
-
-export interface LocalDictionaryStoragePackage {
-	readonly compiled: CompiledDictionarySettings;
-	readonly id: string;
-}
-
-export interface LocalDictionaryStorageImportTransaction {
-	readonly packages: readonly LocalDictionaryStoragePackage[];
-	/** May fail (e.g. pending recovery); callers must await and map the failure. */
-	commit(): Promise<void>;
-	rollback(): Promise<void>;
-}
-
-export interface LocalDictionaryStorageRemoval {
-	/** Marks the isolated package as deleted. Cleanup after that point is best-effort. */
-	commit(): Promise<void>;
-	/** Restores the isolated package while removal is still staged. */
-	rollback(): Promise<void>;
-}
-
-type LocalDictionaryStorageFailureCode =
-	| "cancelled"
-	| "collision"
-	| "corrupt"
-	| "encrypted"
-	| "limit-exceeded"
-	| "recovery-incomplete"
-	| "storage-failed"
-	| "unsupported"
-	| "unsupported-format";
-
-export class LocalDictionaryStorageError extends Error {
-	constructor(
-		readonly code: LocalDictionaryStorageFailureCode,
-		message = "Local dictionary storage operation failed.",
-	) {
-		super(message);
-		this.name = "LocalDictionaryStorageError";
-	}
-}
-
-export interface LocalDictionaryStorageAdapter {
-	cancelActive(): void;
-	stageImport(
-		imports: readonly LocalDictionaryStorageImport[],
-		onProgress?: LocalDictionaryImportProgressListener,
-		signal?: AbortSignal,
-	): Promise<LocalDictionaryStorageImportTransaction>;
-	stageRemoval(dictionaryId: string): Promise<LocalDictionaryStorageRemoval>;
-}
+export type LocalDictionaryStager = Pick<
+	LocalDictionaryImporter,
+	"cancelActive" | "stageImport" | "stageRemoval"
+>;
 
 interface LocalDictionaryListFile {
 	readonly name: string;
@@ -428,9 +386,9 @@ function allocateDictionaryId(name: string, reserved: Set<string>): string | nul
 function createImportPlans(
 	candidates: readonly LocalDictionaryCandidate[],
 	existingIds: readonly string[],
-): LocalDictionaryStorageImport[] | null {
+): LocalDictionaryImportPlan[] | null {
 	const reserved = new Set(existingIds);
-	const imports: LocalDictionaryStorageImport[] = [];
+	const imports: LocalDictionaryImportPlan[] = [];
 	for (const candidate of candidates) {
 		const id = allocateDictionaryId(candidate.name, reserved);
 		if (!id) return null;
@@ -493,9 +451,11 @@ function failure(
 }
 
 function storageFailure(error: unknown): LocalDictionaryAdministrationFailure {
-	if (!(error instanceof LocalDictionaryStorageError)) return failure("storage-failed");
+	if (error instanceof LocalDictionaryUnsupportedError) return failure("unsupported");
+	if (!(error instanceof CompiledPackageError)) return failure("storage-failed");
 	if (error.code === "recovery-incomplete") return failure("recovery-incomplete", "incomplete");
 	if (error.code === "collision") return failure("storage-failed");
+	if (error.code === "incompatible") return failure("corrupt");
 	return failure(error.code);
 }
 
@@ -615,8 +575,8 @@ async function commitCatalogTransaction(
 
 function importedMembers(
 	candidates: readonly LocalDictionaryCandidate[],
-	imports: readonly LocalDictionaryStorageImport[],
-	packages: readonly LocalDictionaryStoragePackage[],
+	imports: readonly LocalDictionaryImportPlan[],
+	packages: readonly LocalDictionaryStagedPackage[],
 ): LocalDictionarySettings[] | null {
 	if (imports.length !== candidates.length || packages.length !== imports.length) return null;
 	const packagesById = new Map(packages.map((item) => [item.id, item]));
@@ -646,7 +606,7 @@ export class LocalDictionaryAdministrationModule implements LocalDictionaryAdmin
 
 	constructor(
 		private readonly settings: DictionarySettingsStore,
-		private readonly storage: LocalDictionaryStorageAdapter,
+		private readonly storage: LocalDictionaryStager,
 		private readonly invalidateRuntimeCache: () => void = () => undefined,
 		private readonly packageInspection?: LocalDictionaryPackageInspection,
 	) {
@@ -824,8 +784,8 @@ export class LocalDictionaryAdministrationModule implements LocalDictionaryAdmin
 		if (!validCandidates(candidates)) return this.failure("invalid-selection");
 		const before = this.settings.getLocalDictionaryAdministrationState();
 
-		let imports: LocalDictionaryStorageImport[] | null = null;
-		let transaction: LocalDictionaryStorageImportTransaction | null = null;
+		let imports: LocalDictionaryImportPlan[] | null = null;
+		let transaction: LocalDictionaryImportTransaction | null = null;
 		for (let attempt = 0; attempt < MAX_ID_ATTEMPTS; attempt += 1) {
 			imports = createImportPlans(
 				candidates,
@@ -837,8 +797,7 @@ export class LocalDictionaryAdministrationModule implements LocalDictionaryAdmin
 				transaction = await this.storage.stageImport(imports, onProgress, signal);
 				break;
 			} catch (error) {
-				if (error instanceof LocalDictionaryStorageError && error.code === "collision")
-					continue;
+				if (error instanceof CompiledPackageError && error.code === "collision") continue;
 				return this.storageFailureResult(error);
 			}
 		}
@@ -882,7 +841,7 @@ export class LocalDictionaryAdministrationModule implements LocalDictionaryAdmin
 		);
 		if (!dictionary) return this.failure("not-found");
 
-		let removal: LocalDictionaryStorageRemoval;
+		let removal: LocalDictionaryRemoval;
 		try {
 			removal = await this.storage.stageRemoval(dictionaryId);
 		} catch (error) {

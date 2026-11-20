@@ -3,6 +3,7 @@ import { parseShadowSubtitleImport } from "../shadowSubtitles";
 import {
 	VideoSubtitleJobs,
 	type ShadowSubtitleCheckpoint,
+	type ShadowSubtitleCheckpointStore,
 	type ShadowSubtitleStore,
 } from "../shadowSubtitlesJobs";
 import type { ShadowSubtitleDocument } from "../shadowSubtitles";
@@ -14,10 +15,12 @@ function fixture() {
 		save: async (document) => {
 			documents.set(document.sourceId, structuredClone(document));
 		},
-		loadCheckpoints: () => [],
-		saveCheckpoints: vi.fn(),
 	};
-	return { store, documents };
+	const checkpoints: ShadowSubtitleCheckpointStore = {
+		load: () => [],
+		save: vi.fn(),
+	};
+	return { store, checkpoints, documents };
 }
 async function until(predicate: () => boolean) {
 	await vi.waitFor(() => expect(predicate()).toBe(true));
@@ -44,10 +47,11 @@ describe("shadow subtitles", () => {
 		).toThrow();
 	});
 	it("requires adoption, preserves previous version, and protects manual edits from late translation", async () => {
-		const { store } = fixture();
+		const { store, checkpoints } = fixture();
 		let finish!: (text: string) => void;
 		const jobs = new VideoSubtitleJobs({
 			store,
+			checkpoints,
 			extract: async () => ({
 				audio: new ArrayBuffer(0),
 				duration: 10,
@@ -81,9 +85,10 @@ describe("shadow subtitles", () => {
 		jobs.dispose();
 	});
 	it("creates a new document revision when restarting clears a candidate", async () => {
-		const { store, documents } = fixture();
+		const { store, checkpoints, documents } = fixture();
 		const jobs = new VideoSubtitleJobs({
 			store,
+			checkpoints,
 			extract: async () => {
 				throw new Error("offline");
 			},
@@ -102,10 +107,11 @@ describe("shadow subtitles", () => {
 		jobs.dispose();
 	});
 	it("uses one extraction slot, deduplicates chunk overlap and persists continuation", async () => {
-		const { store } = fixture();
+		const { store, checkpoints } = fixture();
 		const offsets: number[] = [];
 		const jobs = new VideoSubtitleJobs({
 			store,
+			checkpoints,
 			extract: async (_source, offset) => {
 				offsets.push(offset);
 				return {
@@ -131,7 +137,7 @@ describe("shadow subtitles", () => {
 		jobs.dispose();
 	});
 	it("resumes restored tasks only on explicit request and rejects a changed video", async () => {
-		const { store } = fixture();
+		const { store, checkpoints } = fixture();
 		const task: ShadowSubtitleCheckpoint = {
 			source,
 			config,
@@ -140,14 +146,14 @@ describe("shadow subtitles", () => {
 			status: "running",
 			error: null,
 		};
-		store.loadCheckpoints = () => [task];
+		checkpoints.load = () => [task];
 		const extract = vi.fn(async () => ({
 			audio: new ArrayBuffer(0),
 			duration: 11,
 			totalDuration: 70,
 			sourceSignature: "changed",
 		}));
-		const jobs = new VideoSubtitleJobs({ store, extract, transcribe: vi.fn() });
+		const jobs = new VideoSubtitleJobs({ store, checkpoints, extract, transcribe: vi.fn() });
 		expect(jobs.getSnapshot().tasks[0]!.status).toBe("paused");
 		expect(extract).not.toHaveBeenCalled();
 		await jobs.resume("video");
@@ -157,10 +163,11 @@ describe("shadow subtitles", () => {
 		jobs.dispose();
 	});
 	it("discards late results after pause", async () => {
-		const { store } = fixture();
+		const { store, checkpoints } = fixture();
 		let finish!: (cues: { start: number; end: number; text: string }[]) => void;
 		const jobs = new VideoSubtitleJobs({
 			store,
+			checkpoints,
 			extract: async () => ({
 				audio: new ArrayBuffer(0),
 				duration: 10,
@@ -181,10 +188,11 @@ describe("shadow subtitles", () => {
 		jobs.dispose();
 	});
 	it("keeps a translation failure visible when a later cue succeeds", async () => {
-		const { store } = fixture();
+		const { store, checkpoints } = fixture();
 		let failFirst = true;
 		const jobs = new VideoSubtitleJobs({
 			store,
+			checkpoints,
 			extract: vi.fn(),
 			transcribe: vi.fn(),
 			translate: async (text) => {
@@ -208,8 +216,13 @@ describe("shadow subtitles", () => {
 		jobs.dispose();
 	});
 	it("reloads an externally replaced subtitle document instead of reusing its cache", async () => {
-		const { store, documents } = fixture();
-		const jobs = new VideoSubtitleJobs({ store, extract: vi.fn(), transcribe: vi.fn() });
+		const { store, checkpoints, documents } = fixture();
+		const jobs = new VideoSubtitleJobs({
+			store,
+			checkpoints,
+			extract: vi.fn(),
+			transcribe: vi.fn(),
+		});
 		await jobs.importSubtitles("video", "1\n00:00:00,000 --> 00:00:01,000\nLocal", "srt");
 		await jobs.adoptCandidate("video");
 		const external = structuredClone(documents.get("video")!);
@@ -220,9 +233,10 @@ describe("shadow subtitles", () => {
 		jobs.dispose();
 	});
 	it("treats empty model output as a retryable translation failure", async () => {
-		const { store } = fixture();
+		const { store, checkpoints } = fixture();
 		const jobs = new VideoSubtitleJobs({
 			store,
+			checkpoints,
 			extract: vi.fn(),
 			transcribe: vi.fn(),
 			translate: async () => "  ",
@@ -234,11 +248,12 @@ describe("shadow subtitles", () => {
 		jobs.dispose();
 	});
 	it("resolves source and service signatures from ports when config is omitted", async () => {
-		const { store } = fixture();
+		const { store, checkpoints } = fixture();
 		const sourceSignature = vi.fn(async () => "port-src-sig");
 		const serviceSignature = vi.fn(async () => "port-svc-sig");
 		const jobs = new VideoSubtitleJobs({
 			store,
+			checkpoints,
 			sourceSignature,
 			serviceSignature,
 			extract: async () => ({

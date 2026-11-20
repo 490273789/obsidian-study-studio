@@ -1,13 +1,15 @@
 import { describe, expect, it, vi } from "vite-plus/test";
+import { CompiledPackageError } from "../compiled-package/types";
+import type {
+	LocalDictionaryImportPlan,
+	LocalDictionaryImportTransaction,
+	LocalDictionaryRemoval,
+} from "../importer";
 import {
 	LocalDictionaryAdministrationModule,
-	LocalDictionaryStorageError,
 	type LocalDictionaryImportProgressListener,
 	type LocalDictionarySnapshot,
-	type LocalDictionaryStorageAdapter,
-	type LocalDictionaryStorageImport,
-	type LocalDictionaryStorageImportTransaction,
-	type LocalDictionaryStorageRemoval,
+	type LocalDictionaryStager,
 } from "../local-administration";
 import type {
 	CompiledDictionarySettings,
@@ -106,32 +108,32 @@ class FakeSettingsStore implements DictionarySettingsStore {
 	}
 }
 
-class FakeStorageAdapter implements LocalDictionaryStorageAdapter {
+class FakeStorageAdapter implements LocalDictionaryStager {
 	readonly stageImport = vi.fn(this.stageImportNow.bind(this));
 	readonly stageRemoval = vi.fn(this.stageRemovalNow.bind(this));
 	cancelActive(): void {}
 
 	constructor(
 		private readonly stageImportNow: (
-			imports: readonly LocalDictionaryStorageImport[],
+			imports: readonly LocalDictionaryImportPlan[],
 			onProgress?: LocalDictionaryImportProgressListener,
 			signal?: AbortSignal,
-		) => Promise<LocalDictionaryStorageImportTransaction>,
-		private readonly stageRemovalNow = async (): Promise<LocalDictionaryStorageRemoval> => {
+		) => Promise<LocalDictionaryImportTransaction>,
+		private readonly stageRemovalNow = async (): Promise<LocalDictionaryRemoval> => {
 			throw new Error("Unexpected removal");
 		},
 	) {}
 }
 
 function transaction(
-	packages: LocalDictionaryStorageImportTransaction["packages"],
+	packages: LocalDictionaryImportTransaction["packages"],
 	rollback = vi.fn(async () => undefined),
 	commit = vi.fn(),
-): LocalDictionaryStorageImportTransaction {
+): LocalDictionaryImportTransaction {
 	return { commit, packages, rollback };
 }
 
-function packageFor(imports: readonly LocalDictionaryStorageImport[]) {
+function packageFor(imports: readonly LocalDictionaryImportPlan[]) {
 	return imports.map((item) => ({ compiled: { ...compiled }, id: item.id }));
 }
 
@@ -259,10 +261,10 @@ describe("LocalDictionaryAdministrationModule import recovery", () => {
 		const settings = new FakeSettingsStore(before);
 		const storage = new FakeStorageAdapter(async (imports) => {
 			calls += 1;
-			if (calls === 1) throw new LocalDictionaryStorageError("cancelled");
+			if (calls === 1) throw new CompiledPackageError("cancelled");
 			if (calls === 2) {
 				expectUnchanged(settings, before);
-				throw new LocalDictionaryStorageError("collision");
+				throw new CompiledPackageError("collision");
 			}
 			return transaction(packageFor(imports));
 		});

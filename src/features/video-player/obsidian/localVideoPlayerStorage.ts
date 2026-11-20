@@ -1,5 +1,9 @@
 import { isRecord } from "../../../core/shared/isRecord";
 import type { App } from "obsidian";
+import type {
+	ShadowSubtitleCheckpoint,
+	ShadowSubtitleCheckpointStore,
+} from "../domain/shadowSubtitlesJobs";
 import {
 	VIDEO_PLAYBACK_RATES,
 	type DeviceVideoPlayerStateV1,
@@ -12,6 +16,7 @@ import { emptyState } from "../domain/videoPlayerRuntime";
 
 const LOCAL_VIDEO_PLAYER_STORAGE_KEY = "study-studio.local-video-player.v1";
 export const SOURCE_IDS_STORAGE_KEY = "study-studio.shadowing.source-ids.v1";
+export const SHADOW_CHECKPOINTS_STORAGE_KEY = "study-studio.shadow-subtitles.checkpoints.v1";
 
 /** Vault-scoped, device-local storage. Paths never reach plugin data.json. */
 export class ObsidianVideoPlayerStateStore implements VideoPlayerDocumentStore {
@@ -26,6 +31,31 @@ export class ObsidianVideoPlayerStateStore implements VideoPlayerDocumentStore {
 	}
 	clear(): void {
 		this.app.saveLocalStorage(LOCAL_VIDEO_PLAYER_STORAGE_KEY, null);
+	}
+}
+
+/** Device-local storage for paused/queued video shadowing subtitle checkpoints. */
+export class ObsidianShadowCheckpointStore implements ShadowSubtitleCheckpointStore {
+	constructor(private readonly app: Pick<App, "loadLocalStorage" | "saveLocalStorage">) {}
+
+	load(): ShadowSubtitleCheckpoint[] {
+		const raw: unknown = this.app.loadLocalStorage(SHADOW_CHECKPOINTS_STORAGE_KEY);
+		if (!Array.isArray(raw)) return [];
+		return raw.filter(
+			(item): item is ShadowSubtitleCheckpoint =>
+				!!item &&
+				typeof item === "object" &&
+				typeof item.source?.id === "string" &&
+				typeof item.source?.path === "string" &&
+				typeof item.config?.serviceSignature === "string" &&
+				typeof item.config?.sourceSignature === "string" &&
+				Number.isFinite(item.nextOffset) &&
+				item.nextOffset >= 0,
+		);
+	}
+
+	save(checkpoints: ShadowSubtitleCheckpoint[]): void {
+		this.app.saveLocalStorage(SHADOW_CHECKPOINTS_STORAGE_KEY, checkpoints);
 	}
 }
 

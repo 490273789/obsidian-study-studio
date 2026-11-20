@@ -8,16 +8,45 @@ import {
 	createCompiledPackagePublisher,
 	type CompiledPackagePublication,
 	type CompiledPackagePublisher,
+	type CompiledPackageSourceFormat,
 } from "./compiled-package";
-import {
-	LocalDictionaryStorageError,
-	type LocalDictionaryImportProgressListener,
-	type LocalDictionaryStorageAdapter,
-	type LocalDictionaryStorageImport,
-	type LocalDictionaryStorageImportTransaction,
-	type LocalDictionaryStorageRemoval,
-} from "./local-administration";
+import type { LocalDictionaryImportProgressListener } from "./local-administration";
+import type { CompiledDictionarySettings } from "./types";
 import { hasErrorCode, pathExists } from "./fs-errors";
+
+export interface LocalDictionaryImportPlan {
+	readonly files: readonly File[];
+	readonly format: CompiledPackageSourceFormat;
+	readonly id: string;
+}
+
+export interface LocalDictionaryStagedPackage {
+	readonly compiled: CompiledDictionarySettings;
+	readonly id: string;
+}
+
+export interface LocalDictionaryImportTransaction {
+	readonly packages: readonly LocalDictionaryStagedPackage[];
+	/** May fail (e.g. pending recovery); callers must await and map the failure. */
+	commit(): Promise<void>;
+	rollback(): Promise<void>;
+}
+
+export interface LocalDictionaryRemoval {
+	/** Marks the isolated package as deleted. Cleanup after that point is best-effort. */
+	commit(): Promise<void>;
+	/** Restores the isolated package while removal is still staged. */
+	rollback(): Promise<void>;
+}
+
+export class LocalDictionaryUnsupportedError extends Error {
+	readonly code = "unsupported" as const;
+
+	constructor(message = "Local dictionary import is supported on desktop only.") {
+		super(message);
+		this.name = "LocalDictionaryUnsupportedError";
+	}
+}
 
 interface OwnedDirectory {
 	readonly path: string;
@@ -46,9 +75,9 @@ class ImportBatchRecovery {
 			await this.mkdir(directory);
 		} catch (error) {
 			if (hasErrorCode(error, "EEXIST") || hasErrorCode(error, "ENOTEMPTY")) {
-				throw new LocalDictionaryStorageError("collision");
+				throw new CompiledPackageError("collision");
 			}
-			throw storageError(error);
+			throw toImportError(error);
 		}
 		const owned: OwnedDirectory = { path: directory };
 		this.owned.push(owned);
@@ -59,7 +88,7 @@ class ImportBatchRecovery {
 
 	commit(): void {
 		if (this.state !== "staged") return;
-		if (this.rollbackPending) throw new LocalDictionaryStorageError("recovery-incomplete");
+		if (this.rollbackPending) throw new CompiledPackageError("recovery-incomplete");
 		for (const item of this.owned) item.publication?.commit();
 		this.state = "committed";
 	}
@@ -86,7 +115,7 @@ class ImportBatchRecovery {
 			}),
 		);
 		if (results.some((result) => result.status === "rejected")) {
-			throw new LocalDictionaryStorageError("recovery-incomplete");
+			throw new CompiledPackageError("recovery-incomplete");
 		}
 		this.state = "rolled-back";
 	}
@@ -94,7 +123,7 @@ class ImportBatchRecovery {
 
 function dictionaryStorageRoot(app: App, plugin: Plugin): string {
 	if (!Platform.isDesktopApp || !(app.vault.adapter instanceof FileSystemAdapter)) {
-		throw new LocalDictionaryStorageError("unsupported");
+		throw new LocalDictionaryUnsupportedError();
 	}
 	const basePath = app.vault.adapter.getBasePath();
 	return `${basePath}/${app.vault.configDir}/plugins/${plugin.manifest.id}/dictionaries`;
@@ -102,19 +131,15 @@ function dictionaryStorageRoot(app: App, plugin: Plugin): string {
 
 function validateDictionaryId(dictionaryId: string): void {
 	if (!/^[a-z\d][a-z\d-]{2,80}$/i.test(dictionaryId)) {
-		throw new LocalDictionaryStorageError("storage-failed");
+		throw new CompiledPackageError("storage-failed");
 	}
 }
 
-function storageError(error: unknown): LocalDictionaryStorageError {
-	if (error instanceof LocalDictionaryStorageError) return error;
-	if (error instanceof CompiledPackageError) {
-		return new LocalDictionaryStorageError(
-			error.code === "incompatible" ? "corrupt" : error.code,
-			error.message,
-		);
+function toImportError(error: unknown): CompiledPackageError | LocalDictionaryUnsupportedError {
+	if (error instanceof CompiledPackageError || error instanceof LocalDictionaryUnsupportedError) {
+		return error;
 	}
-	return new LocalDictionaryStorageError(
+	return new CompiledPackageError(
 		"storage-failed",
 		error instanceof Error ? error.message : undefined,
 	);
@@ -144,7 +169,7 @@ async function cleanDeletedPackages(root: string): Promise<void> {
 	}
 }
 
-export class LocalDictionaryImporter implements LocalDictionaryStorageAdapter {
+export class LocalDictionaryImporter {
 	private readonly controllers = new Set<AbortController>();
 
 	constructor(
@@ -164,31 +189,31 @@ export class LocalDictionaryImporter implements LocalDictionaryStorageAdapter {
 	}
 
 	async stageImport(
-		imports: readonly LocalDictionaryStorageImport[],
+		imports: readonly LocalDictionaryImportPlan[],
 		onProgress?: LocalDictionaryImportProgressListener,
 		signal?: AbortSignal,
-	): Promise<LocalDictionaryStorageImportTransaction> {
+	): Promise<LocalDictionaryImportTransaction> {
 		validateImports(imports);
-		if (signal?.aborted) throw new LocalDictionaryStorageError("cancelled");
+		if (signal?.aborted) throw new CompiledPackageError("cancelled");
 		const root = this.rootPath;
 		const { lstat, mkdir, rm } = await import("node:fs/promises");
 		await mkdir(root, { recursive: true });
 		const collisions = await Promise.all(
 			imports.map(async (item) =>
 				Boolean(
-					(await pathExists(lstat, `${root}/${item.id}`, storageError)) ||
-					(await pathExists(lstat, `${root}/.import-${item.id}`, storageError)),
+					(await pathExists(lstat, `${root}/${item.id}`, toImportError)) ||
+					(await pathExists(lstat, `${root}/.import-${item.id}`, toImportError)),
 				),
 			),
 		);
-		if (collisions.includes(true)) throw new LocalDictionaryStorageError("collision");
+		if (collisions.includes(true)) throw new CompiledPackageError("collision");
 		const controller = new AbortController();
 		const cancel = () => controller.abort();
 		signal?.addEventListener("abort", cancel, { once: true });
 		if (signal?.aborted) controller.abort();
 		this.controllers.add(controller);
 		const recovery = new ImportBatchRecovery(mkdir, rm);
-		const packages: Array<LocalDictionaryStorageImportTransaction["packages"][number]> = [];
+		const packages: LocalDictionaryStagedPackage[] = [];
 		try {
 			for (const item of imports) {
 				controller.signal.throwIfAborted();
@@ -210,10 +235,10 @@ export class LocalDictionaryImporter implements LocalDictionaryStorageAdapter {
 			controller.signal.throwIfAborted();
 		} catch (error) {
 			await recovery.rollback();
-			const failure = storageError(error);
+			const failure = toImportError(error);
 			// An abort must never hide failed recovery, even when it originated in the publisher.
 			if (failure.code === "recovery-incomplete") throw failure;
-			if (controller.signal.aborted) throw new LocalDictionaryStorageError("cancelled");
+			if (controller.signal.aborted) throw new CompiledPackageError("cancelled");
 			throw failure;
 		} finally {
 			signal?.removeEventListener("abort", cancel);
@@ -227,7 +252,7 @@ export class LocalDictionaryImporter implements LocalDictionaryStorageAdapter {
 		};
 	}
 
-	async stageRemoval(dictionaryId: string): Promise<LocalDictionaryStorageRemoval> {
+	async stageRemoval(dictionaryId: string): Promise<LocalDictionaryRemoval> {
 		validateDictionaryId(dictionaryId);
 		const root = this.rootPath;
 		const source = `${root}/${dictionaryId}`;
@@ -242,7 +267,7 @@ export class LocalDictionaryImporter implements LocalDictionaryStorageAdapter {
 			if (hasErrorCode(error, "ENOENT")) {
 				return { commit: async () => undefined, rollback: async () => undefined };
 			}
-			throw storageError(error);
+			throw toImportError(error);
 		}
 		let state: "staged" | "committed" | "rolled-back" = "staged";
 		return {
@@ -251,7 +276,7 @@ export class LocalDictionaryImporter implements LocalDictionaryStorageAdapter {
 				try {
 					await rename(staged, deleted);
 				} catch (error) {
-					throw storageError(error);
+					throw toImportError(error);
 				}
 				// A recursive deletion can remove some files before failing. After the
 				// directory is marked as deleted, the catalog must never restore it.
@@ -268,14 +293,14 @@ export class LocalDictionaryImporter implements LocalDictionaryStorageAdapter {
 					await rename(staged, source);
 					state = "rolled-back";
 				} catch {
-					throw new LocalDictionaryStorageError("recovery-incomplete");
+					throw new CompiledPackageError("recovery-incomplete");
 				}
 			},
 		};
 	}
 }
 
-function validateImports(imports: readonly LocalDictionaryStorageImport[]): void {
+function validateImports(imports: readonly LocalDictionaryImportPlan[]): void {
 	const ids = new Set<string>();
 	if (
 		imports.length === 0 ||
@@ -286,6 +311,6 @@ function validateImports(imports: readonly LocalDictionaryStorageImport[]): void
 			return item.files.length === 0;
 		})
 	) {
-		throw new LocalDictionaryStorageError("storage-failed");
+		throw new CompiledPackageError("storage-failed");
 	}
 }

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
+import type { ShadowSubtitleCheckpoint } from "../../domain/shadowSubtitlesJobs";
 import {
+	ObsidianShadowCheckpointStore,
 	ObsidianVideoSourceIdentityStore,
+	SHADOW_CHECKPOINTS_STORAGE_KEY,
 	SOURCE_IDS_STORAGE_KEY,
 	parseDeviceVideoPlayerState,
 } from "../localVideoPlayerStorage";
@@ -60,5 +63,43 @@ describe("ObsidianVideoSourceIdentityStore", () => {
 
 		store.clear();
 		expect(storage.get(SOURCE_IDS_STORAGE_KEY)).toBeNull();
+	});
+});
+
+describe("ObsidianShadowCheckpointStore", () => {
+	it("persists valid subtitle checkpoints and filters malformed stored entries", () => {
+		const storage = new Map<string, unknown>();
+		const app = {
+			loadLocalStorage: (key: string) => storage.get(key) ?? null,
+			saveLocalStorage: (key: string, value: unknown) => {
+				storage.set(key, value);
+			},
+		};
+		const store = new ObsidianShadowCheckpointStore(app);
+		const valid: ShadowSubtitleCheckpoint = {
+			source: { id: "video", path: "/video.mp4" },
+			config: { sourceSignature: "100:200", serviceSignature: "svc" },
+			nextOffset: 15,
+			totalDuration: 60,
+			status: "paused",
+			error: null,
+		};
+		store.save([valid]);
+		storage.set(SHADOW_CHECKPOINTS_STORAGE_KEY, [
+			valid,
+			{
+				source: { id: "missing-path" },
+				config: { serviceSignature: "s", sourceSignature: "x" },
+				nextOffset: 0,
+			},
+			{
+				source: { id: "v2", path: "/v2.mp4" },
+				config: { serviceSignature: "s", sourceSignature: "x" },
+				nextOffset: -1,
+			},
+			null,
+		]);
+		const reopened = new ObsidianShadowCheckpointStore(app);
+		expect(reopened.load()).toEqual([valid]);
 	});
 });

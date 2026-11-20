@@ -16,7 +16,7 @@
 
 ## 影子跟读
 
-`VideoSubtitleJobs` 是插件生命周期的字幕任务 owner，字幕文档存在资料库，外部视频路径与任务检查点存在设备本地。`ObsidianShadowVaultStore`（`obsidian/shadowVaultStore.ts`）统一实现 `ShadowSubtitleStore` 与 `ShadowPracticeRecordsPort`，将每个 source ID 固定到第一次选定的资料库目录，并管理字幕文档历史/冲突保护、任务检查点以及难段与用户保留的录音。字幕冲突后通过 `reloadSource` 丢弃当前未保存草稿并重新读取资料库版本，不要让视图直接改 store。
+`VideoSubtitleJobs` 是插件生命周期的字幕任务 owner，字幕文档存在资料库，外部视频路径与任务检查点存在设备本地。`ObsidianShadowVaultStore`（`obsidian/shadowVaultStore.ts`）统一实现 `ShadowSubtitleStore` 与 `ShadowPracticeRecordsPort`，将每个 source ID 固定到第一次选定的资料库目录，并管理字幕文档历史/冲突保护以及难段与用户保留的录音；任务检查点收敛在设备本地的 `ObsidianShadowCheckpointStore`（`obsidian/localVideoPlayerStorage.ts`）。字幕冲突后通过 `reloadSource` 丢弃当前未保存草稿并重新读取资料库版本，不要让视图直接改 store。
 
 `src/features/video-player/obsidian/videoShadowingDesktopAdapter.ts`（`VideoShadowingDesktopAdapter`）是桌面环境的宿主适配器：
 
@@ -25,7 +25,7 @@
 - 文件选取与稳定身份分配收敛为运行时的单一原子意图（`pickAndAddSources` / `pickAndReplaceSource`），经由平台 `VideoFilePickerPort` 完成，视图只渲染快照；
 - 装配桌面端 `VideoSubtitleJobs`（注入 `sourceSignature` / `serviceSignature` 等 ports，避免宿主回绕）与 `ShadowingWorkspaceSession`，对外收敛为 `shadowingSession`、`bindPresenterWindow`、`getFfmpegPath`、`setFfmpegPath` 与 `dispose`。
 
-`ShadowingWorkspaceSession` 是跟读与字幕域的唯一深 module（deep module），同时拥有范围播放、休整计时、倒计时、录音、回听与失败保存队列，以及字幕选区、微调范围、与内部私有 `VideoSubtitleDrafts` 配合的修正草稿状态；`VideoPlayerRuntime.playRange` 只实现有界播放。`ShadowingWorkspaceSession` 发布视图所需的单一快照与 `act(action)` 意图，主视图与浮动视图共用同一实例。Presenter 交接时停止活动会话，关闭 view 不销毁插件生命周期的字幕任务。配置的跨功能借用只在 `src/features/index.ts`；`video-player` 不导入听说练习或翻译功能的内部模块。
+`ShadowingWorkspaceSession` 是跟读与字幕域的唯一深 module（deep module），同时拥有范围播放、休整计时、倒计时、录音、回听与失败保存队列，以及字幕选区、微调范围、修正草稿状态；`VideoPlayerRuntime.playRange` 只实现有界播放。`ShadowingWorkspaceSession` 发布视图所需的单一快照与 `act(action)` 意图，主视图与浮动视图共用同一实例。Presenter 交接时停止活动会话，关闭 view 不销毁插件生命周期的字幕任务。配置的跨功能借用只在 `src/features/index.ts`；`video-player` 不导入听说练习或翻译功能的内部模块。
 
 字幕和跟读按当前视频单独启用，默认关闭；启用列表只保存在设备本地。关闭时隐藏主视图的字幕侧栏及浮动字幕控件，并取消当前跟读会话。队列是顶部紧凑栏，展开列表浮在内容上方，不改变视频宽度。
 

@@ -10,8 +10,10 @@ import {
 	FavoriteSaveError,
 	appendDictionaryFavorite,
 	favoriteSourceChanges,
+	favoriteWordListPathSuggestions,
 	findDictionaryFavorite,
 	formatDictionaryFavorite,
+	isFavoriteWordListPath,
 	parseDictionaryFavorites,
 	upsertDictionaryFavorite,
 	type DictionaryFavoriteEntry,
@@ -45,21 +47,16 @@ export class ObsidianDictionaryFavoriteStore implements DictionaryFavoriteStore 
 
 	/** Vault-only word-list source selector; never reads unrelated notes for suggestions. */
 	wordListSuggestions(query: string): string[] {
-		const needle = query.trim().toLocaleLowerCase();
-		return this.app.vault
-			.getFiles()
-			.filter(
-				(file) => this.isWordList(file) && file.path.toLocaleLowerCase().includes(needle),
-			)
-			.map((file) => file.path)
-			.sort((a, b) => a.localeCompare(b))
-			.slice(0, 300);
+		return favoriteWordListPathSuggestions(
+			this.app.vault.getFiles().map((file) => file.path),
+			query,
+		);
 	}
 
 	async readWordList(path: string): Promise<string> {
 		const file = this.app.vault.getAbstractFileByPath(path);
 		if (!(file instanceof TFile)) throw new FavoriteBatchError("source-missing");
-		if (!this.isWordList(file)) throw new FavoriteBatchError("source-invalid");
+		if (!isFavoriteWordListPath(file.path)) throw new FavoriteBatchError("source-invalid");
 		try {
 			return await this.app.vault.read(file);
 		} catch {
@@ -219,13 +216,6 @@ export class ObsidianDictionaryFavoriteStore implements DictionaryFavoriteStore 
 		if (!file) return false;
 		await this.app.workspace.openLinkText(file.path, "", true);
 		return true;
-	}
-
-	private isWordList(file: TFile): boolean {
-		return (
-			file.extension.toLocaleLowerCase() === "txt" ||
-			file.extension.toLocaleLowerCase() === "md"
-		);
 	}
 
 	private async ensureParentFolder(filePath: string): Promise<string[]> {

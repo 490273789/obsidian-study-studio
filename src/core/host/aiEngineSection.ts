@@ -198,8 +198,29 @@ class AiEngineSettingsSection implements WorkbenchSettingsSection {
 		const engines = snapshot.settings.engines.filter((engine) => engine.kind === kind);
 		const loading = snapshot.loadingModels.includes(draft.id);
 		const testing = snapshot.testing.includes(draft.id);
-		const kindDescription =
-			kind === "llm" ? t.llmDesc : kind === "asr" ? t.asrDesc : t.translationDesc;
+		const kindCopy = {
+			llm: {
+				description: t.llmDesc,
+				defaultHelp: t.defaultLlmHelp,
+				listDesc: t.llmEngineListDesc,
+				emptyDesc: t.llmNoConfigsDesc,
+				defaultId: snapshot.settings.defaults.llm,
+			},
+			asr: {
+				description: t.asrDesc,
+				defaultHelp: t.defaultAsrHelp,
+				listDesc: t.asrEngineListDesc,
+				emptyDesc: t.asrNoConfigsDesc,
+				defaultId: snapshot.settings.defaults.asr,
+			},
+			translation: {
+				description: t.translationDesc,
+				defaultHelp: "",
+				listDesc: t.translationEngineListDesc,
+				emptyDesc: t.translationNoConfigsDesc,
+				defaultId: null,
+			},
+		}[kind];
 
 		const text = (row: SettingsRowBuilder, field: AiEngineTextField, placeholder: string) =>
 			row.text(field, {
@@ -216,13 +237,28 @@ class AiEngineSettingsSection implements WorkbenchSettingsSection {
 			disabled = saving,
 			tone?: "neutral" | "warning",
 		) => row.button(key, { label, onPress: onClick, disabled, tone });
+		const apiKeySecret = (
+			group: {
+				secret(
+					key: string,
+					copy: { name: string; description?: string },
+					spec: { value: string; disabled?: boolean; onChange: (value: string) => void },
+				): void;
+			},
+			value: string,
+		) =>
+			group.secret(
+				"secret",
+				{ name: t.secret, description: t.secretHelp },
+				{ value, disabled: saving, onChange: (secretId) => this.patchDraft({ secretId }) },
+			);
 
 		return defineSettings("ai-engines", (page) => {
 			if (view === "list") {
 				page.group("types", t.typeLabel, (group) => {
 					group.choiceButtons(
 						"kind",
-						{ name: t.serviceCategory, description: kindDescription },
+						{ name: t.serviceCategory, description: kindCopy.description },
 						{
 							value: kind,
 							choices: KIND_ORDER.map((candidate) => ({
@@ -241,7 +277,7 @@ class AiEngineSettingsSection implements WorkbenchSettingsSection {
 							"default",
 							{
 								name: t.selectDefault,
-								description: kind === "llm" ? t.defaultLlmHelp : t.defaultAsrHelp,
+								description: kindCopy.defaultHelp,
 							},
 							{
 								value: snapshot.settings.defaults[kind] ?? "",
@@ -262,46 +298,19 @@ class AiEngineSettingsSection implements WorkbenchSettingsSection {
 				page.group("engines", t.engineList, (group) => {
 					group.button(
 						"add",
-						{
-							name: t.addEngineRow,
-							description: (() => {
-								switch (kind) {
-									case "llm":
-										return t.llmEngineListDesc;
-									case "asr":
-										return t.asrEngineListDesc;
-									default:
-										return t.translationEngineListDesc;
-								}
-							})(),
-						},
+						{ name: t.addEngineRow, description: kindCopy.listDesc },
 						{ label: t.addEngine, disabled: saving, onPress: () => this.startAdd() },
 					);
 
 					if (engines.length === 0) {
 						group.row("empty", {
 							name: t.noConfigs,
-							description: (() => {
-								switch (kind) {
-									case "llm":
-										return t.llmNoConfigsDesc;
-									case "asr":
-										return t.asrNoConfigsDesc;
-									default:
-										return t.translationNoConfigsDesc;
-								}
-							})(),
+							description: kindCopy.emptyDesc,
 						});
 						return;
 					}
-					const defaultId =
-						kind === "llm"
-							? snapshot.settings.defaults.llm
-							: kind === "asr"
-								? snapshot.settings.defaults.asr
-								: null;
 					for (const engine of engines) {
-						const isDefault = engine.id === defaultId;
+						const isDefault = engine.id === kindCopy.defaultId;
 						const name = isDefault ? `${engine.name} ${t.defaultBadge}` : engine.name;
 						group.row(
 							`engine-${settingsKey(engine.id)}`,
@@ -359,15 +368,7 @@ class AiEngineSettingsSection implements WorkbenchSettingsSection {
 							{ name: t.baseUrl, description: t.llmBaseHelp },
 							(row) => text(row, "baseUrl", "https://…"),
 						);
-						group.secret(
-							"secret",
-							{ name: t.secret, description: t.secretHelp },
-							{
-								value: draft.secretId,
-								disabled: saving,
-								onChange: (secretId) => this.patchDraft({ secretId }),
-							},
-						);
+						apiKeySecret(group, draft.secretId);
 						group.row("model", { name: t.model, description: t.modelHelp }, (row) =>
 							text(row, "model", t.modelPlaceholder),
 						);
@@ -446,15 +447,7 @@ class AiEngineSettingsSection implements WorkbenchSettingsSection {
 									onChange: (model) => this.patchDraft({ model }),
 								},
 							);
-							group.secret(
-								"secret",
-								{ name: t.secret, description: t.secretHelp },
-								{
-									value: draft.secretId,
-									disabled: saving,
-									onChange: (secretId) => this.patchDraft({ secretId }),
-								},
-							);
+							apiKeySecret(group, draft.secretId);
 						} else {
 							group.row(
 								"base-url",
@@ -464,15 +457,7 @@ class AiEngineSettingsSection implements WorkbenchSettingsSection {
 							group.row("model", { name: t.model }, (row) =>
 								text(row, "model", "whisper-1"),
 							);
-							group.secret(
-								"secret",
-								{ name: t.secret, description: t.secretHelp },
-								{
-									value: draft.secretId,
-									disabled: saving,
-									onChange: (secretId) => this.patchDraft({ secretId }),
-								},
-							);
+							apiKeySecret(group, draft.secretId);
 						}
 					} else {
 						group.status("provider", { name: t.provider }, t.translationProvider);

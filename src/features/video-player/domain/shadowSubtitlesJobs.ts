@@ -33,8 +33,10 @@ export interface ShadowSubtitleCheckpoint {
 export interface ShadowSubtitleStore {
 	load(sourceId: string): Promise<ShadowSubtitleDocument | null>;
 	save(document: ShadowSubtitleDocument): Promise<void>;
-	loadCheckpoints(): ShadowSubtitleCheckpoint[];
-	saveCheckpoints(checkpoints: ShadowSubtitleCheckpoint[]): void;
+}
+export interface ShadowSubtitleCheckpointStore {
+	load(): ShadowSubtitleCheckpoint[];
+	save(checkpoints: ShadowSubtitleCheckpoint[]): void;
 }
 export interface VideoSubtitleJobsPorts {
 	extract(
@@ -49,6 +51,7 @@ export interface VideoSubtitleJobsPorts {
 	): Promise<readonly ShadowTranscriptionCue[]>;
 	translate?(text: string, task: ShadowSubtitleCheckpoint, signal: AbortSignal): Promise<string>;
 	store: ShadowSubtitleStore;
+	checkpoints: ShadowSubtitleCheckpointStore;
 	sourceSignature?(source: ShadowVideoSource): string | Promise<string>;
 	serviceSignature?(source: ShadowVideoSource): string | Promise<string>;
 	reportError?(error: unknown): void;
@@ -95,7 +98,7 @@ export class VideoSubtitleJobs {
 	private lifetimeController = new AbortController();
 	private snapshot: VideoSubtitleJobsSnapshot;
 	constructor(private readonly ports: VideoSubtitleJobsPorts) {
-		this.tasks = ports.store.loadCheckpoints().map((task) => ({
+		this.tasks = ports.checkpoints.load().map((task) => ({
 			...task,
 			status: task.status === "complete" ? "complete" : "paused",
 		}));
@@ -365,7 +368,7 @@ export class VideoSubtitleJobs {
 	}
 	private publish(): void {
 		try {
-			this.ports.store.saveCheckpoints(structuredClone(this.tasks));
+			this.ports.checkpoints.save(structuredClone(this.tasks));
 		} catch (error) {
 			this.reportPublicationError(error);
 		}

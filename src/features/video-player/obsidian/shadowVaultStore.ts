@@ -1,6 +1,6 @@
 import type { App } from "obsidian";
 import type { ShadowSubtitleDocument } from "../domain/shadowSubtitles";
-import type { ShadowSubtitleCheckpoint, ShadowSubtitleStore } from "../domain/shadowSubtitlesJobs";
+import type { ShadowSubtitleStore } from "../domain/shadowSubtitlesJobs";
 import {
 	validShadowVaultFolder,
 	type ShadowPracticeRecord,
@@ -8,7 +8,6 @@ import {
 	type ShadowingTake,
 } from "../domain/types";
 
-const CHECKPOINT_KEY = "study-studio.shadow-subtitles.checkpoints.v1";
 const FOLDER_KEY = "study-studio.shadowing.source-folders.v1";
 const DEFAULT_VAULT_FOLDER = "Study Studio/影子跟读";
 const VALID_RECORD_ID = /^[A-Za-z0-9_-]{1,100}$/;
@@ -30,8 +29,8 @@ export type ShadowVaultApp = Pick<App, "loadLocalStorage" | "saveLocalStorage"> 
 
 /**
  * Deep vault persistence adapter for video shadowing.
- * Pins each source's vault folder on first use and manages subtitle documents/history,
- * job checkpoints, and serialized practice records + binary takes under that directory.
+ * Pins each source's vault folder on first use and manages subtitle documents/history
+ * and serialized practice records + binary takes under that directory.
  */
 export class ObsidianShadowVaultStore implements ShadowSubtitleStore, ShadowPracticeRecordsPort {
 	private readonly preferredRoot: () => string;
@@ -192,26 +191,6 @@ export class ObsidianShadowVaultStore implements ShadowSubtitleStore, ShadowPrac
 				console.warn("Unable to create a Study Studio subtitle revision", error);
 			}
 		}
-	}
-
-	loadCheckpoints(): ShadowSubtitleCheckpoint[] {
-		const raw: unknown = this.app.loadLocalStorage(CHECKPOINT_KEY);
-		if (!Array.isArray(raw)) return [];
-		return raw.filter(
-			(item): item is ShadowSubtitleCheckpoint =>
-				!!item &&
-				typeof item === "object" &&
-				typeof item.source?.id === "string" &&
-				typeof item.source?.path === "string" &&
-				typeof item.config?.serviceSignature === "string" &&
-				typeof item.config?.sourceSignature === "string" &&
-				Number.isFinite(item.nextOffset) &&
-				item.nextOffset >= 0,
-		);
-	}
-
-	saveCheckpoints(checkpoints: ShadowSubtitleCheckpoint[]): void {
-		this.app.saveLocalStorage(CHECKPOINT_KEY, checkpoints);
 	}
 
 	async list(sourceId: string): Promise<ShadowPracticeRecord[]> {

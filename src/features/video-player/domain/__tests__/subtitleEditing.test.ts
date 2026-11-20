@@ -8,6 +8,7 @@ import {
 	ShadowSubtitleEditConflict,
 	VideoSubtitleJobs,
 	type ShadowAudioChunk,
+	type ShadowSubtitleCheckpointStore,
 	type ShadowSubtitleStore,
 	type VideoSubtitleJobsPorts,
 } from "../shadowSubtitlesJobs";
@@ -37,7 +38,7 @@ function initialDocument() {
 }
 function fixture(
 	initial = initialDocument(),
-	ports: Partial<Omit<VideoSubtitleJobsPorts, "store">> = {},
+	ports: Partial<Omit<VideoSubtitleJobsPorts, "store" | "checkpoints">> = {},
 ) {
 	const documents = new Map([[initial.sourceId, structuredClone(initial)]]);
 	const writes: ShadowSubtitleDocument[] = [];
@@ -53,14 +54,23 @@ function fixture(
 			await waiting;
 			documents.set(document.sourceId, snapshot);
 		}),
-		loadCheckpoints: () => [],
-		saveCheckpoints: vi.fn(),
 	};
-	const jobs = new VideoSubtitleJobs({ store, extract: vi.fn(), transcribe: vi.fn(), ...ports });
+	const checkpoints: ShadowSubtitleCheckpointStore = {
+		load: () => [],
+		save: vi.fn(),
+	};
+	const jobs = new VideoSubtitleJobs({
+		store,
+		checkpoints,
+		extract: vi.fn(),
+		transcribe: vi.fn(),
+		...ports,
+	});
 	jobs.subscribe(() => publications.push(Object.values(jobs.getSnapshot().documents)));
 	return {
 		jobs,
 		store,
+		checkpoints,
 		documents,
 		writes,
 		publications,
@@ -424,11 +434,11 @@ describe("subtitle editing commits", () => {
 	);
 	it("resolves a committed save and notifies healthy subscribers when checkpoint and another listener throw", async () => {
 		const reportError = vi.fn();
-		const { jobs, store, documents } = fixture(undefined, { reportError });
+		const { jobs, checkpoints, documents } = fixture(undefined, { reportError });
 		await jobs.restore(source.id);
 		const checkpointError = new Error("checkpoint unavailable");
 		const listenerError = new Error("listener failed");
-		store.saveCheckpoints = () => {
+		checkpoints.save = () => {
 			throw checkpointError;
 		};
 		jobs.subscribe(() => {

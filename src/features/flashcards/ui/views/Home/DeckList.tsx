@@ -17,11 +17,12 @@ import {
 	Sparkles,
 	Trophy,
 } from "lucide-react";
-import type {
-	DeckHome,
-	DeckHomeDeckSnapshot,
-	DeckHomeDestination,
-	DeckHomeSnapshot,
+import {
+	isDeckSettingsLocked,
+	type DeckHome,
+	type DeckHomeDeckSnapshot,
+	type DeckHomeDestination,
+	type DeckHomeSnapshot,
 } from "../../../domain/decks/deckHome";
 import { getStudyPlanSummary } from "../../../domain/sessions/studyPlanSummary";
 import type { WorkbenchFeatureShortcut } from "../../../../../core/host/workbench";
@@ -30,11 +31,7 @@ import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
 import { DeckSettingsModal } from "../DeckSettings";
 import { useFlashcardI18n } from "../../../strings/context";
-import {
-	isDeckSettingsLocked,
-	selectContinueDeck,
-	selectDeckVisualState,
-} from "../../homePresentation";
+import { selectContinueDeck, selectDeckVisualState } from "../../homePresentation";
 import { DeckCard } from "./DeckCard/DeckCard";
 import { formatDeckCount } from "./deckCountFormat";
 import styles from "./DeckList.module.scss";

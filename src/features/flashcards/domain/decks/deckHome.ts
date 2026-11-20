@@ -67,7 +67,7 @@ export interface DeckHomeDeckSnapshot {
 }
 
 export interface DeckHomeSettingsDraft {
-	readonly ownerId: string;
+	readonly ownerId: string | null;
 	readonly deckId: string;
 	readonly deckName: string;
 	readonly filePath: string;
@@ -333,7 +333,7 @@ export interface DeckHome {
 }
 
 interface MutableSettingsDraft {
-	ownerId: string;
+	ownerId: string | null;
 	deckId: string;
 	useCustom: boolean;
 	dailyNewCards: number;
@@ -361,6 +361,19 @@ const systemClock: DeckHomeClock = {
 
 export function createDeckHome(options: CreateDeckHomeOptions): DeckHome {
 	return new DefaultDeckHome(options);
+}
+
+/** Reports whether another view holds an active settings draft blocking `ownerId` from editing `deckId`. */
+export function isDeckSettingsLocked(
+	draft: DeckHomeSettingsDraft | null,
+	deckId: string,
+	ownerId: string,
+): boolean {
+	return (
+		draft !== null &&
+		draft.ownerId !== ownerId &&
+		(draft.ownerId !== null || draft.deckId !== deckId)
+	);
 }
 
 function equalDeckStats(a: DeckStats, b: DeckStats): boolean {
@@ -703,7 +716,7 @@ class DefaultDeckHome implements DeckHome {
 		}
 		if (this.settingsDraft) {
 			if (this.settingsDraft.ownerId === ownerId) return { kind: "applied" };
-			if (this.settingsDraft.ownerId === "" && this.settingsDraft.deckId === deckId) {
+			if (this.settingsDraft.ownerId === null && this.settingsDraft.deckId === deckId) {
 				this.settingsDraft.ownerId = ownerId;
 				this.publish();
 				return { kind: "applied" };
@@ -847,7 +860,7 @@ class DefaultDeckHome implements DeckHome {
 		}
 		if (this.settingsDraft?.ownerId === ownerId) {
 			if (this.mutation.kind === "saving-settings") {
-				this.settingsDraft.ownerId = "";
+				this.settingsDraft.ownerId = null;
 			} else {
 				this.settingsDraft = null;
 			}

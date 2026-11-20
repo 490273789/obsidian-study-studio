@@ -15,10 +15,12 @@ import {
 import { DEFAULT_SETTINGS } from "../../../../../core/host/settingsSlices";
 import {
 	createDeckHome,
+	isDeckSettingsLocked,
 	type CreateDeckHomeOptions,
 	type DeckHomeClock,
 	type DeckHomeEvent,
 	type DeckHomeRepository,
+	type DeckHomeSettingsDraft,
 } from "../deckHome";
 import {
 	restoreDailyLearningActivity,
@@ -1394,7 +1396,7 @@ describe("DeckHome settings draft", () => {
 
 		// Releasing owner mid-save preserves the in-flight save and lets another view reclaim it if still open.
 		await home.act({ kind: "release-owner", ownerId: "view-a" });
-		expect(home.getSnapshot().settingsDraft?.ownerId).toBe("");
+		expect(home.getSnapshot().settingsDraft?.ownerId).toBeNull();
 
 		saveGate.resolve();
 		expect(await saving).toEqual({ kind: "applied" });
@@ -1427,7 +1429,7 @@ describe("DeckHome settings draft", () => {
 
 		saveGate.reject(new Error("sync conflict"));
 		expect(await saving).toEqual({ kind: "failed", message: "sync conflict" });
-		expect(home.getSnapshot().settingsDraft?.ownerId).toBe("");
+		expect(home.getSnapshot().settingsDraft?.ownerId).toBeNull();
 
 		expect(
 			await home.act({ kind: "open-settings", ownerId: "view-b", deckId: deck.id }),
@@ -1501,5 +1503,46 @@ describe("DeckHome settings draft", () => {
 		expect(home.getSnapshot().settingsDraft).toBeNull();
 		expect(home.getSnapshot().mutation).toEqual({ kind: "idle" });
 		home.dispose();
+	});
+});
+
+describe("isDeckSettingsLocked", () => {
+	const draft = (ownerId: string | null, deckId: string): DeckHomeSettingsDraft => ({
+		ownerId,
+		deckId,
+		deckName: "Deck",
+		filePath: "deck.md",
+		totalCards: 10,
+		useCustom: false,
+		dailyNewCards: 20,
+		dailyReviewCards: 200,
+		studyOrder: "sequential",
+		requestRetention: 0.9,
+		maximumInterval: "36500",
+		daysToComplete: "1",
+		wordLearningEnabled: false,
+		global: {
+			dailyNewCards: 20,
+			dailyReviewCards: 200,
+			studyOrder: "sequential",
+			fsrsParameters: { requestRetention: 0.9, maximumInterval: 36500 },
+		},
+		spelling: { canStart: false, hasStableIdentities: true, invalidCards: [] },
+	});
+
+	it("returns false when no draft is active or when owned by the current view", () => {
+		expect(isDeckSettingsLocked(null, "deck-1", "view-a")).toBe(false);
+		expect(isDeckSettingsLocked(draft("view-a", "deck-1"), "deck-1", "view-a")).toBe(false);
+		expect(isDeckSettingsLocked(draft("view-a", "deck-1"), "deck-2", "view-a")).toBe(false);
+	});
+
+	it("locks every deck for other views while an owner holds the draft", () => {
+		expect(isDeckSettingsLocked(draft("view-a", "deck-1"), "deck-1", "view-b")).toBe(true);
+		expect(isDeckSettingsLocked(draft("view-a", "deck-1"), "deck-2", "view-b")).toBe(true);
+	});
+
+	it("keeps other decks locked while allowing an orphaned saving draft's own deck to resume", () => {
+		expect(isDeckSettingsLocked(draft(null, "deck-1"), "deck-1", "view-b")).toBe(false);
+		expect(isDeckSettingsLocked(draft(null, "deck-1"), "deck-2", "view-b")).toBe(true);
 	});
 });

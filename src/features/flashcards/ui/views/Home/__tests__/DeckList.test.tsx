@@ -330,7 +330,7 @@ function renderDeckCard(
 	return renderCard(element.props) as React.ReactElement<ElementProps>;
 }
 
-function makeSettingsDraft(ownerId: string, deckId: string): DeckHomeSettingsDraft {
+function makeSettingsDraft(ownerId: string | null, deckId: string): DeckHomeSettingsDraft {
 	return {
 		ownerId,
 		deckId,
@@ -706,7 +706,7 @@ describe("deck row presentation state", () => {
 
 		h.props.snapshot = {
 			...h.props.snapshot,
-			settingsDraft: makeSettingsDraft("", "first"),
+			settingsDraft: makeSettingsDraft(null, "first"),
 		};
 		h.render();
 		const locked = h.findAll(h.tree(), (element) => element.props.deck !== undefined);

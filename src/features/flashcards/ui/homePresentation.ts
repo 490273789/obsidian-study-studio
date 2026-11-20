@@ -1,4 +1,4 @@
-import type { DeckHomeDeckSnapshot, DeckHomeSettingsDraft } from "../domain/decks/deckHome";
+import type { DeckHomeDeckSnapshot } from "../domain/decks/deckHome";
 import { getStudyPlanSummary } from "../domain/sessions/studyPlanSummary";
 
 /**
@@ -37,18 +37,6 @@ export function selectDeckCardMetrics(deck: DeckHomeDeckSnapshot): DeckCardMetri
 		progressPercent: totalCards > 0 ? Math.min(100, (learnedCards / totalCards) * 100) : 0,
 		isDone: state === "done",
 	};
-}
-
-export function isDeckSettingsLocked(
-	draft: DeckHomeSettingsDraft | null,
-	deckId: string,
-	ownerId: string,
-): boolean {
-	return (
-		draft !== null &&
-		draft.ownerId !== ownerId &&
-		(draft.ownerId !== "" || draft.deckId !== deckId)
-	);
 }
 
 /**

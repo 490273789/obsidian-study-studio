@@ -6,7 +6,7 @@ import {
 } from "../compiled-package/manifest";
 import {
 	LocalDictionaryAdministrationModule,
-	type LocalDictionaryStorageAdapter,
+	type LocalDictionaryStager,
 } from "../local-administration";
 import type {
 	CompiledDictionarySettings,
@@ -76,7 +76,7 @@ function setup(
 		stat,
 		readBinary: async () => bytes.slice().buffer,
 	} as unknown as DataAdapter;
-	const storage = { cancelActive: () => undefined } as LocalDictionaryStorageAdapter;
+	const storage = { cancelActive: () => undefined } as LocalDictionaryStager;
 	const administration = new LocalDictionaryAdministrationModule(settings, storage, undefined, {
 		adapter,
 		dictionaryRoot: "dictionaries",
@@ -195,7 +195,7 @@ describe("local dictionary compiled sync inspection", () => {
 		} as unknown as DictionarySettingsStore;
 		const administration = new LocalDictionaryAdministrationModule(settings, {
 			cancelActive: () => undefined,
-		} as LocalDictionaryStorageAdapter);
+		} as LocalDictionaryStager);
 		const rename = administration.rename("sample", "Renamed");
 		await enteredSave.promise;
 		let refreshed = false;

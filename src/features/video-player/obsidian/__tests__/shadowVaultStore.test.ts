@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { emptyShadowDocument } from "../../domain/shadowSubtitles";
-import type { ShadowSubtitleCheckpoint } from "../../domain/shadowSubtitlesJobs";
 import type { ShadowPracticeRecord, ShadowingTake } from "../../domain/types";
 import {
 	ObsidianShadowVaultStore,
@@ -252,35 +251,6 @@ describe("ObsidianShadowVaultStore", () => {
 			const versions = [...files.keys()].filter((path) => path.includes("/revision-"));
 			expect(versions).toHaveLength(4);
 			expect(files.get(subtitlePath)).toContain('"revision": 25');
-		});
-
-		it("persists valid subtitle checkpoints and filters malformed stored entries", () => {
-			const { app, local, store } = fixture();
-			const valid: ShadowSubtitleCheckpoint = {
-				source: { id: "video", path: "/video.mp4" },
-				config: { sourceSignature: "100:200", serviceSignature: "svc" },
-				nextOffset: 15,
-				totalDuration: 60,
-				status: "paused",
-				error: null,
-			};
-			store.saveCheckpoints([valid]);
-			local.set("study-studio.shadow-subtitles.checkpoints.v1", [
-				valid,
-				{
-					source: { id: "missing-path" },
-					config: { serviceSignature: "s", sourceSignature: "x" },
-					nextOffset: 0,
-				},
-				{
-					source: { id: "v2", path: "/v2.mp4" },
-					config: { serviceSignature: "s", sourceSignature: "x" },
-					nextOffset: -1,
-				},
-				null,
-			]);
-			const reopened = new ObsidianShadowVaultStore(app);
-			expect(reopened.loadCheckpoints()).toEqual([valid]);
 		});
 	});
 
