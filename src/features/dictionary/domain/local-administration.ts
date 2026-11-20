@@ -2,25 +2,73 @@ import type { DataAdapter } from "obsidian";
 import type {
 	CompiledDictionarySettings,
 	DictionarySettingsStore,
+	LocalDictionaryAdministrationState,
 	LocalDictionarySettings,
 } from "./types";
 import {
 	inspectCompiledPackage,
 	isCompiledPackageCompatible,
+	type CompiledPackageProgressPhase,
 	type CompiledPackageSourceFormat,
 	type CompiledPackageStatus,
 } from "./compiled-package";
 import { MAX_EUDIC_DICTIONARY_BYTES } from "./eudic-image";
-import type {
-	LocalDictionaryStorageAdapter,
-	LocalDictionaryStorageImport,
-	LocalDictionaryStorageImportTransaction,
-	LocalDictionaryStoragePackage,
-	LocalDictionaryStorageProgress,
-	LocalDictionaryStorageRemoval,
-} from "./local-storage";
-import { LocalDictionaryStorageError } from "./local-storage";
-import { commitLocalCatalogTransaction } from "./local-catalog-transaction";
+
+export interface LocalDictionaryStorageImport {
+	readonly files: readonly File[];
+	readonly format: CompiledPackageSourceFormat;
+	readonly id: string;
+}
+
+export interface LocalDictionaryStoragePackage {
+	readonly compiled: CompiledDictionarySettings;
+	readonly id: string;
+}
+
+export interface LocalDictionaryStorageImportTransaction {
+	readonly packages: readonly LocalDictionaryStoragePackage[];
+	/** May fail (e.g. pending recovery); callers must await and map the failure. */
+	commit(): Promise<void>;
+	rollback(): Promise<void>;
+}
+
+export interface LocalDictionaryStorageRemoval {
+	/** Marks the isolated package as deleted. Cleanup after that point is best-effort. */
+	commit(): Promise<void>;
+	/** Restores the isolated package while removal is still staged. */
+	rollback(): Promise<void>;
+}
+
+type LocalDictionaryStorageFailureCode =
+	| "cancelled"
+	| "collision"
+	| "corrupt"
+	| "encrypted"
+	| "limit-exceeded"
+	| "recovery-incomplete"
+	| "storage-failed"
+	| "unsupported"
+	| "unsupported-format";
+
+export class LocalDictionaryStorageError extends Error {
+	constructor(
+		readonly code: LocalDictionaryStorageFailureCode,
+		message = "Local dictionary storage operation failed.",
+	) {
+		super(message);
+		this.name = "LocalDictionaryStorageError";
+	}
+}
+
+export interface LocalDictionaryStorageAdapter {
+	cancelActive(): void;
+	stageImport(
+		imports: readonly LocalDictionaryStorageImport[],
+		onProgress?: LocalDictionaryImportProgressListener,
+		signal?: AbortSignal,
+	): Promise<LocalDictionaryStorageImportTransaction>;
+	stageRemoval(dictionaryId: string): Promise<LocalDictionaryStorageRemoval>;
+}
 
 interface LocalDictionaryListFile {
 	readonly name: string;
@@ -73,22 +121,16 @@ interface LocalDictionaryAdministrationFailure {
 	readonly recovery: "complete" | "incomplete";
 }
 
-type LocalDictionaryImportPhase =
-	| "validate"
-	| "parse"
-	| "index"
-	| "records"
-	| "resources"
-	| "verify";
-
-interface LocalDictionaryImportProgress {
+export interface LocalDictionaryImportProgress {
 	readonly completedBytes: number;
 	readonly fileName: string;
-	readonly phase: LocalDictionaryImportPhase;
+	readonly phase: CompiledPackageProgressPhase;
 	readonly totalBytes: number;
 }
 
-type LocalDictionaryImportProgressListener = (progress: LocalDictionaryImportProgress) => void;
+export type LocalDictionaryImportProgressListener = (
+	progress: LocalDictionaryImportProgress,
+) => void;
 
 interface LocalDictionaryAdministrationFailureResult {
 	readonly error: LocalDictionaryAdministrationFailure;
@@ -457,14 +499,118 @@ function storageFailure(error: unknown): LocalDictionaryAdministrationFailure {
 	return failure(error.code);
 }
 
-function reportProgress(
-	listener: LocalDictionaryImportProgressListener | undefined,
-): ((progress: LocalDictionaryStorageProgress) => void) | undefined {
-	return listener
-		? (progress) => {
-				listener({ ...progress });
-			}
-		: undefined;
+interface CatalogStage {
+	commit(): Promise<void>;
+	rollback(): Promise<void>;
+}
+
+type CatalogMutation = (catalog: LocalDictionaryAdministrationState) => void;
+type CatalogChange =
+	| { readonly type: "import"; readonly dictionaries: readonly LocalDictionarySettings[] }
+	| { readonly type: "remove"; readonly dictionaryId: string };
+
+async function persistCatalog(
+	settings: DictionarySettingsStore,
+	mutate: CatalogMutation,
+): Promise<boolean> {
+	try {
+		return await settings.updateDictionarySettings(mutate);
+	} catch {
+		return false;
+	}
+}
+
+function removeCatalogMember<Item extends { id: string }>(items: Item[], id: string) {
+	const index = items.findIndex((item) => item.id === id);
+	if (index === -1) return (_current: Item[]) => undefined;
+	const previousId = items[index - 1]?.id;
+	const nextId = items[index + 1]?.id;
+	const [removed] = items.splice(index, 1);
+	return (current: Item[]): void => {
+		if (!removed || current.some((item) => item.id === id)) return;
+		const next = current.findIndex((item) => item.id === nextId);
+		const previous = current.findIndex((item) => item.id === previousId);
+		const insertionIndex = next >= 0 ? next : previous >= 0 ? previous + 1 : current.length;
+		current.splice(insertionIndex, 0, removed);
+	};
+}
+
+function applyCatalogChange(
+	catalog: LocalDictionaryAdministrationState,
+	change: CatalogChange,
+): CatalogMutation {
+	if (change.type === "import") {
+		const ids = new Set(change.dictionaries.map(({ id }) => id));
+		if (
+			catalog.localDictionaries.some(({ id }) => ids.has(id)) ||
+			catalog.sources.some(({ id }) => ids.has(id))
+		) {
+			throw new Error("Dictionary membership changed while staging an import.");
+		}
+		for (const dictionary of change.dictionaries) {
+			catalog.localDictionaries.push(structuredClone(dictionary));
+			catalog.sources.push({
+				enabled: true,
+				id: dictionary.id,
+				kind: "local",
+				label: dictionary.name,
+			});
+		}
+		return (current) => {
+			current.localDictionaries = current.localDictionaries.filter(({ id }) => !ids.has(id));
+			current.sources = current.sources.filter(({ id }) => !ids.has(id));
+		};
+	}
+
+	const { dictionaryId } = change;
+	if (!catalog.localDictionaries.some(({ id }) => id === dictionaryId)) {
+		throw new Error("Dictionary membership changed while staging a removal.");
+	}
+	const restoreDictionary = removeCatalogMember(catalog.localDictionaries, dictionaryId);
+	const restoreSource = removeCatalogMember(catalog.sources, dictionaryId);
+	return (current) => {
+		restoreDictionary(current.localDictionaries);
+		restoreSource(current.sources);
+	};
+}
+
+/**
+ * Persists the membership change before finalizing staged files.
+ * Compensation applies only its inverse to the latest settings, preserving other source edits.
+ */
+async function commitCatalogTransaction(
+	settings: DictionarySettingsStore,
+	change: CatalogChange,
+	stage: CatalogStage,
+): Promise<LocalDictionaryAdministrationFailure | null> {
+	let restore: CatalogMutation = () => undefined;
+	if (
+		!(await persistCatalog(settings, (catalog) => {
+			restore = applyCatalogChange(catalog, change);
+		}))
+	) {
+		try {
+			await stage.rollback();
+		} catch {
+			return failure("recovery-incomplete", "incomplete");
+		}
+		return failure("persistence-failed");
+	}
+
+	try {
+		await stage.commit();
+	} catch {
+		try {
+			await stage.rollback();
+		} catch {
+			return failure("recovery-incomplete", "incomplete");
+		}
+		return (await persistCatalog(settings, restore))
+			? failure("storage-failed")
+			: failure("recovery-incomplete", "incomplete");
+	}
+
+	return null;
 }
 
 function importedMembers(
@@ -688,11 +834,7 @@ export class LocalDictionaryAdministrationModule implements LocalDictionaryAdmin
 			if (!imports) return this.failure("storage-failed");
 			try {
 				// oxlint-disable-next-line no-await-in-loop -- a collision requires fresh stable IDs.
-				transaction = await this.storage.stageImport(
-					imports,
-					reportProgress(onProgress),
-					signal,
-				);
+				transaction = await this.storage.stageImport(imports, onProgress, signal);
 				break;
 			} catch (error) {
 				if (error instanceof LocalDictionaryStorageError && error.code === "collision")
@@ -713,14 +855,14 @@ export class LocalDictionaryAdministrationModule implements LocalDictionaryAdmin
 			return this.failure("storage-failed");
 		}
 
-		const outcome = await commitLocalCatalogTransaction({
-			settings: this.settings,
-			change: { type: "import", dictionaries: imported },
-			stage: transaction,
-		});
-		if (outcome.kind === "failed") {
-			if (outcome.recovery === "incomplete") this.enterDegraded();
-			return this.failure(outcome.code, outcome.recovery);
+		const transactionError = await commitCatalogTransaction(
+			this.settings,
+			{ type: "import", dictionaries: imported },
+			transaction,
+		);
+		if (transactionError) {
+			if (transactionError.recovery === "incomplete") this.enterDegraded();
+			return { error: transactionError, ok: false, snapshot: this.list() };
 		}
 
 		const snapshot = this.commitSnapshot();
@@ -747,14 +889,14 @@ export class LocalDictionaryAdministrationModule implements LocalDictionaryAdmin
 			return this.storageFailureResult(error);
 		}
 
-		const outcome = await commitLocalCatalogTransaction({
-			settings: this.settings,
-			change: { type: "remove", dictionaryId },
-			stage: removal,
-		});
-		if (outcome.kind === "failed") {
-			if (outcome.recovery === "incomplete") this.enterDegraded();
-			return this.failure(outcome.code, outcome.recovery);
+		const transactionError = await commitCatalogTransaction(
+			this.settings,
+			{ type: "remove", dictionaryId },
+			removal,
+		);
+		if (transactionError) {
+			if (transactionError.recovery === "incomplete") this.enterDegraded();
+			return { error: transactionError, ok: false, snapshot: this.list() };
 		}
 
 		const snapshot = this.commitSnapshot();

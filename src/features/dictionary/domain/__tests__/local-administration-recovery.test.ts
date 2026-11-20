@@ -1,16 +1,14 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
 	LocalDictionaryAdministrationModule,
-	type LocalDictionarySnapshot,
-} from "../local-administration";
-import {
 	LocalDictionaryStorageError,
+	type LocalDictionaryImportProgressListener,
+	type LocalDictionarySnapshot,
 	type LocalDictionaryStorageAdapter,
 	type LocalDictionaryStorageImport,
 	type LocalDictionaryStorageImportTransaction,
-	type LocalDictionaryStorageProgressListener,
 	type LocalDictionaryStorageRemoval,
-} from "../local-storage";
+} from "../local-administration";
 import type {
 	CompiledDictionarySettings,
 	DictionarySettings,
@@ -116,7 +114,7 @@ class FakeStorageAdapter implements LocalDictionaryStorageAdapter {
 	constructor(
 		private readonly stageImportNow: (
 			imports: readonly LocalDictionaryStorageImport[],
-			onProgress?: LocalDictionaryStorageProgressListener,
+			onProgress?: LocalDictionaryImportProgressListener,
 			signal?: AbortSignal,
 		) => Promise<LocalDictionaryStorageImportTransaction>,
 		private readonly stageRemovalNow = async (): Promise<LocalDictionaryStorageRemoval> => {
@@ -358,6 +356,36 @@ describe("LocalDictionaryAdministrationModule import recovery", () => {
 			error: { code: "recovery-incomplete", recovery: "incomplete" },
 			ok: false,
 		});
+	});
+
+	it("latches recovery-incomplete when restoring the catalog after a failed commit cannot persist", async () => {
+		let saves = 0;
+		const settings = new FakeSettingsStore(initialState(), async () => {
+			saves += 1;
+			if (saves === 2) throw new Error("restore save failed");
+		});
+		const rollback = vi.fn(async () => undefined);
+		const storage = new FakeStorageAdapter(async (imports) =>
+			transaction(
+				packageFor(imports),
+				rollback,
+				vi.fn(async () => {
+					throw new Error("commit failed");
+				}),
+			),
+		);
+		const administration = new LocalDictionaryAdministrationModule(settings, storage);
+
+		expect(await administration.importFiles([file()])).toMatchObject({
+			error: { code: "recovery-incomplete", recovery: "incomplete" },
+			ok: false,
+		});
+		expect(rollback).toHaveBeenCalledOnce();
+		expect(await administration.importFiles([file("retry.eudic")])).toMatchObject({
+			error: { code: "recovery-incomplete", recovery: "incomplete" },
+			ok: false,
+		});
+		expect(storage.stageImport).toHaveBeenCalledOnce();
 	});
 
 	it("turns a remove commit failure into a storage failure and restores the catalog", async () => {

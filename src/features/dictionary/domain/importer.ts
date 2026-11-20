@@ -6,18 +6,91 @@ import { FileSystemAdapter, Platform, type App, type Plugin } from "obsidian";
 import {
 	CompiledPackageError,
 	createCompiledPackagePublisher,
+	type CompiledPackagePublication,
 	type CompiledPackagePublisher,
 } from "./compiled-package";
-import type {
-	LocalDictionaryStorageAdapter,
-	LocalDictionaryStorageImport,
-	LocalDictionaryStorageImportTransaction,
-	LocalDictionaryStorageProgressListener,
-	LocalDictionaryStorageRemoval,
-} from "./local-storage";
-import { LocalDictionaryStorageError } from "./local-storage";
+import {
+	LocalDictionaryStorageError,
+	type LocalDictionaryImportProgressListener,
+	type LocalDictionaryStorageAdapter,
+	type LocalDictionaryStorageImport,
+	type LocalDictionaryStorageImportTransaction,
+	type LocalDictionaryStorageRemoval,
+} from "./local-administration";
 import { hasErrorCode, pathExists } from "./fs-errors";
-import { DictionaryImportRecovery } from "./import-recovery";
+
+interface OwnedDirectory {
+	readonly path: string;
+	publication?: CompiledPackagePublication;
+}
+
+type FsMkdir = (typeof import("node:fs/promises"))["mkdir"];
+type FsRm = (typeof import("node:fs/promises"))["rm"];
+
+/** Internal batch ownership: only directories exclusively created here may be removed. */
+class ImportBatchRecovery {
+	private readonly owned: OwnedDirectory[] = [];
+	private state: "staged" | "committed" | "rolled-back" = "staged";
+	private rollbackPending: Promise<void> | null = null;
+
+	constructor(
+		private readonly mkdir: FsMkdir,
+		private readonly rm: FsRm,
+	) {}
+
+	async stage(
+		directory: string,
+		publish: () => Promise<CompiledPackagePublication>,
+	): Promise<CompiledPackagePublication> {
+		try {
+			await this.mkdir(directory);
+		} catch (error) {
+			if (hasErrorCode(error, "EEXIST") || hasErrorCode(error, "ENOTEMPTY")) {
+				throw new LocalDictionaryStorageError("collision");
+			}
+			throw storageError(error);
+		}
+		const owned: OwnedDirectory = { path: directory };
+		this.owned.push(owned);
+		const publication = await publish();
+		owned.publication = publication;
+		return publication;
+	}
+
+	commit(): void {
+		if (this.state !== "staged") return;
+		if (this.rollbackPending) throw new LocalDictionaryStorageError("recovery-incomplete");
+		for (const item of this.owned) item.publication?.commit();
+		this.state = "committed";
+	}
+
+	rollback(): Promise<void> {
+		if (this.state !== "staged") return Promise.resolve();
+		if (this.rollbackPending) return this.rollbackPending;
+		const pending = this.clean().finally(() => {
+			this.rollbackPending = null;
+		});
+		this.rollbackPending = pending;
+		return pending;
+	}
+
+	private async clean(): Promise<void> {
+		const results = await Promise.allSettled(
+			this.owned.map(async (item) => {
+				// Try directory cleanup even if the package's own rollback fails.
+				try {
+					await item.publication?.rollback();
+				} finally {
+					await this.rm(item.path, { force: true, recursive: true });
+				}
+			}),
+		);
+		if (results.some((result) => result.status === "rejected")) {
+			throw new LocalDictionaryStorageError("recovery-incomplete");
+		}
+		this.state = "rolled-back";
+	}
+}
 
 function dictionaryStorageRoot(app: App, plugin: Plugin): string {
 	if (!Platform.isDesktopApp || !(app.vault.adapter instanceof FileSystemAdapter)) {
@@ -92,7 +165,7 @@ export class LocalDictionaryImporter implements LocalDictionaryStorageAdapter {
 
 	async stageImport(
 		imports: readonly LocalDictionaryStorageImport[],
-		onProgress?: LocalDictionaryStorageProgressListener,
+		onProgress?: LocalDictionaryImportProgressListener,
 		signal?: AbortSignal,
 	): Promise<LocalDictionaryStorageImportTransaction> {
 		validateImports(imports);
@@ -114,19 +187,7 @@ export class LocalDictionaryImporter implements LocalDictionaryStorageAdapter {
 		signal?.addEventListener("abort", cancel, { once: true });
 		if (signal?.aborted) controller.abort();
 		this.controllers.add(controller);
-		const recovery = new DictionaryImportRecovery({
-			mkdir: async (directory) => {
-				try {
-					await mkdir(directory);
-				} catch (error) {
-					if (hasErrorCode(error, "EEXIST") || hasErrorCode(error, "ENOTEMPTY")) {
-						throw new LocalDictionaryStorageError("collision");
-					}
-					throw storageError(error);
-				}
-			},
-			rm,
-		});
+		const recovery = new ImportBatchRecovery(mkdir, rm);
 		const packages: Array<LocalDictionaryStorageImportTransaction["packages"][number]> = [];
 		try {
 			for (const item of imports) {

@@ -4,8 +4,10 @@ import {
 	describeCompiledPackage,
 	parseCompiledPackageManifest,
 } from "../compiled-package/manifest";
-import { LocalDictionaryAdministrationModule } from "../local-administration";
-import type { LocalDictionaryStorageAdapter } from "../local-storage";
+import {
+	LocalDictionaryAdministrationModule,
+	type LocalDictionaryStorageAdapter,
+} from "../local-administration";
 import type {
 	CompiledDictionarySettings,
 	DictionarySettingsStore,

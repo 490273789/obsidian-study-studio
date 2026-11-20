@@ -9,7 +9,6 @@ import type {
 } from "../compiled-package/types";
 import { CompiledPackageError } from "../compiled-package/types";
 import { LocalDictionaryImporter } from "../importer";
-import { DictionaryImportRecovery } from "../import-recovery";
 
 const removalFailure = vi.hoisted(() => ({
 	afterPartialDeletion: false,
@@ -202,33 +201,36 @@ describe("dictionary import recovery", () => {
 		const slow = new Promise<void>((resolve) => {
 			release = resolve;
 		});
-		const removed: string[] = [];
-		const recovery = new DictionaryImportRecovery({
-			mkdir: async () => undefined,
-			rm: async (path) => {
-				if (path === "slow") await slow;
-				removed.push(path);
-			},
-		});
-		await recovery.stage("failed", async () => ({
-			...publication(),
-			rollback: async () => {
-				throw new Error("denied");
-			},
-		}));
-		await recovery.stage("slow", async () => publication());
-		const rollback = recovery.rollback();
-		expect(recovery.rollback()).toBe(rollback);
+		const publish = vi
+			.fn<CompiledPackagePublisher["publish"]>()
+			.mockResolvedValueOnce({
+				...publication(),
+				rollback: async () => {
+					throw new Error("denied");
+				},
+			})
+			.mockResolvedValueOnce({
+				...publication(),
+				rollback: () => slow,
+			});
+		const { importer, root } = await fixture(publish);
+		const staged = await importer.stageImport(plans(["failed", "slow"]));
+		const entries = await readdir(root);
+		expect(entries).toHaveLength(2);
+		expect(entries).toEqual(expect.arrayContaining(["failed", "slow"]));
+
+		const rollback = staged.rollback();
+		expect(staged.rollback()).toBe(rollback);
 		let settled = false;
 		const outcome = rollback.catch((error: unknown) => {
 			settled = true;
 			return error;
 		});
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		expect(removed).toEqual(["failed"]);
+
+		await vi.waitFor(async () => expect(await readdir(root)).toEqual(["slow"]));
 		expect(settled).toBe(false);
 		release();
 		expect(await outcome).toMatchObject({ code: "recovery-incomplete" });
-		expect(removed).toEqual(["failed", "slow"]);
+		expect(await readdir(root)).toEqual([]);
 	});
 });
