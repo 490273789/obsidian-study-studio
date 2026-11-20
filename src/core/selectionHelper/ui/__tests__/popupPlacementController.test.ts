@@ -77,7 +77,7 @@ describe("PopupPlacementController", () => {
 		it("initializes snapshot and centers manual trigger", () => {
 			const controller = new PopupPlacementController({
 				target: { x: 0, y: 0, trigger: "manual" },
-				mode: "dictionary",
+				mode: "slot",
 			});
 
 			const snapshot = controller.syncMeasurements(
@@ -96,7 +96,7 @@ describe("PopupPlacementController", () => {
 		it("preserves placed corner when dictionary content resizes", () => {
 			const controller = new PopupPlacementController({
 				target: { x: 500, y: 200 },
-				mode: "dictionary",
+				mode: "slot",
 			});
 
 			const initial = controller.syncMeasurements(
@@ -122,7 +122,7 @@ describe("PopupPlacementController", () => {
 		it("supports programmatic dragging and preserves dragged position", () => {
 			const controller = new PopupPlacementController({
 				target: { x: 100, y: 100 },
-				mode: "dictionary",
+				mode: "slot",
 			});
 
 			controller.syncMeasurements({ width: 200, height: 100 }, defaultViewport, "initial");
@@ -158,7 +158,7 @@ describe("PopupPlacementController", () => {
 			const onPositionChange = vi.fn();
 			const controller = new PopupPlacementController({
 				target: { x: 100, y: 100 },
-				mode: "dictionary",
+				mode: "slot",
 				onPositionChange,
 			});
 			const unsub = controller.subscribe(listener);
@@ -234,7 +234,7 @@ describe("PopupPlacementController", () => {
 				element: f.element,
 				ownerWindow: f.ownerWindow,
 				target: { x: 200, y: 150 },
-				mode: "dictionary",
+				mode: "slot",
 				onPositionChange,
 			});
 

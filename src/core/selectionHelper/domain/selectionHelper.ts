@@ -2,22 +2,16 @@ import type {
 	SelectionAction,
 	SelectionActionContext,
 	SelectionCandidate,
-	SelectionDictionarySource,
-	SelectionDictionarySourceProvider,
 	SelectionHelperSettings,
 	SelectionHelperSnapshot,
 	SelectionSource,
 	SelectionSourceLease,
 	SelectionTarget,
-	SelectionTranslationAdapter,
 } from "./types";
-import { orderSelectionDictionaries } from "./dictionaryOrder";
 
 export interface SelectionHelperOptions {
 	settings(): SelectionHelperSettings;
 	actions?: readonly SelectionAction[];
-	dictionary?: SelectionDictionarySourceProvider;
-	translation?: SelectionTranslationAdapter;
 }
 
 interface SourceState {
@@ -38,7 +32,7 @@ export class SelectionHelper {
 	private readonly actions: readonly SelectionAction[];
 
 	constructor(private readonly options: SelectionHelperOptions) {
-		this.actions = options.actions ?? buildDefaultActions(options);
+		this.actions = options.actions ?? [];
 	}
 
 	getSnapshot(): SelectionHelperSnapshot {
@@ -131,6 +125,21 @@ export class SelectionHelper {
 		this.interactionRevision++;
 	}
 
+	private buildActionContext(input: {
+		text: string;
+		x: number;
+		y: number;
+		trigger?: SelectionActionContext["trigger"];
+	}): SelectionActionContext {
+		return {
+			text: input.text,
+			x: input.x,
+			y: input.y,
+			trigger: input.trigger,
+			selectedDictionaries: this.selectedDictionaries,
+		};
+	}
+
 	private acceptSelection(candidate: SelectionCandidate, source: SelectionSource): boolean {
 		const settings = this.options.settings();
 		if (
@@ -143,14 +152,14 @@ export class SelectionHelper {
 		const text = candidate.text.trim();
 		if (!text) {
 			// A click may collapse the source selection without dismissing an open slot.
-			if (this.snapshot.mode !== "slot" && (this.snapshot.mode as string) !== "dictionary") {
+			if (this.snapshot.mode !== "slot") {
 				this.clearSelection();
 			}
 			return false;
 		}
 		const current = this.snapshot.target;
 		if (
-			(this.snapshot.mode === "slot" || (this.snapshot.mode as string) === "dictionary") &&
+			this.snapshot.mode === "slot" &&
 			current?.source === source &&
 			current.text === text &&
 			current.x === candidate.x &&
@@ -159,12 +168,12 @@ export class SelectionHelper {
 			return false;
 		}
 
-		const actionContext: SelectionActionContext = {
+		const actionContext = this.buildActionContext({
 			text,
 			x: candidate.x,
 			y: candidate.y,
 			trigger: candidate.trigger,
-		};
+		});
 		const eligible = this.actions.filter((a) => a.isEligible(actionContext));
 		if (eligible.length === 0) {
 			this.clearSelection();
@@ -180,16 +189,12 @@ export class SelectionHelper {
 			source,
 			trigger: candidate.trigger,
 		};
-		const canLookup = eligible.some((a) => a.id === "lookup");
-		const canTranslate = eligible.some((a) => a.id === "translate");
 		this.publish({
 			visible: true,
 			mode: "actions",
 			target,
 			activeSlotId: null,
 			eligibleActionIds: eligible.map((a) => a.id),
-			canLookup,
-			canTranslate,
 		});
 		return true;
 	}
@@ -201,12 +206,7 @@ export class SelectionHelper {
 		const action = this.actions.find((a) => a.id === actionId);
 		if (!action) return;
 
-		const context: SelectionActionContext = {
-			text: target.text,
-			x: target.x,
-			y: target.y,
-			trigger: target.trigger,
-		};
+		const context = this.buildActionContext(target);
 		if (!action.isEligible(context)) return;
 
 		if (action.slotId) {
@@ -235,7 +235,7 @@ export class SelectionHelper {
 		const current = this.snapshot;
 		if (
 			current.visible &&
-			(current.mode === "slot" || (current.mode as string) === "dictionary") &&
+			current.mode === "slot" &&
 			current.activeSlotId === slotId &&
 			(!valid
 				? this.ownsSource(owner, current.target?.source)
@@ -253,12 +253,12 @@ export class SelectionHelper {
 			y: valid && candidate ? candidate.y : 0,
 			trigger: valid && candidate ? undefined : "manual",
 		};
-		const actionContext: SelectionActionContext = {
+		const actionContext = this.buildActionContext({
 			text,
 			x: target.x,
 			y: target.y,
 			trigger: target.trigger,
-		};
+		});
 		const eligible = this.actions.filter((a) => a.isEligible(actionContext));
 		this.publish({
 			visible: true,
@@ -266,26 +266,7 @@ export class SelectionHelper {
 			activeSlotId: slotId,
 			target,
 			eligibleActionIds: eligible.map((a) => a.id),
-			canLookup: true,
-			canTranslate: eligible.some((a) => a.id === "translate"),
 		});
-	}
-
-	/** Explicit user action; independent of automatic selection preferences. */
-	openDictionary(
-		source: SelectionSource,
-		candidate?: { text: string; x: number; y: number },
-	): void {
-		this.openSlot("dictionary", source, candidate);
-	}
-
-	beginLookup(): void {
-		if (this.disposed || !this.snapshot.target) return;
-		void this.triggerAction("lookup");
-	}
-
-	async translate(): Promise<void> {
-		await this.triggerAction("translate");
 	}
 
 	refresh(): void {
@@ -328,8 +309,6 @@ const EMPTY_SNAPSHOT: SelectionHelperSnapshot = Object.freeze({
 	target: null,
 	activeSlotId: null,
 	eligibleActionIds: [],
-	canLookup: false,
-	canTranslate: false,
 });
 
 function modifierMatches(
@@ -347,52 +326,6 @@ function modifierMatches(
 		default:
 			return true;
 	}
-}
-
-function selectedSources(
-	sources: readonly SelectionDictionarySource[],
-	selectedIds: readonly string[],
-): readonly SelectionDictionarySource[] {
-	if (selectedIds.length === 0) return sources;
-	const selected = new Set(selectedIds);
-	return sources.filter((source) => selected.has(source.id));
-}
-
-function buildDefaultActions(options: SelectionHelperOptions): readonly SelectionAction[] {
-	const actions: SelectionAction[] = [];
-	if (options.dictionary) {
-		const dict = options.dictionary;
-		actions.push({
-			id: "lookup",
-			label: () => "查词",
-			slotId: "dictionary",
-			isPrimary: true,
-			keyEquivalents: ["1"],
-			isEligible: (ctx) => {
-				const settings = options.settings();
-				const sources = selectedSources(
-					orderSelectionDictionaries(dict.sources(), settings.dictionaryOrder ?? []),
-					settings.selectedDictionaries ?? [],
-				);
-				return isEnglishWordOrPhrase(ctx.text) && sources.length > 0;
-			},
-			execute: () => {},
-		});
-	}
-	if (options.translation) {
-		const trans = options.translation;
-		actions.push({
-			id: "translate",
-			label: () => "翻译",
-			isPrimary: actions.length === 0,
-			keyEquivalents: ["2", "t", "T"],
-			isEligible: (ctx) => trans.available() && ctx.text.length > 0,
-			execute: async (ctx) => {
-				await trans.openPrefilled(ctx.text);
-			},
-		});
-	}
-	return actions;
 }
 
 export function isEnglishWordOrPhrase(text: string): boolean {

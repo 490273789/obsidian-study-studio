@@ -12,7 +12,7 @@ import { SelectionBubble, type SelectionBubbleActionItem } from "./SelectionBubb
 import styles from "./SelectionPopup.module.scss";
 import { PopupPlacementController, type PopupPositionSnapshot } from "./popupPlacementController";
 import type { Language } from "../../shared/types";
-import type { SelectionLookupSlotRenderer, SelectionSlotRenderer } from "../domain/types";
+import type { SelectionSlotRenderer } from "../domain/types";
 
 export interface SelectionPopupHostProps {
 	helper: SelectionHelper;
@@ -20,7 +20,6 @@ export interface SelectionPopupHostProps {
 	language: Language;
 	theme: "dark" | "light";
 	slots?: Record<string, SelectionSlotRenderer>;
-	renderLookupSlot?: SelectionLookupSlotRenderer;
 }
 
 export const SelectionPopupHost: React.FC<SelectionPopupHostProps> = ({
@@ -29,7 +28,6 @@ export const SelectionPopupHost: React.FC<SelectionPopupHostProps> = ({
 	language,
 	theme: _theme,
 	slots,
-	renderLookupSlot,
 }) => {
 	const subscribe = useCallback((listener: () => void) => helper.subscribe(listener), [helper]);
 	const getSnapshot = useCallback(() => helper.getSnapshot(), [helper]);
@@ -80,9 +78,8 @@ export const SelectionPopupHost: React.FC<SelectionPopupHostProps> = ({
 	}, [target, mode]);
 
 	const bubbleActions = useMemo<readonly SelectionBubbleActionItem[]>(() => {
-		if (mode !== "actions") return [];
+		if (mode !== "actions" || state.eligibleActionIds.length === 0) return [];
 		const eligible = helper.eligibleActions ?? [];
-		if (eligible.length === 0) return [];
 		return eligible.map((action) => ({
 			id: action.id,
 			label: action.label(language),
@@ -94,14 +91,11 @@ export const SelectionPopupHost: React.FC<SelectionPopupHostProps> = ({
 				void helper.triggerAction(action.id);
 			},
 		}));
-	}, [helper, mode, language]);
+	}, [helper, mode, language, state.eligibleActionIds]);
 
 	if (!target) return null;
 
-	const slotRenderer =
-		(state.activeSlotId ? slots?.[state.activeSlotId] : undefined) ??
-		slots?.dictionary ??
-		renderLookupSlot;
+	const slotRenderer = state.activeSlotId ? slots?.[state.activeSlotId] : undefined;
 
 	return (
 		<div
@@ -119,12 +113,8 @@ export const SelectionPopupHost: React.FC<SelectionPopupHostProps> = ({
 		>
 			{mode === "actions" ? (
 				<SelectionBubble
-					actions={bubbleActions.length > 0 ? bubbleActions : undefined}
-					canLookup={state.canLookup}
-					canTranslate={state.canTranslate}
+					actions={bubbleActions}
 					strings={strings}
-					onLookup={() => helper.beginLookup()}
-					onTranslate={() => void helper.translate()}
 					onClose={() => helper.dismiss()}
 				/>
 			) : (

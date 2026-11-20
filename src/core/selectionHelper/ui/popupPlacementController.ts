@@ -1,4 +1,5 @@
 import type React from "react";
+import type { SelectionHelperMode } from "../domain/types";
 
 export interface PopupViewport {
 	left: number;
@@ -41,7 +42,7 @@ interface PopupPlacementControllerOptions {
 		  })
 		| null;
 	target: PopupTargetPoint;
-	mode: "actions" | "slot" | "dictionary";
+	mode: SelectionHelperMode;
 	onPositionChange?: (position: PopupPositionSnapshot) => void;
 }
 
@@ -113,7 +114,7 @@ export class PopupPlacementController {
 		  })
 		| null;
 	private readonly target: PopupTargetPoint;
-	private readonly mode: "actions" | "slot" | "dictionary";
+	private readonly mode: SelectionHelperMode;
 	private readonly onPositionChange?: (position: PopupPositionSnapshot) => void;
 
 	private manualPosition: { left: number; top: number } | null = null;

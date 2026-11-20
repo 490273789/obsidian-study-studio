@@ -39,7 +39,7 @@ Read this guide before changing anything under `src/features/dictionary/domain/*
 
 `src/features/dictionary/ui/resultPresentation/DictionarySectionContent.tsx` owns the shared AI sense, list, and sandbox document markup. Both `DictionaryView` and `LookupAssistantCard` render through it, so definition fields and section visibility cannot drift between surfaces.
 
-The lookup assistant card UI is owned by the 词典 feature (`src/features/dictionary/ui/LookupAssistantCard.tsx`, ADR-0014). It directly holds the `DictionaryQuerySession` interaction lifecycle (input draft, source tabs, AI generation, and favorites/main tab shortcuts). The 选区助手 (`src/core/selectionHelper`) acts solely as a selection capture and placement host, exposing the slot renderer `SelectionLookupSlotRenderer`. Do not create shallow mirror state snapshots in core or proxy dictionary query intents across boundaries.
+The lookup assistant card UI is owned by the 词典 feature (`src/features/dictionary/ui/LookupAssistantCard.tsx`, ADR-0014). It directly holds the `DictionaryQuerySession` interaction lifecycle (input draft, source tabs, AI generation, and favorites/main tab shortcuts). The 选区助手 (`src/core/selectionHelper`) acts solely as a selection capture and placement host, exposing the slot renderer `SelectionSlotRenderer`. Do not create shallow mirror state snapshots in core or proxy dictionary query intents across boundaries.
 
 ## Favorite category management, session and presentation
 

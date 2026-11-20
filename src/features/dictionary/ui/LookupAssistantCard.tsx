@@ -2,9 +2,9 @@ import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore }
 import { Bookmark, RotateCcw, Sparkles } from "lucide-react";
 import { cls } from "../../../core/shared/classNames";
 import type { Language } from "../../../core/shared/types";
-import type { SelectionLookupSlotProps } from "../../../core/selectionHelper/domain/types";
+import type { SelectionSlotProps } from "../../../core/selectionHelper/domain/types";
 import { matchesOpenMainShortcut } from "../../../core/selectionHelper/settings/openMainShortcut";
-import { orderSelectionDictionaries } from "../domain/dictionaryOrder";
+import { orderSelectionDictionaries } from "../../../core/selectionHelper/domain/dictionaryOrder";
 import type { DictionaryRuntime } from "../domain/dictionaryRuntime";
 import type { DictionaryQuerySession } from "../domain/querySession";
 import { dictionaryStrings } from "../strings/dictionary";
@@ -17,7 +17,7 @@ import {
 import styles from "./LookupAssistantCard.module.scss";
 import resultContentStyles from "./SelectionDictionaryResultContent.module.scss";
 
-export interface LookupAssistantCardProps extends SelectionLookupSlotProps {
+export interface LookupAssistantCardProps extends SelectionSlotProps {
 	runtime?: DictionaryRuntime | null;
 	openFavorite?: (word: string) => Promise<void>;
 	openInMainTab?: (word: string) => Promise<void>;

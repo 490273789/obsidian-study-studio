@@ -127,10 +127,7 @@ export function createWorkbenchModules(deps: WorkbenchModuleDeps): AnyWorkbenchM
 		slots: {
 			dictionary: dictionary.renderLookupSlot,
 		},
-		dictionary: {
-			sources: dictionary.sources,
-		},
-		renderLookupSlot: dictionary.renderLookupSlot,
+		dictionarySources: dictionary.sources,
 	});
 
 	return [flashcards, translation, dictionary, videoPlayer, audioPractice, selectionHelper];

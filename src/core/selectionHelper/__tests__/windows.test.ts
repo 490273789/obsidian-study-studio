@@ -57,11 +57,16 @@ describe("selection windows", () => {
 			isDarkMode: () => false,
 		});
 		const module = createSelectionHelperModule({
-			dictionary: {
-				sources: () => [],
-			},
-			renderLookupSlot: () => null,
-			translation: { available: () => true, openPrefilled: async () => {} },
+			actions: [
+				{
+					id: "translate",
+					label: () => "Translate",
+					isEligible: (ctx) => ctx.text.length > 0,
+					execute: vi.fn(),
+				},
+			],
+			slots: { dictionary: () => null },
+			dictionarySources: () => [],
 		});
 		module.render(fake.host);
 		expect(instances.listeners.map((i) => i.deps.document)).toEqual([main, popout]);

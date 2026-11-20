@@ -2,7 +2,7 @@ import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { SelectionPopupHost, type SelectionPopupHostProps } from "../SelectionPopupHost";
 import type { SelectionHelper } from "../../domain/selectionHelper";
-import type { SelectionHelperSnapshot, SelectionLookupSlotProps } from "../../domain/types";
+import type { SelectionHelperSnapshot, SelectionSlotProps } from "../../domain/types";
 import { selectionHelperStrings } from "../../strings/selectionPopup";
 
 // Simulate React's retained hooks; native listeners and positioning run unchanged.
@@ -78,16 +78,14 @@ function fixture() {
 	});
 	const state: SelectionHelperSnapshot = {
 		visible: true,
-		mode: "dictionary",
+		mode: "slot",
 		activeSlotId: "dictionary",
 		eligibleActionIds: ["lookup", "translate"],
 		target: { source: { id: "source" }, text: "word", isEnglishWord: true, x: 100, y: 100 },
-		canLookup: true,
-		canTranslate: true,
 	};
 	hooks.snapshot = state;
-	let lastSlotProps: SelectionLookupSlotProps | null = null;
-	const renderLookupSlot = vi.fn((slotProps: SelectionLookupSlotProps) => {
+	let lastSlotProps: SelectionSlotProps | null = null;
+	const renderLookupSlot = vi.fn((slotProps: SelectionSlotProps) => {
 		lastSlotProps = slotProps;
 		return <div data-testid="lookup-slot">Slot Content</div>;
 	});
@@ -96,6 +94,8 @@ function fixture() {
 			subscribe: () => () => {},
 			getSnapshot: () => state,
 			dismiss: vi.fn(),
+			eligibleActions: [],
+			triggerAction: vi.fn(),
 			selectedDictionaries: ["source-a"],
 			dictionaryOrder: ["source-a"],
 			openMainShortcut: "Ctrl+Enter",
@@ -103,7 +103,7 @@ function fixture() {
 		strings: selectionHelperStrings("zh"),
 		language: "zh",
 		theme: "light",
-		renderLookupSlot,
+		slots: { dictionary: renderLookupSlot },
 	};
 	let cleanup: void | (() => void);
 	let pointerDown: React.PointerEventHandler<HTMLElement> | undefined;
@@ -117,7 +117,7 @@ function fixture() {
 			cleanup = hooks.effect();
 			hooks.effect = null;
 		}
-		pointerDown = (lastSlotProps as SelectionLookupSlotProps | null)?.onHeaderPointerDown;
+		pointerDown = (lastSlotProps as SelectionSlotProps | null)?.onHeaderPointerDown;
 		return tree;
 	}
 	function start(
@@ -173,7 +173,7 @@ function fixture() {
 }
 
 describe("selection dictionary popup dragging", () => {
-	it("renders lookup slot in dictionary mode and bubble in actions mode", () => {
+	it("renders slot in slot mode and bubble in actions mode", () => {
 		const f = fixture();
 		expect(f.renderLookupSlot).toHaveBeenCalled();
 		expect(f.getLastSlotProps()).toMatchObject({

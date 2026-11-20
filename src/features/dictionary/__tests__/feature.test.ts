@@ -312,7 +312,7 @@ describe("dictionary feature", () => {
 		feature.stop();
 	});
 
-	it("keeps sources empty before start and exposes active sources and lookup slot", () => {
+	it("keeps sources empty before start and enforces selectedDictionaries eligibility on its selection action", () => {
 		const feature = createDictionaryFeature({
 			ai: {} as never,
 			net: {} as never,
@@ -321,14 +321,48 @@ describe("dictionary feature", () => {
 
 		expect(feature.sources()).toEqual([]);
 		expect(typeof feature.renderLookupSlot).toBe("function");
+		expect(feature.selectionAction.isEligible({ text: "hello", x: 0, y: 0 })).toBe(false);
 
 		const fake = createFakeWorkbenchHost("dictionary", enabledSettings);
 		feature.render(fake.host);
 
 		expect(feature.sources()).toEqual([{ id: "dict-1", label: "Dict 1", kind: "dictionary" }]);
+		expect(
+			feature.selectionAction.isEligible({
+				text: "hello",
+				x: 0,
+				y: 0,
+				selectedDictionaries: [],
+			}),
+		).toBe(true);
+		expect(
+			feature.selectionAction.isEligible({
+				text: "hello",
+				x: 0,
+				y: 0,
+				selectedDictionaries: ["dict-1"],
+			}),
+		).toBe(true);
+		expect(
+			feature.selectionAction.isEligible({
+				text: "hello",
+				x: 0,
+				y: 0,
+				selectedDictionaries: ["missing"],
+			}),
+		).toBe(false);
+		expect(
+			feature.selectionAction.isEligible({
+				text: "不是英文句子。",
+				x: 0,
+				y: 0,
+				selectedDictionaries: [],
+			}),
+		).toBe(false);
 
 		feature.stop();
 		expect(feature.sources()).toEqual([]);
+		expect(feature.selectionAction.isEligible({ text: "hello", x: 0, y: 0 })).toBe(false);
 	});
 
 	it("registers its two views, its chrome, and its settings section", () => {

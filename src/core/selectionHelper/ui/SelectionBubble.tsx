@@ -1,5 +1,4 @@
-import React, { useEffect, useMemo, useRef } from "react";
-import { BookOpen, Languages } from "lucide-react";
+import React, { useEffect, useRef } from "react";
 import { cls } from "../../shared/classNames";
 import type { SelectionHelperStrings } from "../strings/selectionPopup";
 import styles from "./SelectionPopup.module.scss";
@@ -15,12 +14,8 @@ export interface SelectionBubbleActionItem {
 }
 
 export interface SelectionBubbleProps {
-	actions?: readonly SelectionBubbleActionItem[];
-	canLookup?: boolean;
-	canTranslate?: boolean;
+	actions: readonly SelectionBubbleActionItem[];
 	strings: SelectionHelperStrings;
-	onLookup?: () => void;
-	onTranslate?: () => void;
 	onClose: () => void;
 }
 
@@ -31,45 +26,11 @@ export function allowsBubbleKey(
 	return !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey;
 }
 
-export const SelectionBubble = React.memo(function SelectionBubble(props: SelectionBubbleProps) {
-	const {
-		actions: customActions,
-		canLookup = false,
-		canTranslate = false,
-		strings,
-		onLookup,
-		onTranslate,
-		onClose,
-	} = props;
-
-	const actions = useMemo<readonly SelectionBubbleActionItem[]>(() => {
-		if (customActions && customActions.length > 0) return customActions;
-		const items: SelectionBubbleActionItem[] = [];
-		if (canLookup && onLookup) {
-			items.push({
-				id: "lookup",
-				label: strings.lookup,
-				icon: <BookOpen aria-hidden="true" />,
-				hint: "[1]",
-				isPrimary: true,
-				keyEquivalents: ["1"],
-				onTrigger: onLookup,
-			});
-		}
-		if (canTranslate && onTranslate) {
-			items.push({
-				id: "translate",
-				label: strings.translate,
-				icon: <Languages aria-hidden="true" />,
-				hint: items.length > 0 ? "[2]" : "[↵]",
-				isPrimary: items.length === 0,
-				keyEquivalents: ["2", "t", "T"],
-				onTrigger: onTranslate,
-			});
-		}
-		return items;
-	}, [customActions, canLookup, canTranslate, strings, onLookup, onTranslate]);
-
+export const SelectionBubble = React.memo(function SelectionBubble({
+	actions,
+	strings,
+	onClose,
+}: SelectionBubbleProps) {
 	const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
 	useEffect(() => {

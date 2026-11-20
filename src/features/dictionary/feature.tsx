@@ -26,7 +26,7 @@ import { selectionHelperStrings } from "../../core/selectionHelper/strings/selec
 import type {
 	SelectionAction,
 	SelectionDictionarySource,
-	SelectionLookupSlotRenderer,
+	SelectionSlotRenderer,
 } from "../../core/selectionHelper/domain/types";
 import { createReactItemView } from "../../core/host/reactItemView";
 import { defineFeatureLifetime } from "../../core/host/featureLifetime";
@@ -57,7 +57,7 @@ interface DictionaryFeatureDeps {
 
 export interface DictionaryFeature extends WorkbenchModule<"dictionary"> {
 	readonly sources: () => readonly SelectionDictionarySource[];
-	readonly renderLookupSlot: SelectionLookupSlotRenderer;
+	readonly renderLookupSlot: SelectionSlotRenderer;
 	readonly selectionAction: SelectionAction;
 }
 
@@ -140,7 +140,7 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 			}));
 	};
 
-	const renderLookupSlot: SelectionLookupSlotRenderer = (props) => {
+	const renderLookupSlot: SelectionSlotRenderer = (props) => {
 		return (
 			<LookupAssistantCard
 				{...props}
@@ -165,7 +165,14 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 		isPrimary: true,
 		keyEquivalents: ["1"],
 		slotId: "dictionary",
-		isEligible: (ctx) => isEnglishWordOrPhrase(ctx.text) && sources().length > 0,
+		isEligible: (ctx) => {
+			if (!isEnglishWordOrPhrase(ctx.text)) return false;
+			const enabled = sources();
+			const selected = ctx.selectedDictionaries;
+			if (!selected || selected.length === 0) return enabled.length > 0;
+			const allowed = new Set(selected);
+			return enabled.some((source) => allowed.has(source.id));
+		},
 		execute: () => {},
 	};
 

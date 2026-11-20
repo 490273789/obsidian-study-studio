@@ -1,15 +1,14 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { SelectionHelper } from "../selectionHelper";
+import { isEnglishWordOrPhrase, SelectionHelper } from "../selectionHelper";
 import type {
 	SelectionAction,
 	SelectionCandidate,
-	SelectionDictionarySourceProvider,
+	SelectionDictionarySource,
 	SelectionHelperSettings,
-	SelectionTranslationAdapter,
 } from "../types";
 
 describe("SelectionHelper", () => {
-	it("explicitly opens dictionary mode despite disabled automatic capture", () => {
+	it("explicitly opens dictionary slot despite disabled automatic capture", () => {
 		const settings: SelectionHelperSettings = {
 			enabled: false,
 			modifier: "alt",
@@ -20,7 +19,7 @@ describe("SelectionHelper", () => {
 		const { helper } = setup({ settings });
 		const source = helper.openSource({});
 		const pending = source.capture();
-		helper.openDictionary(source.reference);
+		helper.openSlot("dictionary", source.reference);
 		expect(helper.getSnapshot()).toMatchObject({
 			visible: true,
 			mode: "slot",
@@ -37,13 +36,13 @@ describe("SelectionHelper", () => {
 	it("preserves the open card without a new valid selection and updates target for new words", () => {
 		const { helper } = setup();
 		const source = helper.openSource({});
-		helper.openDictionary(source.reference, { text: "first", x: 4, y: 8 });
+		helper.openSlot("dictionary", source.reference, { text: "first", x: 4, y: 8 });
 		const snapshot = helper.getSnapshot();
-		helper.openDictionary(source.reference, { text: "不是英文", x: 0, y: 0 });
+		helper.openSlot("dictionary", source.reference, { text: "不是英文", x: 0, y: 0 });
 		expect(helper.getSnapshot()).toBe(snapshot);
-		helper.openDictionary(source.reference);
+		helper.openSlot("dictionary", source.reference);
 		expect(helper.getSnapshot()).toBe(snapshot);
-		helper.openDictionary(source.reference, { text: "second", x: 9, y: 8 });
+		helper.openSlot("dictionary", source.reference, { text: "second", x: 9, y: 8 });
 		expect(helper.getSnapshot().target?.text).toBe("second");
 	});
 
@@ -51,9 +50,9 @@ describe("SelectionHelper", () => {
 		const { helper } = setup();
 		const oldSource = helper.openSource({});
 		const requestedSource = helper.openSource({});
-		helper.openDictionary(oldSource.reference, { text: "hello", x: 4, y: 8 });
+		helper.openSlot("dictionary", oldSource.reference, { text: "hello", x: 4, y: 8 });
 
-		helper.openDictionary(requestedSource.reference);
+		helper.openSlot("dictionary", requestedSource.reference);
 
 		expect(helper.getSnapshot().target).toMatchObject({
 			source: requestedSource.reference,
@@ -66,19 +65,19 @@ describe("SelectionHelper", () => {
 		const owner = {};
 		const oldSource = helper.openSource(owner);
 		const requestedSource = helper.openSource(owner);
-		helper.openDictionary(oldSource.reference, { text: "hello", x: 4, y: 8 });
+		helper.openSlot("dictionary", oldSource.reference, { text: "hello", x: 4, y: 8 });
 		const lookup = helper.getSnapshot();
 
-		helper.openDictionary(requestedSource.reference);
+		helper.openSlot("dictionary", requestedSource.reference);
 
 		expect(helper.getSnapshot()).toBe(lookup);
 	});
 
 	it("keeps manual lookup visible when no dictionary source is available", () => {
-		const { helper, dictionary } = setup();
-		dictionary.sources = () => [];
+		const { helper, setSources } = setup();
+		setSources([]);
 		const source = helper.openSource({});
-		helper.openDictionary(source.reference, { text: "hello", x: 1, y: 2 });
+		helper.openSlot("dictionary", source.reference, { text: "hello", x: 1, y: 2 });
 		expect(helper.getSnapshot()).toMatchObject({
 			visible: true,
 			mode: "slot",
@@ -86,22 +85,22 @@ describe("SelectionHelper", () => {
 			target: { text: "hello" },
 		});
 		helper.dismiss();
-		helper.openDictionary(source.reference);
+		helper.openSlot("dictionary", source.reference);
 		expect(helper.getSnapshot().target?.text).toBe("");
 		source.dispose();
-		helper.openDictionary(source.reference);
+		helper.openSlot("dictionary", source.reference);
 		expect(helper.getSnapshot().visible).toBe(false);
 	});
 
-	it("switches to dictionary mode on beginLookup", () => {
+	it("switches to slot mode when triggering lookup", async () => {
 		const { helper } = setup();
 		select(helper, candidate("hello"));
 		expect(helper.getSnapshot()).toMatchObject({
 			visible: true,
 			mode: "actions",
-			canLookup: true,
+			eligibleActionIds: ["lookup", "translate"],
 		});
-		helper.beginLookup();
+		await helper.triggerAction("lookup");
 		expect(helper.getSnapshot()).toMatchObject({
 			visible: true,
 			mode: "slot",
@@ -134,7 +133,7 @@ describe("SelectionHelper", () => {
 		expect(helper.getSnapshot().target?.text).toBe("next");
 	});
 
-	it("reflects canLookup based on active sources configuration", () => {
+	it("reflects lookup action eligibility based on active sources configuration", () => {
 		const { helper } = setup({
 			settings: {
 				enabled: true,
@@ -145,23 +144,24 @@ describe("SelectionHelper", () => {
 			},
 		});
 		select(helper, candidate("hello"));
-		expect(helper.getSnapshot().canLookup).toBe(false);
+		expect(helper.getSnapshot().eligibleActionIds).not.toContain("lookup");
+		expect(helper.getSnapshot().eligibleActionIds).toContain("translate");
 	});
 
-	it("replaces the previous selection and discards earlier updates", () => {
+	it("replaces the previous selection and discards earlier updates", async () => {
 		const { helper } = setup();
 		select(helper, candidate("first"));
-		helper.beginLookup();
+		await helper.triggerAction("lookup");
 		select(helper, candidate("second"));
 		expect(helper.getSnapshot().target?.text).toBe("second");
 		expect(helper.getSnapshot().mode).toBe("actions");
 	});
 
-	it("preserves an open lookup when its source reports the same selection again", () => {
+	it("preserves an open lookup when its source reports the same selection again", async () => {
 		const { helper } = setup();
 		const source = helper.openSource({});
 		source.capture().submit(candidate("hello"));
-		helper.beginLookup();
+		await helper.triggerAction("lookup");
 		expect(source.capture().submit(candidate(""))).toBe(false);
 		expect(source.capture().submit(candidate("hello"))).toBe(false);
 		expect(helper.getSnapshot()).toMatchObject({
@@ -178,12 +178,12 @@ describe("SelectionHelper", () => {
 		});
 	});
 
-	it("closes before handing text to the translation adapter", async () => {
+	it("closes before handing text to the translation action", async () => {
 		const openPrefilled = vi.fn().mockResolvedValue(undefined);
 		const { helper } = setup({ openPrefilled });
 		select(helper, candidate("一段中文"));
 
-		await helper.translate();
+		await helper.triggerAction("translate");
 
 		expect(helper.getSnapshot().visible).toBe(false);
 		expect(openPrefilled).toHaveBeenCalledWith("一段中文");
@@ -232,11 +232,11 @@ describe("SelectionHelper", () => {
 		expect(helper.getSnapshot().target?.text).toBe("new");
 	});
 
-	it("host interaction fences old reads without releasing the visible lookup", () => {
+	it("host interaction fences old reads without releasing the visible lookup", async () => {
 		const { helper } = setup();
 		const source = helper.openSource({});
 		source.capture().submit(candidate("hello"));
-		helper.beginLookup();
+		await helper.triggerAction("lookup");
 		const pending = source.capture();
 		helper.interrupt();
 		pending.dismiss();
@@ -283,11 +283,11 @@ describe("SelectionHelper", () => {
 		expect(helper.getSnapshot().target?.source).toBe(nextPage.reference);
 	});
 
-	it("releases a disappearing selection but accepts a fresh selection from the same source", () => {
+	it("releases a disappearing selection but accepts a fresh selection from the same source", async () => {
 		const { helper } = setup();
 		const source = helper.openSource({});
 		source.capture().submit(candidate("hello"));
-		helper.beginLookup();
+		await helper.triggerAction("lookup");
 		const pending = source.capture();
 		source.dismiss();
 		expect(pending.isCurrent()).toBe(false);
@@ -393,7 +393,7 @@ describe("SelectionHelper", () => {
 function setup(
 	overrides: {
 		settings?: SelectionHelperSettings;
-		openPrefilled?: SelectionTranslationAdapter["openPrefilled"];
+		openPrefilled?: (text: string) => Promise<void>;
 	} = {},
 ) {
 	const settings =
@@ -405,20 +405,43 @@ function setup(
 			dictionaryOrder: [],
 			selectedDictionaries: [],
 		} satisfies SelectionHelperSettings);
-	const dictionary: SelectionDictionarySourceProvider = {
-		sources: () => [
-			{ id: "a", label: "A", kind: "dictionary" },
-			{ id: "b", label: "B", kind: "ai" },
-		],
+	let sources: SelectionDictionarySource[] = [
+		{ id: "a", label: "A", kind: "dictionary" },
+		{ id: "b", label: "B", kind: "ai" },
+	];
+	const openPrefilled = overrides.openPrefilled ?? vi.fn().mockResolvedValue(undefined);
+	const lookupAction: SelectionAction = {
+		id: "lookup",
+		label: () => "查词",
+		slotId: "dictionary",
+		isPrimary: true,
+		keyEquivalents: ["1"],
+		isEligible: (ctx) => {
+			if (!isEnglishWordOrPhrase(ctx.text)) return false;
+			const selected = ctx.selectedDictionaries;
+			if (!selected || selected.length === 0) return sources.length > 0;
+			const allowed = new Set(selected);
+			return sources.some((source) => allowed.has(source.id));
+		},
+		execute: () => {},
 	};
-	const translation: SelectionTranslationAdapter = {
-		available: () => true,
-		openPrefilled: overrides.openPrefilled ?? vi.fn().mockResolvedValue(undefined),
+	const translateAction: SelectionAction = {
+		id: "translate",
+		label: () => "翻译",
+		keyEquivalents: ["2", "t", "T"],
+		isEligible: (ctx) => ctx.text.length > 0,
+		execute: async (ctx) => {
+			await openPrefilled(ctx.text);
+		},
 	};
 	return {
-		helper: new SelectionHelper({ settings: () => settings, dictionary, translation }),
-		dictionary,
-		translation,
+		helper: new SelectionHelper({
+			settings: () => settings,
+			actions: [lookupAction, translateAction],
+		}),
+		setSources: (next: SelectionDictionarySource[]) => {
+			sources = next;
+		},
 	};
 }
 

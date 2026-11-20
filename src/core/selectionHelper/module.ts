@@ -5,11 +5,9 @@ import { isEnglishWordOrPhrase, SelectionHelper } from "./domain/selectionHelper
 import { orderSelectionDictionaries } from "./domain/dictionaryOrder";
 import type {
 	SelectionAction,
-	SelectionDictionarySourceProvider,
+	SelectionDictionarySource,
 	SelectionHelperSettings,
-	SelectionLookupSlotRenderer,
 	SelectionSlotRenderer,
-	SelectionTranslationAdapter,
 } from "./domain/types";
 import { SelectionListener } from "./obsidian/selectionListener";
 import { WebviewSelectionAdapter, type WebviewSelectionStatus } from "./obsidian/webviewSelection";
@@ -22,9 +20,7 @@ const SELECTION_HELPER_SECTION_ID = "selectionPopup";
 interface SelectionHelperModuleDeps {
 	actions?: readonly SelectionAction[];
 	slots?: Record<string, SelectionSlotRenderer>;
-	dictionary?: SelectionDictionarySourceProvider;
-	translation?: SelectionTranslationAdapter;
-	renderLookupSlot?: SelectionLookupSlotRenderer;
+	dictionarySources?: () => readonly SelectionDictionarySource[];
 }
 
 type SelectionHelperWorkbenchHost = WorkbenchHost<"selectionHelper">;
@@ -64,7 +60,7 @@ export function createSelectionHelperModule(
 		order: 4,
 		label: (language) => selectionHelperStrings(language).settingsHeading,
 		presentation: (language) => {
-			const sources = deps.dictionary?.sources() ?? [];
+			const sources = deps.dictionarySources?.() ?? [];
 			return buildSelectionHelperSettingsViewModel(
 				host.settings.read().selectionPopup,
 				sources.map(({ id, label }) => ({ id, label })),
@@ -129,8 +125,6 @@ export function createSelectionHelperModule(
 				new SelectionHelper({
 					settings: () => host.settings.read().selectionPopup,
 					actions: deps.actions,
-					dictionary: deps.dictionary,
-					translation: deps.translation,
 				}),
 			);
 			const windows = new Map<
@@ -148,7 +142,6 @@ export function createSelectionHelperModule(
 					getLanguage: () => host.settings.read().language,
 					getTheme: () => (host.app.isDarkMode() ? "dark" : "light"),
 					slots: deps.slots,
-					renderLookupSlot: deps.renderLookupSlot,
 				});
 				const web = Platform.isDesktopApp
 					? new WebviewSelectionAdapter({
@@ -158,7 +151,7 @@ export function createSelectionHelperModule(
 							openSource: () => helper.openSource(owner),
 							openDictionary: (source, candidate) => {
 								if (candidate && isEnglishWordOrPhrase(candidate.text))
-									helper.openDictionary(source, candidate);
+									helper.openSlot("dictionary", source, candidate);
 								else listener.openBlankDictionary();
 							},
 							interrupt: () => helper.interrupt(),
@@ -167,10 +160,8 @@ export function createSelectionHelperModule(
 								return (
 									snapshot.visible &&
 									helper.ownsSource(owner, snapshot.target?.source) &&
-									(snapshot.mode === "slot" ||
-										(snapshot.mode as string) === "dictionary") &&
-									(snapshot.activeSlotId === "dictionary" ||
-										!snapshot.activeSlotId)
+									snapshot.mode === "slot" &&
+									snapshot.activeSlotId === "dictionary"
 								);
 							},
 							onStatus: (status) => {

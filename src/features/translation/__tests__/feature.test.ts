@@ -150,12 +150,14 @@ describe("translation feature", () => {
 		feature.stop();
 	});
 
-	it("keeps its selection adapter inert before start and after cleanup", async () => {
+	it("keeps its selection action inert before start and after cleanup", async () => {
 		const feature = createTranslationFeature({ ai: {} as never, net: {} as never });
 
-		expect(feature.selectionAdapter.available()).toBe(false);
+		expect(feature.selectionAction.isEligible({ text: "selected text", x: 0, y: 0 })).toBe(
+			false,
+		);
 		await expect(
-			feature.selectionAdapter.openPrefilled("selected text"),
+			feature.selectionAction.execute({ text: "selected text", x: 0, y: 0 }),
 		).resolves.toBeUndefined();
 		expect(runtimeSpies.instances).toHaveLength(0);
 
@@ -163,9 +165,11 @@ describe("translation feature", () => {
 		feature.render(fake.host);
 		feature.stop();
 
-		expect(feature.selectionAdapter.available()).toBe(false);
+		expect(feature.selectionAction.isEligible({ text: "selected text", x: 0, y: 0 })).toBe(
+			false,
+		);
 		await expect(
-			feature.selectionAdapter.openPrefilled("selected text"),
+			feature.selectionAction.execute({ text: "selected text", x: 0, y: 0 }),
 		).resolves.toBeUndefined();
 		expect(lastRuntime().openPrefilled.mock.calls).toEqual([]);
 	});
@@ -202,12 +206,16 @@ describe("translation feature", () => {
 		feature.stop();
 	});
 
-	it("adapts 选区助手 translation to direction, prefill, and main-tab activation", async () => {
+	it("adapts 选区助手 translation action to direction, prefill, and main-tab activation", async () => {
 		const feature = createTranslationFeature({ ai: {} as never, net: {} as never });
 		const fake = createFakeWorkbenchHost("translation", enabledSettings);
 		feature.render(fake.host);
 
-		await feature.selectionAdapter.openPrefilled("selected text");
+		expect(feature.selectionAction.isEligible({ text: "selected text", x: 0, y: 0 })).toBe(
+			true,
+		);
+		expect(feature.selectionAction.isEligible({ text: "", x: 0, y: 0 })).toBe(false);
+		await feature.selectionAction.execute({ text: "selected text", x: 0, y: 0 });
 
 		const runtime = runtimeSpies.instances[runtimeSpies.instances.length - 1] as {
 			openPrefilled: ReturnType<typeof vi.fn>;

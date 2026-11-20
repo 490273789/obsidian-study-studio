@@ -55,10 +55,21 @@ function setup() {
 			dictionaryOrder: [],
 			selectedDictionaries: [],
 		}),
-		dictionary: {
-			sources: () => [{ id: "local", label: "Local", kind: "dictionary" }],
-		},
-		translation: { available: () => true, openPrefilled: async () => {} },
+		actions: [
+			{
+				id: "lookup",
+				label: () => "Lookup",
+				slotId: "dictionary",
+				isEligible: (ctx) => ctx.text.length > 0,
+				execute: () => {},
+			},
+			{
+				id: "translate",
+				label: () => "Translate",
+				isEligible: (ctx) => ctx.text.length > 0,
+				execute: async () => {},
+			},
+		],
 	});
 	const selections: SelectionTarget[] = [];
 	helper.subscribe(() => {
@@ -72,13 +83,14 @@ function setup() {
 	const adapter = new WebviewSelectionAdapter({
 		document: document as unknown as Document,
 		openSource,
-		openDictionary: (source, candidate) => helper.openDictionary(source, candidate),
+		openDictionary: (source, candidate) => helper.openSlot("dictionary", source, candidate),
 		interrupt: () => helper.interrupt(),
 		isDictionaryPopup: () => {
 			const snapshot = helper.getSnapshot();
 			return (
 				snapshot.visible &&
-				(snapshot.mode === "slot" || (snapshot.mode as string) === "dictionary")
+				snapshot.mode === "slot" &&
+				snapshot.activeSlotId === "dictionary"
 			);
 		},
 		onStatus,
@@ -722,7 +734,7 @@ describe("WebviewSelectionAdapter", () => {
 		await flush();
 		env.executeJavaScript.mockResolvedValue(event);
 		await vi.advanceTimersByTimeAsync(150);
-		env.helper.beginLookup();
+		await env.helper.triggerAction("lookup");
 		let resolve!: (value: unknown) => void;
 		env.executeJavaScript.mockReturnValueOnce(
 			new Promise((done) => {
@@ -809,7 +821,7 @@ describe("WebviewSelectionAdapter", () => {
 		await flush();
 		env.executeJavaScript.mockResolvedValue(event);
 		await vi.advanceTimersByTimeAsync(150);
-		env.helper.beginLookup();
+		await env.helper.triggerAction("lookup");
 		env.executeJavaScript.mockResolvedValue({ ...event, sequence: 2, text: "" });
 		await vi.advanceTimersByTimeAsync(150);
 		expect(env.helper.getSnapshot()).toMatchObject({ visible: true, mode: "slot" });
@@ -828,7 +840,7 @@ describe("WebviewSelectionAdapter", () => {
 		await flush();
 		env.executeJavaScript.mockResolvedValue(event);
 		await vi.advanceTimersByTimeAsync(150);
-		env.helper.beginLookup();
+		await env.helper.triggerAction("lookup");
 		env.executeJavaScript.mockResolvedValue({
 			...event,
 			sequence: 2,
@@ -845,7 +857,7 @@ describe("WebviewSelectionAdapter", () => {
 		await flush();
 		env.executeJavaScript.mockResolvedValue(event);
 		await vi.advanceTimersByTimeAsync(150);
-		env.helper.beginLookup();
+		await env.helper.triggerAction("lookup");
 		env.executeJavaScript.mockResolvedValue({
 			...event,
 			sequence: 3,
@@ -868,7 +880,7 @@ describe("WebviewSelectionAdapter", () => {
 		await flush();
 		env.executeJavaScript.mockResolvedValue(event);
 		await vi.advanceTimersByTimeAsync(150);
-		env.helper.beginLookup();
+		await env.helper.triggerAction("lookup");
 		env.executeJavaScript.mockResolvedValue({
 			...event,
 			sequence: 2,
@@ -885,7 +897,7 @@ describe("WebviewSelectionAdapter", () => {
 		await flush();
 		env.executeJavaScript.mockResolvedValue(event);
 		await vi.advanceTimersByTimeAsync(150);
-		env.helper.beginLookup();
+		await env.helper.triggerAction("lookup");
 		if (reason === "stop") env.adapter.stop();
 		else {
 			env.executeJavaScript.mockRejectedValueOnce(new Error("gone"));
@@ -1039,7 +1051,7 @@ describe("WebviewSelectionAdapter", () => {
 			)!;
 			const initial = { ...collector.read() };
 			await vi.advanceTimersByTimeAsync(150);
-			env.helper.beginLookup();
+			await env.helper.triggerAction("lookup");
 			origin.value = "changed";
 			origin.textContent = "changed";
 			selectedText = "changed";
@@ -1105,7 +1117,7 @@ describe("WebviewSelectionAdapter", () => {
 		await flush();
 		handlers.get("mouseup")?.({});
 		await vi.advanceTimersByTimeAsync(150);
-		env.helper.beginLookup();
+		await env.helper.triggerAction("lookup");
 		let resolve!: () => void;
 		env.executeJavaScript.mockImplementationOnce(
 			(code) =>
@@ -1119,7 +1131,7 @@ describe("WebviewSelectionAdapter", () => {
 			.openSource({})
 			.capture()
 			.submit({ ...event, text: "new", eligibleContext: true });
-		env.helper.beginLookup();
+		await env.helper.triggerAction("lookup");
 		resolve();
 		await flush();
 		expect(env.helper.getSnapshot().target?.text).toBe("new");

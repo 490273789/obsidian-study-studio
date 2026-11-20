@@ -2,7 +2,6 @@ import { createRoot, type Root } from "react-dom/client";
 import type { Language } from "../../shared/types";
 import { isEnglishWordOrPhrase, type SelectionHelper } from "../domain/selectionHelper";
 import type {
-	SelectionLookupSlotRenderer,
 	SelectionRead,
 	SelectionSlotRenderer,
 	SelectionSource,
@@ -26,7 +25,6 @@ interface SelectionListenerDeps {
 	owner?: object;
 	isEnabled?: () => boolean;
 	slots?: Record<string, SelectionSlotRenderer>;
-	renderLookupSlot?: SelectionLookupSlotRenderer;
 }
 
 interface DocumentBinding {
@@ -81,7 +79,7 @@ export class SelectionListener {
 
 	openBlankDictionary(): void {
 		if (this.started && this.manualSource)
-			this.deps.helper.openDictionary(this.manualSource.reference);
+			this.deps.helper.openSlot("dictionary", this.manualSource.reference);
 	}
 
 	refresh(): void {
@@ -119,10 +117,7 @@ export class SelectionListener {
 			isAssistantElement(target) || Boolean(this.containerEl?.contains(target as Node));
 		const handleOutsideInteraction = (ownerScoped = false) => {
 			const snapshot = this.deps.helper.getSnapshot();
-			if (
-				snapshot.visible &&
-				(snapshot.mode === "slot" || (snapshot.mode as string) === "dictionary")
-			) {
+			if (snapshot.visible && snapshot.mode === "slot") {
 				this.deps.helper.interrupt();
 				return;
 			}
@@ -354,7 +349,7 @@ export class SelectionListener {
 				const selection = read(doc.activeElement);
 				if (!selection?.text || !isEnglishWordOrPhrase(selection.text)) return false;
 				selectedNode = selectionOrigin(doc, doc.activeElement);
-				this.deps.helper.openDictionary(lease.reference, selection);
+				this.deps.helper.openSlot("dictionary", lease.reference, selection);
 				return true;
 			},
 			dispose: () => {
@@ -395,7 +390,6 @@ export class SelectionListener {
 				theme={this.deps.getTheme()}
 				language={this.deps.getLanguage()}
 				slots={this.deps.slots}
-				renderLookupSlot={this.deps.renderLookupSlot}
 			/>,
 		);
 	}

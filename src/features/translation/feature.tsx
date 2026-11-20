@@ -19,10 +19,7 @@ import type {
 } from "../../core/host/workbench";
 import { defineFeatureLifetime } from "../../core/host/featureLifetime";
 import { selectionHelperStrings } from "../../core/selectionHelper/strings/selectionPopup";
-import type {
-	SelectionAction,
-	SelectionTranslationAdapter,
-} from "../../core/selectionHelper/domain/types";
+import type { SelectionAction } from "../../core/selectionHelper/domain/types";
 
 /** Settings section id this feature contributes. */
 const TRANSLATION_SECTION_ID = "translation";
@@ -39,7 +36,6 @@ interface TranslationFeatureDeps {
 }
 
 export interface TranslationFeature extends WorkbenchModule<"translation"> {
-	readonly selectionAdapter: SelectionTranslationAdapter;
 	readonly selectionAction: SelectionAction;
 }
 
@@ -68,30 +64,23 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 		}
 	};
 
-	const selectionAdapter: SelectionTranslationAdapter = {
-		available: () => Boolean(active?.host.settings.read().translation.enabled),
-		openPrefilled: async (text) => {
+	const selectionAction: SelectionAction = {
+		id: "translate",
+		label: (language) => selectionHelperStrings(language).translate,
+		icon: <Languages aria-hidden="true" />,
+		keyEquivalents: ["2", "t", "T"],
+		isEligible: (ctx) =>
+			Boolean(active?.host.settings.read().translation.enabled) && ctx.text.length > 0,
+		execute: async (ctx) => {
 			if (!active) return;
 			const { host, runtime: translation, focusController } = active;
-			await translation.openPrefilled(text);
+			await translation.openPrefilled(ctx.text);
 			try {
 				await host.activateView(VIEW_TYPE_TRANSLATOR, { mainTab: true });
 				focusController.requestFocus();
 			} catch {
 				new Notice(translationStrings(host.settings.read().language).openFailed);
 			}
-		},
-	};
-
-	const selectionAction: SelectionAction = {
-		id: "translate",
-		label: (language) => selectionHelperStrings(language).translate,
-		icon: <Languages aria-hidden="true" />,
-		isPrimary: false,
-		keyEquivalents: ["2", "t", "T"],
-		isEligible: (ctx) => selectionAdapter.available() && ctx.text.length > 0,
-		execute: async (ctx) => {
-			await selectionAdapter.openPrefilled(ctx.text);
 		},
 	};
 
@@ -277,5 +266,5 @@ export function createTranslationFeature(deps: TranslationFeatureDeps): Translat
 		},
 	});
 
-	return { ...module, selectionAdapter, selectionAction };
+	return { ...module, selectionAction };
 }

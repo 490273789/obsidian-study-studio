@@ -61,6 +61,7 @@ export interface SelectionActionContext {
 	readonly trigger?: "mouse" | "touch" | "webview" | "manual";
 	readonly x: number;
 	readonly y: number;
+	readonly selectedDictionaries?: readonly string[];
 }
 
 export interface SelectionAction {
@@ -81,15 +82,6 @@ export interface SelectionDictionarySource {
 	kind: "ai" | "dictionary";
 }
 
-export interface SelectionDictionarySourceProvider {
-	sources(): readonly SelectionDictionarySource[];
-}
-
-export interface SelectionTranslationAdapter {
-	available(): boolean;
-	openPrefilled(text: string): Promise<void>;
-}
-
 export interface SelectionSlotProps {
 	word: string;
 	text?: string;
@@ -102,10 +94,7 @@ export interface SelectionSlotProps {
 
 export type SelectionSlotRenderer = (props: SelectionSlotProps) => React.ReactNode;
 
-export type SelectionLookupSlotProps = SelectionSlotProps;
-export type SelectionLookupSlotRenderer = SelectionSlotRenderer;
-
-export type SelectionHelperMode = "actions" | "slot" | "dictionary";
+export type SelectionHelperMode = "actions" | "slot";
 
 export interface SelectionHelperSnapshot {
 	visible: boolean;
@@ -113,6 +102,4 @@ export interface SelectionHelperSnapshot {
 	target: SelectionTarget | null;
 	activeSlotId: string | null;
 	eligibleActionIds: readonly string[];
-	canLookup?: boolean;
-	canTranslate?: boolean;
 }

@@ -70,8 +70,14 @@ function helper(modifier: "none" | "alt" = "none") {
 			dictionaryOrder: [],
 			selectedDictionaries: [],
 		}),
-		dictionary: { sources: () => [] },
-		translation: { available: () => true, openPrefilled: async () => {} },
+		actions: [
+			{
+				id: "translate",
+				label: () => "Translate",
+				isEligible: (ctx) => ctx.text.length > 0,
+				execute: async () => {},
+			},
+		],
 	});
 }
 function dictionaryHelper() {
@@ -83,10 +89,21 @@ function dictionaryHelper() {
 			dictionaryOrder: [],
 			selectedDictionaries: [],
 		}),
-		dictionary: {
-			sources: () => [{ id: "dictionary", label: "Dictionary", kind: "dictionary" }],
-		},
-		translation: { available: () => true, openPrefilled: async () => {} },
+		actions: [
+			{
+				id: "lookup",
+				label: () => "Lookup",
+				slotId: "dictionary",
+				isEligible: (ctx) => ctx.text.length > 0,
+				execute: () => {},
+			},
+			{
+				id: "translate",
+				label: () => "Translate",
+				isEligible: (ctx) => ctx.text.length > 0,
+				execute: async () => {},
+			},
+		],
 	});
 }
 function listen(env: ReturnType<typeof environment>, shared = helper()) {
@@ -315,12 +332,12 @@ describe("SelectionListener", () => {
 		expect(shared.getSnapshot().visible).toBe(false);
 		listener.stop();
 	});
-	it("keeps the dictionary popup through outside gestures and replaces it on a new selection", () => {
+	it("keeps the dictionary popup through outside gestures and replaces it on a new selection", async () => {
 		const env = environment();
 		const shared = dictionaryHelper();
 		const listener = listen(env, shared);
 		env.emit("mouseup", mouse(env.element));
-		shared.beginLookup();
+		await shared.triggerAction("lookup");
 		expect(shared.getSnapshot().mode).toBe("slot");
 
 		env.emit("mousedown", mouse(env.element));
