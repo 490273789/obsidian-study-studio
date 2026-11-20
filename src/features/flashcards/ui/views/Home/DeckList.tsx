@@ -104,18 +104,26 @@ export const DeckList = React.memo(function DeckList({
 	 * decks appended in their existing order.
 	 */
 	const { sortableRows, completedRows, completedDueCards } = useMemo(() => {
-		const sortable: DeckHomeDeckSnapshot[] = [];
+		const active: DeckHomeDeckSnapshot[] = [];
+		const fresh: DeckHomeDeckSnapshot[] = [];
 		const completed: DeckHomeDeckSnapshot[] = [];
 		let dueCards = 0;
 		for (const deck of snapshot.decks) {
-			if (selectDeckVisualState(deck) === "done") {
+			const state = selectDeckVisualState(deck);
+			if (state === "done") {
 				completed.push(deck);
 				dueCards += deck.stats.dueCards;
+			} else if (state === "active" || deck.stats.dueCards > 0) {
+				active.push(deck);
 			} else {
-				sortable.push(deck);
+				fresh.push(deck);
 			}
 		}
-		return { sortableRows: sortable, completedRows: completed, completedDueCards: dueCards };
+		return {
+			sortableRows: [...active, ...fresh],
+			completedRows: completed,
+			completedDueCards: dueCards,
+		};
 	}, [snapshot.decks]);
 	const visibleOpenMenuDeckId = snapshot.decks.some((deck) => deck.id === openMenuDeckId)
 		? openMenuDeckId
@@ -137,6 +145,19 @@ export const DeckList = React.memo(function DeckList({
 		() => orderDeckRows(sortableRows, visibleDeckIds),
 		[sortableRows, visibleDeckIds],
 	);
+	const { activeRows, freshRows } = useMemo(() => {
+		const active: DeckHomeDeckSnapshot[] = [];
+		const fresh: DeckHomeDeckSnapshot[] = [];
+		for (const deck of visibleRows) {
+			if (selectDeckVisualState(deck) === "active" || deck.stats.dueCards > 0) {
+				active.push(deck);
+			} else {
+				fresh.push(deck);
+			}
+		}
+		return { activeRows: active, freshRows: fresh };
+	}, [visibleRows]);
+	const hasSplitZones = activeRows.length > 0 && freshRows.length > 0;
 	const handleCloseModal = useCallback(() => {
 		void home.act({ kind: "cancel-settings", ownerId });
 	}, [home, ownerId]);
@@ -476,32 +497,152 @@ export const DeckList = React.memo(function DeckList({
 									strategy={rectSortingStrategy}
 								>
 									<div className={cls("flashcard-deck-list", styles.deckList)}>
-										{visibleRows.map((deck) => (
-											<DeckCard
-												key={deck.id}
-												deck={deck}
-												isSettingsLocked={isDeckSettingsLocked(
-													snapshot.settingsDraft,
-													deck.id,
-													ownerId,
-												)}
-												isExporting={
-													snapshot.export.kind === "exporting" &&
-													snapshot.export.deckId === deck.id
-												}
-												isExportBusy={snapshot.export.kind === "exporting"}
-												language={language}
-												isRecentlyDropped={
-													recentlyDroppedDeckId === deck.id
-												}
-												isMenuOpen={visibleOpenMenuDeckId === deck.id}
-												onNavigate={onNavigate}
-												onExport={handleExportDeck}
-												onOpenSourceFile={onOpenSourceFile}
-												onOpenSettings={handleOpenDeckSettings}
-												onMenuOpenChange={handleMenuOpenChange}
-											/>
-										))}
+										{hasSplitZones ? (
+											<>
+												<div className={styles.focusZone}>
+													<div className={styles.zoneHeader}>
+														<span className={styles.zoneTitle}>
+															{t("home.activeFocusTitle")}
+														</span>
+														<span className={styles.zoneCount}>
+															{t("home.deckCountValue", {
+																count: formatDeckCount(
+																	language,
+																	activeRows.length,
+																),
+															})}
+														</span>
+													</div>
+													<div className={styles.focusZoneGrid}>
+														{activeRows.map((deck) => (
+															<DeckCard
+																key={deck.id}
+																deck={deck}
+																isSettingsLocked={isDeckSettingsLocked(
+																	snapshot.settingsDraft,
+																	deck.id,
+																	ownerId,
+																)}
+																isExporting={
+																	snapshot.export.kind ===
+																		"exporting" &&
+																	snapshot.export.deckId ===
+																		deck.id
+																}
+																isExportBusy={
+																	snapshot.export.kind ===
+																	"exporting"
+																}
+																language={language}
+																isRecentlyDropped={
+																	recentlyDroppedDeckId ===
+																	deck.id
+																}
+																isMenuOpen={
+																	visibleOpenMenuDeckId ===
+																	deck.id
+																}
+																onNavigate={onNavigate}
+																onExport={handleExportDeck}
+																onOpenSourceFile={onOpenSourceFile}
+																onOpenSettings={
+																	handleOpenDeckSettings
+																}
+																onMenuOpenChange={
+																	handleMenuOpenChange
+																}
+															/>
+														))}
+													</div>
+												</div>
+
+												<div className={styles.shelfZone}>
+													<div className={styles.zoneHeader}>
+														<span className={styles.zoneTitle}>
+															{t("home.freshShelfTitle")}
+														</span>
+														<span className={styles.zoneCount}>
+															{t("home.deckCountValue", {
+																count: formatDeckCount(
+																	language,
+																	freshRows.length,
+																),
+															})}
+														</span>
+													</div>
+													<div className={styles.shelfZoneGrid}>
+														{freshRows.map((deck) => (
+															<DeckCard
+																key={deck.id}
+																deck={deck}
+																isSettingsLocked={isDeckSettingsLocked(
+																	snapshot.settingsDraft,
+																	deck.id,
+																	ownerId,
+																)}
+																isExporting={
+																	snapshot.export.kind ===
+																		"exporting" &&
+																	snapshot.export.deckId ===
+																		deck.id
+																}
+																isExportBusy={
+																	snapshot.export.kind ===
+																	"exporting"
+																}
+																language={language}
+																isRecentlyDropped={
+																	recentlyDroppedDeckId ===
+																	deck.id
+																}
+																isMenuOpen={
+																	visibleOpenMenuDeckId ===
+																	deck.id
+																}
+																onNavigate={onNavigate}
+																onExport={handleExportDeck}
+																onOpenSourceFile={onOpenSourceFile}
+																onOpenSettings={
+																	handleOpenDeckSettings
+																}
+																onMenuOpenChange={
+																	handleMenuOpenChange
+																}
+															/>
+														))}
+													</div>
+												</div>
+											</>
+										) : (
+											visibleRows.map((deck) => (
+												<DeckCard
+													key={deck.id}
+													deck={deck}
+													isSettingsLocked={isDeckSettingsLocked(
+														snapshot.settingsDraft,
+														deck.id,
+														ownerId,
+													)}
+													isExporting={
+														snapshot.export.kind === "exporting" &&
+														snapshot.export.deckId === deck.id
+													}
+													isExportBusy={
+														snapshot.export.kind === "exporting"
+													}
+													language={language}
+													isRecentlyDropped={
+														recentlyDroppedDeckId === deck.id
+													}
+													isMenuOpen={visibleOpenMenuDeckId === deck.id}
+													onNavigate={onNavigate}
+													onExport={handleExportDeck}
+													onOpenSourceFile={onOpenSourceFile}
+													onOpenSettings={handleOpenDeckSettings}
+													onMenuOpenChange={handleMenuOpenChange}
+												/>
+											))
+										)}
 
 										{completedRows.length > 0 && (
 											<div className="fc-group">

@@ -669,7 +669,7 @@ describe("deck row presentation state", () => {
 		expect(h.act).not.toHaveBeenCalled();
 	});
 
-	it("marks an untouched deck as fresh and a partly learned deck as active", () => {
+	it("marks an untouched deck as fresh and a partly learned deck as active, grouping active decks in the focus zone", () => {
 		const h = harness([
 			{ id: "untouched", totalCards: 10, newCards: 10 },
 			{ id: "started", totalCards: 10, newCards: 7, studyCount: 2 },
@@ -681,8 +681,8 @@ describe("deck row presentation state", () => {
 				renderDeckCard(element).props["data-state"],
 			]);
 		expect(states).toEqual([
-			["untouched", "fresh"],
 			["started", "active"],
+			["untouched", "fresh"],
 		]);
 	});
 
