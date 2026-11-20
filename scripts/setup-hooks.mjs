@@ -51,10 +51,10 @@ const preCommitHookContent = `#!/bin/sh
 
 echo "\x1b[36m🔍 运行提交前代码检查 (format & lint)...\x1b[0m"
 
-# Vite Plus 格式、Lint、类型检查，并保留独立 tsc 校验
-pnpm run check && pnpm run typecheck
+# Vite Plus 格式、Lint、类型检查及独立 tsc 校验
+pnpm run check
 if [ $? -ne 0 ]; then
-  echo "\n\x1b[31m❌ 代码检查未通过！请运行 'pnpm run format' 或修复 Lint / 类型错误后重试。\x1b[0m\n"
+  echo "\n\x1b[31m❌ 代码检查未通过！请运行 'pnpm run fix' 或修复 Lint / 类型错误后重试。\x1b[0m\n"
   exit 1
 fi
 

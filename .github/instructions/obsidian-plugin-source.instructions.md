@@ -11,4 +11,4 @@ applyTo: "src/**"
 - Preserve Obsidian plugin conventions: keep command IDs stable, use the provided lifecycle registration helpers for anything that needs cleanup, and keep startup work in `onload` lightweight.
 - Prefer small, module-local changes that fit the existing boundaries: persistence ownership as documented in `docs/agents/module-ownership.md`, parsing in `src/features/flashcards/domain/cards/parser.ts`, scheduling in `src/features/flashcards/domain/sessions/scheduler.ts`, and UI behavior in the React and view files.
 - When changing persisted data or plugin compatibility, keep `manifest.json` and `versions.json` aligned with the actual minimum Obsidian version required by the code.
-- Validate code changes with `pnpm run lint` and `pnpm run build`. If sandboxed terminal runs cannot find `node`, rerun those validations unsandboxed.
+- Validate code changes with `pnpm run check` and `pnpm run build`. If sandboxed terminal runs cannot find `node`, rerun those validations unsandboxed.
