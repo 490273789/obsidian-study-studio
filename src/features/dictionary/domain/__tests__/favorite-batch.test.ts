@@ -5,10 +5,13 @@ import {
 	FavoriteBatchController,
 	FavoriteBatchError,
 	parseFavoriteBatchLines,
-	type FavoriteBatchStore,
 } from "../favorite-batch";
 import { FavoriteCategoryManager } from "../favorite-categories";
-import { FavoriteSaveError, favoriteWordKey } from "../favorite-file";
+import {
+	FavoriteSaveError,
+	createMemoryDictionaryFavoriteStore,
+	formatDictionaryFavorite,
+} from "../favorite-file";
 import type { DictionarySettingsStore } from "../types";
 
 function setup(content: string, initialWords: string[] = []) {
@@ -21,35 +24,34 @@ function setup(content: string, initialWords: string[] = []) {
 		updateDictionarySettings: async () => true,
 		getLocalDictionaryAdministrationState: () => dictionary,
 	};
-	const categories = new FavoriteCategoryManager(
-		settings,
-		{
-			ensureFile: async () => async () => undefined,
-			moveFile: async () => async () => undefined,
-			pathSuggestions: () => [],
-		},
-		() => undefined,
-	);
-	const words = new Set(initialWords.map(favoriteWordKey));
-	const read = vi.fn(async () => content);
-	const generate = vi.fn(async (word: string) => ({ meaning: `释义 ${word}`, note: "笔记" }));
-	const saveNew = vi.fn<FavoriteBatchStore["saveNew"]>(async (entry) => {
-		const key = favoriteWordKey(entry.word);
-		if (words.has(key)) return "skipped";
-		words.add(key);
-		return "saved";
+	const wordsContent = initialWords
+		.map((word) =>
+			formatDictionaryFavorite({
+				path: "words.md",
+				word,
+				meaning: "已有释义",
+				note: "",
+			}),
+		)
+		.join("\n");
+	const store = createMemoryDictionaryFavoriteStore({
+		"list.txt": content,
+		"list.md": content,
+		"words.md": wordsContent,
 	});
-	const inspect = vi.fn(async () => [...words]);
-	const store: FavoriteBatchStore = { inspect, saveNew, open: vi.fn(async () => true) };
+	const categories = new FavoriteCategoryManager(settings, store, () => undefined);
+	const read = vi.spyOn(store, "readWordList");
+	const inspect = vi.spyOn(store, "inspect");
+	const saveNew = vi.spyOn(store, "saveNew");
+	const generate = vi.fn(async (word: string) => ({ meaning: `释义 ${word}`, note: "笔记" }));
 	const controller = new FavoriteBatchController({
 		categories,
 		settings,
-		source: { read, pathSuggestions: () => [] },
 		store,
 		generator: { generate },
 		hasAiConfig: (id) => id === "engine",
 	});
-	return { controller, categories, dictionary, generate, inspect, read, saveNew, words };
+	return { controller, categories, dictionary, generate, inspect, read, saveNew, store };
 }
 
 describe("favorite batch", () => {

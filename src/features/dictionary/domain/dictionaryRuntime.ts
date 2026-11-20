@@ -6,7 +6,8 @@ import { AiDictionarySource } from "./ai";
 import { CambridgeDictionarySource } from "./cambridge";
 import { CompiledDictionarySource } from "./compiled-source";
 import { createDictionaryQuerySession, type DictionaryQuerySession } from "./querySession";
-import { createFavoriteDraftGenerator } from "./favorite-ai";
+import { createFavoriteDraftGenerator, type FavoriteDraftGenerator } from "./favorite-ai";
+import { FavoriteBatchController } from "./favorite-batch";
 import { DictionaryFavoriteSession } from "./favoriteSession";
 import { FavoriteCategoryManager } from "./favorite-categories";
 import { createMemoryDictionaryFavoriteStore, type DictionaryFavoriteStore } from "./favorite-file";
@@ -52,6 +53,8 @@ export class DictionaryRuntime {
 	readonly dictionaryRoot: string;
 
 	private readonly options: DictionaryRuntimeOptions;
+	private readonly favoriteStore: DictionaryFavoriteStore;
+	private readonly favoriteGenerator: FavoriteDraftGenerator;
 	private readonly localSources = new Map<string, CompiledDictionarySource>();
 	private disposed = false;
 	private readonly unsubscribeFavoriteAi: () => void;
@@ -61,19 +64,18 @@ export class DictionaryRuntime {
 		this.app = options.app;
 		this.settings = options.settings;
 		this.dictionaryRoot = `${options.app.vault.configDir}/plugins/${options.plugin.manifest.id}/dictionaries`;
-		const favoriteStore = options.favoriteStore ?? createMemoryDictionaryFavoriteStore();
-		this.categories = new FavoriteCategoryManager(options.settings, favoriteStore, () =>
+		this.favoriteStore = options.favoriteStore ?? createMemoryDictionaryFavoriteStore();
+		this.favoriteGenerator = createFavoriteDraftGenerator(options.ai);
+		this.categories = new FavoriteCategoryManager(options.settings, this.favoriteStore, () =>
 			this.applySettings(),
 		);
-		this.favorites = new DictionaryFavoriteSession(this.categories, favoriteStore, {
-			generator: createFavoriteDraftGenerator(options.ai),
+		this.favorites = new DictionaryFavoriteSession(this.categories, this.favoriteStore, {
+			generator: this.favoriteGenerator,
 			language: options.language,
 			configId: () => options.settings.getDictionarySettings().favoriteAiConfigId,
 			engineKey: () => {
 				const id = options.settings.getDictionarySettings().favoriteAiConfigId;
-				const engine = options.ai
-					.getSnapshot()
-					.settings.engines.find((item) => item.id === id && item.kind === "llm");
+				const engine = this.findLlmEngine(id);
 				return engine ? JSON.stringify(engine) : null;
 			},
 		});
@@ -94,6 +96,17 @@ export class DictionaryRuntime {
 			},
 		);
 		this.applySettings();
+	}
+
+	/** Creates a batch favorite controller sharing this runtime's store, generator, and category lock. */
+	createFavoriteBatch(): FavoriteBatchController {
+		return new FavoriteBatchController({
+			categories: this.categories,
+			settings: this.settings,
+			store: this.favoriteStore,
+			generator: this.favoriteGenerator,
+			hasAiConfig: (id) => this.findLlmEngine(id) !== null,
+		});
 	}
 
 	/** Re-reads committed settings and re-applies them to both stateful modules. */
@@ -202,15 +215,21 @@ export class DictionaryRuntime {
 		this.favorites.dispose();
 	}
 
+	private findLlmEngine(configId: string | null) {
+		if (!configId) return null;
+		return (
+			this.options.ai
+				.getSnapshot()
+				.settings.engines.find(
+					(candidate) => candidate.id === configId && candidate.kind === "llm",
+				) ?? null
+		);
+	}
+
 	private aiEngineInfo(): { readonly configId: string | null; readonly name: string | null } {
 		const configId = this.options.settings.getDictionarySettings().ai.configId;
 		if (!configId) return { configId: null, name: null };
-		const engine = this.options.ai
-			.getSnapshot()
-			.settings.engines.find(
-				(candidate) => candidate.id === configId && candidate.kind === "llm",
-			);
-		return { configId, name: engine?.name ?? null };
+		return { configId, name: this.findLlmEngine(configId)?.name ?? null };
 	}
 
 	private resolveSource(

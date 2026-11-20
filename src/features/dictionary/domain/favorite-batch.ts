@@ -2,36 +2,16 @@ import { aiFailureCode } from "../../../core/ai";
 import { DICTIONARY_QUERY_MAX_LENGTH, normalizeDictionaryQuery } from "./configuration";
 import { isFavoriteAiWord, type FavoriteDraftGenerator } from "./favorite-ai";
 import { FavoriteCategoryError, type FavoriteCategoryManager } from "./favorite-categories";
-import { FavoriteSaveError, favoriteWordKey, type DictionaryFavoriteEntry } from "./favorite-file";
+import {
+	FavoriteBatchError,
+	FavoriteSaveError,
+	favoriteWordKey,
+	type DictionaryFavoriteStore,
+	type FavoriteBatchErrorReason,
+} from "./favorite-file";
 import type { DictionarySettingsStore, FavoriteCategory } from "./types";
 
-export type FavoriteBatchErrorReason =
-	| "source-missing"
-	| "source-invalid"
-	| "source-read-failed"
-	| "target-missing"
-	| "same-file"
-	| "no-words";
-
-export class FavoriteBatchError extends Error {
-	constructor(readonly reason: FavoriteBatchErrorReason) {
-		super(reason);
-		this.name = "FavoriteBatchError";
-	}
-}
-
-export interface FavoriteBatchSource {
-	read(path: string): Promise<string>;
-	pathSuggestions(query: string): string[];
-}
-
-export interface FavoriteBatchStore {
-	/** Checks that the existing destination is editable and returns its favorite words. */
-	inspect(path: string): Promise<readonly string[]>;
-	/** Fresh-content write. Never replaces an entry that appeared after inspection. */
-	saveNew(entry: DictionaryFavoriteEntry): Promise<"saved" | "skipped">;
-	open(path: string): Promise<boolean>;
-}
+export { FavoriteBatchError, type FavoriteBatchErrorReason };
 
 export interface FavoriteBatchLine {
 	readonly line: number;
@@ -108,8 +88,10 @@ export interface FavoriteBatchSnapshot {
 export interface FavoriteBatchOptions {
 	readonly categories: FavoriteCategoryManager;
 	readonly settings: DictionarySettingsStore;
-	readonly source: FavoriteBatchSource;
-	readonly store: FavoriteBatchStore;
+	readonly store: Pick<
+		DictionaryFavoriteStore,
+		"inspect" | "saveNew" | "open" | "wordListSuggestions" | "readWordList"
+	>;
 	readonly generator: FavoriteDraftGenerator;
 	readonly hasAiConfig: (id: string) => boolean;
 }
@@ -152,7 +134,7 @@ export class FavoriteBatchController {
 	}
 
 	pathSuggestions(query: string): string[] {
-		return this.options.source.pathSuggestions(query);
+		return this.options.store.wordListSuggestions(query);
 	}
 
 	async start(sourcePath: string, categoryId: string): Promise<void> {
@@ -188,7 +170,7 @@ export class FavoriteBatchController {
 				return;
 			}
 			await this.options.categories.runExclusive(async () => {
-				const content = await this.options.source.read(path);
+				const content = await this.options.store.readWordList(path);
 				if (job.signal.aborted) return;
 				const lines = parseFavoriteBatchLines(content);
 				if (lines.length === 0) throw new FavoriteBatchError("no-words");

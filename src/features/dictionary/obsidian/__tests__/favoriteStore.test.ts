@@ -290,4 +290,33 @@ describe("ObsidianDictionaryFavoriteStore persistence", () => {
 		});
 		expect(setup.process).not.toHaveBeenCalled();
 	});
+
+	it("suggests only vault text and Markdown word lists and validates reads", async () => {
+		const textFile = Object.assign(new TFile(), { path: "Lists/words.txt", extension: "txt" });
+		const markdown = Object.assign(new TFile(), { path: "Lists/verbs.md", extension: "md" });
+		const image = Object.assign(new TFile(), { path: "Lists/image.png", extension: "png" });
+		const read = vi.fn(async () => "apple\nbanana\n");
+		const store = new ObsidianDictionaryFavoriteStore({
+			vault: {
+				getFiles: () => [textFile, markdown, image],
+				getAbstractFileByPath: (path: string) =>
+					[textFile, markdown, image].find((file) => file.path === path) ?? null,
+				read,
+			},
+		} as unknown as App);
+
+		expect(store.wordListSuggestions("lists/")).toEqual(["Lists/verbs.md", "Lists/words.txt"]);
+		await expect(store.readWordList("Lists/words.txt")).resolves.toBe("apple\nbanana\n");
+		await expect(store.readWordList("Lists/image.png")).rejects.toMatchObject({
+			reason: "source-invalid",
+		});
+		await expect(store.readWordList("missing.txt")).rejects.toMatchObject({
+			reason: "source-missing",
+		});
+		read.mockRejectedValueOnce(new Error("EIO"));
+		await expect(store.readWordList("Lists/words.txt")).rejects.toMatchObject({
+			reason: "source-read-failed",
+		});
+		expect(read).toHaveBeenCalledTimes(2);
+	});
 });

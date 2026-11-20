@@ -4,8 +4,6 @@ import { BookOpen } from "lucide-react";
 import type { AiService } from "../../core/ai";
 import type { OutboundPort } from "../../core/net";
 import { DictionaryRuntime } from "./domain/dictionaryRuntime";
-import { FavoriteBatchController } from "./domain/favorite-batch";
-import { createFavoriteDraftGenerator } from "./domain/favorite-ai";
 import { dictionaryStrings } from "./strings/dictionary";
 import type { Language } from "../../core/shared/types";
 import type { CardSourceMutation } from "../../core/shared/cardSourceMutation";
@@ -14,7 +12,6 @@ import { DictionaryFavoriteView, DictionaryView } from "./ui";
 import { playDictionaryAudio, stopDictionaryAudio } from "./ui/audio";
 import { DictionaryFavoriteModal } from "./obsidian/favoriteModal";
 import { DictionaryFavoriteBatchModal } from "./obsidian/favoriteBatchModal";
-import { ObsidianFavoriteBatchSource } from "./obsidian/favoriteBatchSource";
 import { FavoriteCategoryModal } from "./obsidian/favoriteCategoryModal";
 import { DictionaryFavoritePresentation } from "./obsidian/favoritePresentation";
 import { ObsidianDictionaryFavoriteStore } from "./obsidian/favoriteStore";
@@ -212,10 +209,9 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 	const module = defineFeatureLifetime({
 		id: "dictionary",
 		start: (host, lifetime) => {
-			const favoriteStore = new ObsidianDictionaryFavoriteStore(host.app, deps.sourceEdits);
 			const dictionary = lifetime.own(
 				new DictionaryRuntime({
-					favoriteStore,
+					favoriteStore: new ObsidianDictionaryFavoriteStore(host.app, deps.sourceEdits),
 					app: host.app,
 					plugin: deps.plugin,
 					settings: createDictionarySettingsStore(host.settings),
@@ -228,22 +224,9 @@ export function createDictionaryFeature(deps: DictionaryFeatureDeps): Dictionary
 			let batchModal: DictionaryFavoriteBatchModal | null = null;
 			const openBatchFavorite = (): void => {
 				if (batchModal) return;
-				const controller = new FavoriteBatchController({
-					categories: dictionary.categories,
-					settings: dictionary.settings,
-					source: new ObsidianFavoriteBatchSource(host.app),
-					store: favoriteStore,
-					generator: createFavoriteDraftGenerator(deps.ai),
-					hasAiConfig: (id) =>
-						deps.ai
-							.getSnapshot()
-							.settings.engines.some(
-								(engine) => engine.id === id && engine.kind === "llm",
-							),
-				});
 				batchModal = new DictionaryFavoriteBatchModal(
 					host.app,
-					controller,
+					dictionary.createFavoriteBatch(),
 					() => host.settings.read().language,
 					() => {
 						batchModal = null;

@@ -19,6 +19,21 @@ export class FavoriteSaveError extends Error {
 	}
 }
 
+export type FavoriteBatchErrorReason =
+	| "source-missing"
+	| "source-invalid"
+	| "source-read-failed"
+	| "target-missing"
+	| "same-file"
+	| "no-words";
+
+export class FavoriteBatchError extends Error {
+	constructor(readonly reason: FavoriteBatchErrorReason) {
+		super(reason);
+		this.name = "FavoriteBatchError";
+	}
+}
+
 export interface DictionaryFavoriteEntry {
 	meaning: string;
 	note: string;
@@ -37,6 +52,14 @@ export interface DictionaryFavoriteStore extends FavoriteCategoryFiles {
 	save(entry: DictionaryFavoriteEntry): Promise<string>;
 	find(path: string, word: string): Promise<StoredDictionaryFavorite | null>;
 	open(path: string): Promise<boolean>;
+	/** Checks that the existing destination is editable and returns its favorite words. */
+	inspect(path: string): Promise<readonly string[]>;
+	/** Fresh-content write. Never replaces an entry that appeared after inspection. */
+	saveNew(entry: DictionaryFavoriteEntry): Promise<"saved" | "skipped">;
+	/** Suggests vault `.txt`/`.md` word-list source files without reading file contents. */
+	wordListSuggestions(query: string): string[];
+	/** Reads a selected vault `.txt`/`.md` word-list source file fresh. */
+	readWordList(path: string): Promise<string>;
 }
 
 /** Matches one `## word / ?? / meaning / :: / note / ;;` favorite block. */
@@ -45,6 +68,11 @@ const DICTIONARY_FAVORITE_BLOCK_PATTERN =
 
 function normalizeBody(value: string, limit: number): string {
 	return value.replaceAll("\r\n", "\n").replaceAll("\r", "\n").trim().slice(0, limit);
+}
+
+function isWordListPath(path: string): boolean {
+	const lower = path.toLocaleLowerCase();
+	return lower.endsWith(".txt") || lower.endsWith(".md");
 }
 
 /** Serializes one favorite block; throws when the word normalizes to nothing. */
@@ -181,7 +209,10 @@ export function createMemoryDictionaryFavoriteStore(
 	const files = new Map<string, string>(Object.entries(initialFiles));
 	return {
 		pathSuggestions(query: string): string[] {
-			return favoriteCategoryPathSuggestions([...files.keys()], query);
+			const categoryPaths = [...files.keys()].filter(
+				(path) => path.endsWith("/") || path.toLocaleLowerCase().endsWith(".md"),
+			);
+			return favoriteCategoryPathSuggestions(categoryPaths, query);
 		},
 		async ensureFile(path: string): Promise<() => Promise<void>> {
 			if (files.has(path)) return async () => undefined;
@@ -220,6 +251,34 @@ export function createMemoryDictionaryFavoriteStore(
 		async open(path: string): Promise<boolean> {
 			const normalizedPath = normalizeDictionaryFavoritePath(path, "");
 			return files.has(normalizedPath);
+		},
+		async inspect(path: string): Promise<readonly string[]> {
+			if (!path.toLocaleLowerCase().endsWith(".md") || !files.has(path))
+				throw new FavoriteBatchError("target-missing");
+			return parseDictionaryFavorites(files.get(path)!).map((favorite) => favorite.word);
+		},
+		async saveNew(entry: DictionaryFavoriteEntry): Promise<"saved" | "skipped"> {
+			const path = normalizeDictionaryFavoritePath(entry.path, "");
+			if (!path || !path.toLocaleLowerCase().endsWith(".md") || !files.has(path))
+				throw new FavoriteBatchError("target-missing");
+			const current = files.get(path)!;
+			if (findDictionaryFavorite(current, entry.word)) return "skipped";
+			const favorite = formatDictionaryFavorite(entry);
+			files.set(path, appendDictionaryFavorite(current, favorite));
+			return "saved";
+		},
+		wordListSuggestions(query: string): string[] {
+			const needle = query.trim().toLocaleLowerCase();
+			return [...files.keys()]
+				.filter((path) => isWordListPath(path) && path.toLocaleLowerCase().includes(needle))
+				.sort((a, b) => a.localeCompare(b))
+				.slice(0, 300);
+		},
+		async readWordList(path: string): Promise<string> {
+			const content = files.get(path);
+			if (content === undefined) throw new FavoriteBatchError("source-missing");
+			if (!isWordListPath(path)) throw new FavoriteBatchError("source-invalid");
+			return content;
 		},
 	};
 }

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { DictionaryRuntime } from "../dictionaryRuntime";
 import { DEFAULT_DICTIONARY_SETTINGS } from "../configuration";
+import { createMemoryDictionaryFavoriteStore, formatDictionaryFavorite } from "../favorite-file";
 import type { DictionarySettingsStore } from "../types";
 
 vi.mock("../compiled-source", () => ({ CompiledDictionarySource: class {} }));
@@ -95,6 +96,91 @@ describe("dictionary selection settings", () => {
 		expect(clone.mock.calls.length).toBe(2);
 		clone.mockRestore();
 		session.dispose();
+		runtime.dispose();
+	});
+
+	it("wires createFavoriteBatch through the unified favorite store and category mutex", async () => {
+		const dictionary = structuredClone(DEFAULT_DICTIONARY_SETTINGS);
+		dictionary.favoriteCategories = [{ id: "target", name: "单词", path: "words.md" }];
+		dictionary.selectedFavoriteCategoryId = "target";
+		dictionary.favoriteAiConfigId = "engine";
+		const settingsStore: DictionarySettingsStore = {
+			getDictionarySettings: () => dictionary,
+			updateDictionarySettings: async () => true,
+			getLocalDictionaryAdministrationState: () => dictionary,
+		};
+		const favoriteStore = createMemoryDictionaryFavoriteStore({
+			"Lists/words.txt": "apple\nbanana\n",
+			"words.md": formatDictionaryFavorite({
+				path: "words.md",
+				word: "apple",
+				meaning: "已有释义",
+				note: "",
+			}),
+		});
+		const generate = vi.fn(async () => ({
+			text: JSON.stringify({
+				definitions: [{ partOfSpeech: "n.", meanings: ["香蕉"] }],
+				phonetic: "bəˈnɑːnə",
+				morphology: [],
+				example: {
+					sentence: "I ate a banana.",
+					translation: "我吃了一根香蕉。",
+				},
+			}),
+		}));
+		const runtime = new DictionaryRuntime({
+			settings: settingsStore,
+			favoriteStore,
+			language: () => "zh",
+			notify: vi.fn(),
+			app: { vault: { configDir: ".obsidian" } },
+			plugin: { manifest: { id: "test" } },
+			ai: {
+				subscribe: () => () => {},
+				getSnapshot: () => ({
+					settings: {
+						engines: [
+							{
+								id: "engine",
+								kind: "llm",
+								name: "DeepSeek",
+								provider: "deepseek",
+								baseUrl: "https://api.deepseek.com",
+								secretId: "key-1",
+								model: "deepseek-v4-flash",
+							},
+						],
+						defaults: { llm: "engine", asr: null },
+					},
+					models: {},
+					loadingModels: [],
+					testing: [],
+				}),
+				generate,
+			},
+			net: {},
+		} as never);
+
+		const batch = runtime.createFavoriteBatch();
+		expect(batch.pathSuggestions("lists/")).toEqual(["Lists/words.txt"]);
+		await batch.start("Lists/words.txt", "target");
+
+		expect(generate).toHaveBeenCalledTimes(1);
+		expect(batch.getSnapshot()).toMatchObject({
+			status: "success",
+			total: 2,
+			processed: 2,
+			saved: 1,
+			skipped: 1,
+			failed: 0,
+		});
+		expect((await favoriteStore.find("words.md", "apple"))?.meaning).toBe("已有释义");
+		expect((await favoriteStore.find("words.md", "banana"))?.meaning).toBe("n. 香蕉");
+		await expect(batch.openTarget()).resolves.toBe(true);
+		await expect(runtime.categories.runExclusive(async () => true)).resolves.toBe(true);
+
+		batch.dispose();
 		runtime.dispose();
 	});
 });

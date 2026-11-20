@@ -6,6 +6,7 @@ import type {
 } from "../../../core/shared/cardSourceMutation";
 import { normalizeDictionaryFavoritePath } from "../domain/configuration";
 import {
+	FavoriteBatchError,
 	FavoriteSaveError,
 	appendDictionaryFavorite,
 	favoriteSourceChanges,
@@ -17,16 +18,13 @@ import {
 	type DictionaryFavoriteStore,
 	type StoredDictionaryFavorite,
 } from "../domain/favorite-file";
-import { FavoriteBatchError, type FavoriteBatchStore } from "../domain/favorite-batch";
 import { favoriteCategoryPathSuggestions } from "../domain/favorite-categories";
 
 /**
  * Obsidian Vault adapter for dictionary favorites.
- * Handles Vault reading, writing, atomic processing, folder creation, and note opening.
+ * Handles Vault reading, writing, atomic processing, folder creation, word-list source selection, and note opening.
  */
-export class ObsidianDictionaryFavoriteStore
-	implements DictionaryFavoriteStore, FavoriteBatchStore
-{
+export class ObsidianDictionaryFavoriteStore implements DictionaryFavoriteStore {
 	constructor(
 		private readonly app: App,
 		private readonly sourceEdits?: CardSourceMutation,
@@ -43,6 +41,30 @@ export class ObsidianDictionaryFavoriteStore
 						: [],
 			);
 		return favoriteCategoryPathSuggestions(paths, query);
+	}
+
+	/** Vault-only word-list source selector; never reads unrelated notes for suggestions. */
+	wordListSuggestions(query: string): string[] {
+		const needle = query.trim().toLocaleLowerCase();
+		return this.app.vault
+			.getFiles()
+			.filter(
+				(file) => this.isWordList(file) && file.path.toLocaleLowerCase().includes(needle),
+			)
+			.map((file) => file.path)
+			.sort((a, b) => a.localeCompare(b))
+			.slice(0, 300);
+	}
+
+	async readWordList(path: string): Promise<string> {
+		const file = this.app.vault.getAbstractFileByPath(path);
+		if (!(file instanceof TFile)) throw new FavoriteBatchError("source-missing");
+		if (!this.isWordList(file)) throw new FavoriteBatchError("source-invalid");
+		try {
+			return await this.app.vault.read(file);
+		} catch {
+			throw new FavoriteBatchError("source-read-failed");
+		}
 	}
 
 	async ensureFile(path: string): Promise<() => Promise<void>> {
@@ -197,6 +219,13 @@ export class ObsidianDictionaryFavoriteStore
 		if (!file) return false;
 		await this.app.workspace.openLinkText(file.path, "", true);
 		return true;
+	}
+
+	private isWordList(file: TFile): boolean {
+		return (
+			file.extension.toLocaleLowerCase() === "txt" ||
+			file.extension.toLocaleLowerCase() === "md"
+		);
 	}
 
 	private async ensureParentFolder(filePath: string): Promise<string[]> {

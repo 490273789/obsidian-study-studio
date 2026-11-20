@@ -100,6 +100,7 @@ vi.mock("../domain/dictionaryRuntime", () => ({
 		};
 		readonly dispose = vi.fn();
 		readonly applySettings = vi.fn();
+		readonly createFavoriteBatch = vi.fn(() => ({ dispose: vi.fn() }));
 		readonly settings = {
 			getDictionarySettings: vi.fn(() => ({
 				sources: [
@@ -206,12 +207,16 @@ describe("dictionary feature", () => {
 		});
 		const fake = createFakeWorkbenchHost("dictionary", enabledSettings);
 		feature.render(fake.host);
+		const runtime = runtimeSpies.instances[0] as {
+			createFavoriteBatch: ReturnType<typeof vi.fn>;
+		};
 		const view = viewSpies.definitions.get("flashcard-dictionary-view")!.render({
 			language: "zh",
 			theme: "dark",
 		} as never) as React.ReactElement<DictionaryViewProps>;
 		view.props.onOpenBatchFavorite();
 		view.props.onOpenBatchFavorite();
+		expect(runtime.createFavoriteBatch).toHaveBeenCalledOnce();
 		expect(batchModalSpies.instances).toHaveLength(1);
 		expect(batchModalSpies.instances[0]!.open).toHaveBeenCalledOnce();
 		feature.stop();

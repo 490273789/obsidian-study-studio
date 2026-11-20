@@ -41,7 +41,7 @@ export class DictionaryFavoriteSession {
 
 	constructor(
 		private readonly categoriesManager: FavoriteCategoryManager,
-		private readonly store: DictionaryFavoriteStore,
+		private readonly store: Pick<DictionaryFavoriteStore, "save" | "find" | "open">,
 		private readonly ai: FavoriteAiOptions,
 	) {
 		this.state = {

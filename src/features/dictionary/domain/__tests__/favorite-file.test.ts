@@ -4,6 +4,7 @@ import {
 	createMemoryDictionaryFavoriteStore,
 	DICTIONARY_FAVORITE_MEANING_MAX_LENGTH,
 	DICTIONARY_FAVORITE_NOTE_MAX_LENGTH,
+	FavoriteBatchError,
 	FavoriteSaveError,
 	findDictionaryFavorite,
 	formatDictionaryFavorite,
@@ -197,6 +198,47 @@ describe("memory favorite store", () => {
 		expect(updated?.note).toBe("新笔记");
 	});
 
+	it("filters non-Markdown paths out of category suggestions and supports batch word-list operations", async () => {
+		const store = createMemoryDictionaryFavoriteStore({
+			"Folders/": "",
+			"Folders/words.md": formatDictionaryFavorite(entry("apple", "苹果", "已有笔记")),
+			"Lists/words.txt": "apple\nbanana\n",
+			"Lists/image.png": "binary",
+		});
+
+		expect(store.pathSuggestions("")).toEqual(["Folders/", "Folders/words.md"]);
+		expect(store.wordListSuggestions("lists/")).toEqual(["Lists/words.txt"]);
+		await expect(store.readWordList("Lists/words.txt")).resolves.toBe("apple\nbanana\n");
+		await expect(store.readWordList("Lists/image.png")).rejects.toMatchObject({
+			reason: "source-invalid",
+		});
+		await expect(store.readWordList("missing.txt")).rejects.toMatchObject({
+			reason: "source-missing",
+		});
+
+		await expect(store.inspect("Lists/words.txt")).rejects.toMatchObject({
+			reason: "target-missing",
+		});
+		await expect(store.inspect("Folders/words.md")).resolves.toEqual(["apple"]);
+
+		await expect(
+			store.saveNew({ path: "Folders/words.md", word: "APPLE", meaning: "覆盖", note: "" }),
+		).resolves.toBe("skipped");
+		await expect(
+			store.saveNew({
+				path: "Folders/words.md",
+				word: "banana",
+				meaning: "香蕉",
+				note: "水果",
+			}),
+		).resolves.toBe("saved");
+		await expect(
+			store.saveNew({ path: "missing.md", word: "pear", meaning: "梨", note: "" }),
+		).rejects.toMatchObject({ reason: "target-missing" });
+		expect((await store.find("Folders/words.md", "apple"))?.meaning).toBe("苹果");
+		expect((await store.find("Folders/words.md", "banana"))?.meaning).toBe("香蕉");
+	});
+
 	it("exports domain limits and FavoriteSaveError", () => {
 		expect(DICTIONARY_FAVORITE_MEANING_MAX_LENGTH).toBe(8_000);
 		expect(DICTIONARY_FAVORITE_NOTE_MAX_LENGTH).toBe(16_000);
@@ -206,5 +248,10 @@ describe("memory favorite store", () => {
 		expect(error.reason).toBe("migration-required");
 		expect(error.message).toBe("migration-required");
 		expect(error instanceof Error).toBe(true);
+
+		const batchError = new FavoriteBatchError("source-missing");
+		expect(batchError.name).toBe("FavoriteBatchError");
+		expect(batchError.reason).toBe("source-missing");
+		expect(batchError instanceof Error).toBe(true);
 	});
 });
