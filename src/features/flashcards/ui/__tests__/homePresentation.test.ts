@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { DeckHomeDeckSnapshot } from "../../domain/decks/deckHome";
+import type { DeckHomeDeckSnapshot, DeckHomeSettingsDraft } from "../../domain/decks/deckHome";
 import {
+	isDeckSettingsLocked,
 	selectContinueDeck,
 	selectDeckCardMetrics,
 	selectDeckVisualState,
@@ -148,5 +149,46 @@ describe("selectDeckVisualState", () => {
 		});
 
 		expect(selectDeckVisualState(active)).toBe(selectDeckCardMetrics(active).state);
+	});
+});
+
+describe("isDeckSettingsLocked", () => {
+	const draft = (ownerId: string, deckId: string): DeckHomeSettingsDraft => ({
+		ownerId,
+		deckId,
+		deckName: "Deck",
+		filePath: "deck.md",
+		totalCards: 10,
+		useCustom: false,
+		dailyNewCards: 20,
+		dailyReviewCards: 200,
+		studyOrder: "sequential",
+		requestRetention: 0.9,
+		maximumInterval: "36500",
+		daysToComplete: "1",
+		wordLearningEnabled: false,
+		global: {
+			dailyNewCards: 20,
+			dailyReviewCards: 200,
+			studyOrder: "sequential",
+			fsrsParameters: { requestRetention: 0.9, maximumInterval: 36500 },
+		},
+		spelling: { canStart: false, hasStableIdentities: true, invalidCards: [] },
+	});
+
+	it("returns false when no draft is active or when owned by the current view", () => {
+		expect(isDeckSettingsLocked(null, "deck-1", "view-a")).toBe(false);
+		expect(isDeckSettingsLocked(draft("view-a", "deck-1"), "deck-1", "view-a")).toBe(false);
+		expect(isDeckSettingsLocked(draft("view-a", "deck-1"), "deck-2", "view-a")).toBe(false);
+	});
+
+	it("locks every deck for other views while an owner holds the draft", () => {
+		expect(isDeckSettingsLocked(draft("view-a", "deck-1"), "deck-1", "view-b")).toBe(true);
+		expect(isDeckSettingsLocked(draft("view-a", "deck-1"), "deck-2", "view-b")).toBe(true);
+	});
+
+	it("keeps other decks locked while allowing an orphaned saving draft's own deck to resume", () => {
+		expect(isDeckSettingsLocked(draft("", "deck-1"), "deck-1", "view-b")).toBe(false);
+		expect(isDeckSettingsLocked(draft("", "deck-1"), "deck-2", "view-b")).toBe(true);
 	});
 });

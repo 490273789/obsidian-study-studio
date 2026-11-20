@@ -1,11 +1,4 @@
-import React, {
-	useCallback,
-	useEffect,
-	useId,
-	useMemo,
-	useState,
-	useSyncExternalStore,
-} from "react";
+import React, { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { rectSortingStrategy } from "@dnd-kit/sortable";
 import {
 	ReorderableList,
@@ -31,14 +24,17 @@ import type {
 	DeckHomeSnapshot,
 } from "../../../domain/decks/deckHome";
 import { getStudyPlanSummary } from "../../../domain/sessions/studyPlanSummary";
-import type { DeckSettingsDraftSession } from "../../../domain/decks/deckSettingsDraftSession";
 import type { WorkbenchFeatureShortcut } from "../../../../../core/host/workbench";
 import { cls } from "../../../../../core/shared/classNames";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardHeader } from "../../../../../core/ui/primitives/Header";
 import { DeckSettingsModal } from "../DeckSettings";
 import { useFlashcardI18n } from "../../../strings/context";
-import { selectContinueDeck, selectDeckVisualState } from "../../homePresentation";
+import {
+	isDeckSettingsLocked,
+	selectContinueDeck,
+	selectDeckVisualState,
+} from "../../homePresentation";
 import { DeckCard } from "./DeckCard/DeckCard";
 import { formatDeckCount } from "./deckCountFormat";
 import styles from "./DeckList.module.scss";
@@ -50,7 +46,6 @@ interface DeckListProps {
 	snapshot: DeckHomeSnapshot;
 	home: DeckHome;
 	ownerId: string;
-	settingsDraftSession?: DeckSettingsDraftSession;
 	onNavigate: (destination: DeckHomeDestination, deckId: string) => void;
 	onRequestMigration: (deckId?: string) => Promise<boolean>;
 	onOpenSourceFile: (filePath: string) => void;
@@ -65,7 +60,6 @@ export const DeckList = React.memo(function DeckList({
 	snapshot,
 	home,
 	ownerId,
-	settingsDraftSession,
 	onNavigate,
 	onRequestMigration,
 	onOpenSourceFile,
@@ -84,16 +78,7 @@ export const DeckList = React.memo(function DeckList({
 		snapshot.mutation.kind === "preparing-migration" ||
 		snapshot.mutation.kind === "awaiting-confirmation" ||
 		snapshot.mutation.kind === "migrating";
-	const subscribeDraft = useCallback(
-		(listener: () => void) => settingsDraftSession?.subscribe(listener) ?? (() => {}),
-		[settingsDraftSession],
-	);
-	const readDraft = useCallback(
-		() => settingsDraftSession?.getSnapshot() ?? null,
-		[settingsDraftSession],
-	);
-	const draftSnapshot = useSyncExternalStore(subscribeDraft, readDraft, readDraft);
-	const draft = draftSnapshot?.ownerId === ownerId ? draftSnapshot : null;
+	const draft = snapshot.settingsDraft?.ownerId === ownerId ? snapshot.settingsDraft : null;
 	const [recentlyDroppedDeckId, setRecentlyDroppedDeckId] = useState<string | null>(null);
 	const [openMenuDeckId, setOpenMenuDeckId] = useState<string | null>(null);
 	const [isCompletedGroupOpen, setIsCompletedGroupOpen] = useState(false);
@@ -153,8 +138,8 @@ export const DeckList = React.memo(function DeckList({
 		[sortableRows, visibleDeckIds],
 	);
 	const handleCloseModal = useCallback(() => {
-		settingsDraftSession?.cancel(ownerId);
-	}, [settingsDraftSession, ownerId]);
+		void home.act({ kind: "cancel-settings", ownerId });
+	}, [home, ownerId]);
 
 	const handleExportDeck = useCallback(
 		async (deckId: string) => {
@@ -165,9 +150,9 @@ export const DeckList = React.memo(function DeckList({
 
 	const handleOpenDeckSettings = useCallback(
 		(deckId: string) => {
-			settingsDraftSession?.open(deckId, ownerId);
+			void home.act({ kind: "open-settings", ownerId, deckId });
 		},
-		[settingsDraftSession, ownerId],
+		[home, ownerId],
 	);
 
 	const nextDeck = useMemo(() => selectContinueDeck(snapshot.decks), [snapshot.decks]);
@@ -177,14 +162,6 @@ export const DeckList = React.memo(function DeckList({
 	const shouldReview = todayPlan !== null && todayPlan.todayReviewCount > 0;
 	const isFresh = nextDeck !== null && selectDeckVisualState(nextDeck) === "fresh";
 	const allNewCardsLearned = snapshot.totals.newCards === 0;
-
-	/** Another view's settings draft blocks a row unless that draft targets it. */
-	const isSettingsLocked = (deckId: string): boolean => {
-		if (settingsDraftSession) {
-			return settingsDraftSession.isLocked(deckId, ownerId);
-		}
-		return false;
-	};
 
 	return (
 		<>
@@ -449,7 +426,11 @@ export const DeckList = React.memo(function DeckList({
 											<DeckCard
 												key={deck.id}
 												deck={deck}
-												isSettingsLocked={isSettingsLocked(deck.id)}
+												isSettingsLocked={isDeckSettingsLocked(
+													snapshot.settingsDraft,
+													deck.id,
+													ownerId,
+												)}
 												isExporting={
 													snapshot.export.kind === "exporting" &&
 													snapshot.export.deckId === deck.id
@@ -527,8 +508,10 @@ export const DeckList = React.memo(function DeckList({
 															<DeckCard
 																key={deck.id}
 																deck={deck}
-																isSettingsLocked={isSettingsLocked(
+																isSettingsLocked={isDeckSettingsLocked(
+																	snapshot.settingsDraft,
 																	deck.id,
+																	ownerId,
 																)}
 																isExporting={
 																	snapshot.export.kind ===
@@ -596,13 +579,16 @@ export const DeckList = React.memo(function DeckList({
 			{draft && (
 				<DeckSettingsModal
 					draft={draft}
-					isSaving={draft.isSaving}
+					isSaving={
+						snapshot.mutation.kind === "saving-settings" &&
+						snapshot.mutation.deckId === draft.deckId
+					}
 					isMigratingIdentity={isMigrating}
 					onChange={(change) => {
-						settingsDraftSession?.change(ownerId, change);
+						void home.act({ kind: "change-settings", ownerId, change });
 					}}
 					onSave={async () => {
-						await settingsDraftSession?.save(ownerId);
+						await home.act({ kind: "save-settings", ownerId });
 					}}
 					onOpenSourceFile={() => onOpenSourceFile(draft.filePath)}
 					onMigrateIdentity={() => onRequestMigration(draft.deckId)}

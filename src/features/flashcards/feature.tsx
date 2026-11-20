@@ -19,10 +19,6 @@ import {
 	type DeckHomeEvent,
 	type DeckHomeSettingsPatch,
 } from "./domain/decks/deckHome";
-import {
-	createDeckSettingsDraftSession,
-	type DeckSettingsDraftSession,
-} from "./domain/decks/deckSettingsDraftSession";
 import { exportDeckToPdf } from "./domain/decks/deckPdfExporter";
 import {
 	createCardIdentityContinuity,
@@ -64,7 +60,6 @@ interface FlashcardServices {
 	sessionLifecycle: SessionLifecycle;
 	cardIdentityContinuity: CardIdentityContinuity;
 	deckHome: DeckHome;
-	deckSettingsDraftSession: DeckSettingsDraftSession;
 	pronunciationRuntime: PronunciationRuntime;
 }
 
@@ -564,17 +559,11 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 					},
 				}),
 			);
-			const deckSettingsDraftSession = lifetime.own(
-				createDeckSettingsDraftSession({
-					repository: repo.deckHome,
-					saveSettingsPatch: async (patch) => saveDeckSettingsPatch(host, patch),
-					report: (event) => reportDeckHomeEvent(host, event),
-				}),
-			);
 			const deckHome = lifetime.own(
 				createDeckHome({
 					repository: repo.deckHome,
 					identity: cardIdentityContinuity,
+					saveSettingsPatch: async (patch) => saveDeckSettingsPatch(host, patch),
 					saveDeckOrder: async (deckOrder) => {
 						await host.settings.update({ deckOrder: [...deckOrder] });
 					},
@@ -602,7 +591,6 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 				sessionLifecycle: sessionLifecycleWiring.lifecycle,
 				cardIdentityContinuity,
 				deckHome,
-				deckSettingsDraftSession,
 				pronunciationRuntime,
 			};
 			lifetime.defer(() => {
@@ -636,7 +624,6 @@ export function createFlashcardFeature(deps: FlashcardFeatureDeps) {
 							sessionLifecycle={sessionLifecycleWiring.lifecycle}
 							pronunciationRuntime={pronunciationRuntime}
 							deckHome={deckHome}
-							deckSettingsDraftSession={deckSettingsDraftSession}
 							settings={settings}
 							onOpenSettings={() => host.settingsTab.open(FLASHCARD_SECTION_ID)}
 							shortcuts={host.featureShortcuts()}

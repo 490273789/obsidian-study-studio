@@ -1042,6 +1042,20 @@ describe("DeckHome row identity", () => {
 		});
 		const before = home.getSnapshot();
 
+		await home.act({ kind: "open-settings", ownerId: "view", deckId: deck.id });
+		expect(home.getSnapshot().settingsDraft).not.toBeNull();
+		expect(home.getSnapshot().decks[0]).toBe(before.decks[0]);
+
+		await home.act({
+			kind: "change-settings",
+			ownerId: "view",
+			change: { field: "dailyNewCards", value: 12 },
+		});
+		expect(home.getSnapshot().settingsDraft?.dailyNewCards).toBe(12);
+		expect(home.getSnapshot().decks[0]).toBe(before.decks[0]);
+
+		await home.act({ kind: "cancel-settings", ownerId: "view" });
+
 		const refreshing = home.act({ kind: "refresh" });
 		expect(home.getSnapshot().mutation.kind).toBe("refreshing");
 		expect(home.getSnapshot().decks[0]).toBe(before.decks[0]);
@@ -1074,6 +1088,418 @@ describe("DeckHome row identity", () => {
 		expect(after.decks.map((row) => row.id)).toEqual([second.id, first.id]);
 		expect(after.decks[0]).toBe(before.decks[1]);
 		expect(after.decks[1]).toBe(before.decks[0]);
+		home.dispose();
+	});
+});
+
+describe("DeckHome settings draft", () => {
+	function setupDraft(
+		overrides: {
+			decks?: Deck[];
+			settings?: FlashcardSettings;
+			saveSettingsPatch?: CreateDeckHomeOptions["saveSettingsPatch"];
+			exportDeck?: CreateDeckHomeOptions["exportDeck"];
+			identity?: CardIdentityContinuity;
+		} = {},
+	) {
+		const repository = new MemoryRepository(
+			overrides.decks ?? [makeDeck()],
+			overrides.settings ?? makeSettings(),
+		);
+		const events: DeckHomeEvent[] = [];
+		const saveSettingsPatch =
+			"saveSettingsPatch" in overrides ? overrides.saveSettingsPatch : vi.fn(async () => {});
+		const home = createDeckHome({
+			repository,
+			identity: overrides.identity ?? makeIdentity(),
+			saveSettingsPatch,
+			exportDeck: overrides.exportDeck ?? vi.fn(),
+			report: (event) => events.push(event),
+		});
+		return { home, repository, events, saveSettingsPatch };
+	}
+
+	function makeSpellableCards(count: number, stable = true): Deck["cards"] {
+		return Array.from({ length: count }, (_, index) => {
+			const suffix =
+				String.fromCharCode(97 + Math.floor(index / 26)) +
+				String.fromCharCode(97 + (index % 26));
+			return {
+				id: stable
+					? `550e8400-e29b-41d4-a716-44665544${String(index).padStart(4, "0")}`
+					: `legacy::${index}`,
+				front: `word${suffix}`,
+				back: `meaning ${suffix}`,
+				fsrsCard: createEmptyCard(),
+				sourceFile: "notes/words.md",
+				indexInFile: index,
+			};
+		});
+	}
+
+	it("returns null settingsDraft when closed, rejects missing decks, and keeps snapshot stable", async () => {
+		const { home } = setupDraft();
+		expect(home.getSnapshot().settingsDraft).toBeNull();
+
+		expect(
+			await home.act({ kind: "open-settings", ownerId: "view-a", deckId: "non-existent" }),
+		).toEqual({ kind: "rejected", reason: "deck-missing" });
+		expect(home.getSnapshot().settingsDraft).toBeNull();
+
+		expect(
+			await home.act({ kind: "open-settings", ownerId: "view-a", deckId: "notes/words.md" }),
+		).toEqual({ kind: "applied" });
+		const opened = home.getSnapshot();
+		expect(opened.settingsDraft).toMatchObject({
+			ownerId: "view-a",
+			deckId: "notes/words.md",
+			useCustom: false,
+			dailyNewCards: DEFAULT_SETTINGS.dailyNewCards,
+			daysToComplete: "1",
+		});
+		expect(home.getSnapshot()).toBe(opened);
+
+		await home.act({
+			kind: "change-settings",
+			ownerId: "view-a",
+			change: { field: "dailyNewCards", value: 10 },
+		});
+		const changed = home.getSnapshot();
+		expect(changed).not.toBe(opened);
+		expect(changed.settingsDraft?.dailyNewCards).toBe(10);
+		expect(opened.settingsDraft?.dailyNewCards).toBe(DEFAULT_SETTINGS.dailyNewCards);
+		expect(home.getSnapshot()).toBe(changed);
+		home.dispose();
+	});
+
+	it("updates daysToComplete and dailyNewCards bidirectionally and mutates other draft fields", async () => {
+		const deck = { ...makeDeck(), cards: makeSpellableCards(100) };
+		const { home } = setupDraft({ decks: [deck] });
+		await home.act({ kind: "open-settings", ownerId: "view-a", deckId: deck.id });
+
+		await home.act({
+			kind: "change-settings",
+			ownerId: "view-a",
+			change: { field: "dailyNewCards", value: 10 },
+		});
+		expect(home.getSnapshot().settingsDraft).toMatchObject({
+			dailyNewCards: 10,
+			daysToComplete: "10",
+		});
+
+		await home.act({
+			kind: "change-settings",
+			ownerId: "view-a",
+			change: { field: "daysToComplete", value: "20" },
+		});
+		expect(home.getSnapshot().settingsDraft).toMatchObject({
+			daysToComplete: "20",
+			dailyNewCards: 5,
+		});
+
+		await home.act({
+			kind: "change-settings",
+			ownerId: "view-a",
+			change: { field: "useCustom", value: true },
+		});
+		await home.act({
+			kind: "change-settings",
+			ownerId: "view-a",
+			change: { field: "dailyReviewCards", value: 50 },
+		});
+		await home.act({
+			kind: "change-settings",
+			ownerId: "view-a",
+			change: { field: "studyOrder", value: "random" },
+		});
+		await home.act({
+			kind: "change-settings",
+			ownerId: "view-a",
+			change: { field: "requestRetention", value: 0.92 },
+		});
+		await home.act({
+			kind: "change-settings",
+			ownerId: "view-a",
+			change: { field: "maximumInterval", value: "180" },
+		});
+		expect(home.getSnapshot().settingsDraft).toMatchObject({
+			useCustom: true,
+			dailyReviewCards: 50,
+			studyOrder: "random",
+			requestRetention: 0.92,
+			maximumInterval: "180",
+		});
+		home.dispose();
+	});
+
+	it("enforces exclusive ownership, rejects non-owner changes, and clears draft on cancel or release", async () => {
+		const { home } = setupDraft();
+		await home.act({ kind: "open-settings", ownerId: "view-a", deckId: "notes/words.md" });
+
+		expect(
+			await home.act({ kind: "open-settings", ownerId: "view-b", deckId: "notes/words.md" }),
+		).toEqual({ kind: "rejected", reason: "draft-owned-by-another-view" });
+		expect(
+			await home.act({
+				kind: "change-settings",
+				ownerId: "view-b",
+				change: { field: "useCustom", value: true },
+			}),
+		).toEqual({ kind: "rejected", reason: "draft-owned-by-another-view" });
+		expect(await home.act({ kind: "cancel-settings", ownerId: "view-b" })).toEqual({
+			kind: "rejected",
+			reason: "draft-owned-by-another-view",
+		});
+
+		expect(await home.act({ kind: "cancel-settings", ownerId: "view-a" })).toEqual({
+			kind: "applied",
+		});
+		expect(home.getSnapshot().settingsDraft).toBeNull();
+
+		await home.act({ kind: "open-settings", ownerId: "view-a", deckId: "notes/words.md" });
+		await home.act({ kind: "release-owner", ownerId: "view-a" });
+		expect(home.getSnapshot().settingsDraft).toBeNull();
+		home.dispose();
+	});
+
+	it("validates spelling identities and spellability before persisting, and handles missing save callback", async () => {
+		const legacyDeck = { ...makeDeck("notes/legacy.md"), cards: makeSpellableCards(1, false) };
+		const { home: legacyHome, saveSettingsPatch } = setupDraft({ decks: [legacyDeck] });
+		await legacyHome.act({ kind: "open-settings", ownerId: "view-a", deckId: legacyDeck.id });
+		await legacyHome.act({
+			kind: "change-settings",
+			ownerId: "view-a",
+			change: { field: "wordLearningEnabled", value: true },
+		});
+		expect(await legacyHome.act({ kind: "save-settings", ownerId: "view-a" })).toEqual({
+			kind: "rejected",
+			reason: "stable-card-identity-required",
+		});
+		expect(saveSettingsPatch).not.toHaveBeenCalled();
+		legacyHome.dispose();
+
+		const nonSpellableDeck: Deck = {
+			...makeDeck("notes/nonspell.md"),
+			cards: [
+				{
+					id: STABLE_ONE,
+					front: "What is the meaning of life? Explain in full sentences.",
+					back: "42",
+					fsrsCard: createEmptyCard(),
+					sourceFile: "notes/nonspell.md",
+					indexInFile: 0,
+				},
+			],
+		};
+		const { home: nonSpellHome } = setupDraft({ decks: [nonSpellableDeck] });
+		await nonSpellHome.act({
+			kind: "open-settings",
+			ownerId: "view-a",
+			deckId: nonSpellableDeck.id,
+		});
+		await nonSpellHome.act({
+			kind: "change-settings",
+			ownerId: "view-a",
+			change: { field: "wordLearningEnabled", value: true },
+		});
+		expect(await nonSpellHome.act({ kind: "save-settings", ownerId: "view-a" })).toEqual({
+			kind: "rejected",
+			reason: "spelling-invalid",
+		});
+		nonSpellHome.dispose();
+
+		const { home: unconfiguredHome, events } = setupDraft({ saveSettingsPatch: undefined });
+		await unconfiguredHome.act({
+			kind: "open-settings",
+			ownerId: "view-a",
+			deckId: "notes/words.md",
+		});
+		expect(await unconfiguredHome.act({ kind: "save-settings", ownerId: "view-a" })).toEqual({
+			kind: "failed",
+			message: "Deck settings persistence is unavailable",
+		});
+		expect(events).toContainEqual({
+			kind: "settings-save-failed",
+			message: "Deck settings persistence is unavailable",
+		});
+		unconfiguredHome.dispose();
+	});
+
+	it("persists custom or global overrides, retains draft on failure, and synchronizes saving state with mutations", async () => {
+		const deck = { ...makeDeck(), cards: makeSpellableCards(10) };
+		const saveGate = deferred<void>();
+		const saveSpy = vi
+			.fn()
+			.mockRejectedValueOnce(new Error("disk full"))
+			.mockImplementationOnce(() => saveGate.promise)
+			.mockResolvedValueOnce(undefined);
+		const exportGate = deferred<{ kind: "saved"; filePath: string }>();
+		const { home, events } = setupDraft({
+			decks: [deck],
+			saveSettingsPatch: saveSpy,
+			exportDeck: vi.fn(() => exportGate.promise),
+		});
+		const observedSnapshots: Array<{ mutation: string; draft: unknown }> = [];
+		home.subscribe(() => {
+			const snap = home.getSnapshot();
+			observedSnapshots.push({ mutation: snap.mutation.kind, draft: snap.settingsDraft });
+		});
+
+		await home.act({ kind: "open-settings", ownerId: "view-a", deckId: deck.id });
+		await home.act({
+			kind: "change-settings",
+			ownerId: "view-a",
+			change: { field: "useCustom", value: true },
+		});
+		await home.act({
+			kind: "change-settings",
+			ownerId: "view-a",
+			change: { field: "dailyNewCards", value: 5 },
+		});
+
+		expect(await home.act({ kind: "save-settings", ownerId: "view-a" })).toEqual({
+			kind: "failed",
+			message: "disk full",
+		});
+		expect(events).toContainEqual({ kind: "settings-save-failed", message: "disk full" });
+		expect(home.getSnapshot().settingsDraft?.dailyNewCards).toBe(5);
+		expect(home.getSnapshot().mutation).toEqual({ kind: "idle" });
+
+		const saving = home.act({ kind: "save-settings", ownerId: "view-a" });
+		expect(home.getSnapshot().mutation).toEqual({
+			kind: "saving-settings",
+			deckId: deck.id,
+		});
+		expect(
+			await home.act({
+				kind: "change-settings",
+				ownerId: "view-a",
+				change: { field: "dailyNewCards", value: 8 },
+			}),
+		).toEqual({ kind: "rejected", reason: "busy" });
+		expect(await home.act({ kind: "cancel-settings", ownerId: "view-a" })).toEqual({
+			kind: "rejected",
+			reason: "busy",
+		});
+		expect(await home.act({ kind: "refresh" })).toEqual({ kind: "rejected", reason: "busy" });
+		expect(
+			await home.act({ kind: "request-migration", ownerId: "view-a", deckId: deck.id }),
+		).toEqual({ kind: "rejected", reason: "busy" });
+
+		// Export remains independent of settings persistence.
+		const exportPromise = home.act({ kind: "export", deckId: deck.id });
+		expect(home.getSnapshot().export.kind).toBe("exporting");
+		exportGate.resolve({ kind: "saved", filePath: "notes/words.pdf" });
+		await exportPromise;
+
+		// Releasing owner mid-save preserves the in-flight save and lets another view reclaim it if still open.
+		await home.act({ kind: "release-owner", ownerId: "view-a" });
+		expect(home.getSnapshot().settingsDraft?.ownerId).toBe("");
+
+		saveGate.resolve();
+		expect(await saving).toEqual({ kind: "applied" });
+		expect(home.getSnapshot().mutation).toEqual({ kind: "idle" });
+		expect(home.getSnapshot().settingsDraft).toBeNull();
+		expect(saveSpy).toHaveBeenNthCalledWith(2, {
+			deckId: deck.id,
+			overrides: {
+				dailyNewCards: 5,
+				dailyReviewCards: DEFAULT_SETTINGS.dailyReviewCards,
+				studyOrder: DEFAULT_SETTINGS.studyOrder,
+				fsrsParameters: DEFAULT_SETTINGS.fsrsParameters,
+			},
+			wordLearningEnabled: false,
+		});
+		expect(observedSnapshots.some((entry) => entry.mutation === "saving-settings")).toBe(true);
+		home.dispose();
+	});
+
+	it("allows orphaned saving draft to be reclaimed after owner unmount if save fails", async () => {
+		const deck = { ...makeDeck(), cards: makeSpellableCards(2) };
+		const saveGate = deferred<void>();
+		const { home } = setupDraft({
+			decks: [deck],
+			saveSettingsPatch: () => saveGate.promise,
+		});
+		await home.act({ kind: "open-settings", ownerId: "view-a", deckId: deck.id });
+		const saving = home.act({ kind: "save-settings", ownerId: "view-a" });
+		await home.act({ kind: "release-owner", ownerId: "view-a" });
+
+		saveGate.reject(new Error("sync conflict"));
+		expect(await saving).toEqual({ kind: "failed", message: "sync conflict" });
+		expect(home.getSnapshot().settingsDraft?.ownerId).toBe("");
+
+		expect(
+			await home.act({ kind: "open-settings", ownerId: "view-b", deckId: deck.id }),
+		).toEqual({ kind: "applied" });
+		expect(home.getSnapshot().settingsDraft?.ownerId).toBe("view-b");
+		home.dispose();
+	});
+
+	it("refreshes draft metadata on external repository commits, unlocks identity migration, and closes when deleted", async () => {
+		const legacyDeck = { ...makeDeck("notes/words.md"), cards: makeSpellableCards(1, false) };
+		const { home, repository } = setupDraft({ decks: [legacyDeck] });
+		const observed: unknown[] = [];
+		home.subscribe(() => observed.push(home.getSnapshot().settingsDraft));
+
+		await home.act({ kind: "open-settings", ownerId: "view-a", deckId: legacyDeck.id });
+		await home.act({
+			kind: "change-settings",
+			ownerId: "view-a",
+			change: { field: "dailyNewCards", value: 7 },
+		});
+		await home.act({
+			kind: "change-settings",
+			ownerId: "view-a",
+			change: { field: "wordLearningEnabled", value: true },
+		});
+		expect(home.getSnapshot().settingsDraft?.spelling.hasStableIdentities).toBe(false);
+
+		// External sync / migration updates cards and global settings while preserving draft edits.
+		repository.commit(() => {
+			repository.decks = [
+				{ ...legacyDeck, name: "Renamed", cards: makeSpellableCards(3, true) },
+			];
+			repository.settings = makeSettings({ dailyNewCards: 30 });
+		});
+		const refreshed = home.getSnapshot().settingsDraft;
+		expect(refreshed).toMatchObject({
+			deckName: "Renamed",
+			totalCards: 3,
+			dailyNewCards: 7,
+			wordLearningEnabled: true,
+			global: { dailyNewCards: 30 },
+			spelling: { hasStableIdentities: true, canStart: true },
+		});
+
+		// External deck deletion clears an idle draft immediately.
+		repository.commit(() => {
+			repository.decks = [];
+		});
+		expect(home.getSnapshot().settingsDraft).toBeNull();
+		expect(observed).toHaveLength(5);
+		home.dispose();
+	});
+
+	it("retains in-flight save if deck disappears during save and clears the draft once save finishes", async () => {
+		const deck = { ...makeDeck(), cards: makeSpellableCards(2) };
+		const saveGate = deferred<void>();
+		const { home, repository } = setupDraft({
+			decks: [deck],
+			saveSettingsPatch: () => saveGate.promise,
+		});
+		await home.act({ kind: "open-settings", ownerId: "view-a", deckId: deck.id });
+		const saving = home.act({ kind: "save-settings", ownerId: "view-a" });
+
+		repository.commit(() => {
+			repository.decks = [];
+		});
+		expect(home.getSnapshot().settingsDraft).toBeNull();
+
+		saveGate.reject(new Error("late failure"));
+		await saving;
+		expect(home.getSnapshot().settingsDraft).toBeNull();
+		expect(home.getSnapshot().mutation).toEqual({ kind: "idle" });
 		home.dispose();
 	});
 });
