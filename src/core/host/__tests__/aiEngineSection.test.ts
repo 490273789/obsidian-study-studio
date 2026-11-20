@@ -2,7 +2,7 @@ import { Notice } from "obsidian";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { AiEngineConfig, AiService, AiSnapshot } from "../../ai";
 import type { SettingsPresentation } from "../../settings/presentation";
-import { AiEngineSettingsSection, createAiEngineSection } from "../aiEngineSection";
+import { createAiEngineSection } from "../aiEngineSection";
 
 vi.mock("obsidian", () => ({ Notice: vi.fn(), Modal: class {} }));
 
@@ -14,6 +14,28 @@ const llm: AiEngineConfig = {
 	baseUrl: "https://api.deepseek.com",
 	secretId: "key-1",
 	model: "deepseek-v4-flash",
+};
+
+const asr: AiEngineConfig = {
+	id: "asr",
+	kind: "asr",
+	name: "Speech",
+	provider: "bailian",
+	baseUrl: "",
+	workspaceId: "",
+	workspaceSecretId: "workspace-secret",
+	secretId: "asr-secret",
+	model: "fun-asr-flash-2026-06-15",
+};
+
+const translation: AiEngineConfig = {
+	id: "tr",
+	kind: "translation",
+	name: "Youdao",
+	provider: "youdao",
+	baseUrl: "https://openapi.youdao.com/api",
+	appKeySecretId: "app-key",
+	appSecretSecretId: "app-secret",
 };
 
 function createMockService(
@@ -96,13 +118,18 @@ describe("AiEngineSettingsSection presentation operations", () => {
 	});
 
 	it("moves from the engine list to the add form and switches service type", async () => {
-		const { service } = createMockService();
-		const section = new AiEngineSettingsSection({ ai: service, refresh: vi.fn() });
+		const { service } = createMockService([llm, asr]);
+		const section = createAiEngineSection({ ai: service, refresh: vi.fn() });
 		const list = section.presentation("zh");
 		expect(list.snapshot.groups[0]?.heading).toBe("服务类型");
 		const kinds = rows(list).find((row) => row.key === "kind")?.controls[0];
 		if (kinds?.kind !== "choiceButtons") throw new Error("Missing kind tabs");
 		expect(kinds.value).toBe("llm");
+		expect(kinds.choices.map((choice) => choice.id)).toEqual(["llm", "asr", "translation"]);
+		const texts = rows(list).map((row) => row.name);
+		expect(texts.some((name) => name.includes("Old Name"))).toBe(true);
+		expect(texts.some((name) => name.includes("Speech"))).toBe(false);
+
 		await list.invoke({ action: kinds.action, value: "asr" });
 		const asrList = section.presentation("zh");
 		const asrKinds = rows(asrList).find((row) => row.key === "kind")?.controls[0];
@@ -113,9 +140,91 @@ describe("AiEngineSettingsSection presentation operations", () => {
 		expect(rows(form).map((row) => row.key)).toContain("workspace");
 	});
 
+	it("uses distinct row names to prevent stutter against group headings", () => {
+		const { service } = createMockService([llm]);
+		const section = createAiEngineSection({ ai: service, refresh: vi.fn() });
+		const presentation = section.presentation("zh");
+		for (const group of presentation.snapshot.groups) {
+			if (!group.heading) continue;
+			for (const row of group.rows) {
+				expect(row.name).not.toBe(group.heading);
+			}
+		}
+	});
+
+	it("presents the ASR engine list with its default badge, neutral delete tone, and delete action", async () => {
+		const { service, deleteEngine } = createMockService([llm, asr], {
+			llm: llm.id,
+			asr: asr.id,
+		});
+		const section = createAiEngineSection({ ai: service, refresh: vi.fn() });
+		await change(section.presentation("zh"), "kind", "asr");
+		const presentation = section.presentation("zh");
+		const defaultSelect = rows(presentation).find((row) => row.key === "default")?.controls[0];
+		expect(defaultSelect).toMatchObject({ kind: "select", value: "asr" });
+		const engine = rows(presentation).find((row) => row.key === "engine-asr");
+		expect(engine?.name).toContain("Speech");
+		expect(engine?.name).toContain("默认");
+		expect(engine?.description).toContain("当前默认引擎");
+		const remove = engine?.controls.find(
+			(control) => control.kind === "button" && control.label === "删除",
+		);
+		if (remove?.kind !== "button") throw new Error("Missing delete");
+		expect(remove.tone).toBe("neutral");
+		await presentation.invoke({ action: remove.action, value: undefined });
+		expect(deleteEngine).toHaveBeenCalledWith("asr");
+	});
+
+	it("shows type-specific form fields for LLM, ASR, and translation engines and tests translation drafts", async () => {
+		const { service, testEngine } = createMockService([llm, asr, translation]);
+		const section = createAiEngineSection({ ai: service, refresh: vi.fn() });
+
+		await press(section.presentation("zh"), "engine-eng-1", "编辑");
+		const llmForm = section.presentation("zh");
+		expect(rows(llmForm).map((row) => row.key)).toEqual(
+			expect.arrayContaining(["provider", "base-url", "secret", "model"]),
+		);
+		await press(llmForm, "back", "返回列表");
+
+		await change(section.presentation("zh"), "kind", "asr");
+		await press(section.presentation("zh"), "engine-asr", "编辑");
+		const asrForm = section.presentation("zh");
+		expect(rows(asrForm).map((row) => row.key)).toEqual(
+			expect.arrayContaining(["workspace", "model", "secret"]),
+		);
+		expect(rows(asrForm).map((row) => row.key)).not.toContain("app-key");
+		await press(asrForm, "back", "返回列表");
+
+		await change(section.presentation("zh"), "kind", "translation");
+		await press(section.presentation("zh"), "engine-tr", "编辑");
+		const translationForm = section.presentation("zh");
+		const keys = rows(translationForm).map((row) => row.key);
+		expect(keys).toEqual(expect.arrayContaining(["app-key", "app-secret", "test"]));
+		expect(keys).not.toContain("workspace");
+
+		await press(translationForm, "test", "测试连接");
+		expect(testEngine).toHaveBeenCalledWith(translation);
+		expect(Notice).toHaveBeenCalled();
+	});
+
+	it("keeps secrets and manual model input free of callbacks in the English snapshot", async () => {
+		const { service, saveEngine } = createMockService([llm]);
+		const section = createAiEngineSection({ ai: service, refresh: vi.fn() });
+		await press(section.presentation("en"), "engine-eng-1", "Edit");
+		const presentation = section.presentation("en");
+		const secret = rows(presentation).find((row) => row.key === "secret")?.controls[0];
+		const model = rows(presentation).find((row) => row.key === "model")?.controls[0];
+		expect(secret).toMatchObject({ kind: "secret", value: "key-1" });
+		if (model?.kind !== "text") throw new Error("Missing model input");
+		await presentation.invoke({ action: model.action, value: "custom-model" });
+		await press(section.presentation("en"), "configuration", "Save configuration");
+		expect(saveEngine).toHaveBeenCalledWith(expect.objectContaining({ model: "custom-model" }));
+		expect(JSON.stringify(presentation.snapshot)).not.toContain("onClick");
+	});
+
 	it("edits a draft, tests it, saves it, and returns to the list", async () => {
 		const { service, saveEngine, testEngine } = createMockService();
-		const section = new AiEngineSettingsSection({ ai: service, refresh: vi.fn() });
+		const section = createAiEngineSection({ ai: service, refresh: vi.fn() });
 		await press(section.presentation("zh"), "add", "新增引擎");
 		const form = section.presentation("zh");
 		await change(form, "name", "New Engine");
@@ -138,7 +247,7 @@ describe("AiEngineSettingsSection presentation operations", () => {
 
 	it("edits and deletes an existing engine through semantic actions", async () => {
 		const { service, saveEngine, deleteEngine } = createMockService([llm]);
-		const section = new AiEngineSettingsSection({ ai: service, refresh: vi.fn() });
+		const section = createAiEngineSection({ ai: service, refresh: vi.fn() });
 		await press(section.presentation("zh"), "engine-eng-1", "编辑");
 		const form = section.presentation("zh");
 		await change(form, "name", "Renamed Engine");
@@ -157,7 +266,7 @@ describe("AiEngineSettingsSection presentation operations", () => {
 			asr: null,
 		});
 		const confirmDelete = vi.fn().mockResolvedValue(false);
-		const section = new AiEngineSettingsSection({
+		const section = createAiEngineSection({
 			ai: service,
 			refresh: vi.fn(),
 			confirmDelete,
@@ -170,7 +279,7 @@ describe("AiEngineSettingsSection presentation operations", () => {
 	it("passes isDefault=true to confirmDelete when deleting default engine", async () => {
 		const { service, deleteEngine } = createMockService([llm], { llm: "eng-1", asr: null });
 		const confirmDelete = vi.fn().mockResolvedValue(true);
-		const section = new AiEngineSettingsSection({
+		const section = createAiEngineSection({
 			ai: service,
 			refresh: vi.fn(),
 			confirmDelete,
@@ -182,7 +291,7 @@ describe("AiEngineSettingsSection presentation operations", () => {
 
 	it("applies provider presets when the provider changes", async () => {
 		const { service, saveEngine } = createMockService([llm]);
-		const section = new AiEngineSettingsSection({ ai: service, refresh: vi.fn() });
+		const section = createAiEngineSection({ ai: service, refresh: vi.fn() });
 		await press(section.presentation("zh"), "engine-eng-1", "编辑");
 		const form = section.presentation("zh");
 		const provider = rows(form).find((row) => row.key === "provider")?.controls[0];
@@ -205,15 +314,15 @@ describe("AiEngineSettingsSection presentation operations", () => {
 		const unsubscribeFn = vi.fn();
 		subscribe.mockReturnValue(unsubscribeFn);
 
-		const section = new AiEngineSettingsSection({ ai: service, refresh });
-		section.activate();
+		const section = createAiEngineSection({ ai: service, refresh });
+		section.activate?.();
 		expect(subscribe).toHaveBeenCalledOnce();
 		expect(refresh).not.toHaveBeenCalled();
 		const [onChange] = vi.mocked(service.subscribe).mock.calls[0]!;
 		onChange();
 		expect(refresh).toHaveBeenCalledOnce();
 
-		section.hide();
+		section.hide?.();
 		expect(unsubscribeFn).toHaveBeenCalledOnce();
 	});
 });
