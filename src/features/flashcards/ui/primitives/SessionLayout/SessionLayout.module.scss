@@ -2,8 +2,9 @@
 @use "../../../../../core/styles/mixins.scss" as *;
 
 .page:global(.flashcard-study) {
+	--page-content-width: 660px;
 	container: session / inline-size;
-	gap: var(--fc-space-4);
+	gap: var(--fc-space-3);
 	outline: none;
 	animation: none;
 }
@@ -25,10 +26,10 @@
 	> :global(.flashcard-card-stack) {
 		box-sizing: border-box;
 		width: min(
-			var(--page-content-width, var(--fc-layout-max-width)),
+			var(--page-content-width, 660px),
 			calc(100% - var(--page-viewport-gutter) - var(--page-viewport-gutter))
 		);
-		margin: auto;
+		margin: clamp(16px, 8vh, 56px) auto auto;
 		flex-shrink: 0;
 	}
 }
@@ -36,48 +37,68 @@
 .footer:global(.flashcard-footer) {
 	box-sizing: border-box;
 	width: min(
-		var(--page-content-width, var(--fc-layout-max-width)),
+		var(--page-content-width, 660px),
 		calc(100% - var(--page-viewport-gutter) - var(--page-viewport-gutter))
 	);
 	margin-inline: auto;
 	gap: var(--fc-space-3);
-	padding: var(--fc-space-4) 0 var(--fc-space-3);
-	border-top: 1px solid var(--fc-line-soft);
-	background: var(--fc-surface-canvas);
+	padding: var(--fc-space-3);
+	border: 1px solid var(--fc-line-soft);
+	border-radius: var(--fc-radius-lg);
+	background: color-mix(in srgb, var(--fc-surface-section) 72%, var(--fc-surface-card));
 
 	> :global(.flashcard-btn-show) {
-		width: min(100%, 360px);
+		width: min(100%, 340px);
+		min-height: 44px;
 	}
 
 	> :global(.flashcard-reveal-controls) {
-		display: grid;
-		grid-template-columns: auto minmax(0, 1fr);
-		align-items: stretch;
-		gap: var(--fc-space-4);
+		position: relative;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: var(--fc-space-3);
 		width: 100%;
 
+		> :global(button.flashcard-btn-prev) {
+			position: absolute;
+			inset-inline-start: 0;
+		}
+
 		> :global(.flashcard-btn-show) {
-			width: min(100%, 360px);
-			justify-self: center;
+			width: min(calc(100% - 104px), 340px);
+			min-height: 44px;
 		}
 	}
 }
 
 @container session (max-width: #{breakpoints.$phone}) {
 	.content:global(.flashcard-content) {
-		padding-block: 0;
+		padding-block: var(--fc-space-2);
 
 		> :global(.flashcard-card-stack) {
-			margin: 0 auto;
+			margin: var(--fc-space-2) auto auto;
 		}
 	}
 
 	.footer:global(.flashcard-footer) {
 		gap: var(--fc-space-2);
-		padding: var(--fc-space-2) 0;
-	}
-	.footer :global(.flashcard-shortcut) {
-		display: none;
+		padding: var(--fc-space-2);
+		border-radius: var(--fc-radius-md);
+
+		> :global(.flashcard-reveal-controls) {
+			position: static;
+			display: grid;
+			grid-template-columns: auto minmax(0, 1fr);
+
+			> :global(button.flashcard-btn-prev) {
+				position: static;
+			}
+
+			> :global(.flashcard-btn-show) {
+				width: 100%;
+			}
+		}
 	}
 }
 

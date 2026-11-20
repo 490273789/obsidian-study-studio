@@ -18,7 +18,7 @@ export function extractCleanCardText(cardElement: HTMLElement): string {
 	if (typeof cardElement.cloneNode === "function") {
 		const clone = cardElement.cloneNode(true) as HTMLElement;
 		clone.querySelector(".flashcard-label")?.remove();
-		clone.querySelector(".flashcard-pronounce-btn")?.remove();
+		clone.querySelector(".flashcard-pronounce-btn, .flashcard-pronunciation-button")?.remove();
 		return (clone.innerText ?? clone.textContent ?? "").trim();
 	}
 

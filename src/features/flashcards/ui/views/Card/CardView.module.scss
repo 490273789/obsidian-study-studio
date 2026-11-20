@@ -4,34 +4,30 @@
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr);
 	align-items: stretch;
-	gap: var(--fc-space-4);
+	gap: var(--fc-space-3);
 	width: 100%;
 	animation: var(--fc-motion-fade-in);
 }
 
 :global(button.flashcard-btn-prev).undoBtn {
-	min-width: var(--fc-control-lg);
+	--fc-button-bg: transparent;
+	--fc-button-bg-hover: var(--fc-surface-card);
+	--fc-button-border: var(--fc-line-soft);
+	--fc-button-border-hover: var(--fc-line);
+	--fc-button-text: var(--fc-muted);
+	min-width: 44px;
 	height: 100%;
 	min-height: var(--fc-control-md);
-	padding: var(--fc-space-2) var(--fc-space-3);
+	padding: var(--fc-space-2);
 	display: inline-flex;
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
 	gap: var(--fc-space-1);
-	color: var(--fc-muted);
-	border: 1px solid var(--fc-line-soft);
 	border-radius: var(--fc-radius-md);
-	background: var(--fc-surface-section);
-	transition:
-		color var(--fc-motion-quick) ease,
-		border-color var(--fc-motion-quick) ease,
-		background-color var(--fc-motion-quick) ease;
 
 	&:hover:not(:disabled) {
 		color: var(--fc-text);
-		border-color: var(--fc-line);
-		background: var(--fc-surface-card);
 	}
 
 	&:focus-visible {
@@ -47,7 +43,7 @@
 	padding: 0 4px;
 	border-radius: var(--fc-radius-xs);
 	background: var(--fc-surface-card);
-	border: 1px solid var(--fc-line-soft);
+	border: 1px solid var(--fc-line-faint);
 	line-height: 1.3;
 }
 
@@ -59,13 +55,14 @@
 }
 
 :global(button.flashcard-btn).ratingBtn {
+	--fc-button-accent: var(--fc-rating-color);
 	--fc-button-bg: var(--fc-surface-card);
 	--fc-button-bg-hover: color-mix(in srgb, var(--fc-rating-color) 10%, var(--fc-surface-card));
 	--fc-button-border: var(--fc-line-soft);
-	--fc-button-border-hover: var(--fc-rating-color);
+	--fc-button-border-hover: color-mix(in srgb, var(--fc-rating-color) 65%, var(--fc-line));
 	--fc-button-text: var(--fc-text);
-	min-height: 56px;
-	padding: var(--fc-space-3) var(--fc-space-2);
+	min-height: 54px;
+	padding: var(--fc-space-2) var(--fc-space-2);
 	display: flex;
 	flex-direction: column;
 	align-items: center;
@@ -77,6 +74,17 @@
 		border-color var(--fc-motion-quick) ease,
 		background-color var(--fc-motion-quick) ease,
 		transform var(--fc-motion-quick) ease;
+
+	&:hover:not(:disabled),
+	&:focus-visible {
+		.ratingDuration {
+			color: var(--fc-rating-text-color, var(--fc-rating-color));
+		}
+		.ratingDot {
+			opacity: 1;
+			transform: scale(1.1);
+		}
+	}
 
 	&:focus-visible {
 		outline: 2px solid var(--fc-rating-color);
@@ -92,7 +100,7 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	gap: var(--fc-space-2);
+	gap: var(--fc-space-1);
 }
 
 .ratingDot {
@@ -100,7 +108,11 @@
 	height: 6px;
 	border-radius: var(--fc-radius-pill);
 	background: var(--fc-rating-color);
+	opacity: 0.78;
 	flex-shrink: 0;
+	transition:
+		opacity var(--fc-motion-quick) ease,
+		transform var(--fc-motion-quick) ease;
 }
 
 .ratingLabel {
@@ -111,11 +123,12 @@
 }
 
 .ratingDuration {
-	color: var(--fc-rating-text-color, var(--fc-rating-color));
+	color: var(--fc-muted);
 	font-size: var(--fc-font-xs);
 	font-family: var(--fc-font-data);
 	font-variant-numeric: tabular-nums;
 	line-height: var(--fc-line-tight);
+	transition: color var(--fc-motion-quick) ease;
 }
 
 .ratingInterval {
@@ -127,7 +140,7 @@
 	text-align: center;
 	border-radius: var(--fc-radius-xs);
 	background: var(--fc-surface-sunken);
-	border: 1px solid var(--fc-line-soft);
+	border: 1px solid var(--fc-line-faint);
 	line-height: 1.25;
 }
 
@@ -152,8 +165,8 @@
 .rating3 {
 	--fc-rating-color: var(--fc-primary);
 	--fc-rating-text-color: var(--fc-primary);
-	--fc-button-border: color-mix(in srgb, var(--fc-primary) 35%, var(--fc-line-soft));
-	--fc-button-bg: color-mix(in srgb, var(--fc-primary) 6%, var(--fc-surface-card));
+	--fc-button-border: color-mix(in srgb, var(--fc-primary) 42%, var(--fc-line-soft));
+	--fc-button-bg: color-mix(in srgb, var(--fc-primary) 7%, var(--fc-surface-card));
 	--fc-button-bg-hover: color-mix(in srgb, var(--fc-primary) 14%, var(--fc-surface-card));
 	--fc-button-border-hover: var(--fc-primary);
 
@@ -161,13 +174,22 @@
 		--fc-rating-text-color: var(--fc-primary-text-light);
 	}
 
+	.ratingDot {
+		opacity: 1;
+	}
+
 	.ratingLabel {
 		font-weight: var(--fc-weight-semibold);
 	}
 
+	.ratingDuration {
+		color: var(--fc-rating-text-color);
+		font-weight: var(--fc-weight-medium);
+	}
+
 	.ratingInterval {
 		background: color-mix(in srgb, var(--fc-primary) 12%, var(--fc-surface-sunken));
-		border-color: color-mix(in srgb, var(--fc-primary) 32%, var(--fc-line-soft));
+		border-color: color-mix(in srgb, var(--fc-primary) 30%, var(--fc-line-soft));
 		color: var(--fc-rating-text-color);
 		font-weight: var(--fc-weight-medium);
 	}
@@ -201,11 +223,6 @@
 		padding: var(--fc-space-2);
 	}
 
-	.undoShortcut,
-	.ratingInterval {
-		display: none;
-	}
-
 	.ratingGrid {
 		grid-template-columns: repeat(6, minmax(0, 1fr));
 	}
@@ -216,12 +233,19 @@
 
 	:global(button.flashcard-btn).ratingBtn {
 		min-height: var(--fc-control-md);
-		padding: var(--fc-space-2);
+		padding: var(--fc-space-2) var(--fc-space-1);
 		gap: var(--fc-space-half);
 	}
 
 	.rating1,
 	.rating2 {
 		grid-column: span 3;
+	}
+}
+
+@media (pointer: coarse) and (max-width: #{breakpoints.$phone}) {
+	.undoShortcut,
+	.ratingInterval {
+		display: none;
 	}
 }

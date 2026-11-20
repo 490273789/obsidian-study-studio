@@ -6,17 +6,25 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 28px;
-	height: 28px;
-	min-width: 28px;
-	min-height: 28px;
+	width: var(--fc-control-sm);
+	height: var(--fc-control-sm);
+	min-width: var(--fc-control-sm);
+	min-height: var(--fc-control-sm);
 	padding: 0;
-	border: 1px solid rgba(var(--fc-cyan-rgb), 0.3);
-	border-radius: var(--fc-radius-pill, 999px);
-	background:
+	--fc-button-border: rgba(var(--fc-cyan-rgb), 0.3);
+	--fc-button-border-hover: rgba(var(--fc-cyan-rgb), 0.72);
+	--fc-button-bg:
 		linear-gradient(135deg, rgba(var(--fc-cyan-rgb), 0.12), transparent 72%),
 		rgba(var(--fc-bg-elevated-rgb), 0.52);
-	color: var(--fc-cyan);
+	--fc-button-bg-hover:
+		linear-gradient(135deg, rgba(var(--fc-cyan-rgb), 0.2), transparent 72%),
+		rgba(var(--fc-bg-elevated-rgb), 0.88);
+	--fc-button-text: var(--fc-cyan);
+	--fc-button-accent: var(--fc-cyan);
+	border: 1px solid var(--fc-button-border);
+	border-radius: var(--fc-radius-pill, 999px);
+	background: var(--fc-button-bg);
+	color: var(--fc-button-text);
 	box-shadow: none;
 	cursor: pointer;
 	user-select: none;

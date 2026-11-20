@@ -112,7 +112,7 @@
 // typography and variant tokens in the low-priority recipe above.
 .flashcard-btn,
 :is(.flashcard-root, .flashcard-settings-tab, .flashcard-modal-backdrop, .fc-overlay)
-	:is(button.flashcard-btn, .setting-item button.flashcard-btn) {
+	:is(button.flashcard-btn, .setting-item :where(button.flashcard-btn)) {
 	appearance: none;
 	border: 1px solid var(--fc-button-border);
 	background: var(--fc-button-bg);
@@ -193,7 +193,10 @@
 .flashcard-shortcut,
 .flashcard-rating-interval {
 	color: inherit;
-	opacity: 0.6;
 	font-size: var(--fc-font-xs);
 	font-family: var(--fc-font-data);
+}
+
+.flashcard-shortcut {
+	opacity: 0.72;
 }

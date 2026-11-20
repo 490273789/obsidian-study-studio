@@ -6,9 +6,9 @@
 .flashcard-markdown {
 	color: var(--fc-text);
 	word-break: break-word;
-	font-size: var(--fc-font-xl);
+	font-size: var(--fc-font-lg);
 	line-height: var(--fc-line-reading);
-	font-family: var(--fc-font-reading);
+	font-family: var(--fc-font-ui);
 	user-select: text;
 	-webkit-user-select: text;
 	cursor: text;
@@ -34,7 +34,8 @@
 		flex: 0 1 auto;
 		min-width: 0;
 
-		p {
+		> p:only-child,
+		> p:first-child:last-child {
 			margin: 0;
 			display: inline-block;
 		}

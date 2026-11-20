@@ -102,23 +102,18 @@
 	border: 1px solid var(--fc-line-soft);
 }
 .flashcard-session-auto-pronunciation {
-	color: var(--fc-muted);
+	--fc-button-border: var(--fc-line-soft);
+	--fc-button-text: var(--fc-muted);
 	border-radius: var(--fc-radius-pill);
 	padding-inline: var(--fc-space-2);
 	gap: var(--fc-space-1);
-	border: 1px solid var(--fc-line-soft);
-	transition:
-		color var(--fc-motion-quick) ease,
-		border-color var(--fc-motion-quick) ease,
-		background-color var(--fc-motion-quick) ease;
 
 	&:is(.active, [aria-pressed="true"]) {
-		color: var(--fc-primary);
-		background: color-mix(in srgb, var(--fc-primary) 10%, var(--fc-surface-card));
-		border-color: color-mix(in srgb, var(--fc-primary) 30%, var(--fc-line-soft));
+		--fc-button-accent: var(--fc-primary);
+		--fc-button-ink: var(--fc-primary);
 
 		.theme-light & {
-			color: var(--fc-primary-text-light);
+			--fc-button-ink: var(--fc-primary-text-light);
 		}
 	}
 }

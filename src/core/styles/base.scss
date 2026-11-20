@@ -100,6 +100,14 @@
 	/* 控件底色加深，增强轮廓识别度 */
 	--fc-surface-control: color-mix(in srgb, var(--fc-surface-card) 94%, var(--fc-text));
 
+	/* 内嵌/下沉表面（用于快捷键徽章、行内代码、进度胶囊、内嵌解释框） */
+	--fc-surface-sunken: color-mix(
+		in srgb,
+		var(--background-secondary) 72%,
+		var(--background-primary) 28%
+	);
+	--fc-focus-ring: var(--interactive-accent);
+
 	/* ── 交互状态表面（hover / 选中）与禁用透明度 ───────────────── */
 	--fc-surface-hover: var(--background-modifier-hover);
 	--fc-surface-selected: var(--background-modifier-active-hover);
