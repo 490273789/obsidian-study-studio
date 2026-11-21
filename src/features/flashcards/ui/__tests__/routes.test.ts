@@ -17,7 +17,6 @@ import {
 	home,
 	practiceSetup,
 	resolvePage,
-	spellingSetup,
 	stats,
 	studySetup,
 	wordList,
@@ -128,12 +127,15 @@ describe("route constructors", () => {
 		expect(Object.isFrozen(setup)).toBe(true);
 
 		const practice = practiceSetup("deck", {
+			initialKind: "spelling",
 			initialSelection: { kind: "random", questionCount: 3 },
+			initialSpellingSelection: { kind: "smart", questionCount: 5 },
 			initialDirection: "normal",
 		});
 		expect(Object.isFrozen(practice)).toBe(true);
 		if (practice.type !== "practice-setup") throw new Error("Expected practice setup");
 		expect(Object.isFrozen(practice.initialSelection)).toBe(true);
+		expect(Object.isFrozen(practice.initialSpellingSelection)).toBe(true);
 	});
 
 	it("maps restart provenance onto the same route vocabulary", () => {
@@ -170,14 +172,29 @@ describe("route constructors", () => {
 		});
 		expect(
 			fromRestartOrigin({
+				mode: "practice",
+				deckId: "deck",
+				direction: "reversed",
+				selection: { kind: "range", startIndex: 1, endIndex: 5 },
+			} as never),
+		).toEqual({
+			type: "practice-setup",
+			deckId: "deck",
+			initialKind: "flip",
+			initialDirection: "reversed",
+			initialSelection: { kind: "range", startIndex: 1, endIndex: 5 },
+		});
+		expect(
+			fromRestartOrigin({
 				mode: "spelling",
 				deckId: "deck",
 				selection: { kind: "random", questionCount: 5 },
 			} as never),
 		).toEqual({
-			type: "spelling-setup",
+			type: "practice-setup",
 			deckId: "deck",
-			initialSelection: { kind: "random", questionCount: 5 },
+			initialKind: "spelling",
+			initialSpellingSelection: { kind: "random", questionCount: 5 },
 		});
 	});
 
@@ -206,8 +223,8 @@ describe("resolvePage", () => {
 			key: "practice-setup:deck",
 			depth: 1,
 		});
-		expect(pageFor(spellingSetup("deck"))).toMatchObject({
-			key: "spelling-setup:deck",
+		expect(pageFor(practiceSetup("deck", { initialKind: "spelling" }))).toMatchObject({
+			key: "practice-setup:deck",
 			depth: 1,
 		});
 		expect(pageFor(challengeSetup())).toMatchObject({ key: "home", depth: 0 });
@@ -233,13 +250,18 @@ describe("resolvePage", () => {
 		expect(elementType(overlay.props.children({ challenge: {} }))).toBe(ChallengeSetupModal);
 	});
 
-	it("falls back to home when the deck or plan is missing", () => {
+	it("falls back to home when the deck or plan is missing, while keeping practice setup when only spelling plan is missing", () => {
 		expect(pageFor(wordList("missing"))).toMatchObject({ key: "home", depth: 0 });
 		expect(
 			pageFor(studySetup("deck"), {
 				deckHome: deckHomeWith({ deck, studyPlan: null }),
 			}),
 		).toMatchObject({ key: "home", depth: 0 });
+		expect(
+			pageFor(practiceSetup("deck", { initialKind: "spelling" }), {
+				deckHome: deckHomeWith({ deck, spellingPlan: null }),
+			}),
+		).toMatchObject({ key: "practice-setup:deck", depth: 1 });
 	});
 
 	it("lets active and result surfaces win over the resting route", () => {

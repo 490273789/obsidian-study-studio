@@ -183,10 +183,15 @@ describe("FlashcardNavigation", () => {
 		for (const destination of ["study", "practice", "spelling", "word-list"] as const) {
 			home.actImpl = async () => ({ kind: "navigation", destination, deckId: "deck" });
 			await navigation.navigate(destination, "deck");
-			expect(navigation.getSnapshot().view).toEqual({
-				type: destination === "word-list" ? "word-list" : `${destination}-setup`,
-				deckId: "deck",
-			});
+			expect(navigation.getSnapshot().view).toEqual(
+				destination === "spelling"
+					? { type: "practice-setup", deckId: "deck", initialKind: "spelling" }
+					: {
+							type:
+								destination === "word-list" ? "word-list" : `${destination}-setup`,
+							deckId: "deck",
+						},
+			);
 		}
 		home.actImpl = async () => ({ kind: "rejected", reason: "deck-empty" });
 		await navigation.navigate("study", "missing");
@@ -583,6 +588,7 @@ describe("FlashcardNavigation", () => {
 		expect(navigation.getSnapshot().view).toEqual({
 			type: "practice-setup",
 			deckId: "deck",
+			initialKind: "flip",
 			initialDirection: "reversed",
 			initialSelection: { kind: "range", startIndex: 1, endIndex: 2 },
 		});

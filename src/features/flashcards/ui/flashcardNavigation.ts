@@ -506,7 +506,7 @@ function routeForDestination(destination: DeckHomeDestination, deckId: string): 
 		case "practice":
 			return routes.practiceSetup(deckId);
 		case "spelling":
-			return routes.spellingSetup(deckId);
+			return routes.practiceSetup(deckId, { initialKind: "spelling" });
 		case "word-list":
 			return routes.wordList(deckId);
 	}

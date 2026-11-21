@@ -17,9 +17,9 @@ import type { DeckSpellingSnapshot } from "../../../domain/decks/deckHome";
 import type { SessionStartRequest } from "../../../domain/sessions/sessionLifecycle";
 import type { PracticeSetupPlan, SpellingSetupPlan } from "../../../domain/sessions/sessionPlanner";
 import {
-	estimateMinutes,
 	type PracticeKind,
 	type PracticePreferenceStore,
+	type PracticeQuickCountOption,
 	PracticeSetupSession,
 } from "../../../domain/sessions/practiceSetupSession";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
@@ -28,6 +28,31 @@ import { useFlashcardI18n } from "../../../strings/context";
 import { SetupControlGroup, SetupSelector } from "../../../../../core/ui/primitives/SetupSelector";
 import { SetupPage, setupStyles as styles } from "../../primitives/SetupPage/SetupPage";
 import practiceStyles from "./PracticeSetup.module.scss";
+
+const STORAGE_KEY_PREFIX = "study-studio:practice-kind:";
+
+const browserPracticePreferenceStore: PracticePreferenceStore = {
+	getPreference(deckId: string): PracticeKind | null {
+		try {
+			if (typeof window !== "undefined" && window.localStorage) {
+				const saved = window.localStorage.getItem(`${STORAGE_KEY_PREFIX}${deckId}`);
+				if (saved === "spelling" || saved === "flip") return saved;
+			}
+		} catch {
+			// safe fallback
+		}
+		return null;
+	},
+	setPreference(deckId: string, kind: PracticeKind): void {
+		try {
+			if (typeof window !== "undefined" && window.localStorage) {
+				window.localStorage.setItem(`${STORAGE_KEY_PREFIX}${deckId}`, kind);
+			}
+		} catch {
+			// safe fallback
+		}
+	},
+};
 
 interface PracticeSetupProps {
 	deck: Deck;
@@ -38,52 +63,68 @@ interface PracticeSetupProps {
 	initialDirection?: CardDirection;
 	initialKind?: PracticeKind;
 	preferenceStore?: PracticePreferenceStore;
-	session?: PracticeSetupSession;
 	onStartSession: (request: SessionStartRequest) => void;
 	onBack: () => void;
 }
 
 export const PracticeSetup = React.memo(function PracticeSetup(props: PracticeSetupProps) {
-	const { deck, plan, spellingPlan, spellingSnapshot, onStartSession, onBack } = props;
+	const {
+		deck,
+		plan,
+		spellingPlan,
+		spellingSnapshot,
+		defaultDirection,
+		initialDirection,
+		initialKind,
+		preferenceStore,
+		onStartSession,
+		onBack,
+	} = props;
 	const { t } = useFlashcardI18n();
 
-	const [session] = useState(() => props.session ?? new PracticeSetupSession(props));
+	const [session] = useState(
+		() =>
+			new PracticeSetupSession({
+				deck,
+				plan,
+				spellingPlan,
+				spellingSnapshot,
+				defaultDirection,
+				initialDirection,
+				initialKind,
+				preferenceStore: preferenceStore ?? browserPracticePreferenceStore,
+			}),
+	);
 	const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot);
 	useLayoutEffect(() => {
-		if (!props.session) session.updateSource({ deck, plan, spellingPlan, spellingSnapshot });
-	}, [session, props.session, deck, plan, spellingPlan, spellingSnapshot]);
+		session.updateSource({ deck, plan, spellingPlan, spellingSnapshot });
+	}, [session, deck, plan, spellingPlan, spellingSnapshot]);
 
 	const {
 		practiceKind,
 		showModeSelector,
 		spellingEligible,
-		isSpelling,
-		activeCount,
-		activeMinutes,
-		isStartDisabled,
-		maxQuestions,
-		quickQuestionCounts,
 		selectionMode,
-		questionCount,
-		questionCountInput,
+		maxCount,
+		allCountMinutes,
+		quickCounts,
+		count,
+		countInput,
+		countMinutes,
+		showCustomEstimate,
 		rangeStart,
 		rangeEnd,
 		rangeStartInput,
 		rangeEndInput,
-		rangeQuestionCount,
+		rangeCount,
+		rangeMinutes,
+		activeCount,
+		activeMinutes,
+		isStartDisabled,
 		direction,
-		spellingMax,
 		spellingStats,
-		quickSpellingCounts,
-		spellingMode,
-		spellingQuestionCount,
-		spellingQuestionCountInput,
-		spellingRangeStart,
-		spellingRangeEnd,
-		spellingRangeStartInput,
-		spellingRangeEndInput,
-		spellingRangeCount,
 	} = snapshot;
+	const isSpelling = practiceKind === "spelling";
 
 	const spellingUnavailableReason =
 		snapshot.spellingUnavailableReason?.kind === "disabled"
@@ -94,12 +135,9 @@ export const PracticeSetup = React.memo(function PracticeSetup(props: PracticeSe
 					})
 				: undefined;
 
-	const handlePracticeKindChange = (kind: PracticeKind) => {
-		session.setPracticeKind(kind);
-	};
-
 	const handleStart = () => {
-		session.startSession(onStartSession);
+		const request = session.start();
+		if (request) onStartSession(request);
 	};
 
 	return (
@@ -122,7 +160,7 @@ export const PracticeSetup = React.memo(function PracticeSetup(props: PracticeSe
 					</>
 				) : (
 					<>
-						<span>{t("setup.availableCards", { count: maxQuestions })}</span>
+						<span>{t("setup.availableCards", { count: maxCount })}</span>
 						{activeMinutes > 0 && (
 							<span>{t("practice.estimatedTime", { minutes: activeMinutes })}</span>
 						)}
@@ -133,14 +171,14 @@ export const PracticeSetup = React.memo(function PracticeSetup(props: PracticeSe
 				isSpelling ? (
 					<>
 						{t(
-							spellingMode === "smart"
+							selectionMode === "smart"
 								? "spelling.smartSelection"
 								: "spelling.rangeSelection",
 						)}
-						{spellingMode === "range" && (
+						{selectionMode === "range" && (
 							<>
 								{" "}
-								· {spellingRangeStart}–{spellingRangeEnd}
+								· {rangeStart}–{rangeEnd}
 							</>
 						)}
 						{activeMinutes > 0 && (
@@ -208,7 +246,7 @@ export const PracticeSetup = React.memo(function PracticeSetup(props: PracticeSe
 										: undefined,
 								},
 							]}
-							onChange={handlePracticeKindChange}
+							onChange={(kind) => session.act({ type: "set-kind", kind })}
 						/>
 					</SetupControlGroup>
 				)}
@@ -218,13 +256,13 @@ export const PracticeSetup = React.memo(function PracticeSetup(props: PracticeSe
 						icon={SlidersHorizontal}
 						title={t("spelling.chooseWords")}
 						note={t(
-							spellingMode === "smart"
+							selectionMode === "smart"
 								? "spelling.chooseWordsNote"
 								: "spelling.rangeSelectionNote",
 						)}
 					>
 						<SetupSelector
-							value={spellingMode}
+							value={selectionMode === "range" ? "range" : "smart"}
 							ariaLabel={t("spelling.chooseWords")}
 							options={[
 								{
@@ -238,34 +276,36 @@ export const PracticeSetup = React.memo(function PracticeSetup(props: PracticeSe
 									icon: ListOrdered,
 								},
 							]}
-							onChange={(mode) => session.setSpellingMode(mode)}
+							onChange={(mode) => session.act({ type: "set-selection-mode", mode })}
 						/>
 
 						<div className={styles.controlDetail}>
-							{spellingMode === "smart"
+							{selectionMode === "smart"
 								? renderCountFields(t, {
-										count: spellingQuestionCount,
-										countInput: spellingQuestionCountInput,
-										quickCounts: quickSpellingCounts,
-										maxCount: spellingMax,
-										isSpelling: true,
+										count,
+										countInput,
+										countMinutes,
+										showCustomEstimate,
+										quickCounts,
+										maxCount,
+										allCountMinutes,
 										customLabel: t("spelling.customCount"),
-										onPickCount: (count) =>
-											session.selectQuickSpellingCount(count),
+										onPickCount: (nextCount) =>
+											session.act({ type: "pick-count", count: nextCount }),
 										onChangeCount: (value) =>
-											session.setSpellingQuestionCountInput(value),
-										onCommitCount: () => session.commitSpellingQuestionCount(),
+											session.act({ type: "edit-count", value }),
+										onCommitCount: () => session.act({ type: "commit-count" }),
 									})
 								: renderRangeFields(t, {
-										startInput: spellingRangeStartInput,
-										endInput: spellingRangeEndInput,
-										count: spellingRangeCount,
-										isSpelling: true,
+										startInput: rangeStartInput,
+										endInput: rangeEndInput,
+										count: rangeCount,
+										minutes: rangeMinutes,
 										onChangeStart: (value) =>
-											session.setSpellingRangeStartInput(value),
+											session.act({ type: "edit-range-start", value }),
 										onChangeEnd: (value) =>
-											session.setSpellingRangeEndInput(value),
-										onCommitRange: () => session.commitSpellingRange(),
+											session.act({ type: "edit-range-end", value }),
+										onCommitRange: () => session.act({ type: "commit-range" }),
 									})}
 						</div>
 					</SetupControlGroup>
@@ -276,14 +316,12 @@ export const PracticeSetup = React.memo(function PracticeSetup(props: PracticeSe
 							title={t("practice.chooseCount")}
 							note={
 								selectionMode === "range"
-									? t("practice.rangeSelectedSummary", {
-											count: rangeQuestionCount,
-										})
+									? t("practice.rangeSelectedSummary", { count: rangeCount })
 									: t("practice.chooseCountNote")
 							}
 						>
 							<SetupSelector
-								value={selectionMode}
+								value={selectionMode === "range" ? "range" : "random"}
 								ariaLabel={t("practice.chooseCount")}
 								options={[
 									{
@@ -297,33 +335,43 @@ export const PracticeSetup = React.memo(function PracticeSetup(props: PracticeSe
 										icon: ListOrdered,
 									},
 								]}
-								onChange={(mode) => session.setSelectionMode(mode)}
+								onChange={(mode) =>
+									session.act({ type: "set-selection-mode", mode })
+								}
 							/>
 
 							<div className={styles.controlDetail}>
 								{selectionMode === "random"
 									? renderCountFields(t, {
-											count: questionCount,
-											countInput: questionCountInput,
-											quickCounts: quickQuestionCounts,
-											maxCount: maxQuestions,
-											isSpelling: false,
+											count,
+											countInput,
+											countMinutes,
+											showCustomEstimate,
+											quickCounts,
+											maxCount,
+											allCountMinutes,
 											customLabel: t("practice.customCount"),
-											onPickCount: (count) =>
-												session.selectQuickQuestionCount(count),
+											onPickCount: (nextCount) =>
+												session.act({
+													type: "pick-count",
+													count: nextCount,
+												}),
 											onChangeCount: (value) =>
-												session.setQuestionCountInput(value),
-											onCommitCount: () => session.commitQuestionCount(),
+												session.act({ type: "edit-count", value }),
+											onCommitCount: () =>
+												session.act({ type: "commit-count" }),
 										})
 									: renderRangeFields(t, {
 											startInput: rangeStartInput,
 											endInput: rangeEndInput,
-											count: rangeQuestionCount,
-											isSpelling: false,
+											count: rangeCount,
+											minutes: rangeMinutes,
 											onChangeStart: (value) =>
-												session.setRangeStartInput(value),
-											onChangeEnd: (value) => session.setRangeEndInput(value),
-											onCommitRange: () => session.commitRange(),
+												session.act({ type: "edit-range-start", value }),
+											onChangeEnd: (value) =>
+												session.act({ type: "edit-range-end", value }),
+											onCommitRange: () =>
+												session.act({ type: "commit-range" }),
 										})}
 							</div>
 						</SetupControlGroup>
@@ -352,7 +400,9 @@ export const PracticeSetup = React.memo(function PracticeSetup(props: PracticeSe
 										icon: Repeat2,
 									},
 								]}
-								onChange={(dir) => session.setDirection(dir)}
+								onChange={(dir) =>
+									session.act({ type: "set-direction", direction: dir })
+								}
 							/>
 
 							<div className={practiceStyles.directionFlowCard}>
@@ -391,9 +441,11 @@ export const PracticeSetup = React.memo(function PracticeSetup(props: PracticeSe
 interface CountFieldsProps {
 	count: number;
 	countInput: string;
-	quickCounts: readonly number[];
+	countMinutes: number;
+	showCustomEstimate: boolean;
+	quickCounts: readonly PracticeQuickCountOption[];
 	maxCount: number;
-	isSpelling: boolean;
+	allCountMinutes: number;
 	customLabel: string;
 	onPickCount: (count: number) => void;
 	onChangeCount: (value: string) => void;
@@ -407,9 +459,11 @@ function renderCountFields(
 	{
 		count,
 		countInput,
+		countMinutes,
+		showCustomEstimate,
 		quickCounts,
 		maxCount,
-		isSpelling,
+		allCountMinutes,
 		customLabel,
 		onPickCount,
 		onChangeCount,
@@ -417,28 +471,24 @@ function renderCountFields(
 	}: CountFieldsProps,
 ): React.JSX.Element {
 	const chipClass = cls(styles.chip, practiceStyles.chipWithTime);
-	const showCustomEstimate = count > 0 && !quickCounts.includes(count) && count !== maxCount;
 
 	return (
 		<>
 			<div className={styles.quickButtons}>
-				{quickCounts.map((preset) => {
-					const minutes = estimateMinutes(preset, isSpelling);
-					return (
-						<FlashcardButton
-							key={preset}
-							type="button"
-							className={chipClass}
-							active={count === preset}
-							aria-pressed={count === preset}
-							aria-label={t("practice.chipAria", { count: preset, minutes })}
-							onClick={() => onPickCount(preset)}
-						>
-							<span>{preset}</span>
-							<span className={practiceStyles.chipSub}>~{minutes}m</span>
-						</FlashcardButton>
-					);
-				})}
+				{quickCounts.map(({ count: preset, minutes }) => (
+					<FlashcardButton
+						key={preset}
+						type="button"
+						className={chipClass}
+						active={count === preset}
+						aria-pressed={count === preset}
+						aria-label={t("practice.chipAria", { count: preset, minutes })}
+						onClick={() => onPickCount(preset)}
+					>
+						<span>{preset}</span>
+						<span className={practiceStyles.chipSub}>~{minutes}m</span>
+					</FlashcardButton>
+				))}
 				<FlashcardButton
 					type="button"
 					className={chipClass}
@@ -446,7 +496,7 @@ function renderCountFields(
 					aria-pressed={count === maxCount}
 					aria-label={t("practice.allCardsAria", {
 						count: maxCount,
-						minutes: estimateMinutes(maxCount, isSpelling),
+						minutes: allCountMinutes,
 					})}
 					onClick={() => onPickCount(maxCount)}
 				>
@@ -470,9 +520,7 @@ function renderCountFields(
 				</label>
 				{showCustomEstimate && (
 					<span className={practiceStyles.customEstimate}>
-						{t("practice.estimatedTime", {
-							minutes: estimateMinutes(count, isSpelling),
-						})}
+						{t("practice.estimatedTime", { minutes: countMinutes })}
 					</span>
 				)}
 			</div>
@@ -484,7 +532,7 @@ interface RangeFieldsProps {
 	startInput: string;
 	endInput: string;
 	count: number;
-	isSpelling: boolean;
+	minutes: number;
 	onChangeStart: (value: string) => void;
 	onChangeEnd: (value: string) => void;
 	onCommitRange: () => void;
@@ -496,7 +544,7 @@ function renderRangeFields(
 		startInput,
 		endInput,
 		count,
-		isSpelling,
+		minutes,
 		onChangeStart,
 		onChangeEnd,
 		onCommitRange,
@@ -528,8 +576,7 @@ function renderRangeFields(
 					{t("practice.rangeSelectedSummary", { count })}
 				</span>
 				<span className={practiceStyles.rangeEstimatedTime}>
-					（{t("practice.estimatedTime", { minutes: estimateMinutes(count, isSpelling) })}
-					）
+					（{t("practice.estimatedTime", { minutes })}）
 				</span>
 			</div>
 		</div>

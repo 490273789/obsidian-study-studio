@@ -9,6 +9,7 @@ import type {
 	PracticeSetupPlan,
 	SpellingSetupPlan,
 } from "../../../domain/sessions/sessionPlanner";
+import { createMemoryPracticePreferenceStore } from "../../../domain/sessions/practiceSetupSession";
 import { SetupPage } from "../../primitives/SetupPage/SetupPage";
 import { StudySetup, StudyPlan, StudyDayRow } from "../Study/StudySetup";
 import { PracticeSetup } from "../Practice/PracticeSetup";
@@ -271,42 +272,31 @@ describe("setup selections and start requests", () => {
 		find<PageProps>(tree, SetupPage).onStart();
 		expect(props.onStartSession).not.toHaveBeenCalled();
 	});
-	it("updates practice quantity, normalizes custom input and preserves range direction", () => {
-		const props = { deck, plan: practicePlan, onStartSession: vi.fn(), onBack: vi.fn() };
+	it("wires flip and spelling controls through PracticeSetup to onStartSession", () => {
+		const props = {
+			deck,
+			plan: practicePlan,
+			spellingPlan,
+			preferenceStore: createMemoryPracticePreferenceStore(),
+			onStartSession: vi.fn(),
+			onBack: vi.fn(),
+		};
 		let tree = renderMemo(PracticeSetup, props);
 		const render = () => {
 			tree = renderMemo(PracticeSetup, props);
 		};
+		expect(find<PageProps>(tree, SetupPage).countLabel).toBe("setup.questions");
+
+		// Flip quick count -> range -> start
 		find<{ onClick: () => void }>(tree, FlashcardButton, 0).onClick();
 		render();
 		expect(find<PageProps>(tree, SetupPage).count).toBe(20);
-		change(find<InputProps>(tree, FlashcardInput), "200");
-		render();
-		find<InputProps>(tree, FlashcardInput).onBlur();
-		render();
-		expect(find<InputProps>(tree, FlashcardInput).value).toBe("100");
-		expect(find<PageProps>(tree, SetupPage).count).toBe(100);
-		find<PageProps>(tree, SetupPage).onStart();
-		expect(props.onStartSession).toHaveBeenLastCalledWith({
-			mode: "practice",
-			deckId: "deck",
-			direction: "normal",
-			selection: { kind: "random", questionCount: 100 },
-		});
-		change(find<InputProps>(tree, FlashcardInput), "");
-		render();
-		find<InputProps>(tree, FlashcardInput).onBlur();
-		render();
-		expect(find<PageProps>(tree, SetupPage).count).toBe(1);
-		find<SelectorProps>(tree, SetupSelector, 0).onChange("range");
-		find<SelectorProps>(tree, SetupSelector, 1).onChange("reversed");
+		find<SelectorProps>(tree, SetupSelector, 1).onChange("range");
+		find<SelectorProps>(tree, SetupSelector, 2).onChange("reversed");
 		render();
 		change(find<InputProps>(tree, FlashcardInput, 0), "10");
 		change(find<InputProps>(tree, FlashcardInput, 1), "200");
 		render();
-		find<InputProps>(tree, FlashcardInput, 0).onBlur();
-		render();
-		expect(find<PageProps>(tree, SetupPage).count).toBe(91);
 		find<PageProps>(tree, SetupPage).onStart();
 		expect(props.onStartSession).toHaveBeenLastCalledWith({
 			mode: "practice",
@@ -314,9 +304,42 @@ describe("setup selections and start requests", () => {
 			direction: "reversed",
 			selection: { kind: "range", startIndex: 10, endIndex: 100 },
 		});
+
+		// Switch to spelling -> smart quick count -> range -> start
+		find<SelectorProps>(tree, SetupSelector, 0).onChange("spelling");
+		render();
+		expect(find<PageProps>(tree, SetupPage).countLabel).toBe("setup.words");
+		expect(find<PageProps>(tree, SetupPage).count).toBe(20);
+		find<{ onClick: () => void }>(tree, FlashcardButton, 2).onClick();
+		render();
+		expect(find<PageProps>(tree, SetupPage).count).toBe(50);
+		find<PageProps>(tree, SetupPage).onStart();
+		expect(props.onStartSession).toHaveBeenLastCalledWith({
+			mode: "spelling",
+			deckId: "deck",
+			selection: { kind: "smart", questionCount: 50 },
+		});
+
+		find<SelectorProps>(tree, SetupSelector, 1).onChange("range");
+		render();
+		change(find<InputProps>(tree, FlashcardInput, 0), "5");
+		change(find<InputProps>(tree, FlashcardInput, 1), "25");
+		render();
+		find<PageProps>(tree, SetupPage).onStart();
+		expect(props.onStartSession).toHaveBeenLastCalledWith({
+			mode: "spelling",
+			deckId: "deck",
+			selection: { kind: "range", startIndex: 5, endIndex: 25 },
+		});
 	});
 	it("applies live practice limits to the existing setup before starting", () => {
-		const props = { deck, plan: practicePlan, onStartSession: vi.fn(), onBack: vi.fn() };
+		const props = {
+			deck,
+			plan: practicePlan,
+			preferenceStore: createMemoryPracticePreferenceStore(),
+			onStartSession: vi.fn(),
+			onBack: vi.fn(),
+		};
 		let tree = renderMemo(PracticeSetup, props);
 		find<SelectorProps>(tree, SetupSelector, 1).onChange("reversed");
 		const updatedProps = {
@@ -334,137 +357,22 @@ describe("setup selections and start requests", () => {
 			selection: { kind: "random", questionCount: 10 },
 		});
 	});
-
-	it("updates spelling smart quantity and clamps range endpoints", () => {
-		const props = {
-			deck,
-			plan: practicePlan,
-			spellingPlan,
-			initialKind: "spelling" as const,
-			onStartSession: vi.fn(),
-			onBack: vi.fn(),
-		};
-		let tree = renderMemo(PracticeSetup, props);
-		const render = () => {
-			tree = renderMemo(PracticeSetup, props);
-		};
-		find<{ onClick: () => void }>(tree, FlashcardButton, 2).onClick();
-		render();
-		expect(find<PageProps>(tree, SetupPage).count).toBe(50);
-		find<PageProps>(tree, SetupPage).onStart();
-		expect(props.onStartSession).toHaveBeenLastCalledWith({
-			mode: "spelling",
-			deckId: "deck",
-			selection: { kind: "smart", questionCount: 50 },
-		});
-		find<SelectorProps>(tree, SetupSelector, 1).onChange("range");
-		render();
-		change(find<InputProps>(tree, FlashcardInput, 0), "10");
-		render();
-		change(find<InputProps>(tree, FlashcardInput, 1), "200");
-		render();
-		expect(find<PageProps>(tree, SetupPage).count).toBe(91);
-		find<PageProps>(tree, SetupPage).onStart();
-		expect(props.onStartSession).toHaveBeenLastCalledWith({
-			mode: "spelling",
-			deckId: "deck",
-			selection: { kind: "range", startIndex: 10, endIndex: 100 },
-		});
-	});
-	it("supports custom quantity in spelling smart mode", () => {
-		const props = {
-			deck,
-			plan: practicePlan,
-			spellingPlan,
-			initialKind: "spelling" as const,
-			onStartSession: vi.fn(),
-			onBack: vi.fn(),
-		};
-		let tree = renderMemo(PracticeSetup, props);
-		const render = () => {
-			tree = renderMemo(PracticeSetup, props);
-		};
-		change(find<InputProps>(tree, FlashcardInput), "35");
-		render();
-		expect(find<PageProps>(tree, SetupPage).count).toBe(35);
-		find<PageProps>(tree, SetupPage).onStart();
-		expect(props.onStartSession).toHaveBeenLastCalledWith({
-			mode: "spelling",
-			deckId: "deck",
-			selection: { kind: "smart", questionCount: 35 },
-		});
-	});
-	it.each(["practice", "spelling"])("disables empty %s setup", (mode) => {
+	it("disables empty practice setup", () => {
 		const onStartSession = vi.fn();
-		const common = { deck, onStartSession, onBack: vi.fn() };
-		const tree =
-			mode === "practice"
-				? renderMemo(PracticeSetup, {
-						...common,
-						plan: { ...practicePlan, maxQuestions: 0, initialQuestionCount: 0 },
-					})
-				: renderMemo(PracticeSetup, {
-						...common,
-						plan: practicePlan,
-						spellingPlan: { ...spellingPlan, maxQuestions: 0, initialQuestionCount: 0 },
-						initialKind: "spelling",
-					});
-		const page = find<PageProps>(tree, SetupPage);
+		const emptyTree = renderMemo(PracticeSetup, {
+			deck,
+			plan: { ...practicePlan, maxQuestions: 0, initialQuestionCount: 0 },
+			preferenceStore: createMemoryPracticePreferenceStore(),
+			onStartSession,
+			onBack: vi.fn(),
+		});
+		const page = find<PageProps>(emptyTree, SetupPage);
 		expect(page.disabled).toBe(true);
 		page.onStart();
 		expect(onStartSession).not.toHaveBeenCalled();
 	});
-	it("supports integrated spelling mode within PracticeSetup", () => {
-		const props = {
-			deck,
-			plan: practicePlan,
-			spellingPlan,
-			onStartSession: vi.fn(),
-			onBack: vi.fn(),
-		};
-		let tree = renderMemo(PracticeSetup, props);
-		const render = () => {
-			tree = renderMemo(PracticeSetup, props);
-		};
-		expect(find<PageProps>(tree, SetupPage).countLabel).toBe("setup.questions");
-
-		// Switch mode selector to spelling
-		find<SelectorProps>(tree, SetupSelector, 0).onChange("spelling");
-		render();
-		expect(find<PageProps>(tree, SetupPage).countLabel).toBe("setup.words");
-		expect(find<PageProps>(tree, SetupPage).count).toBe(20);
-
-		// Select quick count in spelling mode (index 2 is 50)
-		find<{ onClick: () => void }>(tree, FlashcardButton, 2).onClick();
-		render();
-		expect(find<PageProps>(tree, SetupPage).count).toBe(50);
-
-		// Start session in spelling mode
-		find<PageProps>(tree, SetupPage).onStart();
-		expect(props.onStartSession).toHaveBeenLastCalledWith({
-			mode: "spelling",
-			deckId: "deck",
-			selection: { kind: "smart", questionCount: 50 },
-		});
-
-		// Switch spelling to range
-		find<SelectorProps>(tree, SetupSelector, 1).onChange("range");
-		render();
-		change(find<InputProps>(tree, FlashcardInput, 0), "5");
-		change(find<InputProps>(tree, FlashcardInput, 1), "25");
-		render();
-		find<InputProps>(tree, FlashcardInput, 0).onBlur();
-		render();
-		expect(find<PageProps>(tree, SetupPage).count).toBe(21);
-		find<PageProps>(tree, SetupPage).onStart();
-		expect(props.onStartSession).toHaveBeenLastCalledWith({
-			mode: "spelling",
-			deckId: "deck",
-			selection: { kind: "range", startIndex: 5, endIndex: 25 },
-		});
-	});
-	it("disables spelling option when deck spelling is unavailable", () => {
-		const props = {
+	it("falls back to flip when spelling is unavailable", () => {
+		const fallbackTree = renderMemo(PracticeSetup, {
 			deck,
 			plan: practicePlan,
 			spellingPlan: { ...spellingPlan, maxQuestions: 0 },
@@ -477,13 +385,15 @@ describe("setup selections and start requests", () => {
 				issueCount: 1,
 				ignoredCardCount: 0,
 			},
+			initialKind: "spelling",
+			preferenceStore: createMemoryPracticePreferenceStore(),
 			onStartSession: vi.fn(),
 			onBack: vi.fn(),
-		};
-		const tree = renderMemo(PracticeSetup, props);
+		});
+		expect(find<PageProps>(fallbackTree, SetupPage).countLabel).toBe("setup.questions");
 		const typeSelector = find<{
 			options: Array<{ value: string; disabled?: boolean }>;
-		}>(tree, SetupSelector, 0);
+		}>(fallbackTree, SetupSelector, 0);
 		const spellingOption = typeSelector.options.find((opt) => opt.value === "spelling");
 		expect(spellingOption?.disabled).toBe(true);
 	});

@@ -51,13 +51,9 @@ export type ViewState =
 			type: "practice-setup";
 			deckId: string;
 			initialSelection?: PracticeSelection;
+			initialSpellingSelection?: SpellingSelection;
 			initialDirection?: CardDirection;
 			initialKind?: "flip" | "spelling";
-	  }
-	| {
-			type: "spelling-setup";
-			deckId: string;
-			initialSelection?: SpellingSelection;
 	  }
 	| { type: "challenge-setup" }
 	| { type: "stats" };
@@ -93,6 +89,7 @@ export function practiceSetup(
 	deckId: string,
 	options: {
 		readonly initialSelection?: PracticeSelection;
+		readonly initialSpellingSelection?: SpellingSelection;
 		readonly initialDirection?: CardDirection;
 		readonly initialKind?: "flip" | "spelling";
 	} = {},
@@ -103,21 +100,11 @@ export function practiceSetup(
 		...(options.initialSelection
 			? { initialSelection: Object.freeze({ ...options.initialSelection }) }
 			: {}),
+		...(options.initialSpellingSelection
+			? { initialSpellingSelection: Object.freeze({ ...options.initialSpellingSelection }) }
+			: {}),
 		...(options.initialDirection ? { initialDirection: options.initialDirection } : {}),
 		...(options.initialKind ? { initialKind: options.initialKind } : {}),
-	});
-}
-
-export function spellingSetup(
-	deckId: string,
-	options: { readonly initialSelection?: SpellingSelection } = {},
-): ViewState {
-	return Object.freeze({
-		type: "spelling-setup",
-		deckId,
-		...(options.initialSelection
-			? { initialSelection: Object.freeze({ ...options.initialSelection }) }
-			: {}),
 	});
 }
 
@@ -145,12 +132,16 @@ export function fromRestartOrigin(origin: SessionRestartOrigin): ViewState | nul
 			});
 		}
 		return practiceSetup(origin.deckId, {
+			initialKind: "flip",
 			initialSelection: selection,
 			initialDirection: origin.direction,
 		});
 	}
 	if (origin.selection.kind === "study-day") return studySetup(origin.deckId);
-	return spellingSetup(origin.deckId, { initialSelection: origin.selection });
+	return practiceSetup(origin.deckId, {
+		initialKind: "spelling",
+		initialSpellingSelection: origin.selection,
+	});
 }
 
 /** The shell-owned actions and snapshots route pages receive. */
@@ -453,7 +444,10 @@ function resolveViewState(viewState: Readonly<ViewState>, deckHome: DeckHome): R
 							deck.id,
 							viewState.initialSelection,
 						);
-						const spellingPlan = context.deckHome.getSpellingSetupPlan(deck.id);
+						const spellingPlan = context.deckHome.getSpellingSetupPlan(
+							deck.id,
+							viewState.initialSpellingSelection,
+						);
 						const deckSnapshot = context.deckHome
 							.getSnapshot()
 							.decks.find((d) => d.id === deck.id);
@@ -468,39 +462,6 @@ function resolveViewState(viewState: Readonly<ViewState>, deckHome: DeckHome): R
 								defaultDirection={viewState.initialDirection ?? "normal"}
 								initialDirection={viewState.initialDirection}
 								initialKind={viewState.initialKind}
-								onStartSession={context.onStartSession}
-								onBack={context.onBackHome}
-							/>
-						);
-					}}
-				</DeckHomeSnapshotRoute>
-			));
-		}
-		case "spelling-setup": {
-			const deck = deckHome.getDeck(viewState.deckId);
-			if (!deck) return HOME_PAGE;
-			const plan = deckHome.getSpellingSetupPlan(deck.id, viewState.initialSelection);
-			if (!plan) return HOME_PAGE;
-			return page(`spelling-setup:${viewState.deckId}`, 1, (context) => (
-				<DeckHomeSnapshotRoute home={context.deckHome}>
-					{() => {
-						const currentPracticePlan = context.deckHome.getPracticeSetupPlan(deck.id);
-						const currentPlan = context.deckHome.getSpellingSetupPlan(
-							deck.id,
-							viewState.initialSelection,
-						);
-						const deckSnapshot = context.deckHome
-							.getSnapshot()
-							.decks.find((d) => d.id === deck.id);
-						if (!currentPracticePlan || !currentPlan) return renderHome(context);
-						return (
-							<PracticeSetup
-								key={deck.id}
-								deck={deck}
-								plan={currentPracticePlan}
-								spellingPlan={currentPlan}
-								spellingSnapshot={deckSnapshot?.spelling}
-								initialKind="spelling"
 								onStartSession={context.onStartSession}
 								onBack={context.onBackHome}
 							/>

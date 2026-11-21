@@ -1,11 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { Deck } from "../../../../../core/shared/types";
 import type { PracticeSetupPlan, SpellingSetupPlan } from "../sessionPlanner";
-import {
-	createMemoryPracticePreferenceStore,
-	estimateMinutes,
-	PracticeSetupSession,
-} from "../practiceSetupSession";
+import { createMemoryPracticePreferenceStore, PracticeSetupSession } from "../practiceSetupSession";
 
 const deck: Deck = {
 	id: "deck-1",
@@ -37,37 +33,18 @@ const defaultSpellingPlan: SpellingSetupPlan = {
 	initialSelectionMode: "smart",
 };
 
-describe("estimateMinutes", () => {
-	it("returns 0 for 0 or negative card counts", () => {
-		expect(estimateMinutes(0, false)).toBe(0);
-		expect(estimateMinutes(-5, true)).toBe(0);
-	});
-
-	it("estimates flip duration at 7.5s per card with minimum 1 minute", () => {
-		// 1 card: 7.5s -> round(7.5/60) = 0, but max(1, ...) = 1 minute
-		expect(estimateMinutes(1, false)).toBe(1);
-		// 10 cards: 75s = 1.25m -> 1 minute
-		expect(estimateMinutes(10, false)).toBe(1);
-		// 20 cards: 150s = 2.5m -> 3 minutes (Math.round(2.5) = 3)
-		expect(estimateMinutes(20, false)).toBe(3);
-		// 100 cards: 750s = 12.5m -> 13 minutes
-		expect(estimateMinutes(100, false)).toBe(13);
-	});
-
-	it("estimates spelling duration at 12s per card with minimum 1 minute", () => {
-		// 1 card: 12s -> 1 minute
-		expect(estimateMinutes(1, true)).toBe(1);
-		// 5 cards: 60s -> 1 minute
-		expect(estimateMinutes(5, true)).toBe(1);
-		// 10 cards: 120s -> 2 minutes
-		expect(estimateMinutes(10, true)).toBe(2);
-		// 40 cards: 480s -> 8 minutes
-		expect(estimateMinutes(40, true)).toBe(8);
-	});
-});
+const disabledSpellingSnapshot = {
+	enabled: false,
+	ready: false,
+	valid: false,
+	canStart: false,
+	hasStableIdentities: false,
+	issueCount: 2,
+	ignoredCardCount: 0,
+};
 
 describe("PracticeSetupSession", () => {
-	it("initializes with flip mode and correct default snapshot", () => {
+	it("projects default flip setup state with precomputed quick counts and minutes", () => {
 		const session = new PracticeSetupSession({
 			deck,
 			plan: defaultPracticePlan,
@@ -76,199 +53,295 @@ describe("PracticeSetupSession", () => {
 
 		const snapshot = session.getSnapshot();
 		expect(snapshot.practiceKind).toBe("flip");
-		expect(snapshot.isSpelling).toBe(false);
 		expect(snapshot.direction).toBe("normal");
 		expect(snapshot.selectionMode).toBe("random");
-		expect(snapshot.questionCount).toBe(50);
-		expect(snapshot.questionCountInput).toBe("50");
+		expect(snapshot.maxCount).toBe(100);
+		expect(snapshot.count).toBe(50);
+		expect(snapshot.countInput).toBe("50");
 		expect(snapshot.activeCount).toBe(50);
-		expect(snapshot.activeMinutes).toBe(estimateMinutes(50, false));
+		expect(snapshot.activeMinutes).toBe(6); // round(50 * 7.5 / 60) = 6
+		expect(snapshot.allCountMinutes).toBe(13); // round(100 * 7.5 / 60) = 13
+		expect(snapshot.quickCounts).toEqual([
+			{ count: 20, minutes: 3 },
+			{ count: 50, minutes: 6 },
+		]);
+		expect(snapshot.showCustomEstimate).toBe(false);
 		expect(snapshot.isStartDisabled).toBe(false);
 		expect(snapshot.showModeSelector).toBe(false);
 		expect(snapshot.spellingEligible).toBe(false);
-		expect(snapshot.quickQuestionCounts).toEqual([20, 50]);
 	});
 
-	it("persists practice kind preference across sessions", () => {
+	it("persists practice kind preference when injected and respects explicit initialKind", () => {
 		const store = createMemoryPracticePreferenceStore();
-		const session1 = new PracticeSetupSession({
+		const first = new PracticeSetupSession({
 			deck,
 			plan: defaultPracticePlan,
 			spellingPlan: defaultSpellingPlan,
 			preferenceStore: store,
 		});
 
-		expect(session1.getSnapshot().practiceKind).toBe("flip");
-		session1.setPracticeKind("spelling");
-		expect(session1.getSnapshot().practiceKind).toBe("spelling");
+		expect(first.getSnapshot().practiceKind).toBe("flip");
+		first.act({ type: "set-kind", kind: "spelling" });
+		expect(first.getSnapshot().practiceKind).toBe("spelling");
 		expect(store.getPreference(deck.id)).toBe("spelling");
 
-		// New session for same deck should recover persisted "spelling"
-		const session2 = new PracticeSetupSession({
+		const second = new PracticeSetupSession({
 			deck,
 			plan: defaultPracticePlan,
 			spellingPlan: defaultSpellingPlan,
 			preferenceStore: store,
 		});
-		expect(session2.getSnapshot().practiceKind).toBe("spelling");
-	});
+		expect(second.getSnapshot().practiceKind).toBe("spelling");
+		expect(second.getSnapshot().quickCounts).toEqual([
+			{ count: 10, minutes: 2 },
+			{ count: 20, minutes: 4 },
+		]);
 
-	it("respects initialKind override regardless of store", () => {
-		const store = createMemoryPracticePreferenceStore();
-		store.setPreference(deck.id, "spelling");
-
-		const session = new PracticeSetupSession({
+		const overridden = new PracticeSetupSession({
 			deck,
 			plan: defaultPracticePlan,
 			spellingPlan: defaultSpellingPlan,
 			initialKind: "flip",
 			preferenceStore: store,
 		});
-		expect(session.getSnapshot().practiceKind).toBe("flip");
+		expect(overridden.getSnapshot().practiceKind).toBe("flip");
 	});
 
-	it("handles quick question selection and custom input normalization", () => {
-		const session = new PracticeSetupSession({
+	it("falls back to flip mode when spelling is unavailable initially or becomes unavailable", () => {
+		const store = createMemoryPracticePreferenceStore();
+		store.setPreference(deck.id, "spelling");
+
+		const initiallyUnavailable = new PracticeSetupSession({
 			deck,
 			plan: defaultPracticePlan,
-			preferenceStore: createMemoryPracticePreferenceStore(),
+			spellingPlan: defaultSpellingPlan,
+			spellingSnapshot: disabledSpellingSnapshot,
+			initialKind: "spelling",
+			preferenceStore: store,
 		});
+		expect(initiallyUnavailable.getSnapshot()).toMatchObject({
+			practiceKind: "flip",
+			showModeSelector: true,
+			spellingEligible: false,
+			spellingUnavailableReason: { kind: "disabled" },
+		});
+		initiallyUnavailable.act({ type: "set-kind", kind: "spelling" });
+		expect(initiallyUnavailable.getSnapshot().practiceKind).toBe("flip");
 
-		session.selectQuickQuestionCount(20);
-		expect(session.getSnapshot().questionCount).toBe(20);
-		expect(session.getSnapshot().questionCountInput).toBe("20");
-
-		// Custom input while typing
-		session.setQuestionCountInput("200");
-		expect(session.getSnapshot().questionCount).toBe(100); // clamped to maxQuestions
-		expect(session.getSnapshot().questionCountInput).toBe("200"); // raw input preserved
-
-		// Blur commits normalized value
-		session.commitQuestionCount();
-		expect(session.getSnapshot().questionCount).toBe(100);
-		expect(session.getSnapshot().questionCountInput).toBe("100");
-
-		// Empty/invalid input commits to 1
-		session.setQuestionCountInput("");
-		session.commitQuestionCount();
-		expect(session.getSnapshot().questionCount).toBe(1);
-		expect(session.getSnapshot().questionCountInput).toBe("1");
-	});
-
-	it("handles range selection and normalization on blur", () => {
-		const session = new PracticeSetupSession({
+		const source = {
 			deck,
 			plan: defaultPracticePlan,
-			preferenceStore: createMemoryPracticePreferenceStore(),
+			spellingPlan: defaultSpellingPlan,
+			preferenceStore: store,
+		};
+		const dynamicSession = new PracticeSetupSession({ ...source, initialKind: "spelling" });
+		dynamicSession.act({ type: "set-selection-mode", mode: "range" });
+		dynamicSession.act({ type: "edit-range-start", value: "5" });
+		dynamicSession.act({ type: "edit-range-end", value: "8" });
+		dynamicSession.act({ type: "commit-range" });
+
+		dynamicSession.updateSource({
+			deck,
+			plan: defaultPracticePlan,
+			spellingPlan: defaultSpellingPlan,
+			spellingSnapshot: disabledSpellingSnapshot,
 		});
+		expect(dynamicSession.getSnapshot()).toMatchObject({
+			practiceKind: "flip",
+			spellingEligible: false,
+			isStartDisabled: false,
+		});
+		expect(store.getPreference(deck.id)).toBe("spelling");
 
-		session.setSelectionMode("range");
-		session.setDirection("reversed");
-		session.setRangeStartInput("10");
-		session.setRangeEndInput("200");
-
-		session.commitRange();
-		const snapshot = session.getSnapshot();
-		expect(snapshot.rangeStart).toBe(10);
-		expect(snapshot.rangeEnd).toBe(100);
-		expect(snapshot.rangeStartInput).toBe("10");
-		expect(snapshot.rangeEndInput).toBe("100");
-		expect(snapshot.rangeQuestionCount).toBe(91);
-		expect(snapshot.activeCount).toBe(91);
-
-		const request = session.buildSessionStartRequest();
-		expect(request).toEqual({
-			mode: "practice",
+		dynamicSession.updateSource({
+			deck,
+			plan: defaultPracticePlan,
+			spellingPlan: defaultSpellingPlan,
+		});
+		dynamicSession.act({ type: "set-kind", kind: "spelling" });
+		expect(dynamicSession.start()).toEqual({
+			mode: "spelling",
 			deckId: "deck-1",
-			direction: "reversed",
-			selection: { kind: "range", startIndex: 10, endIndex: 100 },
+			selection: { kind: "range", startIndex: 5, endIndex: 8 },
 		});
 	});
 
-	it("handles spelling smart mode and range mode", () => {
+	it("preserves independent flip and spelling drafts across mode switches", () => {
 		const session = new PracticeSetupSession({
 			deck,
 			plan: defaultPracticePlan,
 			spellingPlan: defaultSpellingPlan,
-			initialKind: "spelling",
-			preferenceStore: createMemoryPracticePreferenceStore(),
 		});
 
-		expect(session.getSnapshot().isSpelling).toBe(true);
-		expect(session.getSnapshot().activeCount).toBe(20);
+		session.act({ type: "set-direction", direction: "reversed" });
+		session.act({ type: "pick-count", count: 20 });
+		session.act({ type: "set-kind", kind: "spelling" });
+		session.act({ type: "set-selection-mode", mode: "range" });
+		session.act({ type: "edit-range-start", value: "3" });
+		session.act({ type: "edit-range-end", value: "15" });
+		session.act({ type: "commit-range" });
 
-		// Select quick count (e.g. 10)
-		session.selectQuickSpellingCount(10);
-		expect(session.getSnapshot().spellingQuestionCount).toBe(10);
-		expect(session.getSnapshot().activeCount).toBe(10);
-
-		let onStart = vi.fn();
-		expect(session.startSession(onStart)).toBe(true);
-		expect(onStart).toHaveBeenCalledWith({
-			mode: "spelling",
-			deckId: "deck-1",
-			selection: { kind: "smart", questionCount: 10 },
+		expect(session.getSnapshot()).toMatchObject({
+			practiceKind: "spelling",
+			selectionMode: "range",
+			activeCount: 13,
+			activeMinutes: 3, // round(13 * 12 / 60) = 3
 		});
 
-		// Switch to range mode
-		session.setSpellingMode("range");
-		session.setSpellingRangeStartInput("5");
-		session.setSpellingRangeEndInput("25");
-		session.commitSpellingRange();
-
-		const snapshot = session.getSnapshot();
-		expect(snapshot.spellingRangeStart).toBe(5);
-		expect(snapshot.spellingRangeEnd).toBe(25);
-		expect(snapshot.spellingRangeCount).toBe(21);
-		expect(snapshot.activeCount).toBe(21);
-
-		onStart = vi.fn();
-		expect(session.startSession(onStart)).toBe(true);
-		expect(onStart).toHaveBeenCalledWith({
-			mode: "spelling",
-			deckId: "deck-1",
-			selection: { kind: "range", startIndex: 5, endIndex: 25 },
+		session.act({ type: "set-kind", kind: "flip" });
+		expect(session.getSnapshot()).toMatchObject({
+			practiceKind: "flip",
+			selectionMode: "random",
+			direction: "reversed",
+			count: 20,
+			activeCount: 20,
+			activeMinutes: 3,
 		});
 	});
 
-	it("disables start session when card count is 0", () => {
-		const emptyPlan: PracticeSetupPlan = {
-			...defaultPracticePlan,
-			maxQuestions: 0,
-			initialQuestionCount: 0,
-		};
-		const session = new PracticeSetupSession({
-			deck,
-			plan: emptyPlan,
-			preferenceStore: createMemoryPracticePreferenceStore(),
-		});
-
-		expect(session.getSnapshot().isStartDisabled).toBe(true);
-		expect(session.buildSessionStartRequest()).toBeNull();
-		const onStart = vi.fn();
-		expect(session.startSession(onStart)).toBe(false);
-		expect(onStart).not.toHaveBeenCalled();
-	});
-
-	it("updates range limits without losing direction, selection mode or valid input", () => {
+	it("handles quick count, live custom count preview, commit, and start normalization", () => {
 		const session = new PracticeSetupSession({
 			deck,
 			plan: defaultPracticePlan,
-			preferenceStore: createMemoryPracticePreferenceStore(),
 		});
-		session.setSelectionMode("range");
-		session.setDirection("reversed");
-		session.setRangeStartInput("5");
-		session.setRangeEndInput("42");
-		session.commitRange();
+
+		session.act({ type: "pick-count", count: 20 });
+		expect(session.getSnapshot()).toMatchObject({
+			count: 20,
+			countInput: "20",
+			showCustomEstimate: false,
+		});
+
+		session.act({ type: "edit-count", value: "35" });
+		expect(session.getSnapshot()).toMatchObject({
+			count: 35,
+			countInput: "35",
+			countMinutes: 4,
+			showCustomEstimate: true,
+		});
+
+		session.act({ type: "edit-count", value: "200" });
+		expect(session.getSnapshot()).toMatchObject({
+			count: 100,
+			countInput: "200",
+		});
+
+		session.act({ type: "commit-count" });
+		expect(session.getSnapshot()).toMatchObject({
+			count: 100,
+			countInput: "100",
+		});
+
+		session.act({ type: "edit-count", value: "" });
+		expect(session.start()).toEqual({
+			mode: "practice",
+			deckId: "deck-1",
+			direction: "normal",
+			selection: { kind: "random", questionCount: 1 },
+		});
+		expect(session.getSnapshot().countInput).toBe("1");
+	});
+
+	it.each(["flip", "spelling"] as const)(
+		"unifies %s range input without clamping during typing, previews live, and commits on start",
+		(kind) => {
+			const session = new PracticeSetupSession({
+				deck,
+				plan: defaultPracticePlan,
+				spellingPlan: defaultSpellingPlan,
+				initialKind: kind,
+			});
+
+			session.act({ type: "set-selection-mode", mode: "range" });
+			if (kind === "flip") {
+				session.act({ type: "set-direction", direction: "reversed" });
+			}
+
+			// Re-typing 1-50/1-20 into 50-80 (or 30-35 for spelling max 40) must not rewrite inputs
+			const targetStart = kind === "flip" ? "50" : "30";
+			const targetEnd = kind === "flip" ? "80" : "35";
+			session.act({ type: "edit-range-start", value: targetStart });
+			expect(session.getSnapshot()).toMatchObject({
+				rangeStartInput: targetStart,
+				rangeStart: Number(targetStart),
+				rangeEnd: Number(targetStart),
+				rangeCount: 1,
+			});
+
+			session.act({ type: "edit-range-end", value: targetEnd });
+			const expectedCount = Number(targetEnd) - Number(targetStart) + 1;
+			expect(session.getSnapshot()).toMatchObject({
+				rangeStartInput: targetStart,
+				rangeEndInput: targetEnd,
+				rangeStart: Number(targetStart),
+				rangeEnd: Number(targetEnd),
+				rangeCount: expectedCount,
+				activeCount: expectedCount,
+			});
+
+			// Overshooting max in input is preserved until commit/start, where start() normalizes it
+			session.act({ type: "edit-range-end", value: "200" });
+			expect(session.getSnapshot().rangeEndInput).toBe("200");
+			const expectedMax = kind === "flip" ? 100 : 40;
+			expect(session.getSnapshot().rangeEnd).toBe(expectedMax);
+
+			const request = session.start();
+			expect(session.getSnapshot().rangeEndInput).toBe(String(expectedMax));
+			expect(request).toEqual(
+				kind === "flip"
+					? {
+							mode: "practice",
+							deckId: "deck-1",
+							direction: "reversed",
+							selection: {
+								kind: "range",
+								startIndex: Number(targetStart),
+								endIndex: expectedMax,
+							},
+						}
+					: {
+							mode: "spelling",
+							deckId: "deck-1",
+							selection: {
+								kind: "range",
+								startIndex: Number(targetStart),
+								endIndex: expectedMax,
+							},
+						},
+			);
+		},
+	);
+
+	it("returns null from start when deck has no eligible cards", () => {
+		const session = new PracticeSetupSession({
+			deck,
+			plan: { ...defaultPracticePlan, maxQuestions: 0, initialQuestionCount: 0 },
+		});
+
+		expect(session.getSnapshot().isStartDisabled).toBe(true);
+		expect(session.start()).toBeNull();
+	});
+
+	it("re-clamps limits on updateSource without losing draft or notifying on identical source", () => {
+		const session = new PracticeSetupSession({
+			deck,
+			plan: defaultPracticePlan,
+		});
+		session.act({ type: "set-selection-mode", mode: "range" });
+		session.act({ type: "set-direction", direction: "reversed" });
+		session.act({ type: "edit-range-start", value: "5" });
+		session.act({ type: "edit-range-end", value: "42" });
+		session.act({ type: "commit-range" });
+
 		const smaller = {
 			deck: { ...deck, name: "Renamed" },
 			plan: { ...defaultPracticePlan, maxQuestions: 20, maxRangeStart: 19 },
 		};
 		session.updateSource(smaller);
+
 		expect(session.getSnapshot()).toMatchObject({
 			deck: { name: "Renamed" },
-			maxQuestions: 20,
+			maxCount: 20,
 			direction: "reversed",
 			selectionMode: "range",
 			rangeStart: 5,
@@ -276,65 +349,24 @@ describe("PracticeSetupSession", () => {
 			rangeStartInput: "5",
 			rangeEndInput: "20",
 		});
-		expect(session.buildSessionStartRequest()).toMatchObject({
+		expect(session.start()).toEqual({
 			mode: "practice",
+			deckId: "deck-1",
 			direction: "reversed",
 			selection: { kind: "range", startIndex: 5, endIndex: 20 },
 		});
-		const snapshot = session.getSnapshot();
-		session.updateSource({ ...smaller, plan: { ...smaller.plan } });
-		expect(session.getSnapshot()).toBe(snapshot);
-	});
 
-	it("disables invalid spelling starts and resumes the same draft when eligibility returns", () => {
-		const source = { deck, plan: defaultPracticePlan, spellingPlan: defaultSpellingPlan };
-		const session = new PracticeSetupSession({ ...source, initialKind: "spelling" });
-		session.setSpellingMode("range");
-		session.setSpellingRangeStartInput("5");
-		session.setSpellingRangeEndInput("8");
-		session.updateSource({
-			...source,
-			spellingSnapshot: {
-				enabled: false,
-				ready: false,
-				valid: true,
-				canStart: false,
-				hasStableIdentities: true,
-				issueCount: 0,
-				ignoredCardCount: 0,
-			},
-		});
-		expect(session.getSnapshot()).toMatchObject({
-			spellingEligible: false,
-			isSpelling: true,
-			isStartDisabled: true,
-		});
-		expect(session.buildSessionStartRequest()).toBeNull();
-		session.updateSource(source);
-		expect(session.buildSessionStartRequest()).toMatchObject({
-			mode: "spelling",
-			selection: { kind: "range", startIndex: 5, endIndex: 8 },
-		});
-	});
-
-	it("notifies subscribers when state changes", () => {
-		const session = new PracticeSetupSession({
-			deck,
-			plan: defaultPracticePlan,
-			preferenceStore: createMemoryPracticePreferenceStore(),
-		});
-
+		const before = session.getSnapshot();
 		const listener = vi.fn();
 		const unsubscribe = session.subscribe(listener);
+		session.updateSource({ ...smaller, plan: { ...smaller.plan } });
+		expect(session.getSnapshot()).toBe(before);
+		expect(listener).not.toHaveBeenCalled();
 
-		session.setDirection("reversed");
+		session.act({ type: "set-direction", direction: "normal" });
 		expect(listener).toHaveBeenCalledTimes(1);
-
-		session.selectQuickQuestionCount(20);
-		expect(listener).toHaveBeenCalledTimes(2);
-
 		unsubscribe();
-		session.setDirection("normal");
-		expect(listener).toHaveBeenCalledTimes(2);
+		session.act({ type: "pick-count", count: 10 });
+		expect(listener).toHaveBeenCalledTimes(1);
 	});
 });
