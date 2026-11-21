@@ -117,5 +117,15 @@ describe("video player settings presentation", () => {
 		const groupKeys = presentation.snapshot.groups.map((group) => group.key);
 		expect(groupKeys).not.toContain("shadowing");
 		expect(groupKeys).toEqual(["general", "keyboard", "local-data"]);
+		const keyboardRows =
+			presentation.snapshot.groups.find((group) => group.key === "keyboard")?.rows ?? [];
+		expect(keyboardRows.map((row) => row.key)).toEqual([
+			"scope",
+			"togglePlayback",
+			"seekBackward",
+			"seekForward",
+		]);
+		expect(keyboardRows[0]?.description).toBe(t.shortcutDescription);
+		expect(keyboardRows[1]?.description).toBeUndefined();
 	});
 });

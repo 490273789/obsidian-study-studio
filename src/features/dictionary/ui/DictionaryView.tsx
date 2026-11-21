@@ -120,6 +120,9 @@ export function DictionaryView({
 	const isLoading = state.status === "loading";
 	const canLookup = Boolean(state.input.trim()) && state.status !== "loading";
 	const queryWord = state.query;
+	const activeSource =
+		state.sources.find((source) => source.id === state.activeSourceId) ?? state.sources[0];
+	const activeWord = activeSource?.result?.word || queryWord;
 
 	useEffect(() => {
 		return () => {
@@ -418,6 +421,33 @@ export function DictionaryView({
 							</button>
 						);
 					})}
+					{activeWord && activeSource?.kind === "local" && (
+						<div className={styles.tabBarActions}>
+							<FlashcardButton
+								preset="icon"
+								size="sm"
+								variant="ghost"
+								icon={Bookmark}
+								title={strings.favoriteAction}
+								aria-label={strings.favoriteAction}
+								onClick={() => void onOpenFavorite(activeWord)}
+							/>
+							<FlashcardButton
+								preset="icon"
+								size="sm"
+								variant="ghost"
+								icon={copiedWord === activeWord ? Check : Copy}
+								title={
+									copiedWord === activeWord ? strings.copied : strings.copyWord
+								}
+								aria-label={
+									copiedWord === activeWord ? strings.copied : strings.copyWord
+								}
+								className={copiedWord === activeWord ? styles.isCopied : undefined}
+								onClick={() => void copyWord(activeWord)}
+							/>
+						</div>
+					)}
 				</div>
 			)}
 
@@ -464,39 +494,48 @@ export function DictionaryView({
 								)}
 							>
 								{word && (
-									<header className={styles.entryHeader}>
+									<header
+										className={cls(
+											styles.entryHeader,
+											source.kind === "local" && styles.visuallyHidden,
+										)}
+									>
 										<h2 dir="auto">{word}</h2>
-										<div className={styles.entryActions}>
-											<FlashcardButton
-												preset="icon"
-												size="sm"
-												icon={Bookmark}
-												title={strings.favoriteAction}
-												aria-label={strings.favoriteAction}
-												onClick={() => void onOpenFavorite(word)}
-											/>
-											<FlashcardButton
-												preset="icon"
-												size="sm"
-												icon={copiedWord === word ? Check : Copy}
-												title={
-													copiedWord === word
-														? strings.copied
-														: strings.copyWord
-												}
-												aria-label={
-													copiedWord === word
-														? strings.copied
-														: strings.copyWord
-												}
-												className={
-													copiedWord === word
-														? styles.isCopied
-														: undefined
-												}
-												onClick={() => void copyWord(word)}
-											/>
-										</div>
+										{source.kind !== "local" && (
+											<div className={styles.entryActions}>
+												<FlashcardButton
+													preset="icon"
+													size="sm"
+													variant="ghost"
+													icon={Bookmark}
+													title={strings.favoriteAction}
+													aria-label={strings.favoriteAction}
+													onClick={() => void onOpenFavorite(word)}
+												/>
+												<FlashcardButton
+													preset="icon"
+													size="sm"
+													variant="ghost"
+													icon={copiedWord === word ? Check : Copy}
+													title={
+														copiedWord === word
+															? strings.copied
+															: strings.copyWord
+													}
+													aria-label={
+														copiedWord === word
+															? strings.copied
+															: strings.copyWord
+													}
+													className={
+														copiedWord === word
+															? styles.isCopied
+															: undefined
+													}
+													onClick={() => void copyWord(word)}
+												/>
+											</div>
+										)}
 									</header>
 								)}
 								{source.kind === "ai" && source.status === "idle" ? (
@@ -579,10 +618,21 @@ export function DictionaryView({
 													return (
 														<div
 															key={`${pronunciation.accent}-${pronunciation.phonetic}`}
+															className={styles.pronunciationPill}
 														>
-															<span>
-																{pronunciation.label} /
-																{pronunciation.phonetic}/
+															<span
+																className={
+																	styles.pronunciationLabel
+																}
+															>
+																{pronunciation.label}
+															</span>
+															<span
+																className={
+																	styles.pronunciationPhonetic
+																}
+															>
+																/{pronunciation.phonetic}/
 															</span>
 															{playable && (
 																<FlashcardButton

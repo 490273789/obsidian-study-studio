@@ -103,7 +103,14 @@ export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
 							cue.start === null || cue.end === null || cue.end <= cue.start;
 						const wordFallback = draft.hasReviewWordTimings && !cue.highlightable;
 						return (
-							<li key={cue.id} className={styles.draftCue}>
+							<li
+								key={cue.id}
+								className={cls(
+									styles.draftCue,
+									cue.needsReview && styles.draftCuePending,
+									invalid && styles.draftCueInvalid,
+								)}
+							>
 								<div className={styles.draftCueHeader}>
 									<span className={styles.draftCueIndex}>
 										{String(index + 1).padStart(2, "0")}
@@ -163,13 +170,19 @@ export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
 								)}
 								<div className={styles.draftTimeRow}>
 									<label className={styles.timeField}>
-										<span>{t.start}</span>
+										<span>
+											{t.start}
+											{cue.start !== null && cue.start >= 60
+												? ` (${timeLabel(cue.start)})`
+												: ""}
+										</span>
 										<FlashcardInput
 											type="number"
 											min="0"
 											step="0.01"
 											inputSize="sm"
 											fullWidth={false}
+											aria-invalid={invalid ? "true" : undefined}
 											value={cue.start ?? ""}
 											onChange={(event) =>
 												act({
@@ -186,13 +199,19 @@ export function DraftReviewBody(props: DraftReviewBodyProps): React.ReactNode {
 										/>
 									</label>
 									<label className={styles.timeField}>
-										<span>{t.end}</span>
+										<span>
+											{t.end}
+											{cue.end !== null && cue.end >= 60
+												? ` (${timeLabel(cue.end)})`
+												: ""}
+										</span>
 										<FlashcardInput
 											type="number"
 											min="0"
 											step="0.01"
 											inputSize="sm"
 											fullWidth={false}
+											aria-invalid={invalid ? "true" : undefined}
 											value={cue.end ?? ""}
 											onChange={(event) =>
 												act({

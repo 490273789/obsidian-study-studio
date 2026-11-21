@@ -53,6 +53,10 @@ export function buildVideoPlayerSettingsViewModel(
 			);
 		});
 		page.group("keyboard", t.keyboardSettings, (group) => {
+			group.row("scope", {
+				name: "",
+				description: t.shortcutDescription,
+			});
 			for (const key of ["togglePlayback", "seekBackward", "seekForward"] as const) {
 				const unavailableValues = Object.entries(settings.shortcuts)
 					.filter(([other]) => other !== key)
@@ -63,7 +67,6 @@ export function buildVideoPlayerSettingsViewModel(
 					key,
 					{
 						name: t.shortcutNames[key],
-						description: t.shortcutDescription,
 					},
 					(row) => {
 						row.keybinding("binding", {

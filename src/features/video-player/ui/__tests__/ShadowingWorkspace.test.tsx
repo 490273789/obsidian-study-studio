@@ -295,4 +295,49 @@ describe("ShadowingWorkspace", () => {
 		const save = findButton(tree, (button) => button.props.children === "正在保存…");
 		expect(save.props.disabled).toBe(true);
 	});
+
+	it("renders active recording stage feedback and shortcut hints", () => {
+		hooks.values = [];
+		hooks.index = 0;
+		const onAction = vi.fn(async () => undefined);
+		const state = {
+			cues: [
+				{ id: "cue-1", start: 1, end: 3, text: "First sentence" },
+				{ id: "cue-2", start: 4, end: 6, text: "Second sentence" },
+			],
+			records: [],
+			failedSaves: [],
+			taskError: null,
+			practiceStart: 1,
+			practiceEnd: 3,
+			practicePhase: "recording",
+			practiceMode: "shadow",
+			countdown: 0,
+			restSeconds: 2,
+			responseMultiplier: 1,
+			hasTemporaryTake: false,
+			savingTake: false,
+			practiceError: null,
+			hasCandidate: false,
+			selectedCueIds: ["cue-1"],
+			rangeStart: 1,
+			rangeEnd: 3,
+			canPractice: true,
+			deletedDrafts: [],
+			editor: null,
+		} as unknown as ShadowingWorkspaceState;
+
+		const tree = ShadowingWorkspace({
+			language: "zh",
+			currentTime: 1.5,
+			duration: 30,
+			state,
+			onAction,
+		});
+
+		const markup = renderToStaticMarkup(tree);
+		expect(markup).toContain("正在录音 · 请跟读");
+		expect(markup).toContain('data-phase="recording"');
+		expect(markup).toContain("<kbd>R</kbd>");
+	});
 });

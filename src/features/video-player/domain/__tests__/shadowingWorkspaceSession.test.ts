@@ -619,6 +619,31 @@ describe("ShadowingWorkspaceSession", () => {
 		expect(snap.editor?.text).toBe("uncommitted work");
 		state.session.dispose();
 	});
+
+	it("steps across subtitle cues and replays the current sentence via act()", async () => {
+		const state = setup();
+		// Step forward from initial state selects the first cue after currentTime (0)
+		await state.session.act({ type: "step-cue", direction: 1 });
+		expect(state.session.getSnapshot().selectedCueIds).toEqual(["c1"]);
+		expect(state.media.currentTime).toBe(1);
+
+		// Step forward again moves to c2
+		await state.session.act({ type: "step-cue", direction: 1 });
+		expect(state.session.getSnapshot().selectedCueIds).toEqual(["c2"]);
+		expect(state.media.currentTime).toBe(4);
+
+		// Step backward moves back to c1
+		await state.session.act({ type: "step-cue", direction: -1 });
+		expect(state.session.getSnapshot().selectedCueIds).toEqual(["c1"]);
+		expect(state.media.currentTime).toBe(1);
+
+		// Replay current cue sets practice range and starts bounded playback
+		await state.session.act({ type: "replay-current-cue" });
+		expect(state.session.getSnapshot().practiceStart).toBe(1);
+		expect(state.session.getSnapshot().practiceEnd).toBe(3);
+		expect(state.session.getSnapshot().practicePhase).toBe("playing");
+		state.session.dispose();
+	});
 });
 
 describe("shadowing playback and recordings", () => {

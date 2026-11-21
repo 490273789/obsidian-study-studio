@@ -9,18 +9,24 @@
 	max-height: var(--fc-selection-max-height, 70dvh);
 	display: flex;
 	flex-direction: column;
-	background: var(--background-primary);
+	background: var(--fc-surface-card, var(--background-primary));
 	color: inherit;
-	border: 1px solid var(--fc-border-color);
+	border: 1px solid var(--fc-border-color, var(--fc-line));
 	border-radius: var(--fc-radius-lg);
 	box-shadow: var(--fc-shadow-overlay);
-	animation: bubblePop 0.15s ease-out;
+	animation: bubblePop 0.16s var(--fc-ease-out, ease-out);
 	overflow: hidden;
 
 	.header {
 		flex-shrink: 0;
-		background: var(--background-secondary);
-		border-bottom: 1px solid var(--fc-border-color);
+		background:
+			radial-gradient(
+				120% 140% at 0% 0%,
+				color-mix(in srgb, var(--fc-primary) 7%, transparent),
+				transparent 60%
+			),
+			var(--fc-surface-section, var(--background-secondary));
+		border-bottom: 1px solid var(--fc-line-soft, var(--fc-border-color));
 
 		.dragHandle {
 			cursor: grab;
@@ -44,9 +50,10 @@
 			padding: 0;
 			border: none;
 			background: transparent;
-			font-size: var(--fc-font-lg);
+			font-size: var(--fc-font-xl);
 			font-weight: var(--fc-weight-bold);
-			color: var(--text-normal);
+			letter-spacing: -0.015em;
+			color: var(--fc-text, var(--text-normal));
 			outline: none;
 			width: 100%;
 			min-width: 0;
@@ -69,12 +76,13 @@
 			display: inline-flex;
 			align-items: center;
 			gap: var(--fc-space-1);
-			padding: 3px 8px;
+			padding: 4px var(--fc-space-2);
 			font-size: var(--fc-font-xs);
-			border: 1px solid var(--fc-border-color);
-			background: var(--background-primary);
-			color: var(--text-muted);
-			border-radius: var(--fc-radius-sm);
+			font-weight: var(--fc-weight-medium);
+			border: 1px solid var(--fc-line-soft, var(--fc-border-color));
+			background: var(--fc-surface-card, var(--background-primary));
+			color: var(--fc-muted, var(--text-muted));
+			border-radius: var(--fc-radius-pill);
 			cursor: pointer;
 			transition:
 				color var(--fc-motion-quick) ease,
@@ -82,9 +90,13 @@
 				border-color var(--fc-motion-quick) ease;
 
 			&:hover:not(:disabled) {
-				color: var(--text-normal);
-				background: var(--background-modifier-hover);
-				border-color: var(--interactive-accent);
+				color: var(--fc-primary-text-light, var(--fc-primary));
+				background: color-mix(
+					in srgb,
+					var(--fc-primary) 8%,
+					var(--fc-surface-card, var(--background-primary))
+				);
+				border-color: color-mix(in srgb, var(--fc-primary) 36%, var(--fc-line));
 			}
 
 			&:disabled {
@@ -97,68 +109,103 @@
 			display: inline-flex;
 			align-items: center;
 			gap: var(--fc-space-1);
-			padding: 3px 6px;
+			padding: 4px var(--fc-space-2);
 			font-size: var(--fc-font-xs);
-			color: var(--text-muted);
+			color: var(--fc-muted, var(--text-muted));
 			background: transparent;
-			border: none;
+			border: 1px solid transparent;
 			cursor: pointer;
-			border-radius: var(--fc-radius-sm);
+			border-radius: var(--fc-radius-pill);
+			transition:
+				color var(--fc-motion-quick) ease,
+				background-color var(--fc-motion-quick) ease,
+				border-color var(--fc-motion-quick) ease;
 
 			&:hover {
-				color: var(--text-normal);
-				background: var(--background-modifier-hover);
+				color: var(--fc-text, var(--text-normal));
+				background: var(--fc-surface-hover, var(--background-modifier-hover));
+				border-color: var(--fc-line-soft);
 			}
 
 			kbd {
-				font-size: 10px;
+				font-size: var(--fc-font-2xs, 10px);
 				font-weight: var(--fc-weight-semibold);
-				padding: 1px 4px;
-				background: var(--background-modifier-form-field);
-				border: 1px solid var(--fc-border-color);
+				padding: 1px 5px;
+				background: var(--fc-surface-card, var(--background-modifier-form-field));
+				border: 1px solid var(--fc-line-soft, var(--fc-border-color));
 				border-radius: var(--fc-radius-xs);
+				color: var(--fc-muted);
 			}
 		}
 
 		.phonetics {
 			display: flex;
-			gap: var(--fc-space-3);
-			margin-top: 4px;
-			font-size: var(--fc-font-sm);
-			color: var(--text-muted);
-			font-family: var(--font-monospace);
+			flex-wrap: wrap;
+			align-items: center;
+			gap: var(--fc-space-2);
+			margin-top: var(--fc-space-2);
+		}
+
+		.phoneticPill {
+			display: inline-flex;
+			align-items: center;
+			gap: var(--fc-space-1);
+			padding: 2px var(--fc-space-2);
+			border: 1px solid var(--fc-line-soft, var(--fc-border-color));
+			border-radius: var(--fc-radius-pill);
+			background: var(--fc-surface-card, var(--background-primary));
+			font-size: var(--fc-font-xs);
+		}
+
+		.phoneticLabel {
+			color: var(--fc-primary-text-light, var(--fc-primary));
+			font-weight: var(--fc-weight-semibold);
+		}
+
+		.phoneticText {
+			color: var(--fc-text, var(--text-normal));
+			font-family: var(--fc-font-data, var(--font-monospace));
 		}
 
 		.tabs {
 			display: flex;
-			gap: 2px;
-			padding: 0 var(--fc-space-4);
-			border-top: 1px solid var(--fc-border-color);
+			align-items: center;
+			gap: var(--fc-space-1);
+			padding: var(--fc-space-1) var(--fc-space-3);
+			border-top: 1px solid var(--fc-line-soft, var(--fc-border-color));
 			overflow-x: auto;
-			background: var(--background-secondary-alt, var(--background-secondary));
+			background: color-mix(
+				in srgb,
+				var(--fc-surface-section, var(--background-secondary)) 85%,
+				var(--fc-surface-canvas, var(--background-secondary))
+			);
 		}
 
 		.tab {
-			padding: var(--fc-space-2) var(--fc-space-3);
+			padding: 4px var(--fc-space-3);
 			font-size: var(--fc-font-xs);
-			color: var(--text-muted);
+			font-weight: var(--fc-weight-medium);
+			color: var(--fc-muted, var(--text-muted));
 			background: transparent;
-			border: none;
-			border-bottom: 2px solid transparent;
+			border: 1px solid transparent;
+			border-radius: var(--fc-radius-sm);
 			cursor: pointer;
 			white-space: nowrap;
 			transition:
 				color var(--fc-motion-quick) ease,
+				background-color var(--fc-motion-quick) ease,
 				border-color var(--fc-motion-quick) ease;
 
 			&:hover {
-				color: var(--text-normal);
+				color: var(--fc-text, var(--text-normal));
+				background: var(--fc-surface-hover, var(--background-modifier-hover));
 			}
 
 			&.tabActive {
-				color: var(--text-accent);
-				border-bottom-color: var(--interactive-accent);
-				font-weight: var(--fc-weight-medium);
+				color: var(--fc-text, var(--text-normal));
+				background: var(--fc-surface-card, var(--background-primary));
+				border-color: color-mix(in srgb, var(--fc-primary) 34%, var(--fc-line));
+				font-weight: var(--fc-weight-semibold);
 			}
 		}
 	}
@@ -168,7 +215,7 @@
 		min-height: 120px;
 		max-height: calc(var(--fc-selection-max-height, 70dvh) - 100px);
 		overflow-y: auto;
-		background: var(--background-primary);
+		background: var(--fc-surface-card, var(--background-primary));
 	}
 
 	.resultBody {
@@ -181,7 +228,7 @@
 		align-items: center;
 		justify-content: center;
 		padding: var(--fc-space-8);
-		color: var(--text-muted);
+		color: var(--fc-muted, var(--text-muted));
 		font-size: var(--fc-font-sm);
 		text-align: center;
 	}
@@ -189,7 +236,7 @@
 	.statusError {
 		flex-direction: column;
 		gap: var(--fc-space-3);
-		color: var(--text-error);
+		color: var(--fc-danger, var(--text-error));
 	}
 
 	.aiAction {
@@ -197,8 +244,18 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		padding: var(--fc-space-8);
+		margin: var(--fc-space-4);
+		padding: var(--fc-space-6);
 		gap: var(--fc-space-2);
+		border: 1px solid color-mix(in srgb, var(--fc-primary) 22%, var(--fc-line-soft));
+		border-radius: var(--fc-radius-md);
+		background:
+			radial-gradient(
+				120% 140% at 50% 0%,
+				color-mix(in srgb, var(--fc-primary) 8%, transparent),
+				transparent 65%
+			),
+			var(--fc-surface-section, var(--background-secondary));
 	}
 
 	.aiGenerateBtn {
@@ -213,7 +270,7 @@
 		border: none;
 		border-radius: var(--fc-radius-md);
 		cursor: pointer;
-		transition: background-color 0.12s ease;
+		transition: background-color var(--fc-motion-quick) ease;
 
 		&:hover {
 			background: var(--interactive-accent-hover);
@@ -221,8 +278,12 @@
 	}
 
 	.aiEngineHint {
+		padding: 2px var(--fc-space-2);
+		border: 1px solid var(--fc-line-soft);
+		border-radius: var(--fc-radius-pill);
+		background: var(--fc-surface-card, var(--background-primary));
 		font-size: var(--fc-font-xs);
-		color: var(--text-muted);
+		color: var(--fc-muted, var(--text-muted));
 	}
 
 	.footer {
@@ -230,8 +291,12 @@
 		align-items: center;
 		justify-content: flex-end;
 		padding: var(--fc-space-2) var(--fc-space-4);
-		background: var(--background-secondary);
-		border-top: 1px solid var(--fc-border-color);
+		background: color-mix(
+			in srgb,
+			var(--fc-surface-section, var(--background-secondary)) 65%,
+			var(--fc-surface-card, var(--background-primary))
+		);
+		border-top: 1px solid var(--fc-line-soft, var(--fc-border-color));
 		flex-shrink: 0;
 
 		.openButton {
@@ -239,16 +304,22 @@
 			align-items: center;
 			gap: var(--fc-space-1);
 			font-size: var(--fc-font-xs);
-			color: var(--text-muted);
+			font-weight: var(--fc-weight-medium);
+			color: var(--fc-muted, var(--text-muted));
 			background: transparent;
-			border: none;
+			border: 1px solid transparent;
 			cursor: pointer;
-			padding: 2px 4px;
-			border-radius: var(--fc-radius-sm);
+			padding: 3px var(--fc-space-2);
+			border-radius: var(--fc-radius-pill);
+			transition:
+				color var(--fc-motion-quick) ease,
+				background-color var(--fc-motion-quick) ease,
+				border-color var(--fc-motion-quick) ease;
 
 			&:hover:not(:disabled) {
-				color: var(--text-normal);
-				background: var(--background-modifier-hover);
+				color: var(--fc-text, var(--text-normal));
+				background: var(--fc-surface-hover, var(--background-modifier-hover));
+				border-color: var(--fc-line-soft);
 			}
 
 			&:disabled {
@@ -257,10 +328,10 @@
 			}
 
 			kbd {
-				font-size: 10px;
-				padding: 1px 4px;
-				background: var(--background-modifier-form-field);
-				border: 1px solid var(--fc-border-color);
+				font-size: var(--fc-font-2xs, 10px);
+				padding: 1px 5px;
+				background: var(--fc-surface-card, var(--background-modifier-form-field));
+				border: 1px solid var(--fc-line-soft, var(--fc-border-color));
 				border-radius: var(--fc-radius-xs);
 			}
 		}

@@ -1,8 +1,17 @@
-import type { FloatingRect } from "../domain/types";
+import type {
+	FloatingRect,
+	ShadowingWorkspaceState,
+	ShadowingWorkspaceViewAction,
+} from "../domain/types";
 import type { VideoPlayerRuntime } from "../domain/videoPlayerRuntime";
 import { matchesKeyboardShortcut } from "../settings/keyboardShortcut";
 import type { VideoPlayerSettings } from "../settings/slice";
 import styles from "./VideoPlayer.module.scss";
+
+export interface ShadowingShortcutTarget {
+	getSnapshot(): ShadowingWorkspaceState;
+	act(action: ShadowingWorkspaceViewAction): Promise<void>;
+}
 
 const DEFAULT_ASPECT_RATIO = String(16 / 9);
 
@@ -61,6 +70,8 @@ interface PlayerViewInteractionOptions {
 	readonly runtime: VideoPlayerRuntime;
 	/** Read the current playback shortcuts on each key event; settings changes need no remount. */
 	readonly readSettings: () => VideoPlayerSettings;
+	/** Optional shadowing target so focusSurface also drives shadowing practice shortcuts. */
+	readonly readShadowing?: () => ShadowingShortcutTarget | undefined;
 }
 
 type PointerKind = "move" | "resize-left" | "resize-right";
@@ -425,17 +436,67 @@ export class PlayerViewInteraction {
 		if (registration.released || !registration.active) return;
 		if (registration !== this.presenter() || isInteractiveTarget(event.target)) return;
 		const settings = this.options.readSettings();
-		const action = matchesKeyboardShortcut(event, settings.shortcuts.togglePlayback)
+		const playbackAction = matchesKeyboardShortcut(event, settings.shortcuts.togglePlayback)
 			? () => this.options.runtime.togglePlayback()
 			: matchesKeyboardShortcut(event, settings.shortcuts.seekBackward)
 				? () => this.options.runtime.seekBy(-settings.skipInterval)
 				: matchesKeyboardShortcut(event, settings.shortcuts.seekForward)
 					? () => this.options.runtime.seekBy(settings.skipInterval)
 					: null;
+		const action = playbackAction ?? this.resolveShadowingShortcut(event);
 		if (!action) return;
 		event.preventDefault();
 		event.stopPropagation();
 		if (!event.repeat) action();
+	}
+
+	private resolveShadowingShortcut(event: KeyboardEvent): (() => void) | null {
+		if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return null;
+		const shadowing = this.options.readShadowing?.();
+		const state = shadowing?.getSnapshot();
+		if (!shadowing || !state?.enabled) return null;
+		const key = event.key.length === 1 ? event.key.toUpperCase() : event.key;
+		if (key === "ArrowUp") {
+			return state.cues.length > 0
+				? () => void shadowing.act({ type: "step-cue", direction: -1 })
+				: null;
+		}
+		if (key === "ArrowDown") {
+			return state.cues.length > 0
+				? () => void shadowing.act({ type: "step-cue", direction: 1 })
+				: null;
+		}
+		if (key === "S") {
+			return state.cues.length > 0 || state.practiceStart !== null
+				? () => void shadowing.act({ type: "replay-current-cue" })
+				: null;
+		}
+		if (key === "L") {
+			if (state.practiceStart === null && !state.canPractice) return null;
+			return () => {
+				if (state.practicePhase === "playing" || state.practicePhase === "resting") {
+					void shadowing.act({ type: "stop-practice" });
+				} else if (state.practiceStart !== null) {
+					void shadowing.act({ type: "start-loop" });
+				} else if (state.canPractice) {
+					void shadowing.act({ type: "start-practice-selected" });
+				}
+			};
+		}
+		if (key === "R") {
+			if (state.practiceStart === null && !state.canPractice) return null;
+			return () => {
+				if (state.practicePhase === "countdown" || state.practicePhase === "recording") {
+					void shadowing.act({ type: "stop-practice" });
+				} else {
+					if (state.practiceStart === null && state.canPractice) {
+						void shadowing.act({ type: "start-practice-selected" });
+					}
+					void shadowing.act({ type: "record-once" });
+				}
+			};
+		}
+		return null;
 	}
 
 	private setMediaHost(registration: Registration, node: HTMLElement | null): void {

@@ -61,11 +61,15 @@ export function buildTranslationSettingsViewModel(
 		page.group("profiles", t.profilesHeading, (group) => {
 			group.button(
 				"add",
-				{ name: t.profiles, description: t.profilesDesc },
+				{
+					name: t.profiles,
+					description: engines.length
+						? `${t.profilesDesc} ${t.engineSelectDesc}`
+						: t.profilesDesc,
+				},
 				{
 					label: t.addProfile,
 					disabled: saving,
-					tone: "primary",
 					onPress: actions.addProfile,
 				},
 			);
@@ -113,9 +117,7 @@ export function buildTranslationSettingsViewModel(
 								"engine",
 								{
 									name: t.engine,
-									description: engines.length
-										? t.engineSelectDesc
-										: t.noEngineConfigs,
+									description: engines.length ? undefined : t.noEngineConfigs,
 								},
 								(row) => {
 									row.select("engine", {

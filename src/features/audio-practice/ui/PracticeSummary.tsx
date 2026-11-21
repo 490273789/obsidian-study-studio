@@ -1,5 +1,6 @@
 import React from "react";
 import { CheckCircle2, RotateCcw, Star } from "lucide-react";
+import { cls } from "../../../core/shared/classNames";
 import { FlashcardButton as Button } from "../../../core/ui/primitives/Button";
 import type { AudioPracticeStrings } from "../strings/audioPractice";
 import type { PracticeCompletion } from "./practiceSession";
@@ -35,18 +36,24 @@ export function PracticeSummary(props: PracticeSummaryProps): React.ReactNode {
 			</span>
 			<output className={styles.summaryText}>
 				<span className={styles.summaryTitle}>{t.summaryTitle}</span>
-				<span className={styles.summaryMeta}>
-					<span>{t.summaryProgress(completion.reached, completion.total)}</span>
+				<span className={cls("fc-meta", styles.summaryMeta)}>
+					<span className="fc-meta__text">
+						{t.summaryProgress(completion.reached, completion.total)}
+					</span>
 					{completion.marked > 0 && (
 						<>
-							<span aria-hidden="true">·</span>
-							<span>{t.summaryMarks(completion.marked)}</span>
+							<span className="fc-meta__dot" aria-hidden="true" />
+							<span className="fc-meta__text">
+								{t.summaryMarks(completion.marked)}
+							</span>
 						</>
 					)}
 					{elapsedMs > 0 && (
 						<>
-							<span aria-hidden="true">·</span>
-							<span>{t.summaryElapsed(minutes, seconds)}</span>
+							<span className="fc-meta__dot" aria-hidden="true" />
+							<span className="fc-meta__text">
+								{t.summaryElapsed(minutes, seconds)}
+							</span>
 						</>
 					)}
 				</span>

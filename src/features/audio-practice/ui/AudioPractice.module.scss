@@ -9,8 +9,8 @@
 /* Layout: practice stage + right library rail, both filling the leaf above the docked player. */
 .workspace {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(180px, 232px);
-	gap: var(--fc-space-3);
+	grid-template-columns: minmax(0, 1fr) minmax(196px, 244px);
+	gap: var(--fc-space-4);
 	flex: 1 1 auto;
 	min-height: 0;
 	padding: var(--fc-space-3) var(--fc-space-4) var(--fc-space-4);
@@ -20,7 +20,7 @@
 	border-color: var(--fc-line);
 }
 
-@container flashcard-pane (min-width: 821px) {
+@container flashcard-pane (min-width: #{bp.$tablet}) {
 	.workspace[data-library-collapsed="true"] {
 		grid-template-columns: minmax(0, 1fr) 48px;
 	}
@@ -73,11 +73,12 @@
 	justify-content: center;
 	min-width: 20px;
 	height: 20px;
-	padding: 0 5px;
+	padding: 0 6px;
 	border-radius: var(--fc-radius-pill);
-	background: var(--fc-surface-control);
+	background: var(--fc-surface-sunken);
 	color: var(--fc-muted);
-	font-size: var(--fc-font-xs);
+	font-family: var(--fc-font-data);
+	font-size: var(--fc-font-2xs);
 	font-variant-numeric: tabular-nums;
 	letter-spacing: 0;
 }
@@ -87,11 +88,11 @@
 	flex: 1 1 auto;
 	min-height: 0;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--fc-space-1);
 	overflow-y: auto;
 	overscroll-behavior: contain;
 	-webkit-overflow-scrolling: touch;
-	padding: var(--fc-space-1) var(--fc-space-2);
+	padding: var(--fc-space-2);
 	@include fc-scrollbar;
 }
 
@@ -105,15 +106,17 @@
 
 .libraryHint {
 	margin: 0;
-	padding: var(--fc-space-1) var(--fc-space-3) var(--fc-space-3);
+	padding: var(--fc-space-2) var(--fc-space-3) var(--fc-space-3);
+	border-top: 1px solid var(--fc-line-faint);
 	color: var(--fc-faint);
 	font-size: var(--fc-font-xs);
 }
 
 .materialRow {
+	position: relative;
 	display: flex;
 	align-items: center;
-	gap: 2px;
+	gap: var(--fc-space-half);
 	min-width: 0;
 	border: 1px solid transparent;
 	border-radius: var(--fc-radius-md);
@@ -121,17 +124,51 @@
 		background var(--fc-motion-quick) ease,
 		border-color var(--fc-motion-quick) ease;
 
+	&::before {
+		content: "";
+		position: absolute;
+		inset-block: var(--fc-space-2);
+		inset-inline-start: 0;
+		width: 3px;
+		border-start-end-radius: 3px;
+		border-end-end-radius: 3px;
+		background: transparent;
+		transition: background var(--fc-motion-quick) ease;
+	}
+
 	&:hover {
 		background: var(--fc-surface-hover);
+		border-color: var(--fc-line-faint);
 	}
 }
 
 .materialRowActive {
-	border-color: color-mix(in srgb, var(--fc-primary) 26%, transparent);
-	background: color-mix(in srgb, var(--fc-primary) 11%, var(--fc-surface-section));
+	border-color: color-mix(in srgb, var(--fc-primary) 28%, var(--fc-line-soft));
+	background:
+		linear-gradient(
+			90deg,
+			color-mix(in srgb, var(--fc-primary) 11%, transparent),
+			transparent 65%
+		),
+		var(--fc-surface-card);
+
+	&::before {
+		background: var(--fc-primary);
+	}
 
 	&:hover {
-		background: color-mix(in srgb, var(--fc-primary) 16%, var(--fc-surface-section));
+		border-color: color-mix(in srgb, var(--fc-primary) 38%, var(--fc-line));
+		background:
+			linear-gradient(
+				90deg,
+				color-mix(in srgb, var(--fc-primary) 15%, transparent),
+				transparent 70%
+			),
+			var(--fc-surface-card);
+	}
+
+	.materialName {
+		font-weight: var(--fc-weight-semibold);
 	}
 }
 
@@ -142,14 +179,13 @@
 	flex-direction: column;
 	align-items: stretch;
 	justify-content: flex-start;
-	gap: 2px;
-	padding: var(--fc-space-2) var(--fc-space-3);
+	gap: var(--fc-space-half);
+	padding: var(--fc-space-2) var(--fc-space-3) var(--fc-space-2) var(--fc-space-4);
 	border-radius: inherit;
 	text-align: start;
 
 	&:focus-visible {
-		outline: 2px solid var(--fc-primary);
-		outline-offset: -2px;
+		@include fc-focus-ring;
 	}
 }
 
@@ -168,6 +204,7 @@
 	min-width: 0;
 	overflow: hidden;
 	color: var(--fc-muted);
+	font-family: var(--fc-font-data);
 	font-size: var(--fc-font-xs);
 	font-weight: var(--fc-weight-regular);
 	line-height: var(--fc-line-tight);
@@ -187,16 +224,18 @@
 	flex: none;
 	align-items: center;
 	justify-content: center;
-	gap: 2px;
+	gap: 3px;
 	min-width: 22px;
 	height: 20px;
-	padding: 0 5px;
+	padding: 0 6px;
 	margin-inline-end: var(--fc-space-1);
-	border: 1px solid var(--fc-line-soft);
+	border: 1px solid color-mix(in srgb, var(--fc-amber) 28%, var(--fc-line-soft));
 	border-radius: var(--fc-radius-pill);
-	background: var(--fc-surface-control);
-	color: var(--fc-muted);
-	font-size: var(--fc-font-xs);
+	background: color-mix(in srgb, var(--fc-amber) 10%, var(--fc-surface-card));
+	color: var(--fc-amber);
+	font-family: var(--fc-font-data);
+	font-size: var(--fc-font-2xs);
+	font-weight: var(--fc-weight-semibold);
 	font-variant-numeric: tabular-nums;
 }
 
@@ -221,11 +260,11 @@
 
 .materialBar {
 	display: flex;
-	align-items: flex-end;
+	align-items: center;
 	justify-content: space-between;
-	gap: var(--fc-space-3);
+	gap: var(--fc-space-4);
 	min-width: 0;
-	padding-inline: var(--fc-space-1);
+	padding: var(--fc-space-1) var(--fc-space-2);
 }
 
 .materialIdentity {
@@ -242,6 +281,7 @@
 	font-size: var(--fc-font-xl);
 	font-weight: var(--fc-weight-semibold);
 	line-height: var(--fc-line-tight);
+	letter-spacing: -0.01em;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
@@ -250,24 +290,29 @@
 	max-width: 100%;
 }
 
+/* Quiet tool cluster for low-frequency material maintenance actions. */
 .materialActions {
-	display: flex;
+	display: inline-flex;
 	flex: none;
 	flex-wrap: wrap;
 	align-items: center;
 	justify-content: flex-end;
-	gap: var(--fc-space-2);
+	gap: var(--fc-space-1);
+	padding: var(--fc-space-1);
+	border: 1px solid var(--fc-line-soft);
+	border-radius: var(--fc-radius-md);
+	background: color-mix(in srgb, var(--fc-surface-section) 65%, transparent);
 }
 
 .editMaterialButton {
 	flex: none;
-	color: var(--fc-text-subtle, var(--fc-muted));
-	border-color: var(--fc-line-soft);
-	background: var(--fc-surface-card);
+	color: var(--fc-muted);
+	border-color: transparent;
+	background: transparent;
 
 	&:hover:not(:disabled) {
 		color: var(--fc-text);
-		border-color: var(--fc-line);
+		border-color: var(--fc-line-soft);
 		background: var(--fc-surface-hover);
 	}
 }
@@ -278,10 +323,25 @@
 
 .actionsDivider {
 	width: 1px;
-	height: 18px;
-	margin: 0 calc(var(--fc-space-1) / 2);
+	height: 16px;
+	margin: 0 var(--fc-space-half);
 	background: var(--fc-line-soft);
 	flex: none;
+}
+
+.reviewDraftButton {
+	border-color: color-mix(in srgb, var(--fc-primary) 34%, var(--fc-line));
+	background: color-mix(in srgb, var(--fc-primary) 12%, var(--fc-surface-card));
+	color: var(--fc-text);
+
+	svg {
+		color: var(--fc-primary);
+	}
+
+	&:hover:not(:disabled) {
+		border-color: color-mix(in srgb, var(--fc-primary) 55%, var(--fc-line));
+		background: color-mix(in srgb, var(--fc-primary) 18%, var(--fc-surface-card));
+	}
 }
 
 .mobileToolsToggle {
@@ -292,15 +352,20 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	min-width: 20px;
-	height: 20px;
+	min-width: 18px;
+	height: 18px;
 	padding: 0 5px;
 	border-radius: var(--fc-radius-pill);
-	background: color-mix(in srgb, var(--fc-primary) 20%, transparent);
+	background: color-mix(in srgb, var(--fc-primary) 22%, transparent);
 	color: var(--fc-primary);
-	font-size: var(--fc-font-xs);
+	font-family: var(--fc-font-data);
+	font-size: var(--fc-font-2xs);
 	font-variant-numeric: tabular-nums;
 	font-weight: var(--fc-weight-semibold);
+}
+
+:global(.theme-light) .countBadge {
+	color: var(--fc-primary-text-light);
 }
 
 .statusStrip {
@@ -315,8 +380,13 @@
 	color: var(--fc-muted);
 	font-size: var(--fc-font-sm);
 
-	&[data-tone="busy"] .statusIcon {
-		color: var(--fc-primary);
+	&[data-tone="busy"] {
+		border-color: color-mix(in srgb, var(--fc-primary) 28%, var(--fc-line-soft));
+		background: color-mix(in srgb, var(--fc-primary) 6%, var(--fc-surface-section));
+
+		.statusIcon {
+			color: var(--fc-primary);
+		}
 	}
 
 	:global(.theme-light) &[data-tone="busy"] .statusIcon {
@@ -351,6 +421,10 @@
 }
 
 .alert {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--fc-space-2);
 	margin: 0;
 	padding: var(--fc-space-2) var(--fc-space-3);
 	border: 1px solid color-mix(in srgb, var(--fc-danger) 32%, var(--fc-line));
@@ -363,7 +437,8 @@
 
 .notice {
 	margin: 0;
-	padding-inline: var(--fc-space-1);
+	padding: var(--fc-space-1) var(--fc-space-3);
+	border-inline-start: 2px solid color-mix(in srgb, var(--fc-primary) 45%, var(--fc-line));
 	color: var(--fc-muted);
 	font-size: var(--fc-font-xs);
 }
@@ -383,10 +458,10 @@
 	justify-content: center;
 	width: 52px;
 	height: 52px;
-	border: 1px solid var(--fc-line);
+	border: 1px solid color-mix(in srgb, var(--fc-primary) 26%, var(--fc-line));
 	border-radius: var(--fc-radius-pill);
-	background: var(--fc-surface-section);
-	color: var(--fc-muted);
+	background: color-mix(in srgb, var(--fc-primary) 10%, var(--fc-surface-card));
+	color: var(--fc-primary);
 }
 
 .emptyText {
@@ -400,10 +475,10 @@
 /* Practice surface: toolbar, its own scrolling caption list, and the docked player. */
 .practice {
 	flex: 1 1 auto;
+	background: var(--fc-surface-card);
 
 	&:focus-visible {
-		outline: 2px solid color-mix(in srgb, var(--fc-primary) 60%, transparent);
-		outline-offset: -2px;
+		@include fc-focus-ring;
 	}
 }
 
@@ -412,6 +487,8 @@
 	// shrink it and paint underneath the controls on short phone screens.
 	flex: 0 0 auto;
 	flex-wrap: wrap;
+	padding: var(--fc-space-2) var(--fc-space-4);
+	background: var(--fc-surface-section);
 }
 
 .modeSwitch {
@@ -420,11 +497,11 @@
 	min-width: 0;
 	margin: 0;
 	align-items: center;
-	gap: 2px;
-	padding: 2px;
+	gap: var(--fc-space-half);
+	padding: var(--fc-space-half);
 	border: 1px solid var(--fc-line);
 	border-radius: var(--fc-radius-md);
-	background: var(--fc-input-bg);
+	background: var(--fc-surface-sunken);
 
 	:global(button.flashcard-btn) {
 		border-color: transparent;
@@ -440,10 +517,14 @@
 	}
 
 	:global(button.flashcard-btn:is(.active, [aria-pressed="true"])) {
-		border-color: color-mix(in srgb, var(--fc-primary) 28%, var(--fc-line));
+		border-color: color-mix(in srgb, var(--fc-primary) 34%, var(--fc-line));
 		background: color-mix(in srgb, var(--fc-primary) 14%, var(--fc-surface-card));
 		color: var(--fc-text);
-		box-shadow: var(--fc-shadow-sm);
+		font-weight: var(--fc-weight-medium);
+
+		svg {
+			color: var(--fc-primary);
+		}
 	}
 }
 
@@ -451,14 +532,14 @@
 	flex: none;
 	width: 1px;
 	height: 20px;
-	background: var(--fc-line);
+	background: var(--fc-line-soft);
 }
 
 .toggleGroup {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: var(--fc-space-3);
+	gap: var(--fc-space-4);
 }
 
 .toolbarSpacer {
@@ -471,10 +552,13 @@
 	align-items: center;
 	justify-content: center;
 	padding: 2px var(--fc-space-2);
+	border: 1px solid color-mix(in srgb, var(--fc-amber) 28%, var(--fc-line-soft));
 	border-radius: var(--fc-radius-pill);
-	background: var(--fc-surface-control);
-	color: var(--fc-muted);
-	font-size: var(--fc-font-xs);
+	background: color-mix(in srgb, var(--fc-amber) 10%, var(--fc-surface-card));
+	color: var(--fc-amber);
+	font-family: var(--fc-font-data);
+	font-size: var(--fc-font-2xs);
+	font-weight: var(--fc-weight-semibold);
 	font-variant-numeric: tabular-nums;
 }
 
@@ -486,48 +570,116 @@
 	overflow-y: auto;
 	overscroll-behavior: contain;
 	-webkit-overflow-scrolling: touch;
-	padding: var(--fc-space-1) var(--fc-space-2);
+	padding: var(--fc-space-3) var(--fc-space-5);
 	@include fc-scrollbar;
 }
 
+/* Left-aligned editorial transcript axis with comfortable reading measure. */
 .cueList {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
-	margin: 0 auto;
+	gap: var(--fc-space-1);
+	margin: 0;
 	padding: 0;
 	list-style: none;
 	width: 100%;
-	max-width: 840px;
+	max-width: 1040px;
 }
 
 .cue {
+	position: relative;
 	display: flex;
 	align-items: flex-start;
 	gap: var(--fc-space-1);
 	border: 1px solid transparent;
 	border-radius: var(--fc-radius-md);
-	padding-inline-start: var(--fc-space-1);
+	padding-inline-start: var(--fc-space-2);
 	transition:
 		background var(--fc-motion-quick) ease,
-		border-color var(--fc-motion-quick) ease;
+		border-color var(--fc-motion-quick) ease,
+		padding var(--fc-motion-quick) var(--fc-ease-out);
+
+	&::before {
+		content: "";
+		position: absolute;
+		inset-block: var(--fc-space-2);
+		inset-inline-start: 0;
+		width: 3px;
+		border-start-end-radius: 3px;
+		border-end-end-radius: 3px;
+		background: transparent;
+		transition: background var(--fc-motion-quick) ease;
+	}
 
 	&:hover {
 		background: var(--fc-surface-hover);
+		border-color: var(--fc-line-faint);
 
 		.cueStar {
-			opacity: 0.7;
+			opacity: 0.78;
+		}
+
+		.cueText {
+			color: var(--fc-text);
 		}
 	}
 }
 
+/* Completed lines recede slightly so the eye locks onto the active sentence. */
+.cuePassed:not(.cueActive) {
+	.cueIndex,
+	.cueTime {
+		color: var(--fc-faint);
+	}
+
+	.cueText {
+		color: color-mix(in srgb, var(--fc-text) 62%, var(--fc-muted));
+	}
+}
+
+.cueMarked:not(.cueActive) {
+	border-color: color-mix(in srgb, var(--fc-amber) 18%, transparent);
+	background: color-mix(in srgb, var(--fc-amber) 4%, transparent);
+
+	&::before {
+		background: color-mix(in srgb, var(--fc-amber) 55%, transparent);
+	}
+}
+
+/* Spotlight stage card for the currently active sentence. */
 .cueActive {
-	border-color: color-mix(in srgb, var(--fc-primary) 32%, transparent);
-	background: color-mix(in srgb, var(--fc-primary) 12%, var(--fc-surface-section));
-	box-shadow: inset 3px 0 0 var(--fc-primary);
+	margin-block: var(--fc-space-1);
+	padding-block: var(--fc-space-1);
+	border-color: color-mix(in srgb, var(--fc-primary) 34%, var(--fc-line));
+	background:
+		linear-gradient(
+			90deg,
+			color-mix(in srgb, var(--fc-primary) 13%, transparent),
+			color-mix(in srgb, var(--fc-primary) 4%, transparent) 68%,
+			transparent
+		),
+		var(--fc-surface-section);
+
+	&::before {
+		inset-block: var(--fc-space-2);
+		background: var(--fc-primary);
+	}
 
 	&:hover {
-		background: color-mix(in srgb, var(--fc-primary) 16%, var(--fc-surface-section));
+		border-color: color-mix(in srgb, var(--fc-primary) 48%, var(--fc-line));
+		background:
+			linear-gradient(
+				90deg,
+				color-mix(in srgb, var(--fc-primary) 16%, transparent),
+				color-mix(in srgb, var(--fc-primary) 6%, transparent) 72%,
+				transparent
+			),
+			var(--fc-surface-section);
+	}
+
+	.cueIndex {
+		color: var(--fc-primary);
+		font-weight: var(--fc-weight-semibold);
 	}
 
 	.cueTime {
@@ -537,17 +689,20 @@
 
 	.cueText {
 		color: var(--fc-text);
+		font-size: var(--fc-font-xl);
 		font-weight: var(--fc-weight-medium);
+		line-height: var(--fc-line-reading);
 	}
 
 	.cueStar {
-		opacity: 0.85;
+		opacity: 0.9;
+		margin-top: calc(var(--fc-space-2) + 2px);
 	}
 }
 
 .cueSelect {
 	display: grid;
-	grid-template-columns: 58px minmax(0, 1fr);
+	grid-template-columns: 26px 54px minmax(0, 1fr);
 	gap: var(--fc-space-2);
 	align-items: baseline;
 	justify-content: stretch;
@@ -559,9 +714,18 @@
 	white-space: normal;
 
 	&:focus-visible {
-		outline: 2px solid var(--fc-primary);
-		outline-offset: -2px;
+		@include fc-focus-ring;
 	}
+}
+
+.cueIndex {
+	color: var(--fc-faint);
+	font-family: var(--fc-font-data);
+	font-size: var(--fc-font-2xs);
+	font-variant-numeric: tabular-nums;
+	line-height: var(--fc-line-reading);
+	white-space: nowrap;
+	user-select: none;
 }
 
 .cueTime {
@@ -575,7 +739,7 @@
 
 .cueText {
 	min-width: 0;
-	color: color-mix(in srgb, var(--fc-text) 80%, var(--fc-muted));
+	color: color-mix(in srgb, var(--fc-text) 82%, var(--fc-muted));
 	font-size: var(--fc-font-lg);
 	font-weight: var(--fc-weight-regular);
 	line-height: var(--fc-line-reading);
@@ -584,21 +748,30 @@
 	user-select: text;
 	-webkit-user-select: text;
 	cursor: text;
+	transition: color var(--fc-motion-quick) ease;
 }
 
 .cueWordSpoken {
 	color: var(--fc-primary);
-	font-weight: var(--fc-weight-medium);
+	font-weight: var(--fc-weight-semibold);
+	text-decoration: underline;
+	text-decoration-color: color-mix(in srgb, var(--fc-primary) 42%, transparent);
+	text-underline-offset: 4px;
+	text-decoration-thickness: 1.5px;
 }
 
 :global(.theme-light) .cueWordSpoken {
 	color: var(--fc-primary-text-light);
+	text-decoration-color: color-mix(in srgb, var(--fc-primary-text-light) 42%, transparent);
 }
 
 /* The active-row tint lowers cyan contrast below body-text AA; the row already
  * carries a rail and a tint, so the timestamp falls back to the text ink here. */
-:global(.theme-light) .cueActive .cueTime {
-	color: var(--fc-text);
+:global(.theme-light) .cueActive {
+	.cueIndex,
+	.cueTime {
+		color: var(--fc-primary-text-light);
+	}
 }
 
 .draftWordFallback {
@@ -607,12 +780,45 @@
 	font-size: var(--fc-font-xs);
 }
 
+/* Proportional blind-listening mask: preserves sentence length rhythm while hiding text. */
 .cueHidden {
 	display: inline-flex;
+	flex-wrap: wrap;
 	align-items: center;
-	gap: var(--fc-space-1);
+	gap: var(--fc-space-2);
+	max-width: 100%;
 	color: var(--fc-muted);
-	font-size: var(--fc-font-sm);
+	font-size: var(--fc-font-xs);
+}
+
+.cueHiddenBar {
+	display: inline-block;
+	width: min(var(--cue-mask-ch, 18ch), 65vw);
+	height: 10px;
+	border-radius: var(--fc-radius-pill);
+	background: repeating-linear-gradient(
+		90deg,
+		color-mix(in srgb, var(--fc-text) 16%, transparent) 0,
+		color-mix(in srgb, var(--fc-text) 16%, transparent) 24px,
+		color-mix(in srgb, var(--fc-text) 7%, transparent) 24px,
+		color-mix(in srgb, var(--fc-text) 7%, transparent) 30px
+	);
+}
+
+.cueActive .cueHiddenBar {
+	height: 12px;
+	background: repeating-linear-gradient(
+		90deg,
+		color-mix(in srgb, var(--fc-primary) 34%, transparent) 0,
+		color-mix(in srgb, var(--fc-primary) 34%, transparent) 28px,
+		color-mix(in srgb, var(--fc-primary) 12%, transparent) 28px,
+		color-mix(in srgb, var(--fc-primary) 12%, transparent) 34px
+	);
+}
+
+.cueHiddenLabel {
+	color: var(--fc-faint);
+	font-size: var(--fc-font-xs);
 }
 
 .cueStar {
@@ -620,13 +826,11 @@
 	flex: none;
 	align-items: center;
 	justify-content: center;
-	--fc-button-height: 24px;
-	width: 24px;
-	height: 24px;
-	min-width: 24px;
-	min-height: 24px;
-	max-width: 24px;
-	max-height: 24px;
+	--fc-button-height: 26px;
+	width: 26px;
+	height: 26px;
+	min-width: 26px;
+	min-height: 26px;
 	padding: 0;
 	margin-top: calc(var(--fc-space-2) - 1px);
 	border-radius: var(--fc-radius-sm);
@@ -638,24 +842,9 @@
 		color var(--fc-motion-quick) ease;
 
 	&:focus-visible {
-		outline: 2px solid var(--fc-primary);
-		outline-offset: 1px;
+		@include fc-focus-ring;
 		opacity: 1;
 	}
-
-	&:hover {
-		opacity: 1;
-		color: var(--fc-warning, #f59e0b);
-	}
-}
-
-.cue:hover .cueStar {
-	opacity: 0.7;
-}
-
-.cueStarActive {
-	opacity: 1 !important;
-	color: var(--fc-warning, #f59e0b) !important;
 }
 
 /*
@@ -671,13 +860,11 @@
 }
 
 .page .cue .cueStar {
-	--fc-button-height: 24px !important;
-	width: 24px !important;
-	height: 24px !important;
-	min-width: 24px !important;
-	min-height: 24px !important;
-	max-width: 24px !important;
-	max-height: 24px !important;
+	--fc-button-height: 26px;
+	width: 26px;
+	height: 26px;
+	min-width: 26px;
+	min-height: 26px;
 	padding: 0 !important;
 	background: transparent !important;
 	border: 0 !important;
@@ -686,12 +873,14 @@
 }
 
 .page .cue .cueStar:hover {
+	opacity: 1;
 	background: var(--fc-surface-hover) !important;
-	color: var(--fc-text) !important;
+	color: var(--fc-amber) !important;
 }
 
 .page .cue .cueStarActive,
 .page .cue .cueStarActive:hover {
+	opacity: 1;
 	background: color-mix(in srgb, var(--fc-amber) 16%, transparent) !important;
 	color: var(--fc-amber) !important;
 
@@ -706,8 +895,8 @@
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	gap: var(--fc-space-2);
-	min-height: 160px;
+	gap: var(--fc-space-3);
+	min-height: 180px;
 	margin: auto;
 	padding: var(--fc-space-6);
 	color: var(--fc-muted);
@@ -726,10 +915,10 @@
 	display: flex;
 	flex: none;
 	flex-direction: column;
-	gap: var(--fc-space-3);
+	gap: var(--fc-space-2);
 	padding: var(--fc-space-3) var(--fc-space-5) var(--fc-space-4);
-	border-top: 1px solid var(--fc-line-strong);
-	background: var(--fc-surface-canvas);
+	border-top: 1px solid var(--fc-line);
+	background: var(--fc-surface-section);
 	// The panel recipe styles a semantic <footer> as a horizontal status rail; the
 	// player needs to stretch its own rows instead.
 	align-items: stretch;
@@ -738,7 +927,7 @@
 
 .seekRow {
 	display: grid;
-	grid-template-columns: minmax(40px, auto) minmax(0, 1fr) minmax(40px, auto);
+	grid-template-columns: minmax(42px, auto) minmax(0, 1fr) minmax(42px, auto);
 	align-items: center;
 	gap: var(--fc-space-3);
 }
@@ -763,17 +952,17 @@
 			height: 14px !important;
 			margin-top: -5px !important;
 			border-color: var(--fc-primary) !important;
-			background: var(--fc-surface-canvas) !important;
-			box-shadow: none !important;
+			background: var(--fc-surface-card) !important;
+			box-shadow: var(--fc-shadow-sm) !important;
 		}
 
 		&:hover:not(:disabled)::-webkit-slider-thumb,
 		&:active:not(:disabled)::-webkit-slider-thumb {
-			box-shadow: none !important;
+			box-shadow: 0 0 0 3px color-mix(in srgb, var(--fc-primary) 22%, transparent) !important;
 		}
 
 		&:focus-visible::-webkit-slider-thumb {
-			box-shadow: 0 0 0 3px color-mix(in srgb, var(--fc-primary) 30%, transparent) !important;
+			box-shadow: 0 0 0 3px color-mix(in srgb, var(--fc-primary) 32%, transparent) !important;
 		}
 	}
 }
@@ -804,20 +993,25 @@
 }
 
 .nowPlayingMeta {
-	display: flex;
 	flex-wrap: wrap;
-	align-items: center;
-	gap: var(--fc-space-1);
-	color: var(--fc-muted);
-	font-size: var(--fc-font-xs);
-	line-height: var(--fc-line-tight);
+	gap: var(--fc-space-2);
+}
 
-	> span:first-child {
-		padding: 2px var(--fc-space-2);
-		border: 1px solid var(--fc-line-soft);
-		border-radius: var(--fc-radius-pill);
-		background: var(--fc-surface-section);
-	}
+.modePill {
+	display: inline-flex;
+	align-items: center;
+	padding: 2px var(--fc-space-2);
+	border: 1px solid var(--fc-line-soft);
+	border-radius: var(--fc-radius-pill);
+	background: var(--fc-surface-card);
+	color: var(--fc-text);
+	font-size: var(--fc-font-xs);
+	font-weight: var(--fc-weight-medium);
+}
+
+.cueMeter {
+	--meter-width: 64px;
+	--meter-height: 4px;
 }
 
 .transport {
@@ -837,10 +1031,11 @@
 }
 
 .playButton {
-	--fc-button-height: 36px;
+	--fc-button-height: 38px;
 	width: var(--fc-button-height);
 	height: var(--fc-button-height);
 	min-width: var(--fc-button-height);
+	border-radius: var(--fc-radius-md);
 }
 
 .playerOptions {
@@ -865,16 +1060,17 @@
 	align-items: stretch;
 	gap: var(--fc-space-3);
 	padding: var(--fc-space-3);
-	border: 1px solid var(--fc-line);
-	border-radius: var(--fc-radius-md);
-	background: var(--fc-surface-card);
-	box-shadow: var(--fc-shadow-lg);
+	border: 1px solid var(--fc-line-strong);
+	border-radius: var(--fc-radius-lg);
+	background: var(--fc-surface-raised);
+	box-shadow: var(--fc-shadow-popover);
 	z-index: 20;
-	min-width: 250px;
+	min-width: 256px;
 }
 
 .playerOptions[data-expanded="true"] .playerOptionFields {
 	display: flex;
+	animation: var(--fc-motion-fade-in);
 }
 
 .playerOptionRow {
@@ -891,38 +1087,39 @@
 	white-space: nowrap;
 }
 
+.activeRateBadge,
 .activeOffsetBadge {
 	display: inline-flex;
 	align-items: center;
-	padding: 2px 7px;
+	height: 24px;
+	padding: 0 var(--fc-space-2);
 	border: 1px solid color-mix(in srgb, var(--fc-primary) 32%, transparent);
 	border-radius: var(--fc-radius-pill);
-	background: color-mix(in srgb, var(--fc-primary) 12%, transparent);
+	background: color-mix(in srgb, var(--fc-primary) 12%, var(--fc-surface-card));
 	color: var(--fc-primary);
 	font-family: var(--fc-font-data);
 	font-size: var(--fc-font-xs);
+	font-weight: var(--fc-weight-medium);
 	font-variant-numeric: tabular-nums;
 	cursor: pointer;
-	transition: background var(--fc-motion-quick) ease;
+	transition:
+		background var(--fc-motion-quick) ease,
+		border-color var(--fc-motion-quick) ease;
 
 	&:hover {
-		background: color-mix(in srgb, var(--fc-primary) 22%, transparent);
+		border-color: color-mix(in srgb, var(--fc-primary) 50%, transparent);
+		background: color-mix(in srgb, var(--fc-primary) 20%, var(--fc-surface-card));
+	}
+
+	&:focus-visible {
+		@include fc-focus-ring;
 	}
 }
 
-:global(.theme-light) .activeOffsetBadge {
+:global(.theme-light) :is(.activeRateBadge, .activeOffsetBadge) {
 	color: var(--fc-primary-text-light);
 	border-color: color-mix(in srgb, var(--fc-primary-text-light) 32%, transparent);
-	background: color-mix(in srgb, var(--fc-primary-text-light) 10%, transparent);
-}
-
-.option {
-	display: flex;
-	align-items: center;
-	gap: var(--fc-space-1);
-	color: var(--fc-muted);
-	font-size: var(--fc-font-xs);
-	white-space: nowrap;
+	background: color-mix(in srgb, var(--fc-primary-text-light) 10%, var(--fc-surface-card));
 }
 
 .offsetControl {
@@ -935,6 +1132,7 @@
 .offsetLabel {
 	color: var(--fc-muted);
 	font-size: var(--fc-font-xs);
+	font-weight: var(--fc-weight-medium);
 	white-space: nowrap;
 }
 
@@ -985,7 +1183,7 @@
 }
 
 .offsetInput {
-	width: 48px;
+	width: 50px;
 	border: 0;
 	background: transparent;
 	font-family: var(--fc-font-data);
@@ -994,7 +1192,7 @@
 	text-align: center;
 
 	&:focus-visible {
-		outline: 1px solid var(--fc-primary);
+		@include fc-focus-ring;
 		border-radius: var(--fc-radius-sm);
 	}
 }
@@ -1005,9 +1203,15 @@
 	flex: none;
 	align-items: center;
 	gap: var(--fc-space-3);
-	padding: var(--fc-space-2) var(--fc-space-4);
-	border-top: 1px solid var(--fc-line);
-	background: color-mix(in srgb, var(--fc-primary) 6%, var(--fc-surface-section));
+	padding: var(--fc-space-3) var(--fc-space-5);
+	border-top: 1px solid color-mix(in srgb, var(--fc-primary) 26%, var(--fc-line));
+	background:
+		linear-gradient(
+			90deg,
+			color-mix(in srgb, var(--fc-primary) 10%, transparent),
+			transparent 55%
+		),
+		var(--fc-surface-section);
 }
 
 .summaryIcon {
@@ -1025,7 +1229,7 @@
 	min-width: 0;
 	flex: 1 1 auto;
 	flex-direction: column;
-	gap: 1px;
+	gap: 2px;
 }
 
 .summaryTitle {
@@ -1037,15 +1241,7 @@
 }
 
 .summaryMeta {
-	display: flex;
 	flex-wrap: wrap;
-	align-items: center;
-	gap: var(--fc-space-1);
-	margin: 0;
-	color: var(--fc-muted);
-	font-size: var(--fc-font-xs);
-	font-variant-numeric: tabular-nums;
-	line-height: var(--fc-line-body);
 }
 
 .summaryActions {
@@ -1112,6 +1308,10 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: var(--fc-space-3);
+	padding: var(--fc-space-2) var(--fc-space-3);
+	border: 1px solid var(--fc-line-soft);
+	border-radius: var(--fc-radius-md);
+	background: var(--fc-surface-section);
 	color: var(--fc-muted);
 	font-size: var(--fc-font-sm);
 }
@@ -1126,13 +1326,42 @@
 }
 
 .draftCue {
+	position: relative;
 	display: flex;
 	flex-direction: column;
 	gap: var(--fc-space-2);
-	padding: var(--fc-space-3);
+	padding: var(--fc-space-3) var(--fc-space-3) var(--fc-space-3) var(--fc-space-4);
 	border: 1px solid var(--fc-line);
 	border-radius: var(--fc-radius-md);
 	background: var(--fc-surface-section);
+
+	&::before {
+		content: "";
+		position: absolute;
+		inset-block: var(--fc-space-2);
+		inset-inline-start: 0;
+		width: 3px;
+		border-start-end-radius: 3px;
+		border-end-end-radius: 3px;
+		background: var(--fc-lime);
+	}
+}
+
+.draftCuePending {
+	border-color: color-mix(in srgb, var(--fc-amber) 32%, var(--fc-line));
+
+	&::before {
+		background: var(--fc-amber);
+	}
+}
+
+.draftCueInvalid {
+	border-color: color-mix(in srgb, var(--fc-danger) 42%, var(--fc-line));
+	background: color-mix(in srgb, var(--fc-danger) 5%, var(--fc-surface-section));
+
+	&::before {
+		background: var(--fc-danger);
+	}
 }
 
 .draftCueHeader {
@@ -1153,6 +1382,9 @@
 	display: flex;
 	gap: var(--fc-space-1);
 	margin-inline-start: auto;
+	padding: 1px var(--fc-space-2);
+	border-radius: var(--fc-radius-sm);
+	background: var(--fc-surface-sunken);
 	color: var(--fc-muted);
 	font-family: var(--fc-font-data);
 	font-size: var(--fc-font-xs);
@@ -1305,8 +1537,11 @@
 
 	.materialActions {
 		grid-column: 1 / -1;
-		padding-top: var(--fc-space-2);
+		padding: var(--fc-space-2) 0 0;
+		border: 0;
 		border-top: 1px solid var(--fc-line-soft);
+		border-radius: 0;
+		background: transparent;
 	}
 
 	.actionsDivider {
@@ -1316,6 +1551,7 @@
 	.practice > .practiceHeader {
 		justify-content: flex-start;
 		gap: var(--fc-space-2);
+		padding-inline: var(--fc-space-3);
 	}
 
 	.modeSwitch {
@@ -1339,8 +1575,12 @@
 		margin-inline-start: auto;
 	}
 
+	.cueScroll {
+		padding: var(--fc-space-2);
+	}
+
 	.cueSelect {
-		grid-template-columns: 46px minmax(0, 1fr);
+		grid-template-columns: 20px 46px minmax(0, 1fr);
 		padding: var(--fc-space-2);
 	}
 
@@ -1348,9 +1588,13 @@
 		line-height: var(--fc-line-body);
 	}
 
+	.cueActive .cueText {
+		font-size: var(--fc-font-lg);
+	}
+
 	.playerRow {
 		grid-template-columns: minmax(0, 1fr) auto;
-		gap: var(--fc-space-1);
+		gap: var(--fc-space-2);
 	}
 
 	.nowPlaying {
@@ -1380,6 +1624,9 @@
 	}
 
 	.playerOptionFields {
+		position: static;
+		right: auto;
+		bottom: auto;
 		display: none;
 		grid-column: 1 / -1;
 		grid-row: 3;
@@ -1389,8 +1636,13 @@
 		justify-content: space-between;
 		gap: var(--fc-space-2);
 		width: 100%;
-		padding-top: var(--fc-space-2);
+		min-width: 0;
+		padding: var(--fc-space-2) 0 0;
+		border: 0;
 		border-top: 1px solid var(--fc-line-soft);
+		border-radius: 0;
+		background: transparent;
+		box-shadow: none;
 	}
 
 	.playerOptions[data-expanded="true"] .playerOptionFields {
@@ -1403,6 +1655,7 @@
 
 	.summary {
 		flex-wrap: wrap;
+		padding-inline: var(--fc-space-3);
 	}
 
 	.summaryActions {
@@ -1420,7 +1673,7 @@
 	}
 }
 
-@container flashcard-pane (max-width: 820px) {
+@container flashcard-pane (max-width: #{bp.$tablet}) {
 	@include narrow-workspace;
 }
 
@@ -1437,6 +1690,14 @@
 
 	.page button {
 		min-width: 40px;
+	}
+
+	.page .cue .cueStar {
+		--fc-button-height: 40px;
+		width: 40px;
+		height: 40px;
+		min-width: 40px;
+		min-height: 40px;
 	}
 
 	:global(.flashcard-modal).materialDialog button,
@@ -1460,12 +1721,17 @@
 
 .regenerateButton {
 	flex: none;
+	color: var(--fc-muted);
+
+	&:hover:not(:disabled) {
+		color: var(--fc-text);
+	}
 }
 
 .regenerateAiButton {
 	color: var(--fc-text);
 	border-color: color-mix(in srgb, var(--fc-primary) 32%, var(--fc-line));
-	background: color-mix(in srgb, var(--fc-primary) 6%, var(--fc-surface-card));
+	background: color-mix(in srgb, var(--fc-primary) 8%, var(--fc-surface-card));
 	transition:
 		border-color var(--fc-motion-quick) ease,
 		background var(--fc-motion-quick) ease,
@@ -1479,10 +1745,10 @@
 	&:hover:not(:disabled) {
 		color: var(--fc-text);
 		border-color: color-mix(in srgb, var(--fc-primary) 60%, var(--fc-line));
-		background: color-mix(in srgb, var(--fc-primary) 12%, var(--fc-surface-card));
+		background: color-mix(in srgb, var(--fc-primary) 14%, var(--fc-surface-card));
 
 		svg {
-			transform: scale(1.12) rotate(6deg);
+			transform: scale(1.08);
 		}
 	}
 }
@@ -1551,16 +1817,16 @@
 	height: 22px;
 	padding: 0 6px;
 	border: 1px solid var(--fc-line);
-	border-bottom: 2px solid color-mix(in srgb, var(--fc-text) 24%, var(--fc-line));
+	border-bottom: 2px solid color-mix(in srgb, var(--fc-text) 22%, var(--fc-line));
 	border-radius: var(--fc-radius-sm);
-	background: var(--fc-surface-card);
+	background: var(--fc-surface-sunken);
 	color: var(--fc-text);
 	font-family: var(--fc-font-data);
-	font-size: var(--fc-font-xs);
+	font-size: var(--fc-font-2xs);
 	font-variant-numeric: tabular-nums;
-	font-weight: var(--fc-weight-medium);
+	font-weight: var(--fc-weight-semibold);
 	line-height: 1;
-	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+	box-shadow: var(--fc-shadow-sm);
 }
 
 .shortcutDesc {

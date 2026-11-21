@@ -5,10 +5,10 @@
 .result {
 	display: flex;
 	flex-direction: column;
-	gap: var(--fc-space-2);
+	gap: var(--fc-space-3);
 	padding: var(--fc-space-4) var(--fc-space-5);
 	font-size: var(--fc-font-sm);
-	line-height: var(--fc-line-body);
+	line-height: var(--fc-line-reading);
 	overflow-wrap: anywhere;
 }
 
@@ -18,34 +18,45 @@
 }
 
 .detailTabs {
-	display: flex;
+	display: inline-flex;
+	flex-wrap: wrap;
 	flex-shrink: 0;
+	width: fit-content;
+	max-width: 100%;
 	gap: var(--fc-space-1);
 	overflow-x: auto;
-	padding: var(--fc-space-1);
+	padding: 3px;
+	border: 1px solid var(--fc-line-soft, var(--fc-border-color));
+	border-radius: var(--fc-radius-md);
+	background: var(--fc-surface-section, var(--background-secondary));
 }
 
 .tab {
-	padding: var(--fc-space-half) var(--fc-space-2);
+	padding: 3px var(--fc-space-2);
 	font-size: var(--fc-font-xs);
+	font-weight: var(--fc-weight-medium);
 	border-radius: var(--fc-radius-sm);
 	background: transparent;
-	color: var(--text-muted);
+	color: var(--fc-muted, var(--text-muted));
 	border: 1px solid transparent;
 	cursor: pointer;
 	white-space: nowrap;
+	transition:
+		background-color var(--fc-motion-quick) ease,
+		border-color var(--fc-motion-quick) ease,
+		color var(--fc-motion-quick) ease;
 
 	&:hover {
-		color: var(--text-normal);
-		background: var(--background-modifier-hover);
+		color: var(--fc-text, var(--text-normal));
+		background: var(--fc-surface-hover, var(--background-modifier-hover));
 	}
 }
 
 .tabActive {
-	color: var(--text-accent);
-	background: var(--background-primary);
-	border-color: var(--fc-border-color);
-	font-weight: var(--fc-weight-medium);
+	color: var(--fc-text, var(--text-normal));
+	background: var(--fc-surface-card, var(--background-primary));
+	border-color: var(--fc-line-soft, var(--fc-border-color));
+	font-weight: var(--fc-weight-semibold);
 }
 
 .section {

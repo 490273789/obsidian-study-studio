@@ -89,6 +89,16 @@ const copy = {
 		restSeconds: "停顿秒数",
 		responseMultiplier: "跟读时间倍数",
 		continueEarly: "提前继续",
+		phasePlaying: "正在播放原声",
+		phaseResting: "跟读休整窗口",
+		phaseCountdown: "准备开始录音…",
+		phaseRecording: "正在录音 · 请跟读",
+		phaseReview: "录音完成 · 可对比回听",
+		phasePaused: "已就绪",
+		shortcutPrevNext: "上/下一句",
+		shortcutReplay: "重播本句",
+		shortcutLoop: "循环跟读",
+		shortcutRecord: "录一遍 / 停止",
 	},
 	en: {
 		subtitles: "Bilingual subtitles",
@@ -139,6 +149,16 @@ const copy = {
 		restSeconds: "Rest seconds",
 		responseMultiplier: "Response time factor",
 		continueEarly: "Continue now",
+		phasePlaying: "Playing original audio",
+		phaseResting: "Shadowing response window",
+		phaseCountdown: "Get ready to record…",
+		phaseRecording: "Recording · Speak now",
+		phaseReview: "Take ready · Compare & review",
+		phasePaused: "Ready",
+		shortcutPrevNext: "Prev / next cue",
+		shortcutReplay: "Replay sentence",
+		shortcutLoop: "Toggle loop",
+		shortcutRecord: "Record / stop",
 	},
 } as const;
 
@@ -182,6 +202,36 @@ export function ShadowingWorkspace({
 						<div className={styles.setupHint}>
 							<h3>{state.hasCandidate ? t.candidateReady : t.noCues}</h3>
 							<p>{state.hasCandidate ? t.candidateHint : t.subtitleSetupHint}</p>
+						</div>
+					)}
+					{(state.status === "transcribing" || state.status === "translating") && (
+						<div className={styles.inlineTaskBanner}>
+							<div className={styles.inlineTaskHeader}>
+								<span>
+									{t.inProgress} · {clock(state.processedSeconds)}
+									{state.totalSeconds !== null
+										? ` / ${clock(state.totalSeconds)}`
+										: ""}
+								</span>
+								<span className="fc-meter" aria-hidden="true">
+									<i
+										style={{
+											width: `${
+												state.totalSeconds && state.totalSeconds > 0
+													? Math.min(
+															100,
+															Math.round(
+																(state.processedSeconds /
+																	state.totalSeconds) *
+																	100,
+															),
+														)
+													: 35
+											}%`,
+										}}
+									/>
+								</span>
+							</div>
 						</div>
 					)}
 					<div className={styles.toolbar}>
@@ -495,13 +545,29 @@ export function ShadowingWorkspace({
 			)}
 			{tab === "tasks" && (
 				<div className={styles.task}>
-					<p>
-						{state.status === "transcribing" || state.status === "translating"
-							? t.inProgress
-							: state.status}{" "}
-						· {clock(state.processedSeconds)}
-						{state.totalSeconds !== null ? ` / ${clock(state.totalSeconds)}` : ""}
-					</p>
+					<div className={styles.taskProgressRow}>
+						<p>
+							{state.status === "transcribing" || state.status === "translating"
+								? t.inProgress
+								: state.status}{" "}
+							· {clock(state.processedSeconds)}
+							{state.totalSeconds !== null ? ` / ${clock(state.totalSeconds)}` : ""}
+						</p>
+						{state.totalSeconds !== null && state.totalSeconds > 0 && (
+							<span className="fc-meter" aria-hidden="true">
+								<i
+									style={{
+										width: `${Math.min(
+											100,
+											Math.round(
+												(state.processedSeconds / state.totalSeconds) * 100,
+											),
+										)}%`,
+									}}
+								/>
+							</span>
+						)}
+					</div>
 					<div className={styles.toolbar}>
 						{(state.status === "transcribing" || state.status === "translating") && (
 							<button
@@ -555,109 +621,190 @@ export function ShadowingWorkspace({
 				</div>
 			)}
 			{state.practiceStart !== null && state.practiceEnd !== null && (
-				<div className={styles.practice}>
-					<span className={styles.time}>
-						{clock(state.practiceStart)}–{clock(state.practiceEnd)}
-					</span>
-					<select
-						aria-label={t.continuous}
-						value={state.practiceMode}
-						onChange={(event) =>
-							void onAction({
-								type: "set-mode",
-								mode: event.target.value as typeof state.practiceMode,
-							})
-						}
-					>
-						<option value="shadow">{t.continuous}</option>
-						<option value="repeat-after">{t.repeatAfter}</option>
-					</select>
-					<label>
-						{t.restSeconds}
-						<input
-							type="number"
-							min="0"
-							max="60"
-							step="0.5"
-							value={state.restSeconds}
-							onChange={(event) =>
-								void onAction({
-									type: "set-rest-seconds",
-									seconds: Number(event.target.value),
-								})
-							}
-						/>
-					</label>
-					<label>
-						{t.responseMultiplier}
-						<input
-							type="number"
-							min="0.25"
-							max="4"
-							step="0.25"
-							value={state.responseMultiplier}
-							onChange={(event) =>
-								void onAction({
-									type: "set-response-multiplier",
-									multiplier: Number(event.target.value),
-								})
-							}
-						/>
-					</label>
-					{state.countdown > 0 && <strong aria-live="polite">{state.countdown}</strong>}
-					{state.practicePhase === "resting" && (
+				<div className={styles.practice} data-phase={state.practicePhase}>
+					<div className={styles.practiceHeader}>
+						<div className={styles.practiceStatusGroup}>
+							<span className={styles.time}>
+								{clock(state.practiceStart)}–{clock(state.practiceEnd)}
+							</span>
+							<span
+								className={styles.phaseBadge}
+								data-phase={state.practicePhase}
+								aria-live="polite"
+							>
+								<span className={styles.phaseDot} aria-hidden="true" />
+								{state.practicePhase === "playing"
+									? t.phasePlaying
+									: state.practicePhase === "resting"
+										? t.phaseResting
+										: state.practicePhase === "countdown"
+											? t.phaseCountdown
+											: state.practicePhase === "recording"
+												? t.phaseRecording
+												: state.practicePhase === "review"
+													? t.phaseReview
+													: t.phasePaused}
+							</span>
+						</div>
+						<div className={styles.practiceHeaderControls}>
+							<select
+								aria-label={t.continuous}
+								value={state.practiceMode}
+								onChange={(event) =>
+									void onAction({
+										type: "set-mode",
+										mode: event.target.value as typeof state.practiceMode,
+									})
+								}
+							>
+								<option value="shadow">{t.continuous}</option>
+								<option value="repeat-after">{t.repeatAfter}</option>
+							</select>
+							{state.countdown > 0 && (
+								<strong className={styles.countdownBadge} aria-live="polite">
+									{state.countdown}
+								</strong>
+							)}
+						</div>
+					</div>
+					{(state.practicePhase === "recording" ||
+						state.practicePhase === "countdown") && (
+						<div className={styles.recordingStage} aria-hidden="true">
+							<div className={styles.recordingPulseRing} />
+							<div className={styles.recordingWave}>
+								<span />
+								<span />
+								<span />
+								<span />
+								<span />
+								<span />
+								<span />
+							</div>
+							<span className={styles.recordingStageLabel}>
+								{state.practicePhase === "countdown"
+									? `${t.phaseCountdown} ${state.countdown}s`
+									: t.phaseRecording}
+							</span>
+						</div>
+					)}
+					<div className={styles.practiceConfig}>
+						<label>
+							{t.restSeconds}
+							<input
+								type="number"
+								min="0"
+								max="60"
+								step="0.5"
+								value={state.restSeconds}
+								onChange={(event) =>
+									void onAction({
+										type: "set-rest-seconds",
+										seconds: Number(event.target.value),
+									})
+								}
+							/>
+						</label>
+						<label>
+							{t.responseMultiplier}
+							<input
+								type="number"
+								min="0.25"
+								max="4"
+								step="0.25"
+								value={state.responseMultiplier}
+								onChange={(event) =>
+									void onAction({
+										type: "set-response-multiplier",
+										multiplier: Number(event.target.value),
+									})
+								}
+							/>
+						</label>
+					</div>
+					<div className={styles.practiceActions}>
+						{state.practicePhase === "resting" && (
+							<button
+								type="button"
+								onClick={() => void onAction({ type: "continue-early" })}
+							>
+								{t.continueEarly}
+							</button>
+						)}
 						<button
 							type="button"
-							onClick={() => void onAction({ type: "continue-early" })}
+							className={styles.primaryAction}
+							onClick={() => void onAction({ type: "start-loop" })}
 						>
-							{t.continueEarly}
+							{t.start}
 						</button>
-					)}
-					<button
-						type="button"
-						className={styles.primaryAction}
-						onClick={() => void onAction({ type: "start-loop" })}
-					>
-						{t.start}
-					</button>
-					<button type="button" onClick={() => void onAction({ type: "stop-practice" })}>
-						{t.stop}
-					</button>
-					<button type="button" onClick={() => void onAction({ type: "record-once" })}>
-						{t.record}
-					</button>
-					{state.hasTemporaryTake && (
-						<>
-							<button
-								type="button"
-								onClick={() => void onAction({ type: "replay-take" })}
-							>
-								{t.playMine}
-							</button>
-							<button
-								type="button"
-								onClick={() => void onAction({ type: "replay-original" })}
-							>
-								{t.playOriginal}
-							</button>
-							<button
-								type="button"
-								disabled={state.savingTake}
-								onClick={() => void onAction({ type: "save-take" })}
-							>
-								{t.save}
-							</button>
-						</>
-					)}
-					<button type="button" onClick={() => void onAction({ type: "mark-difficult" })}>
-						{t.difficult}
-					</button>
-					<button
-						type="button"
-						onClick={() => void onAction({ type: "continue-watching" })}
-					>
-						{t.continue}
-					</button>
+						<button
+							type="button"
+							onClick={() => void onAction({ type: "stop-practice" })}
+						>
+							{t.stop}
+						</button>
+						<button
+							type="button"
+							className={styles.recordAction}
+							onClick={() => void onAction({ type: "record-once" })}
+						>
+							{t.record}
+						</button>
+						{state.hasTemporaryTake && (
+							<>
+								<button
+									type="button"
+									onClick={() => void onAction({ type: "replay-take" })}
+								>
+									{t.playMine}
+								</button>
+								<button
+									type="button"
+									onClick={() => void onAction({ type: "replay-original" })}
+								>
+									{t.playOriginal}
+								</button>
+								<button
+									type="button"
+									disabled={state.savingTake}
+									onClick={() => void onAction({ type: "save-take" })}
+								>
+									{t.save}
+								</button>
+							</>
+						)}
+						<button
+							type="button"
+							onClick={() => void onAction({ type: "mark-difficult" })}
+						>
+							{t.difficult}
+						</button>
+						<button
+							type="button"
+							onClick={() => void onAction({ type: "continue-watching" })}
+						>
+							{t.continue}
+						</button>
+					</div>
+					<div className={styles.shadowShortcutsBar} aria-hidden="true">
+						<span className={styles.shadowShortcutItem}>
+							<kbd>↑</kbd>
+							<kbd>↓</kbd>
+							{t.shortcutPrevNext}
+						</span>
+						<span className={styles.shadowShortcutItem}>
+							<kbd>S</kbd>
+							{t.shortcutReplay}
+						</span>
+						<span className={styles.shadowShortcutItem}>
+							<kbd>L</kbd>
+							{t.shortcutLoop}
+						</span>
+						<span className={styles.shadowShortcutItem}>
+							<kbd>R</kbd>
+							{t.shortcutRecord}
+						</span>
+					</div>
 					{state.practiceError && <p role="alert">{state.practiceError}</p>}
 				</div>
 			)}

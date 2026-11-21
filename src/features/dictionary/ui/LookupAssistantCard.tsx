@@ -247,9 +247,16 @@ export function LookupAssistantCardView(props: LookupAssistantCardProps) {
 					{pronunciations.length > 0 && (
 						<div className={styles.phonetics}>
 							{pronunciations.map((p, idx) => (
-								<span key={`${idx}-${p.label}-${p.phonetic}`}>
-									{p.label ? `[${p.label}] ` : ""}
-									{p.phonetic ? `/${p.phonetic}/` : ""}
+								<span
+									key={`${idx}-${p.label}-${p.phonetic}`}
+									className={styles.phoneticPill}
+								>
+									{p.label ? (
+										<span className={styles.phoneticLabel}>{p.label}</span>
+									) : null}
+									{p.phonetic ? (
+										<span className={styles.phoneticText}>/{p.phonetic}/</span>
+									) : null}
 								</span>
 							))}
 						</div>

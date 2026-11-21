@@ -247,6 +247,12 @@ export class ShadowingWorkspaceSession {
 			case "choose-cue":
 				this.chooseCue(action.cueId, action.extend);
 				return;
+			case "step-cue":
+				this.stepCue(action.direction);
+				return;
+			case "replay-current-cue":
+				this.replayCurrentCue();
+				return;
 			case "set-cue-range":
 				this.setCueRange(action.edge, action.seconds);
 				return;
@@ -366,6 +372,73 @@ export class ShadowingWorkspaceSession {
 		this.selectDraftCue(state.anchor === state.end ? cueId : null);
 		if (!anchor) this.options.runtime.seekTo(cue.start);
 		this.publish();
+	}
+
+	private stepCue(direction: -1 | 1): void {
+		if (this.disposed || !this.sourceId) return;
+		const cues = this.snapshot.cues;
+		if (cues.length === 0) return;
+		const state = this.currentSelection();
+		const currentTime = this.options.runtime.getSnapshot().currentTime;
+		const anchorId = state?.end ?? state?.anchor ?? null;
+		let currentIndex = anchorId ? cues.findIndex((item) => item.id === anchorId) : -1;
+		if (currentIndex < 0) {
+			currentIndex = cues.findIndex(
+				(item) => currentTime >= item.start && currentTime < item.end,
+			);
+		}
+		let targetIndex: number;
+		if (currentIndex >= 0) {
+			targetIndex = Math.max(0, Math.min(cues.length - 1, currentIndex + direction));
+		} else if (direction > 0) {
+			const nextIdx = cues.findIndex((item) => item.start > currentTime);
+			targetIndex = nextIdx >= 0 ? nextIdx : cues.length - 1;
+		} else {
+			let prevIdx = -1;
+			for (let i = cues.length - 1; i >= 0; i--) {
+				if (cues[i]!.start <= currentTime) {
+					prevIdx = i;
+					break;
+				}
+			}
+			targetIndex = prevIdx >= 0 ? prevIdx : 0;
+		}
+		const target = cues[targetIndex];
+		if (!target) return;
+		this.chooseCue(target.id, false);
+		if (this.practiceRange && this.practiceRange.sourceId === this.sourceId) {
+			this.selectPracticeRange(this.sourceId, target.start, target.end, target.text);
+		}
+	}
+
+	private replayCurrentCue(): void {
+		if (this.disposed || !this.sourceId) return;
+		if (this.practiceRange && this.practiceRange.sourceId === this.sourceId) {
+			this.replayOriginal();
+			return;
+		}
+		const cues = this.snapshot.cues;
+		if (cues.length === 0) return;
+		const currentTime = this.options.runtime.getSnapshot().currentTime;
+		let target =
+			cues.find((item) => currentTime >= item.start && currentTime < item.end) ?? null;
+		if (!target && this.snapshot.selectedCueIds.length > 0) {
+			const firstSelected = this.snapshot.selectedCueIds[0];
+			target = cues.find((item) => item.id === firstSelected) ?? null;
+		}
+		if (!target) {
+			for (let i = cues.length - 1; i >= 0; i--) {
+				if (cues[i]!.start <= currentTime) {
+					target = cues[i]!;
+					break;
+				}
+			}
+			target ??= cues[0] ?? null;
+		}
+		if (!target) return;
+		this.chooseCue(target.id, false);
+		this.selectPracticeRange(this.sourceId, target.start, target.end, target.text);
+		this.replayOriginal();
 	}
 
 	private setCueRange(edge: "start" | "end", seconds: number): void {

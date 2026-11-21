@@ -330,6 +330,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 										<Button
 											variant="secondary"
 											icon={ListChecks}
+											className={styles.reviewDraftButton}
 											title={t.reviewHint}
 											onClick={() => {
 												setReviewOpen(true);
@@ -348,7 +349,7 @@ export function AudioPracticeView(props: AudioPracticeViewProps): React.ReactNod
 										icon={Sparkles}
 										className={cls(
 											styles.regenerateButton,
-											snapshot.cues.length > 0 && styles.regenerateAiButton,
+											snapshot.cues.length === 0 && styles.regenerateAiButton,
 										)}
 										disabled={busy || generating}
 										title={snapshot.cues.length ? t.regenerate : t.generate}
@@ -853,7 +854,7 @@ function ShortcutDialog(props: ShortcutDialogProps): React.ReactNode {
 				{ keys: ["Space"], desc: t.shortcutSpaceDesc },
 				{ keys: ["←", "↑"], desc: t.shortcutPrevDesc },
 				{ keys: ["→", "↓"], desc: t.shortcutNextDesc },
-				{ keys: ["Shift + ←", "Shift + →"], desc: t.shortcutSeekDesc },
+				{ keys: ["Shift + ←", "Shift + →", "J", "L"], desc: t.shortcutSeekDesc },
 				{ keys: ["R"], desc: t.shortcutRepeatDesc },
 			],
 		},
@@ -1147,74 +1148,106 @@ export function PracticeSurface({
 					</div>
 				) : (
 					<ol className={styles.cueList}>
-						{cues.map((cue, index) => {
-							const active = cue.id === snapshot.currentCueId;
-							const marked = marks.includes(cue.id);
-							const hidden = snapshot.blind && !(active && snapshot.revealed);
-							const isFocusTarget = active || (!snapshot.currentCueId && index === 0);
-							return (
-								<li
-									key={cue.id}
-									data-current-cue={active ? "true" : undefined}
-									className={cls(styles.cue, active && styles.cueActive)}
-								>
-									<Button
-										preset="icon"
-										variant="ghost"
-										size="sm"
-										tabIndex={active ? 0 : -1}
-										icon={Star}
-										iconSize={14}
+						{(() => {
+							const activeIndex = snapshot.currentCueId
+								? cues.findIndex((item) => item.id === snapshot.currentCueId)
+								: -1;
+							return cues.map((cue, index) => {
+								const active = cue.id === snapshot.currentCueId;
+								const passed = activeIndex > index;
+								const marked = marks.includes(cue.id);
+								const hidden = snapshot.blind && !(active && snapshot.revealed);
+								const isFocusTarget =
+									active || (!snapshot.currentCueId && index === 0);
+								const maskWidthCh = Math.max(
+									10,
+									Math.min(44, Math.round(cue.text.trim().length * 0.75)),
+								);
+								return (
+									<li
+										key={cue.id}
+										data-current-cue={active ? "true" : undefined}
+										data-passed-cue={passed ? "true" : undefined}
 										className={cls(
-											styles.cueStar,
-											marked && styles.cueStarActive,
+											styles.cue,
+											active && styles.cueActive,
+											passed && styles.cuePassed,
+											marked && styles.cueMarked,
 										)}
-										active={marked}
-										aria-pressed={marked}
-										aria-label={`${t.difficult}: ${timeLabel(cue.start)}`}
-										title={`${t.difficult} (S)`}
-										onClick={() => runtime.toggleDifficult(cue.id)}
-									/>
-									<Button
-										{...CUE_ROW_PROPS}
-										variant="ghost"
-										tabIndex={isFocusTarget ? 0 : -1}
-										className={styles.cueSelect}
-										aria-current={active ? "true" : undefined}
-										onClick={() => {
-											const sel =
-												typeof window !== "undefined"
-													? window.getSelection()?.toString().trim()
-													: "";
-											if (sel) return;
-											runtime.selectCue(cue.id, true);
-										}}
 									>
-										<span className={styles.cueTime}>
-											{timeLabel(cue.start)}
-										</span>
-										<span className={styles.cueText}>
-											{hidden ? (
-												<span className={styles.cueHidden}>
-													<EyeOff size={13} aria-hidden="true" />
-													{t.hidden}
-												</span>
-											) : (
-												renderTimedCueText(
-													cue.text,
-													active
-														? snapshot.currentMaterial?.wordTimings?.[
-																cue.id
-															]
-														: undefined,
-													snapshot.currentTime - offset,
-												)
+										<Button
+											preset="icon"
+											variant="ghost"
+											size="sm"
+											tabIndex={isFocusTarget ? 0 : -1}
+											icon={Star}
+											iconSize={14}
+											className={cls(
+												styles.cueStar,
+												marked && styles.cueStarActive,
 											)}
-										</span>
-									</Button>
-								</li>
-							);
-						})}
+											active={marked}
+											aria-pressed={marked}
+											aria-label={`${t.difficult}: ${timeLabel(cue.start)}`}
+											title={`${t.difficult} (S)`}
+											onClick={() => runtime.toggleDifficult(cue.id)}
+										/>
+										<Button
+											{...CUE_ROW_PROPS}
+											variant="ghost"
+											tabIndex={isFocusTarget ? 0 : -1}
+											className={styles.cueSelect}
+											aria-current={active ? "true" : undefined}
+											onClick={() => {
+												const sel =
+													typeof window !== "undefined"
+														? window.getSelection()?.toString().trim()
+														: "";
+												if (sel) return;
+												runtime.selectCue(cue.id, true);
+											}}
+										>
+											<span className={styles.cueIndex}>
+												{String(index + 1).padStart(2, "0")}
+											</span>
+											<span className={styles.cueTime}>
+												{timeLabel(cue.start)}
+											</span>
+											<span className={styles.cueText}>
+												{hidden ? (
+													<span
+														className={styles.cueHidden}
+														style={
+															{
+																"--cue-mask-ch": `${maskWidthCh}ch`,
+															} as React.CSSProperties
+														}
+													>
+														<EyeOff size={13} aria-hidden="true" />
+														<span
+															className={styles.cueHiddenBar}
+															aria-hidden="true"
+														/>
+														<span className={styles.cueHiddenLabel}>
+															{t.hidden}
+														</span>
+													</span>
+												) : (
+													renderTimedCueText(
+														cue.text,
+														active
+															? snapshot.currentMaterial
+																	?.wordTimings?.[cue.id]
+															: undefined,
+														snapshot.currentTime - offset,
+													)
+												)}
+											</span>
+										</Button>
+									</li>
+								);
+							});
+						})()}
 					</ol>
 				)}
 			</div>
@@ -1247,6 +1280,10 @@ function renderPlayerDock(
 		? (snapshot.progress[snapshot.currentMaterial.id]?.offset ?? 0)
 		: 0;
 	const hasCues = snapshot.cues.length > 0;
+	const cueProgressPercent =
+		hasCues && position >= 0
+			? Math.min(100, Math.round(((position + 1) / snapshot.cues.length) * 100))
+			: 0;
 	return (
 		<footer className={styles.player} aria-label={t.playbackOptions}>
 			<div className={styles.seekRow}>
@@ -1265,15 +1302,28 @@ function renderPlayerDock(
 			</div>
 			<div className={styles.playerRow}>
 				<div className={styles.nowPlaying}>
-					<span className={styles.nowPlayingMeta}>
-						<span>{snapshot.mode === "sentence" ? t.sentence : t.continuous}</span>
-						<span aria-hidden="true">·</span>
-						<span>
+					<div className={cls("fc-meta", styles.nowPlayingMeta)}>
+						<span className={styles.modePill}>
+							{snapshot.mode === "sentence" ? t.sentence : t.continuous}
+						</span>
+						<span className="fc-meta__dot" aria-hidden="true" />
+						<span className="fc-meta__text">
 							{position >= 0
 								? t.cueCounter(position + 1, snapshot.cues.length)
 								: t.noCues}
 						</span>
-					</span>
+						{hasCues && position >= 0 && (
+							<span
+								className={cls("fc-meter", styles.cueMeter)}
+								aria-hidden="true"
+								data-tone={
+									position + 1 >= snapshot.cues.length ? "done" : undefined
+								}
+							>
+								<i style={{ width: `${cueProgressPercent}%` }} />
+							</span>
+						)}
+					</div>
 				</div>
 				<fieldset className={styles.transport} aria-label={t.playbackControls}>
 					<Button
@@ -1315,6 +1365,17 @@ function renderPlayerDock(
 					/>
 				</fieldset>
 				<div className={styles.playerOptions} data-expanded={optionsOpen}>
+					{snapshot.playbackRate !== 1 && (
+						<button
+							type="button"
+							className={styles.activeRateBadge}
+							title={`${t.rate}: ${snapshot.playbackRate}x`}
+							aria-label={`${t.rate}: ${snapshot.playbackRate}x`}
+							onClick={onToggleOptions}
+						>
+							{snapshot.playbackRate}x
+						</button>
+					)}
 					{Math.abs(offset) > 0.001 && (
 						<button
 							type="button"

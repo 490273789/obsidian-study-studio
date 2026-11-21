@@ -262,6 +262,8 @@ export type ShadowingWorkspaceViewAction =
 			readonly text?: string;
 	  }
 	| { readonly type: "choose-cue"; readonly cueId: string; readonly extend: boolean }
+	| { readonly type: "step-cue"; readonly direction: -1 | 1 }
+	| { readonly type: "replay-current-cue" }
 	| { readonly type: "set-cue-range"; readonly edge: "start" | "end"; readonly seconds: number }
 	| { readonly type: "toggle-cue-editor" }
 	| {

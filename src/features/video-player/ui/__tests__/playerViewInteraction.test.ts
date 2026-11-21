@@ -755,4 +755,69 @@ describe("PlayerViewInteraction", () => {
 			maximized: false,
 		});
 	});
+
+	it("dispatches shadowing shortcuts from the focus surface when shadowing is enabled", () => {
+		const runtime = new VideoPlayerRuntime({
+			store: new MemoryStore(),
+			toMediaUrl: (path) => path,
+		});
+		const act = vi.fn(async () => undefined);
+		let phase: "paused" | "recording" = "paused";
+		const interaction = new PlayerViewInteraction({
+			runtime,
+			readSettings: () => defaultSettings,
+			readShadowing: () => ({
+				getSnapshot: () =>
+					({
+						enabled: true,
+						cues: [
+							{ id: "c1", start: 1, end: 3, text: "One" },
+							{ id: "c2", start: 4, end: 6, text: "Two" },
+						],
+						practiceStart: 1,
+						practiceEnd: 3,
+						practicePhase: phase,
+						canPractice: true,
+					}) as any,
+				act,
+			}),
+		});
+		const doc = createTestDocument();
+		const view = interaction.mount({ ownerDocument: doc as unknown as Document });
+		const surface = createTestElement("div");
+		view.refs.focusSurface(surface as unknown as HTMLElement);
+
+		const dispatch = (key: string) =>
+			surface.dispatchEvent({
+				type: "keydown",
+				key,
+				ctrlKey: false,
+				altKey: false,
+				shiftKey: false,
+				metaKey: false,
+				repeat: false,
+				target: surface,
+				preventDefault: vi.fn(),
+				stopPropagation: vi.fn(),
+			});
+
+		dispatch("ArrowDown");
+		expect(act).toHaveBeenCalledWith({ type: "step-cue", direction: 1 });
+
+		dispatch("ArrowUp");
+		expect(act).toHaveBeenCalledWith({ type: "step-cue", direction: -1 });
+
+		dispatch("s");
+		expect(act).toHaveBeenCalledWith({ type: "replay-current-cue" });
+
+		dispatch("l");
+		expect(act).toHaveBeenCalledWith({ type: "start-loop" });
+
+		dispatch("r");
+		expect(act).toHaveBeenCalledWith({ type: "record-once" });
+
+		phase = "recording";
+		dispatch("r");
+		expect(act).toHaveBeenLastCalledWith({ type: "stop-practice" });
+	});
 });

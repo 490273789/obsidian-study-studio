@@ -62,12 +62,6 @@ export function createVideoPlayerFeature(
 						console.error("Failed to save local video player state:", error),
 				}),
 			);
-			const interaction = lifetime.own(
-				new PlayerViewInteraction({
-					runtime,
-					readSettings: () => host.settings.read().videoPlayer,
-				}),
-			);
 			const desktopAdapter = lifetime.own(
 				new VideoShadowingDesktopAdapter({
 					app: host.app,
@@ -81,6 +75,13 @@ export function createVideoPlayerFeature(
 							),
 						);
 					},
+				}),
+			);
+			const interaction = lifetime.own(
+				new PlayerViewInteraction({
+					runtime,
+					readSettings: () => host.settings.read().videoPlayer,
+					readShadowing: () => desktopAdapter.shadowingSession,
 				}),
 			);
 

@@ -15,6 +15,7 @@ import {
 	Pause,
 	PictureInPicture2,
 	Play,
+	RefreshCw,
 	Rewind,
 	Settings,
 	SkipBack,
@@ -441,7 +442,7 @@ export function VideoPlayerView({
 																		</>
 																	)}
 																	<IconButton
-																		icon={FolderPlus}
+																		icon={RefreshCw}
 																		size={14}
 																		className={styles.actionBtn}
 																		label={t.replace}
@@ -761,7 +762,7 @@ function PlayerSurface({
 								label={t.rate}
 								value={rate}
 								rates={VIDEO_PLAYBACK_RATES}
-								tone="default"
+								tone="dark"
 								onChange={(value) =>
 									onRate(value as (typeof VIDEO_PLAYBACK_RATES)[number])
 								}
@@ -776,7 +777,7 @@ function PlayerSurface({
 						</div>
 						{shortcutHints.length > 0 && (
 							<div className={styles.shortcutsHint}>
-								<span>{t.shortcutFocus}</span>
+								<span className={styles.shortcutFocusText}>{t.shortcutFocus}</span>
 								<div className={styles.shortcutKeys}>
 									{shortcutHints.map(([action, key]) => (
 										<span key={action} className={styles.shortcutEntry}>
@@ -792,8 +793,11 @@ function PlayerSurface({
 				<FlashcardButton
 					preset="icon"
 					icon={controlsVisible ? EyeOff : Eye}
-					iconSize={16}
-					className={styles.controlsToggle}
+					iconSize={15}
+					className={cls(
+						styles.controlsToggle,
+						!controlsVisible && styles.controlsToggleHiddenState,
+					)}
 					title={controlsVisible ? t.hideControls : t.showControls}
 					aria-label={controlsVisible ? t.hideControls : t.showControls}
 					aria-pressed={controlsVisible}
