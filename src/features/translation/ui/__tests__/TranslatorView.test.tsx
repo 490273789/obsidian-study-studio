@@ -88,6 +88,8 @@ function createMockRuntime(snapshot: TranslationSnapshot): TranslationRuntime {
 		swapDirection: vi.fn(),
 		translate: vi.fn(),
 		retryResult: vi.fn(),
+		restoreHistory: vi.fn(() => true),
+		clearHistory: vi.fn(),
 	} as unknown as TranslationRuntime;
 }
 
@@ -566,11 +568,21 @@ describe("TranslatorView UI", () => {
 	});
 
 	it("preserves results as stale and offers a full retranslation", () => {
-		const snapshot = mockSnapshot({ stale: true });
+		const snapshot = mockSnapshot({
+			stale: true,
+			settings: {
+				...mockSnapshot().settings,
+				direction: "en-zh",
+			},
+			translatedDirection: "zh-en",
+		});
 		const runtime = createMockRuntime(snapshot);
 		const tree = renderView({ runtime, language: "zh", onOpenSettings: vi.fn() });
 		const all = elements(tree);
 		expect(textOf(tree)).toContain("原文或方向已修改；以下译文对应上一次翻译。");
+		const pills = all.filter((el) => (el.props.className ?? "").includes("langPill"));
+		expect(textOf(pills[0])).toBe("英文");
+		expect(textOf(pills[1])).toBe("中文");
 		const submit = all.find((el) => el.props.children === "翻译");
 		expect(submit).toBeDefined();
 		expect(textOf(tree)).not.toContain("重新翻译");
@@ -592,5 +604,40 @@ describe("TranslatorView UI", () => {
 		expect(retry).toBeDefined();
 		retry?.props.onClick?.();
 		expect(retryResult).toHaveBeenCalledWith("youdao");
+	});
+
+	it("renders in-memory recent translation history chips and supports restoring or clearing them", () => {
+		const base = mockSnapshot();
+		const snapshot = mockSnapshot({
+			history: [
+				{
+					id: 2,
+					input: "你好世界",
+					direction: "zh-en",
+					results: base.results,
+				},
+				{
+					id: 1,
+					input: "早安",
+					direction: "zh-en",
+					results: base.results,
+				},
+			],
+		});
+		const runtime = createMockRuntime(snapshot);
+		const restoreHistory = vi.spyOn(runtime, "restoreHistory");
+		const clearHistory = vi.spyOn(runtime, "clearHistory");
+		const tree = renderView({ runtime, language: "zh", onOpenSettings: vi.fn() });
+		const all = elements(tree);
+
+		const secondChip = all.find((el) => el.props["aria-label"] === "恢复记录：早安");
+		expect(secondChip).toBeDefined();
+		secondChip?.props.onClick?.();
+		expect(restoreHistory).toHaveBeenCalledWith(1);
+
+		const clearBtn = all.find((el) => el.props["aria-label"] === "清空记录");
+		expect(clearBtn).toBeDefined();
+		clearBtn?.props.onClick?.();
+		expect(clearHistory).toHaveBeenCalledOnce();
 	});
 });

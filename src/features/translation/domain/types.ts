@@ -28,6 +28,12 @@ export interface TranslationResultState extends TranslationOutput {
 	status: "idle" | "loading" | "success" | "error";
 	error?: AiFailureCode;
 }
+export interface TranslationHistoryItem {
+	id: number;
+	input: string;
+	direction: TranslationDirection;
+	results: readonly TranslationResultState[];
+}
 export interface TranslationSnapshot {
 	settings: TranslationSettings;
 	input: string;
@@ -39,6 +45,8 @@ export interface TranslationSnapshot {
 	stale: boolean;
 	clearUndoId: number | null;
 	results: readonly TranslationResultState[];
+	/** Bounded in-memory list of recent successful translations (up to 5). */
+	history?: readonly TranslationHistoryItem[];
 	status: "idle" | "loading" | "success" | "error";
 	error?: AiFailureCode;
 	saving: boolean;

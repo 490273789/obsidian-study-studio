@@ -67,6 +67,10 @@ const zh = {
 	speechFailed: "朗读失败，请重试。",
 	undoClear: "撤销清空",
 	stopClear: "停止并清空",
+	calloutHeading: "翻译 · {name}",
+	recentHistory: "最近记录",
+	clearHistory: "清空记录",
+	restoreHistoryItem: "恢复记录：{text}",
 };
 
 const en: typeof zh = {
@@ -136,6 +140,10 @@ const en: typeof zh = {
 	speechFailed: "Could not read aloud. Try again.",
 	undoClear: "Undo clear",
 	stopClear: "Stop and clear",
+	calloutHeading: "Translation · {name}",
+	recentHistory: "Recent",
+	clearHistory: "Clear recent",
+	restoreHistoryItem: "Restore translation: {text}",
 };
 
 export function translationStrings(language: Language): typeof zh {

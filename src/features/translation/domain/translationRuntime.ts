@@ -6,11 +6,14 @@ import {
 } from "./configuration";
 import { TranslationExecution, type YoudaoTranslation } from "./translationExecution";
 import type {
+	TranslationHistoryItem,
 	TranslationOutput,
 	TranslationResultState,
 	TranslationSettings,
 	TranslationSnapshot,
 } from "./types";
+
+const MAX_HISTORY_ITEMS = 5;
 
 interface TranslationDependencies {
 	persist(settings: TranslationSettings): Promise<void>;
@@ -31,6 +34,8 @@ export class TranslationRuntime {
 	private snapshot!: TranslationSnapshot;
 	private listeners = new Set<() => void>();
 	private cache = new Map<string, TranslationOutput>();
+	private history: TranslationHistoryItem[] = [];
+	private historySeq = 0;
 	private generation = 0;
 	private prefillVersion = 0;
 	private configurationSave: Promise<void> | null = null;
@@ -62,6 +67,7 @@ export class TranslationRuntime {
 			const next = JSON.stringify(ai.getSnapshot().settings);
 			if (next === this.engineSettings) return;
 			this.engineSettings = next;
+			this.history = [];
 			this.invalidate(true);
 			this.publish();
 		});
@@ -110,7 +116,7 @@ export class TranslationRuntime {
 		if (!isCurrent()) return;
 		if (this.settings.direction !== direction) {
 			try {
-				await this.configure({ ...this.settings, direction });
+				await this.configure({ ...this.settings, direction }, { preserveResults: true });
 			} catch {
 				if (!isCurrent()) return;
 				this.settings = { ...this.settings, direction };
@@ -181,6 +187,7 @@ export class TranslationRuntime {
 				if (preserveResults) {
 					this.state.error = undefined;
 				} else {
+					this.history = [];
 					this.invalidate(true);
 				}
 			} finally {
@@ -276,6 +283,9 @@ export class TranslationRuntime {
 		if (generation !== this.generation || this.disposed) return;
 		this.controller = null;
 		this.state.status = this.deriveStatus();
+		if (this.state.status === "success") {
+			this.recordHistory(text, settings.direction, this.state.results);
+		}
 		this.publish();
 	}
 	async retryResult(id: string): Promise<void> {
@@ -324,15 +334,75 @@ export class TranslationRuntime {
 			if (generation === this.generation && !this.disposed) {
 				this.controller = null;
 				this.state.status = this.deriveStatus();
+				if (this.state.status === "success") {
+					this.recordHistory(text, direction, this.state.results);
+				}
 				this.publish();
 			}
 		}
 	}
+	restoreHistory(id: number): boolean {
+		if (this.disposed || this.state.saving || this.state.status === "loading") return false;
+		const entry = this.history.find((item) => item.id === id);
+		if (!entry) return false;
+		this.prefillVersion++;
+		this.invalidate(false);
+		this.settings = { ...this.settings, direction: entry.direction };
+		this.state.input = entry.input;
+		this.state.translatedInput = entry.input;
+		this.state.translatedDirection = entry.direction;
+		this.state.results = this.state.results.map((current) => {
+			if (current.setupIssue) return current;
+			const saved = entry.results.find((result) => result.id === current.id);
+			return saved?.status === "success" || saved?.status === "error"
+				? { ...current, ...saved }
+				: current;
+		});
+		this.state.status = this.deriveStatus();
+		this.publish();
+		return true;
+	}
+	clearHistory(): void {
+		if (this.disposed || this.history.length === 0) return;
+		this.history = [];
+		this.publish();
+	}
 	dispose(): void {
 		this.disposed = true;
 		this.unsubscribe();
+		this.history = [];
 		this.clear();
 		this.listeners.clear();
+	}
+	private recordHistory(
+		input: string,
+		direction: TranslationSettings["direction"],
+		results: readonly TranslationResultState[],
+	): void {
+		const trimmed = input.trim();
+		if (!trimmed) return;
+		const frozenResults = Object.freeze(
+			results.map((result) =>
+				Object.freeze({
+					...result,
+					usage: result.usage ? Object.freeze({ ...result.usage }) : result.usage,
+				}),
+			),
+		);
+		const existingIndex = this.history.findIndex(
+			(item) => item.input === input && item.direction === direction,
+		);
+		const id = existingIndex >= 0 ? this.history[existingIndex]!.id : ++this.historySeq;
+		const nextEntry: TranslationHistoryItem = Object.freeze({
+			id,
+			input,
+			direction,
+			results: frozenResults,
+		});
+		const remaining = this.history.filter(
+			(item) => !(item.input === input && item.direction === direction),
+		);
+		this.history = [nextEntry, ...remaining].slice(0, MAX_HISTORY_ITEMS);
 	}
 	private invalidate(clearCache: boolean): void {
 		this.generation++;
@@ -404,6 +474,7 @@ export class TranslationRuntime {
 			stale,
 			settings,
 			clearUndoId: this.cleared && !this.state.saving ? this.generation : null,
+			history: Object.freeze([...this.history]),
 			results: Object.freeze(
 				this.state.results.map((result) =>
 					Object.freeze({

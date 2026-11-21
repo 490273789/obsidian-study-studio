@@ -14,12 +14,14 @@ import {
 	Copy,
 	FileDiff,
 	FileText,
+	History,
 	Languages,
 	RotateCcw,
 	Settings2,
 	Trash2,
 	Volume2,
 	VolumeX,
+	X,
 } from "lucide-react";
 import { aiErrorText } from "../../../core/i18n/ai";
 import { cls } from "../../../core/shared/classNames";
@@ -109,25 +111,31 @@ function highlightDifferences(
 			return chunk;
 		});
 	} else {
-		const segments = text.split(/([，。！？；：“”（）\s]+)/);
+		interface IntlSegmenter {
+			segment(input: string): Iterable<{ segment: string }>;
+		}
+		const intlWithSegmenter = Intl as typeof Intl & {
+			Segmenter?: new (locales: string, options: { granularity: "word" }) => IntlSegmenter;
+		};
+		const segmentText = (source: string): string[] => {
+			if (typeof Intl !== "undefined" && typeof intlWithSegmenter.Segmenter === "function") {
+				const segmenter = new intlWithSegmenter.Segmenter("zh-CN", { granularity: "word" });
+				return Array.from(segmenter.segment(source), (item) => item.segment);
+			}
+			return Array.from(source);
+		};
+		const segments = segmentText(text);
 		return segments.map((seg, sIdx) => {
-			if (/^[，。！？；：“”（）\s]+$/.test(seg)) return seg;
-			const chars = Array.from(seg);
-			return (
-				<span key={sIdx}>
-					{chars.map((char, cIdx) => {
-						const common = otherTexts.every((t) => t.includes(char));
-						if (!common) {
-							return (
-								<mark key={cIdx} className={styles.diffMark}>
-									{char}
-								</mark>
-							);
-						}
-						return char;
-					})}
-				</span>
-			);
+			if (/^[，。！？；：“”‘’（）【】《》、\s]+$/.test(seg)) return seg;
+			const common = otherTexts.every((t) => t.includes(seg));
+			if (!common) {
+				return (
+					<mark key={sIdx} className={styles.diffMark}>
+						{seg}
+					</mark>
+				);
+			}
+			return seg;
 		});
 	}
 }
@@ -248,7 +256,10 @@ export const TranslatorView = React.memo(function TranslatorView({
 		isLoading;
 	const sourceLanguage =
 		snapshot.settings.direction === "zh-en" ? strings.chinese : strings.english;
-	const targetLanguage = resultsDirection === "zh-en" ? strings.english : strings.chinese;
+	const currentTargetLanguage =
+		snapshot.settings.direction === "zh-en" ? strings.english : strings.chinese;
+	const resultsTargetLanguage = resultsDirection === "zh-en" ? strings.english : strings.chinese;
+	const targetLanguage = stale ? currentTargetLanguage : resultsTargetLanguage;
 	const translatedSource = snapshot.translatedInput || snapshot.input;
 	const translationStamp = JSON.stringify([snapshot.translatedInput, snapshot.clearUndoId]);
 	const translateVariant = isLoading
@@ -344,7 +355,10 @@ export const TranslatorView = React.memo(function TranslatorView({
 				return;
 			}
 		}
-		const callout = `> [!quote] 翻译 · ${result.name}\n> ${translatedSource.split("\n").join("\n> ")}\n>\n> ${result.text.split("\n").join("\n> ")}\n\n`;
+		const calloutTitle = formatTranslationString(strings.calloutHeading, {
+			name: result.name,
+		});
+		const callout = `> [!quote] ${calloutTitle}\n> ${translatedSource.split("\n").join("\n> ")}\n>\n> ${result.text.split("\n").join("\n> ")}\n\n`;
 		try {
 			if (!navigator.clipboard) throw new Error("Clipboard API unavailable");
 			await navigator.clipboard.writeText(callout);
@@ -777,6 +791,56 @@ export const TranslatorView = React.memo(function TranslatorView({
 							)}
 						</div>
 					</footer>
+					{snapshot.history && snapshot.history.length > 0 && (
+						<div className={styles.historyBar} aria-label={strings.recentHistory}>
+							<span className={styles.historyLabel}>
+								<History size={12} aria-hidden="true" />
+								{strings.recentHistory}
+							</span>
+							<div className={styles.historyChips}>
+								{snapshot.history.map((item) => {
+									const isActiveHistory =
+										!stale &&
+										hasResults &&
+										snapshot.translatedInput === item.input &&
+										snapshot.translatedDirection === item.direction;
+									const preview = item.input.replace(/\s+/g, " ").trim();
+									return (
+										<button
+											key={item.id}
+											type="button"
+											className={cls(
+												styles.historyChip,
+												isActiveHistory && styles.isActiveHistory,
+											)}
+											title={preview}
+											aria-label={formatTranslationString(
+												strings.restoreHistoryItem,
+												{ text: preview },
+											)}
+											aria-current={isActiveHistory ? "true" : undefined}
+											disabled={isLoading || snapshot.saving}
+											onClick={() => runtime.restoreHistory(item.id)}
+										>
+											<span className={styles.historyChipText}>
+												{preview}
+											</span>
+										</button>
+									);
+								})}
+							</div>
+							<button
+								type="button"
+								className={styles.historyClearBtn}
+								title={strings.clearHistory}
+								aria-label={strings.clearHistory}
+								disabled={isLoading || snapshot.saving}
+								onClick={() => runtime.clearHistory()}
+							>
+								<X size={12} aria-hidden="true" />
+							</button>
+						</div>
+					)}
 				</article>
 
 				<section
@@ -788,7 +852,24 @@ export const TranslatorView = React.memo(function TranslatorView({
 						<div className={styles.outputHeading}>
 							<span className={styles.outputLabelText}>{strings.outputLabel}</span>
 							<span className={styles.langPill}>{targetLanguage}</span>
-							<output className={styles.resultStatus}>{statusText}</output>
+							{statusText && (
+								<output
+									className={cls(
+										styles.resultStatus,
+										(Boolean(snapshot.error) ||
+											(snapshot.status === "error" && failed > 0)) &&
+											styles.isError,
+									)}
+									role={
+										Boolean(snapshot.error) ||
+										(snapshot.status === "error" && failed > 0)
+											? "alert"
+											: undefined
+									}
+								>
+									{statusText}
+								</output>
+							)}
 						</div>
 					</header>
 					{stale && hasResults && (

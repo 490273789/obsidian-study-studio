@@ -558,4 +558,38 @@ describe("translation session", () => {
 			runtime.dispose();
 		},
 	);
+
+	it("keeps a bounded in-memory history of up to 5 recent translations and restores them without network requests", async () => {
+		const { runtime, request, youdao } = setup();
+		for (let index = 1; index <= 6; index++) {
+			runtime.setInput(`句子 ${index}`);
+			await runtime.translate();
+		}
+		const history = runtime.getSnapshot().history ?? [];
+		expect(history).toHaveLength(5);
+		expect(history.map((item) => item.input)).toEqual([
+			"句子 6",
+			"句子 5",
+			"句子 4",
+			"句子 3",
+			"句子 2",
+		]);
+
+		const callsBeforeRestore = request.mock.calls.length + youdao.mock.calls.length;
+		runtime.clear({ undoable: true });
+		expect(runtime.getSnapshot().input).toBe("");
+		expect(runtime.getSnapshot().history).toHaveLength(5);
+
+		const targetEntry = history[2]!;
+		expect(runtime.restoreHistory(targetEntry.id)).toBe(true);
+		expect(runtime.getSnapshot().input).toBe("句子 4");
+		expect(runtime.getSnapshot().translatedInput).toBe("句子 4");
+		expect(runtime.getSnapshot().stale).toBe(false);
+		expect(runtime.getSnapshot().status).toBe("success");
+		expect(request.mock.calls.length + youdao.mock.calls.length).toBe(callsBeforeRestore);
+
+		runtime.clearHistory();
+		expect(runtime.getSnapshot().history).toEqual([]);
+		runtime.dispose();
+	});
 });
