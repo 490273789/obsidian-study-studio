@@ -1,3 +1,4 @@
+import { errorMessage } from "../../../core/shared/utils";
 import type { VideoPlayerRuntime } from "./videoPlayerRuntime";
 import {
 	ShadowSubtitleEditConflict,
@@ -1185,10 +1186,6 @@ export class ShadowingWorkspaceSession {
 		}
 		return Object.freeze(editor);
 	}
-}
-
-function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
 }
 
 function sameSnapshot(a: ShadowingWorkspaceState, b: ShadowingWorkspaceState): boolean {

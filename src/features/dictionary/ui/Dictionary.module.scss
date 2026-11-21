@@ -1107,18 +1107,6 @@
 	gap: var(--fc-space-2);
 }
 
-.clearConfirmRow {
-	display: flex;
-	align-items: center;
-	gap: var(--fc-space-1);
-	font-size: var(--fc-font-xs);
-	color: var(--fc-danger);
-}
-
-.clearConfirmText {
-	font-weight: var(--fc-weight-medium);
-}
-
 .favoriteForm {
 	display: flex;
 	flex-direction: column;

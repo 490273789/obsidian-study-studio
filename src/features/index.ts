@@ -7,11 +7,7 @@ import { createDictionaryFeature } from "./dictionary/feature";
 import { createFlashcardFeature } from "./flashcards/feature";
 import { createTranslationFeature } from "./translation/feature";
 import { createSelectionHelperModule } from "../core/selectionHelper/module";
-import {
-	createVideoPlayerFeature,
-	type VideoShadowingCue,
-	type VideoShadowingServices,
-} from "./video-player/feature";
+import { createVideoPlayerFeature, type VideoShadowingServices } from "./video-player/feature";
 import { createAudioPracticeFeature } from "./audio-practice/feature";
 import { MediaTranscriptionEngine } from "../core/media/transcription/mediaTranscriptionEngine";
 import {
@@ -21,9 +17,7 @@ import {
 import { translateYoudao } from "./translation/domain/youdao";
 import { assembleVideoShadowingServices } from "./video-player/domain/shadowingServices";
 
-export type { VideoShadowingCue, VideoShadowingServices };
-
-export interface VideoShadowingServicesDeps {
+interface VideoShadowingServicesDeps {
 	ai: AiService;
 	store: WorkbenchStore;
 	net: OutboundPort;
@@ -35,9 +29,7 @@ export interface VideoShadowingServicesDeps {
  * Both halves read the shared AI engine registry (ADR-0016): ASR engines for
  * transcription, LLM/translation engines for translation.
  */
-export function createVideoShadowingServices(
-	deps: VideoShadowingServicesDeps,
-): VideoShadowingServices {
+function createVideoShadowingServices(deps: VideoShadowingServicesDeps): VideoShadowingServices {
 	const transcription = new MediaTranscriptionEngine({
 		readRegistry: () => deps.store.getSettings().ai,
 		resolveEngineId: () => deps.store.getSettings().videoPlayer.shadowTranscriptionEngineId,

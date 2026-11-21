@@ -20,9 +20,7 @@ import {
 	estimateMinutes,
 	type PracticeKind,
 	type PracticePreferenceStore,
-	type PracticeSelectionMode,
 	PracticeSetupSession,
-	type SpellingSelectionMode,
 } from "../../../domain/sessions/practiceSetupSession";
 import { FlashcardButton } from "../../../../../core/ui/primitives/Button";
 import { FlashcardInput } from "../../../../../core/ui/primitives/Input";
@@ -31,9 +29,7 @@ import { SetupControlGroup, SetupSelector } from "../../../../../core/ui/primiti
 import { SetupPage, setupStyles as styles } from "../../primitives/SetupPage/SetupPage";
 import practiceStyles from "./PracticeSetup.module.scss";
 
-export type { PracticeKind, PracticePreferenceStore, PracticeSelectionMode, SpellingSelectionMode };
-
-export interface PracticeSetupProps {
+interface PracticeSetupProps {
 	deck: Deck;
 	plan: PracticeSetupPlan;
 	spellingPlan?: SpellingSetupPlan | null;
@@ -246,145 +242,31 @@ export const PracticeSetup = React.memo(function PracticeSetup(props: PracticeSe
 						/>
 
 						<div className={styles.controlDetail}>
-							{spellingMode === "smart" ? (
-								<>
-									<div className={styles.quickButtons}>
-										{quickSpellingCounts.map((count) => {
-											const minutes = estimateMinutes(count, true);
-											return (
-												<FlashcardButton
-													key={count}
-													type="button"
-													className={cls(
-														styles.chip,
-														practiceStyles.chipWithTime,
-													)}
-													active={spellingQuestionCount === count}
-													aria-pressed={spellingQuestionCount === count}
-													aria-label={t("practice.chipAria", {
-														count,
-														minutes,
-													})}
-													onClick={() =>
-														session.selectQuickSpellingCount(count)
-													}
-												>
-													<span>{count}</span>
-													<span className={practiceStyles.chipSub}>
-														~{minutes}m
-													</span>
-												</FlashcardButton>
-											);
-										})}
-										<FlashcardButton
-											type="button"
-											className={cls(
-												styles.chip,
-												practiceStyles.chipWithTime,
-											)}
-											active={spellingQuestionCount === spellingMax}
-											aria-pressed={spellingQuestionCount === spellingMax}
-											aria-label={t("practice.allCardsAria", {
-												count: spellingMax,
-												minutes: estimateMinutes(spellingMax, true),
-											})}
-											onClick={() =>
-												session.selectQuickSpellingCount(spellingMax)
-											}
-										>
-											<span>{t("common.all")}</span>
-											<span className={practiceStyles.chipSub}>
-												({spellingMax})
-											</span>
-										</FlashcardButton>
-									</div>
-
-									<div className={practiceStyles.customInputRow}>
-										<label className={styles.customField}>
-											<span className={styles.inputLabel}>
-												{t("spelling.customCount")}
-											</span>
-											<FlashcardInput
-												type="number"
-												className={styles.input}
-												value={spellingQuestionCountInput}
-												onChange={(e) =>
-													session.setSpellingQuestionCountInput(
-														e.target.value,
-													)
-												}
-												onBlur={() => session.commitSpellingQuestionCount()}
-												min={1}
-												max={spellingMax}
-											/>
-											<span className={styles.inputHint}>
-												1–{spellingMax}
-											</span>
-										</label>
-										{spellingQuestionCount > 0 &&
-											!quickSpellingCounts.includes(spellingQuestionCount) &&
-											spellingQuestionCount !== spellingMax && (
-												<span className={practiceStyles.customEstimate}>
-													{t("practice.estimatedTime", {
-														minutes: estimateMinutes(
-															spellingQuestionCount,
-															true,
-														),
-													})}
-												</span>
-											)}
-									</div>
-								</>
-							) : (
-								<div className={styles.rangeGroup}>
-									<div className={styles.rangeInputs}>
-										<label className={styles.rangeField}>
-											<span className={styles.inputLabel}>
-												{t("practice.rangeStart")}
-											</span>
-											<FlashcardInput
-												type="number"
-												className={styles.input}
-												value={spellingRangeStartInput}
-												onChange={(e) =>
-													session.setSpellingRangeStartInput(
-														e.target.value,
-													)
-												}
-												onBlur={() => session.commitSpellingRange()}
-											/>
-										</label>
-										<label className={styles.rangeField}>
-											<span className={styles.inputLabel}>
-												{t("practice.rangeEnd")}
-											</span>
-											<FlashcardInput
-												type="number"
-												className={styles.input}
-												value={spellingRangeEndInput}
-												onChange={(e) =>
-													session.setSpellingRangeEndInput(e.target.value)
-												}
-												onBlur={() => session.commitSpellingRange()}
-											/>
-										</label>
-									</div>
-									<div className={practiceStyles.rangeSelectedNotice}>
-										<span className={practiceStyles.rangeCountHighlight}>
-											{t("practice.rangeSelectedSummary", {
-												count: spellingRangeCount,
-											})}
-										</span>
-										<span className={practiceStyles.rangeEstimatedTime}>
-											（
-											{t("practice.estimatedTime", {
-												minutes: estimateMinutes(spellingRangeCount, true),
-											})}
-											）
-										</span>
-									</div>
-								</div>
-							)}
+							{spellingMode === "smart"
+								? renderCountFields(t, {
+										count: spellingQuestionCount,
+										countInput: spellingQuestionCountInput,
+										quickCounts: quickSpellingCounts,
+										maxCount: spellingMax,
+										isSpelling: true,
+										customLabel: t("spelling.customCount"),
+										onPickCount: (count) =>
+											session.selectQuickSpellingCount(count),
+										onChangeCount: (value) =>
+											session.setSpellingQuestionCountInput(value),
+										onCommitCount: () => session.commitSpellingQuestionCount(),
+									})
+								: renderRangeFields(t, {
+										startInput: spellingRangeStartInput,
+										endInput: spellingRangeEndInput,
+										count: spellingRangeCount,
+										isSpelling: true,
+										onChangeStart: (value) =>
+											session.setSpellingRangeStartInput(value),
+										onChangeEnd: (value) =>
+											session.setSpellingRangeEndInput(value),
+										onCommitRange: () => session.commitSpellingRange(),
+									})}
 						</div>
 					</SetupControlGroup>
 				) : (
@@ -419,146 +301,30 @@ export const PracticeSetup = React.memo(function PracticeSetup(props: PracticeSe
 							/>
 
 							<div className={styles.controlDetail}>
-								{selectionMode === "random" ? (
-									<>
-										<div className={styles.quickButtons}>
-											{quickQuestionCounts.map((count) => {
-												const minutes = estimateMinutes(count, false);
-												return (
-													<FlashcardButton
-														key={count}
-														type="button"
-														className={cls(
-															styles.chip,
-															practiceStyles.chipWithTime,
-														)}
-														active={questionCount === count}
-														aria-pressed={questionCount === count}
-														aria-label={t("practice.chipAria", {
-															count,
-															minutes,
-														})}
-														onClick={() =>
-															session.selectQuickQuestionCount(count)
-														}
-													>
-														<span>{count}</span>
-														<span className={practiceStyles.chipSub}>
-															~{minutes}m
-														</span>
-													</FlashcardButton>
-												);
-											})}
-											<FlashcardButton
-												type="button"
-												className={cls(
-													styles.chip,
-													practiceStyles.chipWithTime,
-												)}
-												active={questionCount === maxQuestions}
-												aria-pressed={questionCount === maxQuestions}
-												aria-label={t("practice.allCardsAria", {
-													count: maxQuestions,
-													minutes: estimateMinutes(maxQuestions, false),
-												})}
-												onClick={() =>
-													session.selectQuickQuestionCount(maxQuestions)
-												}
-											>
-												<span>{t("common.all")}</span>
-												<span className={practiceStyles.chipSub}>
-													({maxQuestions})
-												</span>
-											</FlashcardButton>
-										</div>
-
-										<div className={practiceStyles.customInputRow}>
-											<label className={styles.customField}>
-												<span className={styles.inputLabel}>
-													{t("practice.customCount")}
-												</span>
-												<FlashcardInput
-													type="number"
-													className={styles.input}
-													value={questionCountInput}
-													onChange={(e) =>
-														session.setQuestionCountInput(
-															e.target.value,
-														)
-													}
-													onBlur={() => session.commitQuestionCount()}
-													min={1}
-													max={maxQuestions}
-												/>
-												<span className={styles.inputHint}>
-													1–{maxQuestions}
-												</span>
-											</label>
-											{questionCount > 0 &&
-												!quickQuestionCounts.includes(questionCount) &&
-												questionCount !== maxQuestions && (
-													<span className={practiceStyles.customEstimate}>
-														{t("practice.estimatedTime", {
-															minutes: estimateMinutes(
-																questionCount,
-																false,
-															),
-														})}
-													</span>
-												)}
-										</div>
-									</>
-								) : (
-									<div className={styles.rangeGroup}>
-										<div className={styles.rangeInputs}>
-											<label className={styles.rangeField}>
-												<span className={styles.inputLabel}>
-													{t("practice.rangeStart")}
-												</span>
-												<FlashcardInput
-													type="number"
-													className={styles.input}
-													value={rangeStartInput}
-													onChange={(e) =>
-														session.setRangeStartInput(e.target.value)
-													}
-													onBlur={() => session.commitRange()}
-												/>
-											</label>
-											<label className={styles.rangeField}>
-												<span className={styles.inputLabel}>
-													{t("practice.rangeEnd")}
-												</span>
-												<FlashcardInput
-													type="number"
-													className={styles.input}
-													value={rangeEndInput}
-													onChange={(e) =>
-														session.setRangeEndInput(e.target.value)
-													}
-													onBlur={() => session.commitRange()}
-												/>
-											</label>
-										</div>
-										<div className={practiceStyles.rangeSelectedNotice}>
-											<span className={practiceStyles.rangeCountHighlight}>
-												{t("practice.rangeSelectedSummary", {
-													count: rangeQuestionCount,
-												})}
-											</span>
-											<span className={practiceStyles.rangeEstimatedTime}>
-												（
-												{t("practice.estimatedTime", {
-													minutes: estimateMinutes(
-														rangeQuestionCount,
-														false,
-													),
-												})}
-												）
-											</span>
-										</div>
-									</div>
-								)}
+								{selectionMode === "random"
+									? renderCountFields(t, {
+											count: questionCount,
+											countInput: questionCountInput,
+											quickCounts: quickQuestionCounts,
+											maxCount: maxQuestions,
+											isSpelling: false,
+											customLabel: t("practice.customCount"),
+											onPickCount: (count) =>
+												session.selectQuickQuestionCount(count),
+											onChangeCount: (value) =>
+												session.setQuestionCountInput(value),
+											onCommitCount: () => session.commitQuestionCount(),
+										})
+									: renderRangeFields(t, {
+											startInput: rangeStartInput,
+											endInput: rangeEndInput,
+											count: rangeQuestionCount,
+											isSpelling: false,
+											onChangeStart: (value) =>
+												session.setRangeStartInput(value),
+											onChangeEnd: (value) => session.setRangeEndInput(value),
+											onCommitRange: () => session.commitRange(),
+										})}
 							</div>
 						</SetupControlGroup>
 
@@ -621,3 +387,151 @@ export const PracticeSetup = React.memo(function PracticeSetup(props: PracticeSe
 		</SetupPage>
 	);
 });
+
+interface CountFieldsProps {
+	count: number;
+	countInput: string;
+	quickCounts: readonly number[];
+	maxCount: number;
+	isSpelling: boolean;
+	customLabel: string;
+	onPickCount: (count: number) => void;
+	onChangeCount: (value: string) => void;
+	onCommitCount: () => void;
+}
+
+type Translate = ReturnType<typeof useFlashcardI18n>["t"];
+
+function renderCountFields(
+	t: Translate,
+	{
+		count,
+		countInput,
+		quickCounts,
+		maxCount,
+		isSpelling,
+		customLabel,
+		onPickCount,
+		onChangeCount,
+		onCommitCount,
+	}: CountFieldsProps,
+): React.JSX.Element {
+	const chipClass = cls(styles.chip, practiceStyles.chipWithTime);
+	const showCustomEstimate = count > 0 && !quickCounts.includes(count) && count !== maxCount;
+
+	return (
+		<>
+			<div className={styles.quickButtons}>
+				{quickCounts.map((preset) => {
+					const minutes = estimateMinutes(preset, isSpelling);
+					return (
+						<FlashcardButton
+							key={preset}
+							type="button"
+							className={chipClass}
+							active={count === preset}
+							aria-pressed={count === preset}
+							aria-label={t("practice.chipAria", { count: preset, minutes })}
+							onClick={() => onPickCount(preset)}
+						>
+							<span>{preset}</span>
+							<span className={practiceStyles.chipSub}>~{minutes}m</span>
+						</FlashcardButton>
+					);
+				})}
+				<FlashcardButton
+					type="button"
+					className={chipClass}
+					active={count === maxCount}
+					aria-pressed={count === maxCount}
+					aria-label={t("practice.allCardsAria", {
+						count: maxCount,
+						minutes: estimateMinutes(maxCount, isSpelling),
+					})}
+					onClick={() => onPickCount(maxCount)}
+				>
+					<span>{t("common.all")}</span>
+					<span className={practiceStyles.chipSub}>({maxCount})</span>
+				</FlashcardButton>
+			</div>
+			<div className={practiceStyles.customInputRow}>
+				<label className={styles.customField}>
+					<span className={styles.inputLabel}>{customLabel}</span>
+					<FlashcardInput
+						type="number"
+						className={styles.input}
+						value={countInput}
+						onChange={(event) => onChangeCount(event.target.value)}
+						onBlur={onCommitCount}
+						min={1}
+						max={maxCount}
+					/>
+					<span className={styles.inputHint}>1–{maxCount}</span>
+				</label>
+				{showCustomEstimate && (
+					<span className={practiceStyles.customEstimate}>
+						{t("practice.estimatedTime", {
+							minutes: estimateMinutes(count, isSpelling),
+						})}
+					</span>
+				)}
+			</div>
+		</>
+	);
+}
+
+interface RangeFieldsProps {
+	startInput: string;
+	endInput: string;
+	count: number;
+	isSpelling: boolean;
+	onChangeStart: (value: string) => void;
+	onChangeEnd: (value: string) => void;
+	onCommitRange: () => void;
+}
+
+function renderRangeFields(
+	t: Translate,
+	{
+		startInput,
+		endInput,
+		count,
+		isSpelling,
+		onChangeStart,
+		onChangeEnd,
+		onCommitRange,
+	}: RangeFieldsProps,
+): React.JSX.Element {
+	const fields = [
+		{ label: "practice.rangeStart", value: startInput, onChange: onChangeStart },
+		{ label: "practice.rangeEnd", value: endInput, onChange: onChangeEnd },
+	] as const;
+
+	return (
+		<div className={styles.rangeGroup}>
+			<div className={styles.rangeInputs}>
+				{fields.map(({ label, value, onChange }) => (
+					<label key={label} className={styles.rangeField}>
+						<span className={styles.inputLabel}>{t(label)}</span>
+						<FlashcardInput
+							type="number"
+							className={styles.input}
+							value={value}
+							onChange={(event) => onChange(event.target.value)}
+							onBlur={onCommitRange}
+						/>
+					</label>
+				))}
+			</div>
+			<div className={practiceStyles.rangeSelectedNotice}>
+				<span className={practiceStyles.rangeCountHighlight}>
+					{t("practice.rangeSelectedSummary", { count })}
+				</span>
+				<span className={practiceStyles.rangeEstimatedTime}>
+					（{t("practice.estimatedTime", { minutes: estimateMinutes(count, isSpelling) })}
+					）
+				</span>
+			</div>
+		</div>
+	);
+}

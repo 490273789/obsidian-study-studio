@@ -27,7 +27,6 @@ import { PlayerViewInteraction } from "./ui/playerViewInteraction";
 import { VideoPlayerView } from "./ui/VideoPlayerView";
 import {
 	VideoShadowingDesktopAdapter,
-	type VideoShadowingCue,
 	type VideoShadowingServices,
 } from "./obsidian/videoShadowingDesktopAdapter";
 
@@ -38,7 +37,7 @@ const OPEN_COMMAND_ID = "open-local-video-player";
 
 type VideoPlayerWorkbenchHost = WorkbenchHost<"videoPlayer">;
 
-export type { VideoShadowingCue, VideoShadowingServices };
+export type { VideoShadowingServices };
 
 export function createVideoPlayerFeature(
 	deps: { ai?: AiService; shadowing?: VideoShadowingServices } = {},

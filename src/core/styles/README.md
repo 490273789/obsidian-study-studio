@@ -250,7 +250,7 @@ Portal 到 `document.body` 的插件浮层（如浮动视频窗口）必须包�
 
 ### 交互状态与遮罩
 
-- hover 表面统一使用 `--fc-surface-hover`，选中态使用 `--fc-surface-selected`；控件边框 hover 使用 `--fc-control-border-hover`，选中边框使用 `--fc-control-border-selected`。
+- hover 表面统一使用 `--fc-surface-hover`；控件边框 hover 使用 `--fc-control-border-hover`，选中边框使用 `--fc-control-border-selected`。
 - 禁用态统一用 `--fc-opacity-disabled`（0.45）表达，不单独定义禁用表面色或边框色。
 - 按下（`:active`）态通过轻微缩放与辉光表达，不改变背景色；键盘焦点统一使用 `--fc-focus-ring`。
 - `--fc-black-rgb` 固定为纯黑（用于阴影与遮罩），`--fc-white-rgb` 固定为纯白（用于高光 sheen 与顶部高光），两者不随主题翻转；其余带 `-rgb` 后缀的通道 token 仅用于 `rgba()` 半透明 tint。

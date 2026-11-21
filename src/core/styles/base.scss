@@ -108,9 +108,8 @@
 	);
 	--fc-focus-ring: var(--interactive-accent);
 
-	/* ── 交互状态表面（hover / 选中）与禁用透明度 ───────────────── */
+	/* ── 悬停表面与禁用透明度 ──────────────────────────────────── */
 	--fc-surface-hover: var(--background-modifier-hover);
-	--fc-surface-selected: var(--background-modifier-active-hover);
 	/* 禁用态统一用透明度表达，不再单独定义禁用表面色 */
 	--fc-opacity-disabled: 0.45;
 
@@ -143,7 +142,6 @@
 	--fc-input-border-focus: var(--fc-control-border-selected);
 
 	/* ── RGB 通道（仅用于 rgba() 半透明 tint）──────────────────── */
-	--fc-bg-rgb: var(--mono-rgb-0);
 	--fc-bg-elevated-rgb: var(--mono-rgb-0);
 	--fc-bg-panel-rgb: var(--mono-rgb-0);
 	/* 主色 RGB：优先取主题交互强调色的 RGB 通道；部分主题未定义
@@ -160,7 +158,6 @@
 
 	--fc-font-ui:
 		ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-	--fc-font-reading: "Songti SC", STSong, "Noto Serif CJK SC", Georgia, serif;
 	--fc-font-data: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 	--fc-shadow-sm: 0 1px 2px rgba(var(--fc-black-rgb), 0.05);
 	--fc-shadow-card:
