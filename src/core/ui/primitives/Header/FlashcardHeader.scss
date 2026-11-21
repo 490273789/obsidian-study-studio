@@ -156,14 +156,6 @@
 		flex-shrink: 0;
 	}
 
-	.flashcard-header-actions {
-		display: flex;
-		align-items: center;
-		gap: var(--fc-space-1);
-		flex-wrap: nowrap;
-		flex-shrink: 0;
-	}
-
 	.flashcard-common-header:not(.has-left):not(.has-back) {
 		grid-template-columns: minmax(0, 1fr) auto;
 

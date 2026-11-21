@@ -3,8 +3,8 @@ import type { DeckSpellingSnapshot } from "../decks/deckHome";
 import type { SessionStartRequest } from "./sessionLifecycle";
 import type { PracticeSetupPlan, SpellingSetupPlan } from "./sessionPlanner";
 
-export const QUICK_QUESTION_COUNTS = [20, 50, 100] as const;
-export const QUICK_SPELLING_COUNTS = [10, 20, 50] as const;
+const QUICK_QUESTION_COUNTS = [20, 50, 100] as const;
+const QUICK_SPELLING_COUNTS = [10, 20, 50] as const;
 const STORAGE_KEY_PREFIX = "study-studio:practice-kind:";
 
 export type PracticeKind = "flip" | "spelling";
@@ -18,7 +18,7 @@ export interface PracticePreferenceStore {
 
 const inMemoryPreferenceMap = new Map<string, PracticeKind>();
 
-export const browserPracticePreferenceStore: PracticePreferenceStore = {
+const browserPracticePreferenceStore: PracticePreferenceStore = {
 	getPreference(deckId: string): PracticeKind | null {
 		const inMem = inMemoryPreferenceMap.get(deckId);
 		if (inMem) return inMem;

@@ -90,7 +90,7 @@
 				border-color var(--fc-motion-quick) ease;
 
 			&:hover:not(:disabled) {
-				color: var(--fc-primary-text-light, var(--fc-primary));
+				color: var(--fc-primary-text-light);
 				background: color-mix(
 					in srgb,
 					var(--fc-primary) 8%,
@@ -158,7 +158,7 @@
 		}
 
 		.phoneticLabel {
-			color: var(--fc-primary-text-light, var(--fc-primary));
+			color: var(--fc-primary-text-light);
 			font-weight: var(--fc-weight-semibold);
 		}
 

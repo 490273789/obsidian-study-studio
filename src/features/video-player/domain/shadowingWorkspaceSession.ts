@@ -1134,7 +1134,7 @@ export class ShadowingWorkspaceSession {
 			} else if (error instanceof ShadowSubtitleEditConflict) {
 				draft.saveConflict = true;
 			} else {
-				draft.failure = error instanceof Error ? error.message : String(error);
+				draft.failure = errorMessage(error);
 			}
 		} finally {
 			if (this.draftSources.get(source.id) === source) {

@@ -33,6 +33,7 @@ import {
 	useSortableInteraction,
 } from "../../../core/ui/primitives/Sortable/Sortable";
 import { cls } from "../../../core/shared/classNames";
+import { clamp } from "../../../core/shared/utils";
 import type { Language } from "../../../core/shared/types";
 import type { ShadowingWorkspaceViewAction, VideoPlayerSnapshot } from "../domain/types";
 import { VIDEO_PLAYBACK_RATES } from "../domain/types";
@@ -1017,8 +1018,4 @@ function sourceProgressLabel(
 	if (snapshot.completedSourceIds.includes(sourceId)) return t.completed;
 	const progress = snapshot.progressBySource[sourceId] ?? 0;
 	return progress > 0 ? t.watched(formatTime(progress)) : "";
-}
-
-function clamp(value: number, min: number, max: number): number {
-	return Math.min(max, Math.max(min, value));
 }

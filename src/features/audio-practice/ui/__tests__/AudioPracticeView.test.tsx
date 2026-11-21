@@ -4,7 +4,8 @@ import { AudioPracticeRuntime } from "../../domain/audioPracticeRuntime";
 import { emptyAudioPracticeData } from "../../domain/repository";
 import type { AudioMaterial, AudioPracticeDraftSnapshot } from "../../domain/types";
 import { audioPracticeStrings } from "../../strings/audioPractice";
-import { DraftReviewBody, PracticeSurface } from "../AudioPracticeView";
+import { PracticeSurface } from "../AudioPracticeView";
+import { DraftReviewBody } from "../ReviewDialog";
 
 interface ControlProps {
 	children?: React.ReactNode;

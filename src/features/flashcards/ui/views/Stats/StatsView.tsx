@@ -141,7 +141,7 @@ export const StatsView = React.memo(function StatsView({ history, onBack }: Stat
 								const isToday = tag === t("stats.today");
 
 								return (
-									<section key={date} className={cls("fc-lift", styles.dayCard)}>
+									<section key={date} className={styles.dayCard}>
 										<header className={styles.dayHeader}>
 											<div className={styles.dayDateGroup}>
 												<Calendar

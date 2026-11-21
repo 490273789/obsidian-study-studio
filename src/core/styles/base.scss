@@ -179,7 +179,6 @@
 		--fc-shadow-overlay:
 			0 12px 32px rgba(var(--fc-black-rgb), 0.08), 0 2px 8px rgba(var(--fc-black-rgb), 0.04);
 	}
-	--fc-glow-cyan: none;
 	--fc-motion-quick: 140ms;
 	--fc-motion-base: 180ms;
 	--fc-motion-page: 220ms;
@@ -274,15 +273,4 @@
 	font-size: var(--fc-font-xs);
 	font-weight: var(--fc-weight-semibold);
 	text-transform: uppercase;
-}
-
-.fc-lift {
-	transition: var(--fc-transition-lift);
-	transform: none;
-}
-
-.fc-lift:hover {
-	border-color: rgba(var(--fc-cyan-rgb), 0.38);
-	box-shadow: var(--fc-glow-cyan);
-	transform: none;
 }

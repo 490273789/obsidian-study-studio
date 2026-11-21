@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { MediaFailureError, toMediaFailure } from "../../../../core/media/failures";
-import { parseSubtitles as parseSharedSubtitles } from "../../../../core/media/subtitles";
+import { parseSubtitles, serializeSrt, validateCues } from "../../../../core/media/subtitles";
 import { AudioFailureError, type AudioFailure } from "../failures";
-import { parseSubtitles, serializeSrt, validateCues } from "../subtitles";
 
 function failureOf(run: () => unknown): AudioFailure {
 	try {
@@ -16,10 +15,8 @@ function failureOf(run: () => unknown): AudioFailure {
 
 describe("audio subtitles", () => {
 	it("preserves typed errors and cue identity through shared media contracts", () => {
-		const source = "00:01.000 --> 00:02.000\nHello";
-		expect(parseSharedSubtitles(source)).toEqual(parseSubtitles(source));
 		try {
-			parseSharedSubtitles("");
+			parseSubtitles("");
 			throw new Error("Expected subtitle failure");
 		} catch (error) {
 			expect(error).toBeInstanceOf(MediaFailureError);

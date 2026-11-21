@@ -1,3 +1,4 @@
+import { clamp } from "../../../core/shared/utils";
 import type {
 	FloatingRect,
 	ShadowingWorkspaceState,
@@ -762,10 +763,6 @@ function demotedDragStart(
 		},
 		viewport,
 	);
-}
-
-function clamp(value: number, min: number, max: number): number {
-	return Math.min(max, Math.max(min, value));
 }
 
 function point(event: PointerEvent): PointerPoint {

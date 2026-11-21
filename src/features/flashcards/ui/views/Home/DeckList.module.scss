@@ -308,7 +308,7 @@
 			grid-column: 1;
 			align-self: center;
 			font-size: var(--fc-font-xs);
-			line-height: var(--fc-line-normal);
+			line-height: var(--fc-line-body);
 		}
 
 		:global(.fc-hero__side) {
@@ -416,7 +416,7 @@
 	padding: 0 var(--fc-space-2) var(--fc-space-2);
 	color: var(--fc-faint);
 	font-size: var(--fc-font-xs);
-	line-height: var(--fc-line-normal);
+	line-height: var(--fc-line-body);
 
 	> span + span::before {
 		content: "·";

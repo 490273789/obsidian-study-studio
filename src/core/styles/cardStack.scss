@@ -105,7 +105,7 @@
 }
 .flashcard-question {
 	.flashcard-markdown {
-		font-size: var(--fc-font-display, 28px);
+		font-size: var(--fc-font-display);
 		font-family: var(--fc-font-ui);
 		font-weight: var(--fc-weight-bold);
 		color: var(--fc-text);
@@ -116,7 +116,7 @@
 }
 .flashcard-answer {
 	.flashcard-markdown {
-		font-size: var(--fc-font-xl, 18px);
+		font-size: var(--fc-font-xl);
 		font-family: var(--fc-font-ui);
 		font-weight: var(--fc-weight-semibold);
 		color: var(--fc-text);

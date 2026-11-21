@@ -10,9 +10,9 @@
 }
 
 .chipSub {
-	font-size: var(--fc-font-2xs, 10px);
+	font-size: var(--fc-font-2xs);
 	color: var(--fc-muted);
-	font-weight: var(--fc-weight-normal);
+	font-weight: var(--fc-weight-regular);
 }
 
 :global(.active) .chipSub {

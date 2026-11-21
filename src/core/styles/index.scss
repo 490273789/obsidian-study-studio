@@ -5,7 +5,6 @@
 
 // 1. 全局设计系统令牌、混入与基础容器
 @use "./base.scss";
-@use "./mixins.scss";
 @use "./settings.scss";
 
 // 1b. 布局模块：页面外壳、面板与视图容器（功能样式可覆盖它）

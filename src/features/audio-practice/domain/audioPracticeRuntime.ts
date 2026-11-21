@@ -1,6 +1,7 @@
 import { audioFailure, type AudioFailure, toAudioFailure } from "./failures";
 import { emptyProgress, normalizeAudioPracticeData } from "./repository";
-import { parseSubtitles, serializeSrt, validateCues } from "./subtitles";
+import { parseSubtitles, serializeSrt, validateCues } from "../../../core/media/subtitles";
+import { sameFileStat } from "./subtitleDraftEngine";
 import type { TimedTextWord } from "./transcriptionTypes";
 import {
 	AUDIO_PLAYBACK_RATES,
@@ -1226,15 +1227,6 @@ export class AudioPracticeRuntime {
 		)
 			void this.loadMaterial(true);
 	};
-}
-
-function sameFileStat(
-	left: ReturnType<AudioPracticeFiles["stat"]>,
-	right: ReturnType<AudioPracticeFiles["stat"]>,
-): boolean {
-	return (
-		left !== null && right !== null && left.size === right.size && left.mtime === right.mtime
-	);
 }
 
 function sameMaterial(left: AudioMaterial, right: AudioMaterial): boolean {

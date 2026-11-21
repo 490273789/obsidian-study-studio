@@ -1,4 +1,7 @@
 import type { Deck } from "../../../../core/shared/types";
+import { escapeHtml } from "../../../../core/shared/utils";
+
+export { escapeHtml };
 
 interface DeckPdfRow {
 	front: string;
@@ -206,14 +209,6 @@ export function getDeckPdfFileStem(deckName: string): string {
 
 export function ensurePdfExtension(filePath: string): string {
 	return filePath.toLowerCase().endsWith(".pdf") ? filePath : `${filePath}.pdf`;
-}
-
-export function escapeHtml(value: string): string {
-	return value
-		.replace(/&/g, "&amp;")
-		.replace(/"/g, "&quot;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;");
 }
 
 export function createPrintableDeck(

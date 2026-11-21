@@ -19,14 +19,8 @@
 }
 
 @mixin phone-layout {
-	.flashcard-root {
-		padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--fc-mobile-bottom-padding));
-	}
 	.fc-page {
 		--page-viewport-gutter: var(--fc-space-2);
-	}
-
-	.fc-page {
 		gap: var(--fc-space-2);
 	}
 	.fc-page__body {

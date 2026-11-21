@@ -32,3 +32,17 @@ export function errorMessage(error: unknown): string {
 export function finiteNumberOrNull(value: unknown): number | null {
 	return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
+
+/** Clamps a numeric value to the inclusive [min, max] range. */
+export function clamp(value: number, min: number, max: number): number {
+	return Math.min(max, Math.max(min, value));
+}
+
+/** Escapes HTML special characters for safe text interpolation. */
+export function escapeHtml(value: string): string {
+	return value
+		.replaceAll("&", "&amp;")
+		.replaceAll('"', "&quot;")
+		.replaceAll("<", "&lt;")
+		.replaceAll(">", "&gt;");
+}

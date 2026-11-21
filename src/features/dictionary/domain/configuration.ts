@@ -15,8 +15,8 @@ import {
 export const DICTIONARY_QUERY_MAX_LENGTH = 128;
 export const DICTIONARY_HISTORY_LIMIT = 50;
 export const DEFAULT_DICTIONARY_FAVORITE_PATH = "word.md";
-export const DEFAULT_FAVORITE_CATEGORY_ID = "default";
-export const DEFAULT_FAVORITE_CATEGORY_NAME = "默认收藏";
+const DEFAULT_FAVORITE_CATEGORY_ID = "default";
+const DEFAULT_FAVORITE_CATEGORY_NAME = "默认收藏";
 export const DEFAULT_YOUDAO_DICTIONARIES = ["ec", "ce"] as const;
 
 export function normalizeDictionaryQuery(value: unknown): string {

@@ -17,7 +17,6 @@ const copy = {
 		reloadMessage: "如果找到最新字幕，它会替换这条草稿。若字幕已删除，草稿会保留供复制。",
 		reloadConfirm: "放弃草稿并重新载入",
 		cancel: "取消",
-		detachedFailure: (reason: string) => `播放器已关闭，字幕修正保存失败：${reason}`,
 		statusFailure: (reason: string) => `字幕任务状态更新失败：${reason}`,
 	},
 	en: {
@@ -37,8 +36,6 @@ const copy = {
 			"If the subtitle is found, its latest version will replace this draft. If it was deleted, you can still copy the draft.",
 		reloadConfirm: "Discard draft and reload",
 		cancel: "Cancel",
-		detachedFailure: (reason: string) =>
-			`The player was closed. Its subtitle correction could not be saved: ${reason}`,
 		statusFailure: (reason: string) => `Subtitle task status could not be updated: ${reason}`,
 	},
 };

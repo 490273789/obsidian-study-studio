@@ -1,6 +1,20 @@
 @use "../../../core/styles/breakpoints.scss" as bp;
 @use "../../../core/styles/mixins.scss" as *;
 
+@mixin status-rail($bg: transparent, $animated: false) {
+	content: "";
+	position: absolute;
+	inset-block: var(--fc-space-2);
+	inset-inline-start: 0;
+	width: 3px;
+	border-start-end-radius: 3px;
+	border-end-end-radius: 3px;
+	background: $bg;
+	@if $animated {
+		transition: background var(--fc-motion-quick) ease;
+	}
+}
+
 .page {
 	--page-content-width: 1700px;
 	gap: 0;
@@ -125,15 +139,7 @@
 		border-color var(--fc-motion-quick) ease;
 
 	&::before {
-		content: "";
-		position: absolute;
-		inset-block: var(--fc-space-2);
-		inset-inline-start: 0;
-		width: 3px;
-		border-start-end-radius: 3px;
-		border-end-end-radius: 3px;
-		background: transparent;
-		transition: background var(--fc-motion-quick) ease;
+		@include status-rail($animated: true);
 	}
 
 	&:hover {
@@ -600,15 +606,7 @@
 		padding var(--fc-motion-quick) var(--fc-ease-out);
 
 	&::before {
-		content: "";
-		position: absolute;
-		inset-block: var(--fc-space-2);
-		inset-inline-start: 0;
-		width: 3px;
-		border-start-end-radius: 3px;
-		border-end-end-radius: 3px;
-		background: transparent;
-		transition: background var(--fc-motion-quick) ease;
+		@include status-rail($animated: true);
 	}
 
 	&:hover {
@@ -1080,7 +1078,8 @@
 	gap: var(--fc-space-3);
 }
 
-.optionRowLabel {
+.optionRowLabel,
+.offsetLabel {
 	color: var(--fc-muted);
 	font-size: var(--fc-font-xs);
 	font-weight: var(--fc-weight-medium);
@@ -1127,13 +1126,6 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: var(--fc-space-2);
-}
-
-.offsetLabel {
-	color: var(--fc-muted);
-	font-size: var(--fc-font-xs);
-	font-weight: var(--fc-weight-medium);
-	white-space: nowrap;
 }
 
 .offsetStepper {
@@ -1336,14 +1328,7 @@
 	background: var(--fc-surface-section);
 
 	&::before {
-		content: "";
-		position: absolute;
-		inset-block: var(--fc-space-2);
-		inset-inline-start: 0;
-		width: 3px;
-		border-start-end-radius: 3px;
-		border-end-end-radius: 3px;
-		background: var(--fc-lime);
+		@include status-rail(var(--fc-lime));
 	}
 }
 

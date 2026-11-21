@@ -38,7 +38,6 @@ const zh = {
 		notFound: "没有找到这个单词。",
 		rateLimit: "查询过于频繁，请稍后重试。",
 		request: "词典查询失败，请稍后重试。",
-		responseTooLarge: "词典返回内容过大，已停止解析。",
 		server: "词典服务暂时不可用，请稍后重试。",
 		timeout: "词典响应超时，请稍后重试。",
 		unauthorized: "词典凭据无效或没有访问权限。",
@@ -157,7 +156,6 @@ const zh = {
 	moreDetails: "更多释义",
 	collapseDetails: "收起更多释义",
 	removeHistoryItem: (word: string) => `从历史中移除“${word}”`,
-	toggleHistory: "最近查询记录",
 	import: "导入本地词典",
 	importDescription:
 		"支持通用或图片型 .eudic 词典，以及同批选择 .mdx、同名 .mdd/.1.mdd、CSS 与 JS；本地配套脚本会在隔离词典页面中运行。",
@@ -395,7 +393,6 @@ const en: typeof zh = {
 	moreDetails: "More definitions",
 	collapseDetails: "Show fewer definitions",
 	removeHistoryItem: (word: string) => `Remove "${word}" from history`,
-	toggleHistory: "Recent searches",
 	import: "Import local dictionary",
 	importDescription:
 		"Supports general and image .eudic dictionaries, plus .mdx with same-name .mdd/.1.mdd, CSS, and JS; companion scripts run inside an isolated dictionary page.",

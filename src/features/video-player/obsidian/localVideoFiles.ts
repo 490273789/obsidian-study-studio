@@ -18,7 +18,7 @@ interface LocalVideoFilePickerDependencies {
 }
 
 /** Opens a native file input and turns selected files into readable external paths. */
-export async function pickLocalVideoSources(
+async function pickLocalVideoSources(
 	label: string,
 	dependencies: LocalVideoFilePickerDependencies = {},
 ): Promise<LocalVideoSource[]> {

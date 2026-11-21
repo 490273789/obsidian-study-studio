@@ -715,7 +715,7 @@
 		background var(--fc-motion-quick) ease;
 
 	&:hover {
-		border-color: var(--fc-line-strong, var(--interactive-accent));
+		border-color: var(--fc-line-strong);
 	}
 
 	&.is-disabled {

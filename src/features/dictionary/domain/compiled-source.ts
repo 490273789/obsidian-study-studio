@@ -1,5 +1,6 @@
 import { Platform, type DataAdapter } from "obsidian";
 import type { OutboundPort } from "../../../core/net/types";
+import { escapeHtml } from "../../../core/shared/utils";
 import { dictionaryText } from "./messages";
 import type { LocalDictionarySettings } from "./types";
 import {
@@ -208,12 +209,4 @@ export class CompiledDictionarySource implements DictionarySource {
 }
 function packageCorrupt(): DictionaryError {
 	return new DictionaryError("invalid-response", dictionaryText().compiledCorrupt);
-}
-
-function escapeHtml(value: string): string {
-	return value
-		.replaceAll("&", "&amp;")
-		.replaceAll('"', "&quot;")
-		.replaceAll("<", "&lt;")
-		.replaceAll(">", "&gt;");
 }

@@ -1,6 +1,7 @@
 import { Notice } from "obsidian";
 import { CirclePlay } from "lucide-react";
 import type { AiService } from "../../core/ai";
+import { errorMessage } from "../../core/shared/utils";
 import { FlashcardButton } from "../../core/ui/primitives/Button";
 import { ModalProvider } from "../../core/ui/primitives/Modal";
 import { createReactItemView } from "../../core/host/reactItemView";
@@ -70,7 +71,7 @@ export function createVideoPlayerFeature(
 					reportError: (error) => {
 						new Notice(
 							subtitleEditingStrings(host.settings.read().language).statusFailure(
-								error instanceof Error ? error.message : String(error),
+								errorMessage(error),
 							),
 						);
 					},

@@ -1,3 +1,4 @@
+import { errorMessage } from "../../../core/shared/utils";
 import {
 	emptyShadowDocument,
 	makeShadowCue,
@@ -570,7 +571,7 @@ export class VideoSubtitleJobs {
 		} catch (error) {
 			if (!controller.signal.aborted) {
 				task.status = "failed";
-				task.error = error instanceof Error ? error.message : String(error);
+				task.error = errorMessage(error);
 			}
 		} finally {
 			if (task.status === "running") task.status = "paused";
@@ -621,8 +622,7 @@ export class VideoSubtitleJobs {
 				});
 			} catch (error) {
 				if (!signal.aborted && !this.disposed) {
-					this.translationFailures[id] =
-						error instanceof Error ? error.message : String(error);
+					this.translationFailures[id] = errorMessage(error);
 					this.publish();
 				}
 			}

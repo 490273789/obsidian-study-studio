@@ -10,7 +10,7 @@ import type { SubtitleDraftAction, SubtitleDraftEngine } from "../domain/subtitl
 import type { AudioPracticeStrings } from "../strings/audioPractice";
 import styles from "./AudioPractice.module.scss";
 
-function timeLabel(seconds: number): string {
+export function timeLabel(seconds: number): string {
 	if (!Number.isFinite(seconds) || seconds < 0) return "0:00.0";
 	return `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(1).padStart(4, "0")}`;
 }

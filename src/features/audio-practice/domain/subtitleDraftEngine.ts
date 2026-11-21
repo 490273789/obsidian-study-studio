@@ -167,7 +167,7 @@ export interface SubtitleDraftEngineOptions {
 	readonly commitSubtitles?: SubtitleDraftCommitHandler;
 }
 
-function sameFileStat(a: AudioSourceStat | null, b: AudioSourceStat | null): boolean {
+export function sameFileStat(a: AudioSourceStat | null, b: AudioSourceStat | null): boolean {
 	if (!a || !b) return false;
 	return a.size === b.size && a.mtime === b.mtime;
 }

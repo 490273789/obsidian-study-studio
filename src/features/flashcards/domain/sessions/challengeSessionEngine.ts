@@ -1,3 +1,10 @@
+import { State } from "ts-fsrs";
+import { isRecord } from "../../../../core/shared/isRecord";
+import type { Deck, FlashCard } from "../../../../core/shared/types";
+import { extractSpellingWord } from "../cards/spellingWord";
+import { isStableCardIdentity } from "../identity/cardIdentity";
+import type { SessionRecord } from "./sessionPersistence";
+
 export type ChallengeMode = "normal" | "reversed" | "spelling" | "random";
 
 export type ChallengeQuestionMode = Exclude<ChallengeMode, "random">;
@@ -605,12 +612,3 @@ function isChallengeMode(value: unknown): value is ChallengeMode {
 function isQuestionMode(value: unknown): value is ChallengeQuestionMode {
 	return value === "normal" || value === "reversed" || value === "spelling";
 }
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return Boolean(value) && typeof value === "object";
-}
-import { State } from "ts-fsrs";
-import type { Deck, FlashCard } from "../../../../core/shared/types";
-import { extractSpellingWord } from "../cards/spellingWord";
-import { isStableCardIdentity } from "../identity/cardIdentity";
-import type { SessionRecord } from "./sessionPersistence";

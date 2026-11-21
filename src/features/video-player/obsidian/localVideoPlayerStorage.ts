@@ -63,8 +63,8 @@ export class ObsidianShadowCheckpointStore implements ShadowSubtitleCheckpointSt
 export class ObsidianVideoSourceIdentityStore implements VideoSourceIdentityPort {
 	constructor(private readonly app: Pick<App, "loadLocalStorage" | "saveLocalStorage">) {}
 	load(): Record<string, string> {
-		const saved = this.app.loadLocalStorage(SOURCE_IDS_STORAGE_KEY);
-		if (saved && typeof saved === "object" && !Array.isArray(saved)) {
+		const saved: unknown = this.app.loadLocalStorage(SOURCE_IDS_STORAGE_KEY);
+		if (isRecord(saved)) {
 			return Object.fromEntries(
 				Object.entries(saved).filter(
 					(entry): entry is [string, string] => typeof entry[1] === "string",

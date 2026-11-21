@@ -51,7 +51,7 @@ export interface DictionarySettingsEditorActions {
 }
 
 /** Compiled-v2 byte sizes, matching the source tool's KiB/MiB reporting. */
-export function formatDictionaryBytes(bytes: number): string {
+function formatDictionaryBytes(bytes: number): string {
 	if (bytes < 1_048_576) return `${Math.max(1, Math.round(bytes / 1_024))} KiB`;
 	return `${(bytes / 1_048_576).toFixed(bytes < 10 * 1_048_576 ? 1 : 0)} MiB`;
 }

@@ -225,27 +225,6 @@
 	min-width: 100%;
 }
 
-@container flashcard-pane (min-width: #{breakpoints.$phone + 1px}) {
-	.recentHeatmap {
-		width: 100%;
-
-		.months,
-		.grid {
-			grid-template-columns: repeat(var(--fc-heatmap-weeks), minmax(0, 1fr));
-		}
-
-		.week {
-			min-width: 0;
-		}
-
-		button.cell {
-			width: 100% !important;
-			min-width: 0 !important;
-			max-width: none !important;
-		}
-	}
-}
-
 .months,
 .grid {
 	display: grid;
@@ -448,6 +427,25 @@ button.cell:not(:disabled) {
 		.heatmapLayout,
 		.details {
 			grid-column: 1 / -1;
+		}
+	}
+
+	.recentHeatmap {
+		width: 100%;
+
+		.months,
+		.grid {
+			grid-template-columns: repeat(var(--fc-heatmap-weeks), minmax(0, 1fr));
+		}
+
+		.week {
+			min-width: 0;
+		}
+
+		button.cell {
+			width: 100% !important;
+			min-width: 0 !important;
+			max-width: none !important;
 		}
 	}
 }

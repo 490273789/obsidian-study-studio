@@ -1,3 +1,4 @@
+import { clamp } from "../../../core/shared/utils";
 import {
 	VIDEO_PLAYBACK_RATES,
 	type DeviceVideoPlayerStateV1,
@@ -597,8 +598,4 @@ export function emptyState(): DeviceVideoPlayerStateV1 {
 		floatingRect: null,
 		queueExpanded: false,
 	};
-}
-
-function clamp(value: number, min: number, max: number): number {
-	return Math.min(max, Math.max(min, value));
 }

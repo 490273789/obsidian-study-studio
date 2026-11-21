@@ -16,7 +16,7 @@ export const DEFAULT_OPENAI_MODEL = "whisper-1";
 export const DEFAULT_YOUDAO_TRANSLATION_BASE_URL = "https://openapi.youdao.com/api";
 
 /** One pre-registry transcription configuration, read from either legacy owner. */
-export interface LegacyTranscriptionSettings {
+interface LegacyTranscriptionSettings {
 	provider: AsrProvider;
 	bailianWorkspaceId: string;
 	bailianWorkspaceSecretId: string;
@@ -27,7 +27,7 @@ export interface LegacyTranscriptionSettings {
 	openaiModel: string;
 }
 
-export interface LegacyYoudaoTranslation {
+interface LegacyYoudaoTranslation {
 	baseUrl: string;
 	appKeySecretId: string;
 	appSecretSecretId: string;

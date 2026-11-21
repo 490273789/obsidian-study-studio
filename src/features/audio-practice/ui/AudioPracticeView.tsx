@@ -58,12 +58,10 @@ import {
 	CUE_ROW_ATTRIBUTE,
 	PracticeViewInteraction,
 } from "./practiceViewInteraction";
-import { ReviewDialog } from "./ReviewDialog";
+import { ReviewDialog, timeLabel } from "./ReviewDialog";
 import { PracticeSummary } from "./PracticeSummary";
 import { PracticeSessionClock, practiceCompletion } from "./practiceSession";
 import styles from "./AudioPractice.module.scss";
-
-export { ReviewDialog as DraftReviewDialog, DraftReviewBody } from "./ReviewDialog";
 
 const CUE_ROW_PROPS = {
 	[CUE_ROW_ATTRIBUTE]: "true",
@@ -1481,9 +1479,4 @@ function renderPlayerDock(
 
 function fileName(path: string): string {
 	return path.split("/").pop() ?? path;
-}
-
-function timeLabel(seconds: number): string {
-	if (!Number.isFinite(seconds) || seconds < 0) return "0:00.0";
-	return `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(1).padStart(4, "0")}`;
 }

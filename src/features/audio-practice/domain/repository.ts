@@ -1,3 +1,4 @@
+import { isRecord } from "../../../core/shared/isRecord";
 import {
 	AUDIO_PLAYBACK_RATES,
 	type AudioMaterial,
@@ -16,18 +17,15 @@ export function emptyAudioPracticeData(): AudioPracticeData {
 		difficultOnly: false,
 	};
 }
-function record(value: unknown): value is Record<string, unknown> {
-	return !!value && typeof value === "object" && !Array.isArray(value);
-}
 export function normalizeAudioPracticeData(raw: unknown): AudioPracticeData {
 	const empty = emptyAudioPracticeData();
-	if (!record(raw) || raw.schemaVersion !== 1) return empty;
+	if (!isRecord(raw) || raw.schemaVersion !== 1) return empty;
 	const seen = new Set<string>();
 	const materials: AudioMaterial[] = [];
 	if (Array.isArray(raw.materials))
 		for (const value of raw.materials) {
 			if (
-				!record(value) ||
+				!isRecord(value) ||
 				typeof value.id !== "string" ||
 				!value.id ||
 				seen.has(value.id) ||
@@ -48,8 +46,8 @@ export function normalizeAudioPracticeData(raw: unknown): AudioPracticeData {
 		}
 	const progress: Record<string, AudioPracticeProgress> = {};
 	for (const material of materials) {
-		const value = record(raw.progress) ? raw.progress[material.id] : undefined;
-		progress[material.id] = record(value)
+		const value = isRecord(raw.progress) ? raw.progress[material.id] : undefined;
+		progress[material.id] = isRecord(value)
 			? {
 					time:
 						typeof value.time === "number" && Number.isFinite(value.time)
@@ -89,7 +87,7 @@ export function normalizeAudioPracticeData(raw: unknown): AudioPracticeData {
 	};
 }
 function normalizeWordTimings(value: unknown): AudioMaterial["wordTimings"] {
-	if (!record(value)) return undefined;
+	if (!isRecord(value)) return undefined;
 	const result: Record<
 		string,
 		{ startOffset: number; endOffset: number; start: number; end: number }[]
@@ -98,7 +96,7 @@ function normalizeWordTimings(value: unknown): AudioMaterial["wordTimings"] {
 	for (const [id, raw] of Object.entries(value)) {
 		if (!id || !Array.isArray(raw) || count + raw.length > 5000) continue;
 		const words = raw.flatMap((item) => {
-			if (!record(item)) return [];
+			if (!isRecord(item)) return [];
 			const { startOffset, endOffset, start, end } = item;
 			return Number.isSafeInteger(startOffset) &&
 				Number.isSafeInteger(endOffset) &&

@@ -1,4 +1,5 @@
 import type { App } from "obsidian";
+import { isRecord } from "../../../core/shared/isRecord";
 import type { ShadowSubtitleDocument } from "../domain/shadowSubtitles";
 import type { ShadowSubtitleStore } from "../domain/shadowSubtitlesJobs";
 import {
@@ -47,14 +48,13 @@ export class ObsidianShadowVaultStore implements ShadowSubtitleStore, ShadowPrac
 		this.preferredRoot =
 			typeof preferredRoot === "string" ? () => preferredRoot : preferredRoot;
 		const saved: unknown = app.loadLocalStorage(FOLDER_KEY);
-		this.roots =
-			saved && typeof saved === "object" && !Array.isArray(saved)
-				? Object.fromEntries(
-						Object.entries(saved).filter(
-							(entry): entry is [string, string] => typeof entry[1] === "string",
-						),
-					)
-				: {};
+		this.roots = isRecord(saved)
+			? Object.fromEntries(
+					Object.entries(saved).filter(
+						(entry): entry is [string, string] => typeof entry[1] === "string",
+					),
+				)
+			: {};
 	}
 
 	private get adapter(): ShadowVaultAdapter {
